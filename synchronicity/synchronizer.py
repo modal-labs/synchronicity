@@ -39,7 +39,7 @@ class Synchronizer:
         except RuntimeError:
             return False
 
-    def _make_sync_function(self, coro, return_future):
+    def _run_function_sync(self, coro, return_future):
         loop = self._get_loop()
         fut = asyncio.run_coroutine_threadsafe(coro, loop)
         if return_future is None:
@@ -49,7 +49,17 @@ class Synchronizer:
         else:
             return fut.result()
 
-    def _make_sync_generator(self, coro):
+    async def _run_function_async(self, coro):
+        current_loop = asyncio.get_running_loop()
+        loop = self._get_loop()
+        if loop == current_loop:
+            return coro
+
+        c_fut = asyncio.run_coroutine_threadsafe(coro, loop)
+        a_fut = asyncio.wrap_future(c_fut)
+        return await a_fut
+
+    def _create_generator_queue(self, coro):
         loop = self._get_loop()
         q = queue.Queue()
         async def pump():
@@ -64,6 +74,10 @@ class Synchronizer:
             q.put_nowait(('val', None))
 
         future = asyncio.run_coroutine_threadsafe(pump(), loop)
+        return q
+
+    def _run_generator_sync(self, coro):
+        q = self._create_generator_queue(coro)
         while True:
             tag, res = q.get()
             if tag == 'val':
@@ -73,16 +87,41 @@ class Synchronizer:
             else:
                 yield res
 
+    async def _run_generator_async(self, coro):
+        current_loop = asyncio.get_running_loop()
+        loop = self._get_loop()
+        if loop == current_loop:
+            async for val in coro:
+                yield coro
+            return
+
+        q = self._create_generator_queue(coro)
+        while True:
+            tag, res = await current_loop.run_in_executor(None, q.get)
+            if tag == 'val':
+                return
+            elif tag == 'exc':
+                raise res
+            else:
+                yield res
+
     def _wrap_callable(self, f, return_future=None):
         @functools.wraps(f)
         def f_wrapped(*args, **kwargs):
             res = f(*args, **kwargs)
-            if self._is_async_context():
-                return res
-            elif inspect.iscoroutine(res):
-                return self._make_sync_function(res, return_future)
-            elif inspect.isasyncgen(res):
-                return self._make_sync_generator(res)
+            is_async_context = self._is_async_context()
+            is_coroutine = inspect.iscoroutine(res)
+            is_asyncgen = inspect.isasyncgen(res)
+            if is_coroutine:
+                if is_async_context:
+                    return self._run_function_async(res)
+                else:
+                    return self._run_function_sync(res, return_future)
+            elif is_asyncgen:
+                if is_async_context:
+                    return self._run_generator_async(res)
+                else:
+                    return self._run_generator_sync(res)
             else:
                 return res
 

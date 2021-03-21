@@ -186,13 +186,14 @@ class MyClass(Base):
         super().__init__(x)
 
     async def start(self):
-        self._q = asyncio.Queue()
+        async def task():
+            await asyncio.sleep(SLEEP_DELAY)
+            return self._x
+        self._task = asyncio.create_task(task())
 
-    async def put(self, v):
-        await self._q.put(v)
-
-    async def get(self):
-        return await self._q.get()
+    async def get_result(self):
+        ret = await self._task
+        return ret**2
 
     async def __aenter__(self):
         await asyncio.sleep(SLEEP_DELAY)
@@ -205,14 +206,13 @@ class MyClass(Base):
 def test_class_sync():
     s = Synchronizer()
     NewClass = s(MyClass)
-    obj = NewClass(x=77)
+    obj = NewClass(x=42)
     assert isinstance(obj, MyClass)
     assert isinstance(obj, Base)
-    assert obj._x == 77
+    assert obj._x == 42
     obj.start()
-    obj.put(42)
-    ret = obj.get()
-    assert ret == 42
+    ret = obj.get_result()
+    assert ret == 1764
 
     t0 = time.time()
     with obj as z:
@@ -225,15 +225,14 @@ def test_class_sync():
 def test_class_sync_futures():
     s = Synchronizer(return_futures=True)
     NewClass = s(MyClass)
-    obj = NewClass(x=77)
+    obj = NewClass(x=42)
     assert isinstance(obj, MyClass)
     assert isinstance(obj, Base)
-    assert obj._x == 77
+    assert obj._x == 42
     obj.start()
-    obj.put(42)
-    fut = obj.get()
+    fut = obj.get_result()
     assert isinstance(fut, concurrent.futures.Future)
-    assert fut.result() == 42
+    assert fut.result() == 1764
 
     t0 = time.time()
     with obj as z:
@@ -247,15 +246,14 @@ def test_class_sync_futures():
 async def test_class_async():
     s = Synchronizer()
     NewClass = s(MyClass)
-    obj = NewClass(x=77)
+    obj = NewClass(x=42)
     assert isinstance(obj, MyClass)
     assert isinstance(obj, Base)
-    assert obj._x == 77
+    assert obj._x == 42
     await obj.start()
-    await obj.put(42)
-    coro = obj.get()
+    coro = obj.get_result()
     assert inspect.iscoroutine(coro)
-    assert await coro == 42
+    assert await coro == 1764
 
     t0 = time.time()
     async with obj as z:
@@ -263,3 +261,22 @@ async def test_class_async():
         assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
 
     assert time.time() - t0 > 2 * SLEEP_DELAY
+
+
+@pytest.mark.asyncio
+async def test_class_async_back_and_forth():
+    s = Synchronizer()
+    NewClass = s(MyClass)
+    obj = NewClass(x=42)
+    assert isinstance(obj, MyClass)
+    assert isinstance(obj, Base)
+    assert obj._x == 42
+    await obj.start()
+
+    def get(o):
+        return o.get_result()  # Blocking
+
+    loop = asyncio.get_running_loop()
+    fut = loop.run_in_executor(None, get, obj)
+    ret = await fut
+    assert ret == 1764
