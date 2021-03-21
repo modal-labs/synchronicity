@@ -176,7 +176,15 @@ async def test_sync_lambda_returning_coroutine_async():
     assert time.time() - t0 > SLEEP_DELAY
 
 
-class MyClass:
+class Base:
+    def __init__(self, x):
+        self._x = x
+
+
+class MyClass(Base):
+    def __init__(self, x):
+        super().__init__(x)
+
     async def start(self):
         self._q = asyncio.Queue()
 
@@ -197,7 +205,10 @@ class MyClass:
 def test_class_sync():
     s = Synchronizer()
     NewClass = s(MyClass)
-    obj = NewClass()
+    obj = NewClass(x=77)
+    assert isinstance(obj, MyClass)
+    assert isinstance(obj, Base)
+    assert obj._x == 77
     obj.start()
     obj.put(42)
     ret = obj.get()
@@ -214,7 +225,10 @@ def test_class_sync():
 def test_class_sync_futures():
     s = Synchronizer(return_futures=True)
     NewClass = s(MyClass)
-    obj = NewClass()
+    obj = NewClass(x=77)
+    assert isinstance(obj, MyClass)
+    assert isinstance(obj, Base)
+    assert obj._x == 77
     obj.start()
     obj.put(42)
     fut = obj.get()
@@ -233,7 +247,10 @@ def test_class_sync_futures():
 async def test_class_async():
     s = Synchronizer()
     NewClass = s(MyClass)
-    obj = NewClass()
+    obj = NewClass(x=77)
+    assert isinstance(obj, MyClass)
+    assert isinstance(obj, Base)
+    assert obj._x == 77
     await obj.start()
     await obj.put(42)
     coro = obj.get()
