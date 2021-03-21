@@ -96,7 +96,6 @@ class Synchronizer:
                 new_dict[k] = self._wrap_callable(v)
             else:
                 new_dict[k] = v
-        print('new dict:', new_dict)
         cls_new = type(cls_new_name, tuple(), new_dict)
         return cls_new
 
