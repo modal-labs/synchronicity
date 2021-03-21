@@ -27,8 +27,8 @@ class Synchronizer:
             self._loop.run_forever()
 
         self._thread = threading.Thread(target=lambda: run_forever(), daemon=True)
-        self._thread.start()
-        is_ready.wait()
+        self._thread.start()  # TODO: we should join the thread at some point
+        is_ready.wait()  # TODO: this might block for a very short time
         return self._loop
 
     def _is_async_context(self):
@@ -54,8 +54,10 @@ class Synchronizer:
                 async for result in coro:
                     q.put_nowait(('gen', result))
             except Exception as exc:
-                traceback.print_exc()
+                traceback.print_exc()  # TODO: is this really needed?
                 q.put_nowait(('exc', exc))
+            # TODO: we should catch StopIteration and make sure the value is returned
+            # TODO: should we catch KeyboardInterrupt and CancelledError?
             q.put_nowait(('val', None))
 
         future = asyncio.run_coroutine_threadsafe(pump(), loop)

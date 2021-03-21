@@ -27,7 +27,7 @@ class DBConnection:
         self._url = url
 
     async def connect(self):
-        # ...
+        self._connection = await connect_to_database(self._url)
 
     async def query(self, q):
         return await self._connection.run_query(q)
@@ -128,7 +128,7 @@ Gotchas
 TODOs
 -----
 
-* Support the opposite case, i.e. you have a blocking function/generator/class/object, and you want to call it asynchronously (this is relatively simple to do for plain functions using `asyncio.run_in_executor`, but Python has no built-in support for generators
+* Support the opposite case, i.e. you have a blocking function/generator/class/object, and you want to call it asynchronously (this is relatively simple to do for plain functions using `asyncio.run_in_executor`, but Python has no built-in support for generators, and it would be nice to transform a whole class
 * More documentation
 * CI
 * Publish to PyPI
