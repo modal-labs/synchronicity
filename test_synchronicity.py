@@ -10,7 +10,7 @@ SLEEP_DELAY = 0.1
 
 
 async def f(x):
-    await asyncio.sleep(0.1)
+    await asyncio.sleep(SLEEP_DELAY)
     return x**2
 
 
