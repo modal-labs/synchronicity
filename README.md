@@ -60,7 +60,7 @@ print('f(42) =', ret)
 
 
 async def g():
-    # Running f in an asynchronous context runs it on the same event loop as expected
+    # Running f in an asynchronous context works the normal way
     ret = await f(42)
     print('f(42) =', ret)
 ```
@@ -102,9 +102,8 @@ class DBConnection:
 
 # Now we can call it synchronously, if we want to
 db_conn = DBConnection('tcp://localhost:1234')
-db_conn.connect().result()  # remember to wait for the future to finish
-fut = db_conn.query('select * from foo')
-data = fut.result()
+db_conn.connect()
+data = db_conn.query('select * from foo')
 ```
 
 You can also make it return a `Future` object by instantiating the `Synchronizer` class with `return_futures=True`. This can be useful if you want to dispatch many calls from a blocking context, but you want to resolve them roughly in parallel:
