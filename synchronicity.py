@@ -38,9 +38,6 @@ class Synchronizer:
         except RuntimeError:
             return False
 
-    def _isasynccontextmanager(self, obj):
-        return hasattr(obj, '__aenter__')
-
     def _make_sync_function(self, coro, return_future):
         loop = self._get_loop()
         fut = asyncio.run_coroutine_threadsafe(coro, loop)
@@ -71,12 +68,6 @@ class Synchronizer:
             else:
                 yield res
 
-    def _make_sync_contextmanager(self, obj):
-        print('making sync contextmgr')
-        setattr(obj, '__enter__', self._wrap_callable(getattr(obj, '__aenter__')))
-        setattr(obj, '__exit__', self._wrap_callable(getattr(obj, '__aexit__')))
-        return obj
-
     def _wrap_callable(self, f, return_future=True):
         @functools.wraps(f)
         def f_wrapped(*args, **kwargs):
@@ -87,8 +78,6 @@ class Synchronizer:
                 return self._make_sync_function(res, return_future)
             elif inspect.isasyncgen(res):
                 return self._make_sync_generator(res)
-            elif self._isasynccontextmanager(res):
-                return self._make_sync_contextmanager(res)
             else:
                 return res
 
