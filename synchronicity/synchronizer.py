@@ -53,7 +53,7 @@ class Synchronizer:
         current_loop = asyncio.get_running_loop()
         loop = self._get_loop()
         if loop == current_loop:
-            return coro
+            return await coro
 
         c_fut = asyncio.run_coroutine_threadsafe(coro, loop)
         a_fut = asyncio.wrap_future(c_fut)
@@ -92,7 +92,7 @@ class Synchronizer:
         loop = self._get_loop()
         if loop == current_loop:
             async for val in coro:
-                yield coro
+                yield val
             return
 
         q = self._create_generator_queue(coro)

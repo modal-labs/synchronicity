@@ -14,10 +14,15 @@ async def f(x):
     return x**2
 
 
+async def f2(fn, x):
+    return await fn(x)
+
+
 def test_function_sync():
     s = Synchronizer()
     t0 = time.time()
-    ret = s(f)(42)
+    f_s = s(f)
+    ret = f_s(42)
     assert ret == 1764
     assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
 
@@ -25,7 +30,8 @@ def test_function_sync():
 def test_function_sync_future():
     s = Synchronizer(return_futures=True)
     t0 = time.time()
-    fut = s(f)(42)
+    f_s = s(f)
+    fut = f_s(42)
     assert isinstance(fut, concurrent.futures.Future)
     assert time.time() - t0 < SLEEP_DELAY
     assert fut.result() == 1764
@@ -36,11 +42,23 @@ def test_function_sync_future():
 async def test_function_async():
     s = Synchronizer()
     t0 = time.time()
-    coro = s(f)(42)
+    f_s = s(f)
+    coro = f_s(42)
     assert inspect.iscoroutine(coro)
     assert time.time() - t0 < SLEEP_DELAY
     assert await coro == 1764
     assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
+
+    # Make sure the same-loop calls work
+    f2_s = s(f2)
+    coro = f2_s(f_s, 42)
+    assert await coro == 1764
+
+    # Make sure cross-loop calls work
+    s2 = Synchronizer()
+    f2_s2 = s2(f2)
+    coro = f2_s2(f_s, 42)
+    assert await coro == 1764
 
 
 def test_function_many_parallel_sync():
@@ -87,14 +105,16 @@ def test_function_raises_sync():
     s = Synchronizer()
     t0 = time.time()
     with pytest.raises(CustomException):
-        s(f_raises)()
+        f_raises_s = s(f_raises)
+        f_raises_s()
     assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
 
 
 def test_function_raises_sync_futures():
     s = Synchronizer(return_futures=True)
     t0 = time.time()
-    fut = s(f_raises)()
+    f_raises_s = s(f_raises)
+    fut = f_raises_s()
     assert isinstance(fut, concurrent.futures.Future)
     assert time.time() - t0 < SLEEP_DELAY
     with pytest.raises(CustomException):
@@ -106,7 +126,8 @@ def test_function_raises_sync_futures():
 async def test_function_raises_async():
     s = Synchronizer()
     t0 = time.time()
-    coro = s(f_raises)()
+    f_raises_s = s(f_raises)
+    coro = f_raises_s()
     assert inspect.iscoroutine(coro)
     assert time.time() - t0 < SLEEP_DELAY
     with pytest.raises(CustomException):
@@ -120,10 +141,16 @@ async def gen(n):
         yield i
 
 
+async def gen2(generator, n):
+    async for ret in generator(n):
+        yield ret
+
+
 def test_generator_sync():
     s = Synchronizer()
     t0 = time.time()
-    it = s(gen)(3)
+    gen_s = s(gen)
+    it = gen_s(3)
     assert inspect.isgenerator(it)
     assert time.time() - t0 < SLEEP_DELAY
     l = list(it)
@@ -135,13 +162,26 @@ def test_generator_sync():
 async def test_generator_async():
     s = Synchronizer()
     t0 = time.time()
-    asyncgen = s(gen)(3)
+    gen_s = s(gen)
+    asyncgen = gen_s(3)
     assert inspect.isasyncgen(asyncgen)
     assert time.time() - t0 < SLEEP_DELAY
     l = [z async for z in asyncgen]
-    assert l== [0, 1, 2]
+    assert l == [0, 1, 2]
     assert time.time() - t0 > len(l) * SLEEP_DELAY
 
+    # Make sure same-loop calls work
+    gen2_s = s(gen2)
+    asyncgen = gen2_s(gen_s, 3)
+    l = [z async for z in asyncgen]
+    assert l == [0, 1, 2]
+
+    # Make sure cross-loop calls work
+    s2 = Synchronizer()
+    gen2_s2 = s2(gen2)
+    asyncgen = gen2_s2(gen_s, 3)
+    l = [z async for z in asyncgen]
+    assert l == [0, 1, 2]
 
 
 def test_sync_lambda_returning_coroutine_sync():
