@@ -128,23 +128,16 @@ print('first ten squares:', rets)
 Installing
 ----------
 
-I might put this on PyPI later, but for now, run:
 
 ```
-pip install git+git://github.com/erikbern/synchronicity.git#egg=synchronicity
-```
-
-To use it in your project, you should be able to add something like this to requirements.txt or equivalent:
-
-```
--e git://github.com/erikbern/synchronicity.git#egg=synchronicity
+pip install synchronicity
 ```
 
 Gotchas
 -------
 
 * It works for classes that are context managers, but not for functions returning a context manager
-* Remember to call `.result()` in the blocking case if you need to wait for the operation to finish
+* It creates a new class when wrapping classes, which might throw off any code relying on type information
 
 TODOs
 -----
@@ -152,7 +145,6 @@ TODOs
 * Support the opposite case, i.e. you have a blocking function/generator/class/object, and you want to call it asynchronously (this is relatively simple to do for plain functions using `asyncio.run_in_executor`, but Python has no built-in support for generators, and it would be nice to transform a whole class
 * More documentation
 * CI
-* Publish to PyPI
 * Make it possible to annotate methods selectively to return futures
 
 This library is limb-amputating edge
