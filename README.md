@@ -7,11 +7,11 @@ Let's say you have an asynchronous function
 
 ```python
 async def f(x):
-   await asyncio.sleep(1.0)
-   return x**2
+    await asyncio.sleep(1.0)
+    return x**2
 ```
 
-A "simple" way to create a synchronous equivalent would be to wrap it in `asyncio.run(...)`. But this isn't a great solution for more complex code that requires keeping the same event loop. For instance, let's say you are implementing a client to a database that needs to have a persistent connection, and you want to built it in asyncio:
+A "simple" way to create a synchronous equivalent would be to wrap it in `asyncio.run(...)`. But this isn't a great solution for more complex code. To start with, `asyncio.run` doesn't work with generators. But it also doesn't work with anything that requires keeping the same event loop. For instance, let's say you are implementing a client to a database that needs to have a persistent connection, and you want to built it in asyncio:
 
 ```python
 class DBConnection:
@@ -25,6 +25,8 @@ class DBConnection:
         return await self._connection.run_query(q)
 ```
 
+In this case, you need something slightly more advanced.
+
 How to use
 ----------
 
@@ -37,8 +39,8 @@ synchronizer = Synchronizer()
 
 @synchronizer
 async def f(x):
-   await asyncio.sleep(1.0)
-   return x**2
+    await asyncio.sleep(1.0)
+    return x**2
 
 
 # Running f in a synchronous context returns a Future object, with a blocking method .result()
@@ -91,3 +93,17 @@ db_conn.connect().result()  # remember to wait for the future to finish
 fut = db_conn.query('select * from foo')
 data = fut.result()
 ```
+
+Installing
+----------
+
+I might put this on PyPI later, but for now, run:
+
+```
+pip install git+git://github.com/erikbern/synchronicity.git#egg=synchronicity
+```
+
+This library is limb-amputating edge
+------------------------------------
+
+I have barely tested it myself, although there is a small test suite that you can run using pytest.
