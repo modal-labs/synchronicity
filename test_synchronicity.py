@@ -239,3 +239,10 @@ async def test_class_async():
     coro = obj.get()
     assert inspect.iscoroutine(coro)
     assert await coro == 42
+
+    t0 = time.time()
+    async with obj as z:
+        assert z == 42
+        assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
+
+    assert time.time() - t0 > 2 * SLEEP_DELAY

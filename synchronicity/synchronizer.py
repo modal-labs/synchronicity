@@ -94,8 +94,10 @@ class Synchronizer:
         cls_new_name = cls_name + 'Synchronized'
         for k, v in cls.__dict__.items():
             if k == '__aenter__':
+                new_dict[k] = v
                 new_dict['__enter__'] = self._wrap_callable(v, return_future=False)
             elif k == '__aexit__':
+                new_dict[k] = v
                 new_dict['__exit__'] = self._wrap_callable(v, return_future=False)
             elif callable(v):
                 new_dict[k] = self._wrap_callable(v)
