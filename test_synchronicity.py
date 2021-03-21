@@ -17,6 +17,14 @@ async def f(x):
 def test_function_sync():
     s = Synchronizer()
     t0 = time.time()
+    ret = s(f)(42)
+    assert ret == 1764
+    assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
+
+
+def test_function_sync_future():
+    s = Synchronizer(return_futures=True)
+    t0 = time.time()
     fut = s(f)(42)
     assert isinstance(fut, concurrent.futures.Future)
     assert time.time() - t0 < SLEEP_DELAY
@@ -39,6 +47,14 @@ def test_function_many_parallel_sync():
     s = Synchronizer()
     g = s(f)
     t0 = time.time()
+    rets = [g(i) for i in range(10)]  # Will resolve serially
+    assert len(rets) * SLEEP_DELAY < time.time() - t0 < (len(rets) + 1) * SLEEP_DELAY
+
+
+def test_function_many_parallel_sync_futures():
+    s = Synchronizer(return_futures=True)
+    g = s(f)
+    t0 = time.time()
     futs = [g(i) for i in range(1000)]
     assert isinstance(futs[0], concurrent.futures.Future)
     assert time.time() - t0 < SLEEP_DELAY
@@ -47,7 +63,7 @@ def test_function_many_parallel_sync():
 
 
 @pytest.mark.asyncio
-async def test_function_many_paralel_async():
+async def test_function_many_parallel_async():
     s = Synchronizer()
     g = s(f)
     t0 = time.time()
@@ -69,6 +85,14 @@ async def f_raises():
 
 def test_function_raises_sync():
     s = Synchronizer()
+    t0 = time.time()
+    with pytest.raises(CustomException):
+        s(f_raises)()
+    assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
+
+
+def test_function_raises_sync_futures():
+    s = Synchronizer(return_futures=True)
     t0 = time.time()
     fut = s(f_raises)()
     assert isinstance(fut, concurrent.futures.Future)
@@ -124,6 +148,15 @@ def test_sync_lambda_returning_coroutine_sync():
     s = Synchronizer()
     t0 = time.time()
     g = s(lambda z: f(z + 1))
+    ret = g(42)
+    assert ret == 1849
+    assert time.time() - t0 > SLEEP_DELAY
+
+
+def test_sync_lambda_returning_coroutine_sync_futures():
+    s = Synchronizer(return_futures=True)
+    t0 = time.time()
+    g = s(lambda z: f(z + 1))
     fut = g(42)
     assert isinstance(fut, concurrent.futures.Future)
     assert time.time() - t0 < SLEEP_DELAY
@@ -163,6 +196,23 @@ class MyClass:
 
 def test_class_sync():
     s = Synchronizer()
+    NewClass = s(MyClass)
+    obj = NewClass()
+    obj.start()
+    obj.put(42)
+    ret = obj.get()
+    assert ret == 42
+
+    t0 = time.time()
+    with obj as z:
+        assert z == 42
+        assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
+
+    assert time.time() - t0 > 2 * SLEEP_DELAY
+
+
+def test_class_sync_futures():
+    s = Synchronizer(return_futures=True)
     NewClass = s(MyClass)
     obj = NewClass()
     obj.start()

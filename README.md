@@ -38,7 +38,10 @@ How do you expose a synchronous interface to this code? It's clear we need somet
 How to use
 ----------
 
-This library offers a simpler `Synchronizer` class that creates an event loop on a separate thread, and wraps functions/generators/classes so that synchronous execution happens on that thread. When you call anything, it will detect if you're running in a synchronous or asynchronous context, and behave correspondingly. In the former case, it will return a `Future` object that you can wait (blockingly) on. In the latter case, it works just like normal asynchronous code.
+This library offers a simpler `Synchronizer` class that creates an event loop on a separate thread, and wraps functions/generators/classes so that synchronous execution happens on that thread. When you call anything, it will detect if you're running in a synchronous or asynchronous context, and behave correspondingly.
+
+* In the synchronous case, it will simply block until the result is available (note that you can make it return a future as well, see later)
+* In the asynchronous case, it works just like the usual business of calling asynchronous code
 
 ```python
 from synchronicity import Synchronizer
@@ -51,9 +54,9 @@ async def f(x):
     return x**2
 
 
-# Running f in a synchronous context returns a Future object, with a blocking method .result()
-fut = f(42)  # Returns immediately
-print('f(42) =', fut.result())  # Blocks until result is available
+# Running f in a synchronous context blocks until the result is available
+ret = f(42)  # Blocks
+print('f(42) =', ret)
 
 
 async def g():
@@ -104,6 +107,24 @@ fut = db_conn.query('select * from foo')
 data = fut.result()
 ```
 
+You can also make it return a `Future` object by instantiating the `Synchronizer` class with `return_futures=True`. This can be useful if you want to dispatch many calls from a blocking context, but you want to resolve them roughly in parallel:
+
+```python
+from synchronicity import Synchronizer
+
+synchronizer = Synchronizer(return_futures=True)
+
+@synchronizer
+async def f(x):
+    await asyncio.sleep(1.0)
+    return x**2
+
+
+futures = [f(i) for i in range(10)]  # This returns immediately
+rets = [fut.result() for fut in futures]  # This should take ~1s to run, resolving all futures in parallel
+print('first ten squares:', rets)
+```
+
 Installing
 ----------
 
@@ -132,6 +153,7 @@ TODOs
 * More documentation
 * CI
 * Publish to PyPI
+* Make it possible to annotate methods selectively to return futures
 
 This library is limb-amputating edge
 ------------------------------------

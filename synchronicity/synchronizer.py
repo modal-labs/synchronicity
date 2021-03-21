@@ -12,7 +12,8 @@ class Synchronizer:
     '''Helps you offer a blocking (synchronous) interface to asynchronous code.
     '''
 
-    def __init__(self):
+    def __init__(self, return_futures=False):
+        self._return_futures = return_futures
         self._loop = None
 
     def _get_loop(self):
@@ -41,6 +42,8 @@ class Synchronizer:
     def _make_sync_function(self, coro, return_future):
         loop = self._get_loop()
         fut = asyncio.run_coroutine_threadsafe(coro, loop)
+        if return_future is None:
+            return_future = self._return_futures
         if return_future:
             return fut
         else:
@@ -70,7 +73,7 @@ class Synchronizer:
             else:
                 yield res
 
-    def _wrap_callable(self, f, return_future=True):
+    def _wrap_callable(self, f, return_future=None):
         @functools.wraps(f)
         def f_wrapped(*args, **kwargs):
             res = f(*args, **kwargs)
