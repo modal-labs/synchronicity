@@ -11,7 +11,15 @@ async def f(x):
     return x**2
 ```
 
-A "simple" way to create a synchronous equivalent would be to wrap it in `asyncio.run(...)`. But this isn't a great solution for more complex code. To start with, `asyncio.run` doesn't work with generators. But it also doesn't work with anything that requires keeping the same event loop. For instance, let's say you are implementing a client to a database that needs to have a persistent connection, and you want to built it in asyncio:
+And let's say (for whatever reason) you want to offer a synchronous API to users. For instance maybe you want to make it easy to run your code in a basic script, or a user is building something that's mostly CPU-bound, so they don't want to bother with asyncio.
+
+A "simple" way to create a synchronous equivalent would be to implement a set of synchronous functions where all they do is call `asyncio.run(...)` on an asynchronous function. But this isn't a great solution for more complex code:
+
+* It's kind of tedious grunt work to have to do this for every method/function
+* `asyncio.run` doesn't work with generators
+* In many cases, you need to preserve an event loop running between calls.
+
+The last case is particularly challenging. For instance, let's say you are implementing a client to a database that needs to have a persistent connection, and you want to built it in asyncio:
 
 ```python
 class DBConnection:
@@ -25,12 +33,12 @@ class DBConnection:
         return await self._connection.run_query(q)
 ```
 
-In this case, you need something slightly more advanced.
+How do you expose a synchronous interface to this code? It's clear we need something slightly more advanced.
 
 How to use
 ----------
 
-This library offers a simpler `Synchronizer` class that creates an event loop on a separate thread, and wraps functions/generators/classes so that synchronous execution happens on that thread.
+This library offers a simpler `Synchronizer` class that creates an event loop on a separate thread, and wraps functions/generators/classes so that synchronous execution happens on that thread. When you call anything, it will detect if you're running in a synchronous or asynchronous context, and behave correspondingly. In the former case, it will return a `Future` object that you can wait (blockingly) on. In the latter case, it works just like normal asynchronous code.
 
 ```python
 from synchronicity import Synchronizer
@@ -49,7 +57,9 @@ print('f(42) =', fut.result())  # Blocks until result is available
 
 
 async def g():
-    print('f(42) =', (await f(42)))  # Running f in an asynchronous context runs it on the same event loop as expected
+    # Running f in an asynchronous context runs it on the same event loop as expected
+    ret = await f(42)
+    print('f(42) =', ret)
 ```
 
 More advanced examples
@@ -103,7 +113,27 @@ I might put this on PyPI later, but for now, run:
 pip install git+git://github.com/erikbern/synchronicity.git#egg=synchronicity
 ```
 
+To use it in your project, you should be able to add something like this to requirements.txt or equivalent:
+
+```
+-e git://github.com/erikbern/synchronicity.git#egg=synchronicity
+```
+
+Gotchas
+-------
+
+* It works for classes that are context managers, but not for functions returning a context manager
+* Remember to call `.result()` in the blocking case if you need to wait for the operation to finish
+
+TODOs
+-----
+
+* Support the opposite case, i.e. you have a blocking function/generator/class/object, and you want to call it asynchronously (this is relatively simple to do for plain functions using `asyncio.run_in_executor`, but Python has no built-in support for generators
+* More documentation
+* CI
+* Publish to PyPI
+
 This library is limb-amputating edge
 ------------------------------------
 
-I have barely tested it myself, although there is a small test suite that you can run using pytest.
+This is code I broke out of a personal projects, and it's not been battle-tested. There is a small test suite that you can run using pytest.
