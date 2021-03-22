@@ -4,6 +4,7 @@ python:
   - "3.9"
   - "nightly"
 install:
+  - pip install pytest-asyncio
   - pip install .
 script:
   - pytest
