@@ -146,7 +146,6 @@ TODOs
 
 * Support the opposite case, i.e. you have a blocking function/generator/class/object, and you want to call it asynchronously (this is relatively simple to do for plain functions using `asyncio.run_in_executor`, but Python has no built-in support for generators, and it would be nice to transform a whole class
 * More documentation
-* CI
 * Make it possible to annotate methods selectively to return futures
 
 This library is limb-amputating edge

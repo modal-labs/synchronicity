@@ -1,0 +1,9 @@
+language: python
+python:
+  - "3.8"
+  - "3.9"
+  - "nightly"
+install:
+  - pip install .
+script:
+  - pytest
