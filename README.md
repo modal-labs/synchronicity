@@ -1,3 +1,6 @@
+[![travis badge](https://img.shields.io/travis/erikbern/synchronicity/master.svg?style=flat)](https://travis-ci.org/erikbern/synchronicity)
+[![pypi badge](https://img.shields.io/pypi/v/synchronicity.svg?style=flat)](https://pypi.python.org/pypi/synchronicity)
+
 Python 3 has some amazing support for async programming but it's arguably made it a bit harder to develop libraries. Are you tired of implementing synchronous _and_ asynchronous methods doing basically the same thing? This might be a simple solution for you.
 
 Background: why is anything like this needed
@@ -146,7 +149,6 @@ TODOs
 
 * Support the opposite case, i.e. you have a blocking function/generator/class/object, and you want to call it asynchronously (this is relatively simple to do for plain functions using `asyncio.run_in_executor`, but Python has no built-in support for generators, and it would be nice to transform a whole class
 * More documentation
-* CI
 * Make it possible to annotate methods selectively to return futures
 
 This library is limb-amputating edge
