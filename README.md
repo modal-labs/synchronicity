@@ -36,12 +36,12 @@ class DBConnection:
         return await self._connection.run_query(q)
 ```
 
-How do you expose a synchronous interface to this code? It's clear we need something slightly more advanced.
+How do you expose a synchronous interface to this code? The problem is that wrapping `connect` and `query` in `asyncio.run` won't work since you need to _preserve the event loop across calls_. It's clear we need something slightly more advanced.
 
-How to use
-----------
+How to use this library
+-----------------------
 
-This library offers a simpler `Synchronizer` class that creates an event loop on a separate thread, and wraps functions/generators/classes so that synchronous execution happens on that thread. When you call anything, it will detect if you're running in a synchronous or asynchronous context, and behave correspondingly.
+This library offers a simple `Synchronizer` class that creates an event loop on a separate thread, and wraps functions/generators/classes so that synchronous execution happens on that thread. When you call anything, it will detect if you're running in a synchronous or asynchronous context, and behave correspondingly.
 
 * In the synchronous case, it will simply block until the result is available (note that you can make it return a future as well, see later)
 * In the asynchronous case, it works just like the usual business of calling asynchronous code
@@ -97,7 +97,7 @@ class DBConnection:
         self._url = url
 
     async def connect(self):
-        # ...
+        self._connection = await connect_to_database(self._url)
 
     async def query(self, q):
         return await self._connection.run_query(q)
@@ -150,6 +150,7 @@ TODOs
 * Support the opposite case, i.e. you have a blocking function/generator/class/object, and you want to call it asynchronously (this is relatively simple to do for plain functions using `asyncio.run_in_executor`, but Python has no built-in support for generators, and it would be nice to transform a whole class
 * More documentation
 * Make it possible to annotate methods selectively to return futures
+* Maybe make it possible to synchronize objects on the fly, not just classes
 
 This library is limb-amputating edge
 ------------------------------------
