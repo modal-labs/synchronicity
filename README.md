@@ -1,3 +1,6 @@
+[![travis badge](https://img.shields.io/travis/erikbern/synchronicity/master.svg?style=flat)](https://travis-ci.org/erikbern/synchronicity)
+[![pypi badge](https://img.shields.io/pypi/v/synchronicity.svg?style=flat)](https://pypi.python.org/pypi/synchronicity)
+
 Python 3 has some amazing support for async programming but it's arguably made it a bit harder to develop libraries. Are you tired of implementing synchronous _and_ asynchronous methods doing basically the same thing? This might be a simple solution for you.
 
 Background: why is anything like this needed
