@@ -16,10 +16,10 @@ async def f(x):
 
 And let's say (for whatever reason) you want to offer a synchronous API to users. For instance maybe you want to make it easy to run your code in a basic script, or a user is building something that's mostly CPU-bound, so they don't want to bother with asyncio.
 
-A "simple" way to create a synchronous equivalent would be to implement a set of synchronous functions where all they do is call `asyncio.run(...)` on an asynchronous function. But this isn't a great solution for more complex code:
+A "simple" way to create a synchronous equivalent would be to implement a set of synchronous functions where all they do is call [asyncio.run](https://docs.python.org/3/library/asyncio-task.html#asyncio.run) on an asynchronous function. But this isn't a great solution for more complex code:
 
 * It's kind of tedious grunt work to have to do this for every method/function
-* `asyncio.run` doesn't work with generators
+* [asyncio.run](https://docs.python.org/3/library/asyncio-task.html#asyncio.run) doesn't work with generators
 * In many cases, you need to preserve an event loop running between calls.
 
 The last case is particularly challenging. For instance, let's say you are implementing a client to a database that needs to have a persistent connection, and you want to built it in asyncio:
@@ -36,7 +36,7 @@ class DBConnection:
         return await self._connection.run_query(q)
 ```
 
-How do you expose a synchronous interface to this code? The problem is that wrapping `connect` and `query` in `asyncio.run` won't work since you need to _preserve the event loop across calls_. It's clear we need something slightly more advanced.
+How do you expose a synchronous interface to this code? The problem is that wrapping `connect` and `query` in [asyncio.run](https://docs.python.org/3/library/asyncio-task.html#asyncio.run) won't work since you need to _preserve the event loop across calls_. It's clear we need something slightly more advanced.
 
 How to use this library
 -----------------------
@@ -127,6 +127,9 @@ rets = [fut.result() for fut in futures]  # This should take ~1s to run, resolvi
 print('first ten squares:', rets)
 ```
 
+This library can also be useful in purely asynchronous settings, if you have multiple event loops, or if you have some section that is CPU-bound, or some critical code that you want to run on a separate thread for safety. All calls to synchronized functions/generators are thread-safe by design. This makes it a useful alternative to [loop.run_in_executor](https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.run_in_executor) for simple things. Note however that each synchronizer only runs one thread.
+
+
 Installing
 ----------
 
@@ -147,7 +150,7 @@ Gotchas
 TODOs
 -----
 
-* Support the opposite case, i.e. you have a blocking function/generator/class/object, and you want to call it asynchronously (this is relatively simple to do for plain functions using `asyncio.run_in_executor`, but Python has no built-in support for generators, and it would be nice to transform a whole class
+* Support the opposite case, i.e. you have a blocking function/generator/class/object, and you want to call it asynchronously (this is relatively simple to do for plain functions using [loop.run_in_executor](https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.run_in_executor), but Python has no built-in support for generators, and it would be nice to transform a whole class
 * More documentation
 * Make it possible to annotate methods selectively to return futures
 * Maybe make it possible to synchronize objects on the fly, not just classes

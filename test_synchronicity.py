@@ -61,6 +61,23 @@ async def test_function_async():
     assert await coro == 1764
 
 
+@pytest.mark.asyncio
+async def test_function_async_block_event_loop():
+    s = Synchronizer()
+
+    async def spinlock():
+        # This blocks the event loop, but not the main event loop
+        time.sleep(SLEEP_DELAY)
+
+    spinlock_s = s(spinlock)
+    spinlock_coro = spinlock_s()
+    sleep_coro = asyncio.sleep(SLEEP_DELAY)
+
+    t0 = time.time()
+    await asyncio.gather(spinlock_coro, sleep_coro)
+    assert SLEEP_DELAY <= time.time() - t0 < 2 * SLEEP_DELAY
+
+
 def test_function_many_parallel_sync():
     s = Synchronizer()
     g = s(f)
