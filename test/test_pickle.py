@@ -13,4 +13,10 @@ class PicklableClass:
 def test_pickle():
     obj = PicklableClass()
     assert obj.f(42) == 1764
-    pickle.dumps(obj)
+    data = pickle.dumps(obj)
+    obj2 = pickle.loads(data)
+    assert obj2.f(43) == 1849
+
+
+def test_pickle_synchronizer():
+    pickle.dumps(s)

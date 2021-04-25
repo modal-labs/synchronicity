@@ -16,6 +16,12 @@ class Synchronizer:
         self._return_futures = return_futures
         self._loop = None
 
+    def __getstate__(self):
+        return {'_return_futures': self._return_futures}
+
+    def __setstate__(self, d):
+        self._return_futures = d['_return_futures']
+
     def _get_loop(self):
         if self._loop is not None:
             return self._loop
