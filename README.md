@@ -142,7 +142,7 @@ Gotchas
 -------
 
 * It works for classes that are context managers, but not for functions returning a context manager
-* It creates a new class when wrapping classes, which might throw off any code relying on type checking
+* It creates a new class (with the same name) when wrapping classes, which might lead to typing problems if you have any any un-synchronized usage of the same class
 * No idea how this interacts with typing annotations
 * If a class is "synchronized", it wraps all the methods on the class, but this typically means you can't reach into attributes and run asynchronous code on it: you might get errors such as "attached to a different loop"
 * Note that all synchronized code will run on a different thread, and a different event loop, so calling the code might have some minor extra overhead

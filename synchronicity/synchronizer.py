@@ -129,8 +129,6 @@ class Synchronizer:
 
     def _wrap_class(self, cls):
         new_dict = {}
-        cls_name = cls.__name__
-        cls_new_name = cls_name + 'Synchronized'
         for k, v in cls.__dict__.items():
             if k == '__aenter__':
                 new_dict[k] = v
@@ -142,7 +140,8 @@ class Synchronizer:
                 new_dict[k] = self._wrap_callable(v)
             else:
                 new_dict[k] = v
-        cls_new = type(cls_new_name, (cls,), new_dict)
+        cls_name = cls.__name__
+        cls_new = type(cls_name, (cls,), new_dict)
         return cls_new
 
     def __call__(self, object):
