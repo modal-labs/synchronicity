@@ -259,6 +259,16 @@ class MyClass(Base):
     async def __aexit__(self, exc_type, exc, tb):
         await asyncio.sleep(SLEEP_DELAY)
 
+    @staticmethod
+    async def my_static_method():
+        await asyncio.sleep(SLEEP_DELAY)
+        return 43
+
+    @classmethod
+    async def my_class_method(cls):
+        await asyncio.sleep(SLEEP_DELAY)
+        return 44
+
 
 def test_class_sync():
     s = Synchronizer()
@@ -275,8 +285,15 @@ def test_class_sync():
     with obj as z:
         assert z == 42
         assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
-
     assert time.time() - t0 > 2 * SLEEP_DELAY
+
+    t0 = time.time()
+    assert NewClass.my_static_method() == 43
+    assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
+
+    t0 = time.time()
+    assert NewClass.my_class_method() == 44
+    assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
 
 
 def test_class_sync_futures():
