@@ -144,6 +144,12 @@ class Synchronizer:
                 new_dict['__exit__'] = self._wrap_callable(v, return_future=False)
             elif callable(v):
                 new_dict[k] = self._wrap_callable(v)
+            elif isinstance(v, staticmethod):
+                # TODO(erikbern): this feels pretty hacky
+                new_dict[k] = staticmethod(self._wrap_callable(v.__func__))
+            elif isinstance(v, classmethod):
+                # TODO(erikbern): this feels pretty hacky
+                new_dict[k] = classmethod(self._wrap_callable(v.__func__))
             else:
                 new_dict[k] = v
         cls_name = cls.__name__
