@@ -9,10 +9,8 @@ s = Synchronizer()
 
 class ObjectMetaclass(type):
     def __new__(metacls, name, bases, dct):
-        print('creating new class', name)
-        new_cls = type.__new__(metacls, name, bases, dct)
-        print('new cls:', new_cls)
-        return s(new_cls)
+        new_cls = s.create_class(metacls, name, bases, dct)
+        return new_cls
 
 
 class ObjectBase(metaclass=ObjectMetaclass):
@@ -23,7 +21,7 @@ class ObjectBase(metaclass=ObjectMetaclass):
 
 class ObjectDerived(ObjectBase):
     async def cube(self, x):
-        await asyncio.sleep(SLEE_DELAY)
+        await asyncio.sleep(SLEEP_DELAY)
         return x**3
 
 
@@ -39,4 +37,4 @@ def test_derived():
     t0 = time.time()
     assert derived.square(42) == 42*42
     assert derived.cube(42) == 42*42*42
-    assert SLEEP_DELAY <= time.time() - t0 < 2 * SLEEP_DELAY
+    assert 2 * SLEEP_DELAY <= time.time() - t0 < 3 * SLEEP_DELAY
