@@ -139,9 +139,10 @@ class Synchronizer:
 
         return f_wrapped
 
-    def _wrap_class(self, cls):
+
+    def create_class(self, cls_metaclass, cls_name, cls_bases, cls_dict):
         new_dict = {}
-        for k, v in cls.__dict__.items():
+        for k, v in cls_dict.items():
             if k in _BUILTIN_ASYNC_METHODS:
                 k_sync = _BUILTIN_ASYNC_METHODS[k]
                 new_dict[k] = v
@@ -156,9 +157,14 @@ class Synchronizer:
                 new_dict[k] = classmethod(self._wrap_callable(v.__func__))
             else:
                 new_dict[k] = v
+        return type.__new__(cls_metaclass, cls_name, cls_bases, new_dict)
+
+    def _wrap_class(self, cls):
+        cls_metaclass = type
         cls_name = cls.__name__
-        cls_new = type(cls_name, (cls,), new_dict)
-        return cls_new
+        cls_bases = (cls,)
+        cls_dict = cls.__dict__
+        return self.create_class(cls_metaclass, cls_name, cls_bases, cls_dict)
 
     def __call__(self, object):
         if inspect.isclass(object):
