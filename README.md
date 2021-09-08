@@ -129,6 +129,29 @@ print('first ten squares:', rets)
 
 This library can also be useful in purely asynchronous settings, if you have multiple event loops, or if you have some section that is CPU-bound, or some critical code that you want to run on a separate thread for safety. All calls to synchronized functions/generators are thread-safe by design. This makes it a useful alternative to [loop.run_in_executor](https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.run_in_executor) for simple things. Note however that each synchronizer only runs one thread.
 
+This library is also possible to use with metaclasses. Using a metaclass on a base class, you can make sure any inherited class ends up being "synchronized":
+
+```python
+s = Synchronizer()
+
+class ObjectMetaclass(type):
+    def __new__(metacls, name, bases, dct):
+        new_cls = s.create_class(metacls, name, bases, dct)
+        return new_cls
+
+
+class ObjectBase(metaclass=ObjectMetaclass):
+    async def square(self, x):
+        return x**2
+
+
+class ObjectDerived(ObjectBase):
+    async def cube(self, x):
+        return x**3
+```
+
+Note that in the example above, we don't have to use the class decorator on any of the classes.
+
 
 Installing
 ----------
