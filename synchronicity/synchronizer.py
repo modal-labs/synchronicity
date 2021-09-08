@@ -142,6 +142,9 @@ class Synchronizer:
             elif k == '__aexit__':
                 new_dict[k] = v
                 new_dict['__exit__'] = self._wrap_callable(v, return_future=False)
+            elif k == '__aiter__':
+                new_dict[k] = v
+                new_dict['__iter__'] = self._wrap_callable(v, return_future=False)
             elif callable(v):
                 new_dict[k] = self._wrap_callable(v)
             elif isinstance(v, staticmethod):
