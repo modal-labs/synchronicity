@@ -269,6 +269,10 @@ class MyClass(Base):
         await asyncio.sleep(SLEEP_DELAY)
         return 44
 
+    async def __aiter__(self):
+        for i in range(self._x):
+            yield i
+
 
 def test_class_sync():
     s = Synchronizer()
@@ -294,6 +298,8 @@ def test_class_sync():
     t0 = time.time()
     assert NewClass.my_class_method() == 44
     assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
+
+    assert list(z for z in obj) == list(range(42))
 
 
 def test_class_sync_futures():
@@ -335,6 +341,11 @@ async def test_class_async():
         assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
 
     assert time.time() - t0 > 2 * SLEEP_DELAY
+
+    l = []
+    async for z in obj:
+        l.append(z)
+    assert l == list(range(42))    
 
 
 @pytest.mark.asyncio
