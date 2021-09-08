@@ -7,6 +7,12 @@ import threading
 import time
 import traceback
 
+_BUILTIN_ASYNC_METHODS = {
+    '__aiter__': '__iter__',
+    '__aenter__': '__enter__',
+    '__aexit__': '__exit__',
+}
+
 
 class Synchronizer:
     '''Helps you offer a blocking (synchronous) interface to asynchronous code.
@@ -136,15 +142,10 @@ class Synchronizer:
     def _wrap_class(self, cls):
         new_dict = {}
         for k, v in cls.__dict__.items():
-            if k == '__aenter__':
+            if k in _BUILTIN_ASYNC_METHODS:
+                k_sync = _BUILTIN_ASYNC_METHODS[k]
                 new_dict[k] = v
-                new_dict['__enter__'] = self._wrap_callable(v, return_future=False)
-            elif k == '__aexit__':
-                new_dict[k] = v
-                new_dict['__exit__'] = self._wrap_callable(v, return_future=False)
-            elif k == '__aiter__':
-                new_dict[k] = v
-                new_dict['__iter__'] = self._wrap_callable(v, return_future=False)
+                new_dict[k_sync] = self._wrap_callable(v, return_future=False)
             elif callable(v):
                 new_dict[k] = self._wrap_callable(v)
             elif isinstance(v, staticmethod):
