@@ -365,3 +365,14 @@ async def test_class_async_back_and_forth():
     fut = loop.run_in_executor(None, get, obj)
     ret = await fut
     assert ret == 1764
+
+def test_event_loop():
+    s = Synchronizer()
+    t0 = time.time()
+    f_s = s(f)
+    assert f_s(42)  == 42 * 42
+    assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
+    assert s._loop.is_running()
+    s._close_loop()
+    assert not s._loop.is_running()
+    assert not s._thread.is_alive()

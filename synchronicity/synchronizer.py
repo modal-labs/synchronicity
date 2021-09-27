@@ -1,4 +1,5 @@
 import asyncio
+import atexit
 import concurrent.futures
 import functools
 import inspect
@@ -21,6 +22,8 @@ class Synchronizer:
     def __init__(self, return_futures=False):
         self._return_futures = return_futures
         self._loop = None
+        self._thread = None
+        atexit.register(self._close_loop)
 
     def __getstate__(self):
         return {'_return_futures': self._return_futures}
@@ -28,14 +31,11 @@ class Synchronizer:
     def __setstate__(self, d):
         self._return_futures = d['_return_futures']
 
-    def _get_loop(self):
-        if self._loop is not None:
-            return self._loop
-
+    def _start_loop(self, loop):
         is_ready = threading.Event()
 
         def run_forever():
-            self._loop = asyncio.new_event_loop()
+            self._loop = loop
             is_ready.set()
             self._loop.run_forever()
 
@@ -43,6 +43,20 @@ class Synchronizer:
         self._thread.start()  # TODO: we should join the thread at some point
         is_ready.wait()  # TODO: this might block for a very short time
         return self._loop
+
+    def _close_loop(self):
+        if self._loop is not None and self._loop.is_running():
+            self._loop.call_soon_threadsafe(self._loop.stop)
+            while self._loop.is_running():
+                time.sleep(0.01)
+            self._loop.close()
+        if self._thread is not None:
+            self._thread.join()
+
+    def _get_loop(self):
+        if self._loop is not None:
+            return self._loop
+        return self._start_loop(asyncio.new_event_loop())
 
     def _is_async_context(self):
         try:
