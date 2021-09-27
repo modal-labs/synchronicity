@@ -32,6 +32,9 @@ class Synchronizer:
         self._return_futures = d['_return_futures']
 
     def _start_loop(self, loop):
+        if self._loop and self._loop.is_running():
+            raise Exception('Synchronicity loop already running.')
+
         is_ready = threading.Event()
 
         def run_forever():

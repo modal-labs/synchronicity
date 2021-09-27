@@ -372,7 +372,19 @@ def test_event_loop():
     f_s = s(f)
     assert f_s(42)  == 42 * 42
     assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
+    assert s._thread.is_alive()
     assert s._loop.is_running()
     s._close_loop()
     assert not s._loop.is_running()
     assert not s._thread.is_alive()
+
+    new_loop = asyncio.new_event_loop()
+    s._start_loop(new_loop)
+    assert s._loop == new_loop
+    assert s._loop.is_running()
+    assert s._thread.is_alive()
+
+    # Starting a loop again before closing throws.
+    with pytest.raises(Exception):
+        s._start_loop(new_loop)
+
