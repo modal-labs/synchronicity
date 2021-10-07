@@ -89,13 +89,10 @@ class Synchronizer:
         return await a_fut
 
     def _run_generator_sync(self, gen):
-        def send(value):
-            return self._run_function_sync(gen.asend(value), return_future=False)
-
         value = None
         while True:
             try:
-                value = send(value)
+                value = self._run_function_sync(gen.asend(value), return_future=False)
             except StopAsyncIteration:
                 break
             value = yield value
@@ -108,13 +105,10 @@ class Synchronizer:
                 yield val
             return
 
-        def asend(value):
-            return self._run_function_async(gen.asend(value))
-
         value = None
         while True:
             try:
-                value = await asend(value)
+                value = await self._run_function_async(gen.asend(value))
             except StopAsyncIteration:
                 break
             value = yield value
