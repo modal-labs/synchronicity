@@ -88,51 +88,36 @@ class Synchronizer:
         a_fut = asyncio.wrap_future(c_fut)
         return await a_fut
 
-    def _create_generator_queue(self, coro):
-        loop = self._get_loop()
-        q = queue.Queue()
-        async def pump():
-            try:
-                async for result in coro:
-                    q.put_nowait(('gen', result))
-            except Exception as exc:
-                traceback.print_exc()  # TODO: is this really needed?
-                q.put_nowait(('exc', exc))
-            # TODO: we should catch StopIteration and make sure the value is returned
-            # TODO: should we catch KeyboardInterrupt and CancelledError?
-            q.put_nowait(('val', None))
+    def _run_generator_sync(self, gen):
+        def send(value):
+            return self._run_function_sync(gen.asend(value), return_future=False)
 
-        future = asyncio.run_coroutine_threadsafe(pump(), loop)
-        return q
-
-    def _run_generator_sync(self, coro):
-        q = self._create_generator_queue(coro)
+        value = None
         while True:
-            tag, res = q.get()
-            if tag == 'val':
-                return res
-            elif tag == 'exc':
-                raise res
-            else:
-                yield res
+            try:
+                value = send(value)
+            except StopAsyncIteration:
+                break
+            value = yield value
 
-    async def _run_generator_async(self, coro):
+    async def _run_generator_async(self, gen):
         current_loop = asyncio.get_running_loop()
         loop = self._get_loop()
         if loop == current_loop:
-            async for val in coro:
+            async for val in gen:
                 yield val
             return
 
-        q = self._create_generator_queue(coro)
+        def asend(value):
+            return self._run_function_async(gen.asend(value))
+
+        value = None
         while True:
-            tag, res = await current_loop.run_in_executor(None, q.get)
-            if tag == 'val':
-                return
-            elif tag == 'exc':
-                raise res
-            else:
-                yield res
+            try:
+                value = await asend(value)
+            except StopAsyncIteration:
+                break
+            value = yield value
 
     def _wrap_callable(self, f, return_future=None):
         @functools.wraps(f)
