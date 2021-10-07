@@ -98,13 +98,6 @@ class Synchronizer:
             value = yield value
 
     async def _run_generator_async(self, gen):
-        current_loop = asyncio.get_running_loop()
-        loop = self._get_loop()
-        if loop == current_loop:
-            async for val in gen:
-                yield val
-            return
-
         value = None
         while True:
             try:
