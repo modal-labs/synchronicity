@@ -1,5 +1,6 @@
 import asyncio
 import atexit
+import contextlib
 import concurrent.futures
 import functools
 import inspect
@@ -23,6 +24,7 @@ class Synchronizer:
         self._return_futures = return_futures
         self._loop = None
         self._thread = None
+        self._force_sync_context = False
         atexit.register(self._close_loop)
 
     def __getstate__(self):
@@ -30,6 +32,12 @@ class Synchronizer:
 
     def __setstate__(self, d):
         self._return_futures = d['_return_futures']
+
+    @contextlib.contextmanager
+    def sync_context(self):
+        self._force_sync_context = True
+        yield
+        self._force_sync_context = False
 
     def _start_loop(self, loop):
         if self._loop and self._loop.is_running():
@@ -63,7 +71,10 @@ class Synchronizer:
 
     def _is_async_context(self):
         try:
-            asyncio.get_running_loop()
+            loop = asyncio.get_running_loop()
+            # If we want to force crossing over to the synchronizer thread
+            if self._force_sync_context and loop != self._get_loop():
+                return False
             return True
         except RuntimeError:
             return False
