@@ -160,5 +160,7 @@ class Synchronizer:
             return self._wrap_class(object)
         elif callable(object):
             return self._wrap_callable(object)
+        elif inspect.isasyncgen(object):
+            return self._run_generator_sync(object)
         else:
-            raise Exception('Argument %s is not a class or a callable' % object)
+            raise Exception('Argument %s is not a class, callable or async generator.' % object)
