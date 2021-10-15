@@ -388,3 +388,21 @@ def test_event_loop():
     with pytest.raises(Exception):
         s._start_loop(new_loop)
 
+
+@pytest.mark.asyncio
+async def test_call_explicit_from_async():
+    s = Synchronizer()
+    f_s = s(f)
+    assert await f_s(42) == 1764  # Default, detect context
+    assert await f_s.call_async(42) == 1764  # Force async
+    assert f_s.call_sync(42) == 1764  # Force sync
+
+
+def test_call_explicit_from_sync():
+    s = Synchronizer()
+    f_s = s(f)
+    assert f_s(42) == 1764  # Default, detect context
+    coro = f_s.call_async(42)  # Force async
+    assert inspect.iscoroutine(coro)
+    assert asyncio.run(coro) == 1764
+    assert f_s.call_sync(42) == 1764  # Force sync
