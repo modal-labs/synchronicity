@@ -109,30 +109,25 @@ class Synchronizer:
     def _wrap_callable(self, f, return_future=None):
         def f_sync(*args, **kwargs):
             res = f(*args, **kwargs)
-            is_coroutine = inspect.iscoroutine(res)
-            is_asyncgen = inspect.isasyncgen(res)
-            if is_coroutine:
+            if inspect.iscoroutine(res):
                 return self._run_function_sync(res, return_future=return_future)
-            elif is_asyncgen:
+            elif inspect.isasyncgen(res):
                 return self._run_generator_sync(res)
             else:
                 return res
 
         def f_async(*args, **kwargs):
             res = f(*args, **kwargs)
-            is_coroutine = inspect.iscoroutine(res)
-            is_asyncgen = inspect.isasyncgen(res)
-            if is_coroutine:
+            if inspect.iscoroutine(res):
                 return self._run_function_async(res)
-            elif is_asyncgen:
+            elif inspect.isasyncgen(res):
                 return self._run_generator_async(res)
             else:
                 return res
 
         @functools.wraps(f)
         def f_wrapped(*args, **kwargs):
-            is_async_context = self._is_async_context()
-            if is_async_context:
+            if self._is_async_context():
                 return f_async(*args, **kwargs)
             else:
                 return f_sync(*args, **kwargs)
