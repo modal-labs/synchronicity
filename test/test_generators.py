@@ -49,3 +49,29 @@ def test_bidirectional_generator_sync():
     assert value == 42
     with pytest.raises(StopIteration):
         gen.send(42*42)
+
+
+async def athrow_example_gen():
+    try:
+        await asyncio.sleep(0.1)
+        yield "hello"
+    except ZeroDivisionError:
+        await asyncio.sleep(0.2)
+        yield "world"
+
+
+@pytest.mark.asyncio
+async def test_athrow_async():
+    gen = Synchronizer()(athrow_example_gen)()
+    v = await gen.asend(None)
+    assert v == "hello"
+    v = await gen.athrow(ZeroDivisionError)
+    assert v == "world"
+
+
+def test_athrow_sync():
+    gen = Synchronizer()(athrow_example_gen)()
+    v = gen.send(None)
+    assert v == "hello"
+    v = gen.throw(ZeroDivisionError)
+    assert v == "world"
