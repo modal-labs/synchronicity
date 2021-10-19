@@ -63,12 +63,18 @@ class Synchronizer:
             return self._loop
         return self._start_loop(asyncio.new_event_loop())
 
+    def _get_running_loop(self):
+        if hasattr(asyncio, 'get_running_loop'):
+            try:
+                return asyncio.get_running_loop()
+            except RuntimeError:
+                return
+        else:
+            # Python 3.6 compatibility
+            return asyncio._get_running_loop()
+
     def _is_async_context(self):
-        try:
-            asyncio.get_running_loop()
-            return True
-        except RuntimeError:
-            return False
+        return bool(self._get_running_loop())
 
     def _run_function_sync(self, coro, return_future):
         loop = self._get_loop()
@@ -81,7 +87,7 @@ class Synchronizer:
             return fut.result()
 
     async def _run_function_async(self, coro):
-        current_loop = asyncio.get_running_loop()
+        current_loop = self._get_running_loop()
         loop = self._get_loop()
         if loop == current_loop:
             return await coro

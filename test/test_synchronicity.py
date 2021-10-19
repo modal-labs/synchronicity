@@ -246,7 +246,8 @@ class MyClass(Base):
         async def task():
             await asyncio.sleep(SLEEP_DELAY)
             return self._x
-        self._task = asyncio.create_task(task())
+        loop = asyncio.get_event_loop()
+        self._task = loop.create_task(task())
 
     async def get_result(self):
         ret = await self._task
@@ -361,7 +362,7 @@ async def test_class_async_back_and_forth():
     def get(o):
         return o.get_result()  # Blocking
 
-    loop = asyncio.get_running_loop()
+    loop = asyncio.get_event_loop()
     fut = loop.run_in_executor(None, get, obj)
     ret = await fut
     assert ret == 1764
