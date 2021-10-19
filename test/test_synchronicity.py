@@ -246,7 +246,8 @@ class MyClass(Base):
         async def task():
             await asyncio.sleep(SLEEP_DELAY)
             return self._x
-        self._task = asyncio.create_task(task())
+        loop = asyncio.get_event_loop()
+        self._task = loop.create_task(task())
 
     async def get_result(self):
         ret = await self._task
