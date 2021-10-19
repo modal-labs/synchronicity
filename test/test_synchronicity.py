@@ -90,10 +90,10 @@ def test_function_many_parallel_sync_futures():
     s = Synchronizer(return_futures=True)
     g = s(f)
     t0 = time.time()
-    futs = [g(i) for i in range(1000)]
+    futs = [g(i) for i in range(100)]
     assert isinstance(futs[0], concurrent.futures.Future)
     assert time.time() - t0 < SLEEP_DELAY
-    assert [fut.result() for fut in futs] == [z**2 for z in range(1000)]
+    assert [fut.result() for fut in futs] == [z**2 for z in range(100)]
     assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
 
 
@@ -102,10 +102,10 @@ async def test_function_many_parallel_async():
     s = Synchronizer()
     g = s(f)
     t0 = time.time()
-    coros = [g(i) for i in range(1000)]
+    coros = [g(i) for i in range(100)]
     assert inspect.iscoroutine(coros[0])
     assert time.time() - t0 < SLEEP_DELAY
-    assert await asyncio.gather(*coros) == [z**2 for z in range(1000)]
+    assert await asyncio.gather(*coros) == [z**2 for z in range(100)]
     assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
 
 
