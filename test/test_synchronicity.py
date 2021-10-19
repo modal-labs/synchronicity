@@ -362,7 +362,7 @@ async def test_class_async_back_and_forth():
     def get(o):
         return o.get_result()  # Blocking
 
-    loop = asyncio.get_running_loop()
+    loop = asyncio.get_event_loop()
     fut = loop.run_in_executor(None, get, obj)
     ret = await fut
     assert ret == 1764
