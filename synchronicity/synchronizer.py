@@ -8,6 +8,8 @@ import threading
 import time
 import traceback
 
+from .contextlib import AsyncGeneratorContextManager
+
 _BUILTIN_ASYNC_METHODS = {
     '__aiter__': '__iter__',
     '__aenter__': '__enter__',
@@ -89,22 +91,38 @@ class Synchronizer:
         return await a_fut
 
     def _run_generator_sync(self, gen):
-        value = None
+        value, is_exc = None, False
         while True:
             try:
-                value = self._run_function_sync(gen.asend(value), return_future=False)
+                if is_exc:
+                    value = self._run_function_sync(gen.athrow(value), return_future=False)
+                else:
+                    value = self._run_function_sync(gen.asend(value), return_future=False)
             except StopAsyncIteration:
                 break
-            value = yield value
+            try:
+                value = yield value
+                is_exc = False
+            except Exception as exc:
+                value = exc
+                is_exc = True
 
     async def _run_generator_async(self, gen):
-        value = None
+        value, is_exc = None, False
         while True:
             try:
-                value = await self._run_function_async(gen.asend(value))
+                if is_exc:
+                    value = await self._run_function_async(gen.athrow(value))
+                else:
+                    value = await self._run_function_async(gen.asend(value))
             except StopAsyncIteration:
                 break
-            value = yield value
+            try:
+                value = yield value
+                is_exc = False
+            except Exception as exc:
+                value = exc
+                is_exc = True
 
     def _wrap_callable(self, f, return_future=None):
         @functools.wraps(f)
@@ -127,7 +145,6 @@ class Synchronizer:
                 return res
 
         return f_wrapped
-
 
     def create_class(self, cls_metaclass, cls_name, cls_bases, cls_dict):
         new_dict = {}
@@ -162,3 +179,10 @@ class Synchronizer:
             return self._wrap_callable(object)
         else:
             raise Exception('Argument %s is not a class or a callable' % object)
+
+    def asynccontextmanager(self, func):
+        @functools.wraps(func)
+        def helper(*args, **kwargs):
+            return AsyncGeneratorContextManager(self, func, args, kwargs)
+
+        return helper

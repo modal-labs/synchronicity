@@ -3,8 +3,16 @@
 
 Python 3 has some amazing support for async programming but it's arguably made it a bit harder to develop libraries. Are you tired of implementing synchronous _and_ asynchronous methods doing basically the same thing? This might be a simple solution for you.
 
+Installing
+==========
+
+```
+pip install synchronicity
+```
+
+
 Background: why is anything like this needed
---------------------------------------------
+============================================
 
 Let's say you have an asynchronous function
 
@@ -39,7 +47,7 @@ class DBConnection:
 How do you expose a synchronous interface to this code? The problem is that wrapping `connect` and `query` in [asyncio.run](https://docs.python.org/3/library/asyncio-task.html#asyncio.run) won't work since you need to _preserve the event loop across calls_. It's clear we need something slightly more advanced.
 
 How to use this library
------------------------
+=======================
 
 This library offers a simple `Synchronizer` class that creates an event loop on a separate thread, and wraps functions/generators/classes so that synchronous execution happens on that thread. When you call anything, it will detect if you're running in a synchronous or asynchronous context, and behave correspondingly.
 
@@ -69,7 +77,10 @@ async def g():
 ```
 
 More advanced examples
-----------------------
+======================
+
+Generators
+----------
 
 The decorator also works on generators:
 
@@ -86,6 +97,9 @@ async def f(n):
 for ret in f(10):
     print(ret)
 ```
+
+Synchronizing whole classes
+---------------------------
 
 It also operates on classes by wrapping every method on the class:
 
@@ -109,6 +123,9 @@ db_conn.connect()
 data = db_conn.query('select * from foo')
 ```
 
+Returning futures
+-----------------
+
 You can also make it return a `Future` object by instantiating the `Synchronizer` class with `return_futures=True`. This can be useful if you want to dispatch many calls from a blocking context, but you want to resolve them roughly in parallel:
 
 ```python
@@ -121,13 +138,18 @@ async def f(x):
     await asyncio.sleep(1.0)
     return x**2
 
-
 futures = [f(i) for i in range(10)]  # This returns immediately
 rets = [fut.result() for fut in futures]  # This should take ~1s to run, resolving all futures in parallel
 print('first ten squares:', rets)
 ```
 
+Using with with other asynchronous code
+---------------------------------------
+
 This library can also be useful in purely asynchronous settings, if you have multiple event loops, or if you have some section that is CPU-bound, or some critical code that you want to run on a separate thread for safety. All calls to synchronized functions/generators are thread-safe by design. This makes it a useful alternative to [loop.run_in_executor](https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.run_in_executor) for simple things. Note however that each synchronizer only runs one thread.
+
+Metaclasses
+-----------
 
 This library is also possible to use with metaclasses. Using a metaclass on a base class, you can make sure any inherited class ends up being "synchronized":
 
@@ -152,17 +174,16 @@ class ObjectDerived(ObjectBase):
 
 Note that in the example above, we don't have to use the class decorator on any of the classes.
 
+Context managers
+----------------
 
-Installing
-----------
+You can synchronize context manager classes just like any other class and the special methods will be handled properly.
 
+There's also a function decorator `@synchronizer.asynccontextmanager` which behaves just like [https://docs.python.org/3/library/contextlib.html#contextlib.asynccontextmanager](contextlib.asynccontextmanager) but works in both synchronous and asynchronous contexts.
 
-```
-pip install synchronicity
-```
 
 Gotchas
--------
+=======
 
 * It works for classes that are context managers, but not for functions returning a context manager
 * It creates a new class (with the same name) when wrapping classes, which might lead to typing problems if you have any any un-synchronized usage of the same class
@@ -171,7 +192,7 @@ Gotchas
 * Note that all synchronized code will run on a different thread, and a different event loop, so calling the code might have some minor extra overhead
 
 TODOs
------
+=====
 
 * Support the opposite case, i.e. you have a blocking function/generator/class/object, and you want to call it asynchronously (this is relatively simple to do for plain functions using [loop.run_in_executor](https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.run_in_executor), but Python has no built-in support for generators, and it would be nice to transform a whole class
 * More documentation
@@ -179,6 +200,6 @@ TODOs
 * Maybe make it possible to synchronize objects on the fly, not just classes
 
 This library is limb-amputating edge
-------------------------------------
+====================================
 
 This is code I broke out of a personal projects, and it's not been battle-tested. There is a small test suite that you can run using pytest.
