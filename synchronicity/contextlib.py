@@ -1,3 +1,5 @@
+from .utils import filter_traceback
+
 class AsyncGeneratorContextManager:
     """ This is basically copied (but slightly modified) from contextlib.py
 
@@ -45,15 +47,19 @@ class AsyncGeneratorContextManager:
 
     # Actual methods
 
+    @filter_traceback
     async def __aenter__(self):
         return await self.synchronizer._run_function_async(self._enter())
                     
+    @filter_traceback
     def __enter__(self):
         return self.synchronizer._run_function_sync(self._enter(), False)
 
+    @filter_traceback
     async def __aexit__(self, typ, value, traceback):
         ret =  await self.synchronizer._run_function_async(self._exit(typ, value, traceback))
         return ret
 
+    @filter_traceback
     def __exit__(self, typ, value, traceback):
         return self.synchronizer._run_function_sync(self._exit(typ, value, traceback), False)

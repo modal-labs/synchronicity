@@ -6,9 +6,9 @@ import inspect
 import queue
 import threading
 import time
-import traceback
 
 from .contextlib import AsyncGeneratorContextManager
+from .utils import filter_traceback
 
 _BUILTIN_ASYNC_METHODS = {
     '__aiter__': '__iter__',
@@ -131,6 +131,7 @@ class Synchronizer:
                 is_exc = True
 
     def _wrap_callable(self, f, return_future=None):
+        @filter_traceback
         @functools.wraps(f)
         def f_wrapped(*args, **kwargs):
             res = f(*args, **kwargs)
@@ -149,6 +150,7 @@ class Synchronizer:
                     return self._run_generator_sync(res)
             else:
                 return res
+
 
         return f_wrapped
 
