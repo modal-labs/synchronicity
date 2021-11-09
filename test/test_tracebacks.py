@@ -12,23 +12,29 @@ async def f_raises():
     raise CustomException("boom!")
 
 
-def analyze_tb(exc):
+def check_traceback(exc):
     tb = exc.__traceback__
     file_summary = {}
     for frame in traceback.extract_tb(tb):
         # print(frame.filename, frame.lineno, frame.line)
         file_summary[frame.filename] = file_summary.get(frame.filename, 0) + 1
-    return file_summary
+
+    # Let's allow for at most 1 entry outside of this file
+    assert sum(file_summary.values()) <= file_summary[__file__] + 1
 
 
-def test_raises():
+def test_sync_to_async():
     s = Synchronizer()
     f_raises_s = s(f_raises)
     with pytest.raises(CustomException) as excinfo:
         f_raises_s()
+    check_traceback(excinfo.value)
 
-    exc = excinfo.value
-    summary = analyze_tb(exc)
 
-    # Let's allow for at most 1 entry outside of this file
-    assert sum(summary.values()) <= summary[__file__] + 1
+@pytest.mark.asyncio
+async def test_async_to_async():
+    s = Synchronizer()
+    f_raises_s = s(f_raises)
+    with pytest.raises(CustomException) as excinfo:
+        await f_raises_s()
+    check_traceback(excinfo.value)
