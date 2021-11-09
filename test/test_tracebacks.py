@@ -21,7 +21,6 @@ def check_traceback(exc):
     tb = exc.__traceback__
     file_summary = {}
     for frame in traceback.extract_tb(tb):
-        # print(frame.filename, frame.lineno, frame.line)
         file_summary[frame.filename] = file_summary.get(frame.filename, 0) + 1
 
     # Let's allow for at most 1 entry outside of this file
@@ -74,5 +73,15 @@ def test_sync_to_async_ctx_mgr():
     ctx_mgr = s.asynccontextmanager(gen)
     with pytest.raises(CustomException) as excinfo:
         with ctx_mgr():
+            pass
+    check_traceback(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_async_to_async_ctx_mgr():
+    s = Synchronizer()
+    ctx_mgr = s.asynccontextmanager(gen)
+    with pytest.raises(CustomException) as excinfo:
+        async with ctx_mgr():
             pass
     check_traceback(excinfo.value)

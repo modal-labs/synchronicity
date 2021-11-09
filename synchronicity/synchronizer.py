@@ -122,16 +122,20 @@ class Synchronizer:
                 value = exc
                 is_exc = True
 
-    async def _run_generator_async(self, gen):
+    async def _run_generator_async(self, gen, unwrap_user_excs=True):
         value, is_exc = None, False
         while True:
             try:
                 if is_exc:
-                    value = await self._run_function_async(gen.athrow(value))
+                    value = await self._run_function_async(wrap_coro_exception(gen.athrow(value)))
                 else:
-                    value = await self._run_function_async(gen.asend(value))
+                    value = await self._run_function_async(wrap_coro_exception(gen.asend(value)))
             except UserCodeException as uc_exc:
-                raise uc_exc.exc
+                if unwrap_user_excs:
+                    raise uc_exc.exc
+                else:
+                    # This is needed since contextlib uses this function as a helper
+                    raise uc_exc
             except StopAsyncIteration:
                 break
             try:

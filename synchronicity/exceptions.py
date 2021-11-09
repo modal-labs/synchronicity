@@ -14,6 +14,8 @@ def wrap_coro_exception(coro):
     async def coro_wrapped():
         try:
             await coro
+        except UserCodeException as exc:
+            raise exc  # Pass-through in case it got double-wrapped
         except Exception as exc:
             raise UserCodeException(exc)
 
