@@ -19,14 +19,9 @@ def get_filtered_tb(tb):
         tb = tb.tb_next
 
     if tb is not None:
-        # create a new tb with tb_next modified
-        new_tb = types.TracebackType(
-            tb_next=get_filtered_tb(tb.tb_next),
-            tb_frame=tb.tb_frame,
-            tb_lasti=tb.tb_lasti,
-            tb_lineno=tb.tb_lineno
-        )
-        return new_tb
+        tb.tb_next = get_filtered_tb(tb.tb_next)
+
+    return tb
 
 
 def filter_traceback(f):

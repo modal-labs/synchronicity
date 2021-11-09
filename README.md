@@ -143,6 +143,11 @@ rets = [fut.result() for fut in futures]  # This should take ~1s to run, resolvi
 print('first ten squares:', rets)
 ```
 
+De-cluttering tracebacks
+------------------------
+
+Instantiating the synchronizer with the flag `filter_tracebacks=False` will remove all synchronicity code from tracebacks. This can be useful if you have code going through one or more layers of synchronizers, and you want to keep your tracebacks clean. Only works for 3.6.
+
 Using with with other asynchronous code
 ---------------------------------------
 
