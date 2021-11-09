@@ -1,11 +1,10 @@
-from .tracebacks import filter_traceback
-
-
 class AsyncGeneratorContextManager:
     """This is basically copied (but slightly modified) from contextlib.py
 
     We could have just synchronized the built-in class, but it was added in Python 3.7, so
     we're including most of the logic here, in order to make it work with Python 3.6 as well.
+
+    TODO: add back support for filter_tracebacks (doesn't work in Python 3.6)
     """
 
     def __init__(self, synchronizer, func, args, kwargs):
@@ -52,22 +51,18 @@ class AsyncGeneratorContextManager:
 
     # Actual methods
 
-    @filter_traceback
     async def __aenter__(self):
         return await self.synchronizer._run_function_async(self._enter())
 
-    @filter_traceback
     def __enter__(self):
         return self.synchronizer._run_function_sync(self._enter(), False)
 
-    @filter_traceback
     async def __aexit__(self, typ, value, traceback):
         ret = await self.synchronizer._run_function_async(
             self._exit(typ, value, traceback)
         )
         return ret
 
-    @filter_traceback
     def __exit__(self, typ, value, traceback):
         return self.synchronizer._run_function_sync(
             self._exit(typ, value, traceback), False

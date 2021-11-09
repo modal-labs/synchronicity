@@ -20,17 +20,22 @@ _BUILTIN_ASYNC_METHODS = {
 class Synchronizer:
     """Helps you offer a blocking (synchronous) interface to asynchronous code."""
 
-    def __init__(self, return_futures=False):
+    def __init__(self, return_futures=False, filter_tracebacks=False):
         self._return_futures = return_futures
+        self._filter_tracebacks = filter_tracebacks
         self._loop = None
         self._thread = None
         atexit.register(self._close_loop)
 
     def __getstate__(self):
-        return {"_return_futures": self._return_futures}
+        return {
+            "_return_futures": self._return_futures,
+            "_filter_tracebacks": self._filter_tracebacks,
+        }
 
     def __setstate__(self, d):
         self._return_futures = d["_return_futures"]
+        self._filter_tracebacks = d["_filter_tracebacks"]
 
     def _start_loop(self, loop):
         if self._loop and self._loop.is_running():
@@ -134,8 +139,6 @@ class Synchronizer:
                 is_exc = True
 
     def _wrap_callable(self, f, return_future=None):
-        @filter_traceback
-        @functools.wraps(f)
         def f_wrapped(*args, **kwargs):
             res = f(*args, **kwargs)
             is_async_context = self._is_async_context()
@@ -154,7 +157,9 @@ class Synchronizer:
             else:
                 return res
 
-        return f_wrapped
+        if self._filter_tracebacks:
+            f_wrapped = filter_traceback(f_wrapped)
+        return functools.wraps(f)(f_wrapped)
 
     def create_class(self, cls_metaclass, cls_name, cls_bases, cls_dict):
         new_dict = {}
