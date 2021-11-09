@@ -1,5 +1,6 @@
 from .exceptions import UserCodeException
 
+
 class AsyncGeneratorContextManager:
     """This is basically copied (but slightly modified) from contextlib.py
 
@@ -12,7 +13,9 @@ class AsyncGeneratorContextManager:
     def __init__(self, synchronizer, func, args, kwargs):
         self.synchronizer = synchronizer
         # Run it in the correct thread
-        self.gen = synchronizer._run_generator_async(func(*args, **kwargs), unwrap_user_excs=False)
+        self.gen = synchronizer._run_generator_async(
+            func(*args, **kwargs), unwrap_user_excs=False
+        )
 
     async def _enter(self):
         try:

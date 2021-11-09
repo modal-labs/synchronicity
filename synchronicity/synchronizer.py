@@ -127,9 +127,13 @@ class Synchronizer:
         while True:
             try:
                 if is_exc:
-                    value = await self._run_function_async(wrap_coro_exception(gen.athrow(value)))
+                    value = await self._run_function_async(
+                        wrap_coro_exception(gen.athrow(value))
+                    )
                 else:
-                    value = await self._run_function_async(wrap_coro_exception(gen.asend(value)))
+                    value = await self._run_function_async(
+                        wrap_coro_exception(gen.asend(value))
+                    )
             except UserCodeException as uc_exc:
                 if unwrap_user_excs:
                     raise uc_exc.exc
@@ -155,11 +159,13 @@ class Synchronizer:
             if is_coroutine:
                 if is_async_context:
                     coro = self._run_function_async(res)
+
                     async def unwrap_exc():
                         try:
                             return await coro
                         except UserCodeException as uc_exc:
                             raise uc_exc.exc
+
                     return unwrap_exc()
                 else:
                     try:
