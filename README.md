@@ -143,11 +143,6 @@ rets = [fut.result() for fut in futures]  # This should take ~1s to run, resolvi
 print('first ten squares:', rets)
 ```
 
-De-cluttering tracebacks
-------------------------
-
-If you use synchronicity, every call will pass through the `Synchronizer` class, which will lead to ugly tracebacks if there's an exception. If you create the `Synchronizer` with the option `filter_tracebacks=True` (Python 3.7+ only), it will strip out all synchronicity-code from tracebacks.
-
 Using with with other asynchronous code
 ---------------------------------------
 

@@ -1,3 +1,6 @@
+from .exceptions import UserCodeException
+
+
 class AsyncGeneratorContextManager:
     """This is basically copied (but slightly modified) from contextlib.py
 
@@ -10,7 +13,9 @@ class AsyncGeneratorContextManager:
     def __init__(self, synchronizer, func, args, kwargs):
         self.synchronizer = synchronizer
         # Run it in the correct thread
-        self.gen = synchronizer._run_generator_async(func(*args, **kwargs))
+        self.gen = synchronizer._run_generator_async(
+            func(*args, **kwargs), unwrap_user_excs=False
+        )
 
     async def _enter(self):
         try:
@@ -52,18 +57,29 @@ class AsyncGeneratorContextManager:
     # Actual methods
 
     async def __aenter__(self):
-        return await self.synchronizer._run_function_async(self._enter())
+        try:
+            return await self.synchronizer._run_function_async(self._enter())
+        except UserCodeException as uc_exc:
+            raise uc_exc.exc
 
     def __enter__(self):
-        return self.synchronizer._run_function_sync(self._enter(), False)
+        try:
+            return self.synchronizer._run_function_sync(self._enter(), False)
+        except UserCodeException as uc_exc:
+            raise uc_exc.exc
 
     async def __aexit__(self, typ, value, traceback):
-        ret = await self.synchronizer._run_function_async(
-            self._exit(typ, value, traceback)
-        )
-        return ret
+        try:
+            return await self.synchronizer._run_function_async(
+                self._exit(typ, value, traceback)
+            )
+        except UserCodeException as uc_exc:
+            raise uc_exc.exc
 
     def __exit__(self, typ, value, traceback):
-        return self.synchronizer._run_function_sync(
-            self._exit(typ, value, traceback), False
-        )
+        try:
+            return self.synchronizer._run_function_sync(
+                self._exit(typ, value, traceback), False
+            )
+        except UserCodeException as uc_exc:
+            raise uc_exc.exc
