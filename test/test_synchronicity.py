@@ -11,7 +11,7 @@ SLEEP_DELAY = 0.1
 
 async def f(x):
     await asyncio.sleep(SLEEP_DELAY)
-    return x**2
+    return x ** 2
 
 
 async def f2(fn, x):
@@ -93,7 +93,7 @@ def test_function_many_parallel_sync_futures():
     futs = [g(i) for i in range(100)]
     assert isinstance(futs[0], concurrent.futures.Future)
     assert time.time() - t0 < SLEEP_DELAY
-    assert [fut.result() for fut in futs] == [z**2 for z in range(100)]
+    assert [fut.result() for fut in futs] == [z ** 2 for z in range(100)]
     assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
 
 
@@ -105,7 +105,7 @@ async def test_function_many_parallel_async():
     coros = [g(i) for i in range(100)]
     assert inspect.iscoroutine(coros[0])
     assert time.time() - t0 < SLEEP_DELAY
-    assert await asyncio.gather(*coros) == [z**2 for z in range(100)]
+    assert await asyncio.gather(*coros) == [z ** 2 for z in range(100)]
     assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
 
 
@@ -115,7 +115,7 @@ class CustomException(Exception):
 
 async def f_raises():
     await asyncio.sleep(0.1)
-    raise CustomException('something failed')
+    raise CustomException("something failed")
 
 
 def test_function_raises_sync():
@@ -246,12 +246,13 @@ class MyClass(Base):
         async def task():
             await asyncio.sleep(SLEEP_DELAY)
             return self._x
+
         loop = asyncio.get_event_loop()
         self._task = loop.create_task(task())
 
     async def get_result(self):
         ret = await self._task
-        return ret**2
+        return ret ** 2
 
     async def __aenter__(self):
         await asyncio.sleep(SLEEP_DELAY)
@@ -346,7 +347,7 @@ async def test_class_async():
     l = []
     async for z in obj:
         l.append(z)
-    assert l == list(range(42))    
+    assert l == list(range(42))
 
 
 @pytest.mark.asyncio
@@ -367,11 +368,12 @@ async def test_class_async_back_and_forth():
     ret = await fut
     assert ret == 1764
 
+
 def test_event_loop():
     s = Synchronizer()
     t0 = time.time()
     f_s = s(f)
-    assert f_s(42)  == 42 * 42
+    assert f_s(42) == 42 * 42
     assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
     assert s._thread.is_alive()
     assert s._loop.is_running()
@@ -388,4 +390,3 @@ def test_event_loop():
     # Starting a loop again before closing throws.
     with pytest.raises(Exception):
         s._start_loop(new_loop)
-

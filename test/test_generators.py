@@ -29,7 +29,7 @@ def test_generator_order_sync():
 
 async def async_bidirectional_producer(i):
     j = yield i
-    assert j == i**2
+    assert j == i ** 2
 
 
 @pytest.mark.asyncio
@@ -39,7 +39,7 @@ async def test_bidirectional_generator_async():
     value = await gen.asend(None)
     assert value == 42
     with pytest.raises(StopAsyncIteration):
-        await gen.asend(42*42)
+        await gen.asend(42 * 42)
 
 
 def test_bidirectional_generator_sync():
@@ -48,7 +48,7 @@ def test_bidirectional_generator_sync():
     value = gen.send(None)
     assert value == 42
     with pytest.raises(StopIteration):
-        gen.send(42*42)
+        gen.send(42 * 42)
 
 
 async def athrow_example_gen():

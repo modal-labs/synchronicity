@@ -31,5 +31,5 @@ def filter_traceback(f):
         except Exception as exc:
             tb = exc.__traceback__
             raise exc.with_traceback(get_filtered_tb(tb))
-    return f_wrapped
 
+    return f_wrapped
