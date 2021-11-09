@@ -8,7 +8,7 @@ import threading
 import time
 
 from .contextlib import AsyncGeneratorContextManager
-from .utils import filter_traceback
+from .tracebacks import filter_traceback
 
 _BUILTIN_ASYNC_METHODS = {
     '__aiter__': '__iter__',
