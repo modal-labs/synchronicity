@@ -22,6 +22,7 @@ def test_function_sync():
     s = Synchronizer()
     t0 = time.time()
     f_s = s(f)
+    assert f_s.__name__ == "f"
     ret = f_s(42)
     assert ret == 1764
     assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
@@ -31,6 +32,7 @@ def test_function_sync_future():
     s = Synchronizer(return_futures=True)
     t0 = time.time()
     f_s = s(f)
+    assert f_s.__name__ == "f"
     fut = f_s(42)
     assert isinstance(fut, concurrent.futures.Future)
     assert time.time() - t0 < SLEEP_DELAY
@@ -43,6 +45,7 @@ async def test_function_async():
     s = Synchronizer()
     t0 = time.time()
     f_s = s(f)
+    assert f_s.__name__ == "f"
     coro = f_s(42)
     assert inspect.iscoroutine(coro)
     assert time.time() - t0 < SLEEP_DELAY
@@ -81,6 +84,7 @@ async def test_function_async_block_event_loop():
 def test_function_many_parallel_sync():
     s = Synchronizer()
     g = s(f)
+    assert g.__name__ == "f"
     t0 = time.time()
     rets = [g(i) for i in range(10)]  # Will resolve serially
     assert len(rets) * SLEEP_DELAY < time.time() - t0 < (len(rets) + 1) * SLEEP_DELAY
@@ -89,6 +93,7 @@ def test_function_many_parallel_sync():
 def test_function_many_parallel_sync_futures():
     s = Synchronizer(return_futures=True)
     g = s(f)
+    assert g.__name__ == "f"
     t0 = time.time()
     futs = [g(i) for i in range(100)]
     assert isinstance(futs[0], concurrent.futures.Future)
@@ -167,6 +172,7 @@ def test_generator_sync():
     s = Synchronizer()
     t0 = time.time()
     gen_s = s(gen)
+    assert gen_s.__name__ == "gen"
     it = gen_s(3)
     assert inspect.isgenerator(it)
     assert time.time() - t0 < SLEEP_DELAY
@@ -180,6 +186,7 @@ async def test_generator_async():
     s = Synchronizer()
     t0 = time.time()
     gen_s = s(gen)
+    assert gen_s.__name__ == "gen"
     asyncgen = gen_s(3)
     assert inspect.isasyncgen(asyncgen)
     assert time.time() - t0 < SLEEP_DELAY
@@ -189,6 +196,7 @@ async def test_generator_async():
 
     # Make sure same-loop calls work
     gen2_s = s(gen2)
+    assert gen2_s.__name__ == "gen2"
     asyncgen = gen2_s(gen_s, 3)
     l = [z async for z in asyncgen]
     assert l == [0, 1, 2]
@@ -278,6 +286,7 @@ class MyClass(Base):
 def test_class_sync():
     s = Synchronizer()
     NewClass = s(MyClass)
+    assert NewClass.__name__ == "MyClass"
     obj = NewClass(x=42)
     assert isinstance(obj, MyClass)
     assert isinstance(obj, Base)
@@ -306,6 +315,7 @@ def test_class_sync():
 def test_class_sync_futures():
     s = Synchronizer(return_futures=True)
     NewClass = s(MyClass)
+    assert NewClass.__name__ == "MyClass"
     obj = NewClass(x=42)
     assert isinstance(obj, MyClass)
     assert isinstance(obj, Base)
@@ -327,6 +337,7 @@ def test_class_sync_futures():
 async def test_class_async():
     s = Synchronizer()
     NewClass = s(MyClass)
+    assert NewClass.__name__ == "MyClass"
     obj = NewClass(x=42)
     assert isinstance(obj, MyClass)
     assert isinstance(obj, Base)
@@ -353,6 +364,7 @@ async def test_class_async():
 async def test_class_async_back_and_forth():
     s = Synchronizer()
     NewClass = s(MyClass)
+    assert NewClass.__name__ == "MyClass"
     obj = NewClass(x=42)
     assert isinstance(obj, MyClass)
     assert isinstance(obj, Base)
