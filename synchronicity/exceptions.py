@@ -13,7 +13,9 @@ class UserCodeException(Exception):
 def wrap_coro_exception(coro):
     async def coro_wrapped():
         try:
-            await coro
+            return await coro
+        except StopAsyncIteration as exc:
+            raise exc
         except UserCodeException as exc:
             raise exc  # Pass-through in case it got double-wrapped
         except Exception as exc:
