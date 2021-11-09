@@ -11,15 +11,14 @@ from .contextlib import AsyncGeneratorContextManager
 from .utils import filter_traceback
 
 _BUILTIN_ASYNC_METHODS = {
-    '__aiter__': '__iter__',
-    '__aenter__': '__enter__',
-    '__aexit__': '__exit__',
+    "__aiter__": "__iter__",
+    "__aenter__": "__enter__",
+    "__aexit__": "__exit__",
 }
 
 
 class Synchronizer:
-    '''Helps you offer a blocking (synchronous) interface to asynchronous code.
-    '''
+    """Helps you offer a blocking (synchronous) interface to asynchronous code."""
 
     def __init__(self, return_futures=False):
         self._return_futures = return_futures
@@ -28,14 +27,14 @@ class Synchronizer:
         atexit.register(self._close_loop)
 
     def __getstate__(self):
-        return {'_return_futures': self._return_futures}
+        return {"_return_futures": self._return_futures}
 
     def __setstate__(self, d):
-        self._return_futures = d['_return_futures']
+        self._return_futures = d["_return_futures"]
 
     def _start_loop(self, loop):
         if self._loop and self._loop.is_running():
-            raise Exception('Synchronicity loop already running.')
+            raise Exception("Synchronicity loop already running.")
 
         is_ready = threading.Event()
 
@@ -64,7 +63,7 @@ class Synchronizer:
         return self._start_loop(asyncio.new_event_loop())
 
     def _get_running_loop(self):
-        if hasattr(asyncio, 'get_running_loop'):
+        if hasattr(asyncio, "get_running_loop"):
             try:
                 return asyncio.get_running_loop()
             except RuntimeError:
@@ -101,9 +100,13 @@ class Synchronizer:
         while True:
             try:
                 if is_exc:
-                    value = self._run_function_sync(gen.athrow(value), return_future=False)
+                    value = self._run_function_sync(
+                        gen.athrow(value), return_future=False
+                    )
                 else:
-                    value = self._run_function_sync(gen.asend(value), return_future=False)
+                    value = self._run_function_sync(
+                        gen.asend(value), return_future=False
+                    )
             except StopAsyncIteration:
                 break
             try:
@@ -151,7 +154,6 @@ class Synchronizer:
             else:
                 return res
 
-
         return f_wrapped
 
     def create_class(self, cls_metaclass, cls_name, cls_bases, cls_dict):
@@ -186,7 +188,7 @@ class Synchronizer:
         elif callable(object):
             return self._wrap_callable(object)
         else:
-            raise Exception('Argument %s is not a class or a callable' % object)
+            raise Exception("Argument %s is not a class or a callable" % object)
 
     def asynccontextmanager(self, func):
         @functools.wraps(func)
