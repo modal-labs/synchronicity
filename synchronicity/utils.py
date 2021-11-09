@@ -1,6 +1,7 @@
 import functools
 import os
 import traceback
+import types
 
 
 synchronicity_dir = os.path.dirname(__file__)
@@ -18,9 +19,14 @@ def get_filtered_tb(tb):
         tb = tb.tb_next
 
     if tb is not None:
-        tb.tb_next = get_filtered_tb(tb.tb_next)
-
-    return tb
+        # create a new tb with tb_next modified
+        new_tb = types.TracebackType(
+            tb_next=get_filtered_tb(tb.tb_next),
+            tb_frame=tb.tb_frame,
+            tb_lasti=tb.tb_lasti,
+            tb_lineno=tb.tb_lineno
+        )
+        return new_tb
 
 
 def filter_traceback(f):
