@@ -112,7 +112,7 @@ class Synchronizer:
                         gen.asend(value), return_future=False
                     )
             except UserCodeException as uc_exc:
-                raise uc_exc.exc
+                raise uc_exc.exc from None
             except StopAsyncIteration:
                 break
             try:
@@ -136,7 +136,7 @@ class Synchronizer:
                     )
             except UserCodeException as uc_exc:
                 if unwrap_user_excs:
-                    raise uc_exc.exc
+                    raise uc_exc.exc from None
                 else:
                     # This is needed since contextlib uses this function as a helper
                     raise uc_exc
@@ -164,14 +164,14 @@ class Synchronizer:
                         try:
                             return await coro
                         except UserCodeException as uc_exc:
-                            raise uc_exc.exc
+                            raise uc_exc.exc from None
 
                     return unwrap_exc()
                 else:
                     try:
                         return self._run_function_sync(res, return_future)
                     except UserCodeException as uc_exc:
-                        raise uc_exc.exc
+                        raise uc_exc.exc from None
             elif is_asyncgen:
                 if is_async_context:
                     return self._run_generator_async(res)

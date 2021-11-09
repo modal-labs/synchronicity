@@ -60,13 +60,13 @@ class AsyncGeneratorContextManager:
         try:
             return await self.synchronizer._run_function_async(self._enter())
         except UserCodeException as uc_exc:
-            raise uc_exc.exc
+            raise uc_exc.exc from None
 
     def __enter__(self):
         try:
             return self.synchronizer._run_function_sync(self._enter(), False)
         except UserCodeException as uc_exc:
-            raise uc_exc.exc
+            raise uc_exc.exc from None
 
     async def __aexit__(self, typ, value, traceback):
         try:
@@ -74,7 +74,7 @@ class AsyncGeneratorContextManager:
                 self._exit(typ, value, traceback)
             )
         except UserCodeException as uc_exc:
-            raise uc_exc.exc
+            raise uc_exc.exc from None
 
     def __exit__(self, typ, value, traceback):
         try:
@@ -82,4 +82,4 @@ class AsyncGeneratorContextManager:
                 self._exit(typ, value, traceback), False
             )
         except UserCodeException as uc_exc:
-            raise uc_exc.exc
+            raise uc_exc.exc from None
