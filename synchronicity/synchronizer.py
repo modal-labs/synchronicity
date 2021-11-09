@@ -8,6 +8,7 @@ import threading
 import time
 
 from .contextlib import AsyncGeneratorContextManager
+from .exceptions import UserCodeException, wrap_coro_exception
 
 _BUILTIN_ASYNC_METHODS = {
     "__aiter__": "__iter__",
@@ -78,12 +79,13 @@ class Synchronizer:
 
     def _run_function_sync(self, coro, return_future):
         loop = self._get_loop()
-        fut = asyncio.run_coroutine_threadsafe(coro, loop)
         if return_future is None:
             return_future = self._return_futures
         if return_future:
-            return fut
+            return asyncio.run_coroutine_threadsafe(coro, loop)
         else:
+            coro = wrap_coro_exception(coro)
+            fut = asyncio.run_coroutine_threadsafe(coro, loop)
             return fut.result()
 
     async def _run_function_async(self, coro):
@@ -137,22 +139,26 @@ class Synchronizer:
     def _wrap_callable(self, f, return_future=None):
         @functools.wraps(f)
         def f_wrapped(*args, **kwargs):
-            res = f(*args, **kwargs)
-            is_async_context = self._is_async_context()
-            is_coroutine = inspect.iscoroutine(res)
-            is_asyncgen = inspect.isasyncgen(res)
-            if is_coroutine:
-                if is_async_context:
-                    return self._run_function_async(res)
+            try:
+                res = f(*args, **kwargs)
+                is_async_context = self._is_async_context()
+                is_coroutine = inspect.iscoroutine(res)
+                is_asyncgen = inspect.isasyncgen(res)
+                if is_coroutine:
+                    if is_async_context:
+                        return self._run_function_async(res)
+                    else:
+                        return self._run_function_sync(res, return_future)
+                elif is_asyncgen:
+                    if is_async_context:
+                        return self._run_generator_async(res)
+                    else:
+                        return self._run_generator_sync(res)
                 else:
-                    return self._run_function_sync(res, return_future)
-            elif is_asyncgen:
-                if is_async_context:
-                    return self._run_generator_async(res)
-                else:
-                    return self._run_generator_sync(res)
-            else:
-                return res
+                    return res
+            except UserCodeException as uc_exc:
+                # raise uc_exc.with_traceback(uc_exc.__traceback__.tb_next)
+                raise uc_exc.exc
 
         return f_wrapped
 
