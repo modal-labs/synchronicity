@@ -1,7 +1,5 @@
-import functools
 import os
 import traceback
-
 
 synchronicity_dir = os.path.dirname(__file__)
 
@@ -24,7 +22,6 @@ def get_filtered_tb(tb):
 
 
 def filter_traceback(f):
-    @functools.wraps(f)
     def f_wrapped(*args, **kwargs):
         try:
             return f(*args, **kwargs)
