@@ -22,6 +22,7 @@ def test_function_sync():
     s = Synchronizer()
     t0 = time.time()
     f_s = s(f)
+    assert f_s.__name__ == "f"
     ret = f_s(42)
     assert ret == 1764
     assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
@@ -31,6 +32,7 @@ def test_function_sync_future():
     s = Synchronizer(return_futures=True)
     t0 = time.time()
     f_s = s(f)
+    assert f_s.__name__ == "f"
     fut = f_s(42)
     assert isinstance(fut, concurrent.futures.Future)
     assert time.time() - t0 < SLEEP_DELAY
@@ -43,6 +45,7 @@ async def test_function_async():
     s = Synchronizer()
     t0 = time.time()
     f_s = s(f)
+    assert f_s.__name__ == "f"
     coro = f_s(42)
     assert inspect.iscoroutine(coro)
     assert time.time() - t0 < SLEEP_DELAY
@@ -51,12 +54,14 @@ async def test_function_async():
 
     # Make sure the same-loop calls work
     f2_s = s(f2)
+    assert f2_s.__name__ == "f2"
     coro = f2_s(f_s, 42)
     assert await coro == 1764
 
     # Make sure cross-loop calls work
     s2 = Synchronizer()
     f2_s2 = s2(f2)
+    assert f2_s2.__name__ == "f2"
     coro = f2_s2(f_s, 42)
     assert await coro == 1764
 
@@ -278,6 +283,7 @@ class MyClass(Base):
 def test_class_sync():
     s = Synchronizer()
     NewClass = s(MyClass)
+    assert NewClass.__name__ == "MyClass"
     obj = NewClass(x=42)
     assert isinstance(obj, MyClass)
     assert isinstance(obj, Base)
@@ -306,6 +312,7 @@ def test_class_sync():
 def test_class_sync_futures():
     s = Synchronizer(return_futures=True)
     NewClass = s(MyClass)
+    assert NewClass.__name__ == "MyClass"
     obj = NewClass(x=42)
     assert isinstance(obj, MyClass)
     assert isinstance(obj, Base)
@@ -327,6 +334,7 @@ def test_class_sync_futures():
 async def test_class_async():
     s = Synchronizer()
     NewClass = s(MyClass)
+    assert NewClass.__name__ == "MyClass"
     obj = NewClass(x=42)
     assert isinstance(obj, MyClass)
     assert isinstance(obj, Base)
