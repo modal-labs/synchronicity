@@ -6,6 +6,7 @@ import inspect
 import queue
 import threading
 import time
+import warnings
 
 from .contextlib import AsyncGeneratorContextManager
 from .exceptions import UserCodeException, wrap_coro_exception, unwrap_coro_exception
@@ -16,12 +17,15 @@ _BUILTIN_ASYNC_METHODS = {
     "__aexit__": "__exit__",
 }
 
+_WRAPPED_ATTR = "_SYNCHRONICITY_HAS_WRAPPED_THIS_ALREADY"
+
 
 class Synchronizer:
     """Helps you offer a blocking (synchronous) interface to asynchronous code."""
 
-    def __init__(self, return_futures=False):
+    def __init__(self, return_futures=False, multiwrap_warning=False):
         self._return_futures = return_futures
+        self._multiwrap_warning = multiwrap_warning
         self._loop = None
         self._thread = None
         atexit.register(self._close_loop)
@@ -29,10 +33,12 @@ class Synchronizer:
     def __getstate__(self):
         return {
             "_return_futures": self._return_futures,
+            "_multiwrap_warning": self._multiwrap_warning,
         }
 
     def __setstate__(self, d):
         self._return_futures = d["_return_futures"]
+        self._multiwrap_warning = d["_multiwrap_warning"]
 
     def _start_loop(self, loop):
         if self._loop and self._loop.is_running():
@@ -150,6 +156,13 @@ class Synchronizer:
                 is_exc = True
 
     def _wrap_callable(self, f, return_future=None):
+        if hasattr(f, _WRAPPED_ATTR):
+            if self._multiwrap_warning:
+                warnings.warn(
+                    f"Function {f} is already wrapped, but getting wrapped again"
+                )
+            return f
+
         @functools.wraps(f)
         def f_wrapped(*args, **kwargs):
             res = f(*args, **kwargs)
@@ -177,6 +190,7 @@ class Synchronizer:
             else:
                 return res
 
+        setattr(f_wrapped, _WRAPPED_ATTR, True)
         return f_wrapped
 
     def create_class(self, cls_metaclass, cls_name, cls_bases, cls_dict):
