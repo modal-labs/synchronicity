@@ -213,17 +213,10 @@ class Synchronizer:
         return type.__new__(cls_metaclass, cls_name, cls_bases, new_dict)
 
     def _wrap_class(self, cls):
-        if hasattr(cls, _WRAPPED_ATTR):
-            if self._multiwrap_warning:
-                warnings.warn(
-                    f"Class {cls} is already wrapped, but getting wrapped again"
-                )
-            return cls
-
         cls_metaclass = type
         cls_name = cls.__name__
         cls_bases = (cls,)
-        cls_dict = dict(**cls.__dict__, **dict(_WRAPPED_ATTR=True))
+        cls_dict = cls.__dict__
         return self.create_class(cls_metaclass, cls_name, cls_bases, cls_dict)
 
     def __call__(self, object):
