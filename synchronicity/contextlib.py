@@ -1,4 +1,4 @@
-from .exceptions import UserCodeException
+from .exceptions import UserCodeException, unwrap_coro_exception
 
 
 class AsyncGeneratorContextManager:
@@ -56,11 +56,11 @@ class AsyncGeneratorContextManager:
 
     # Actual methods
 
-    async def __aenter__(self):
-        try:
-            return await self.synchronizer._run_function_async(self._enter())
-        except UserCodeException as uc_exc:
-            raise uc_exc.exc from None
+    def __aenter__(self):
+        coro = self._enter()
+        coro = self.synchronizer._run_function_async(coro)
+        coro = unwrap_coro_exception(coro)
+        return coro
 
     def __enter__(self):
         try:
@@ -68,13 +68,11 @@ class AsyncGeneratorContextManager:
         except UserCodeException as uc_exc:
             raise uc_exc.exc from None
 
-    async def __aexit__(self, typ, value, traceback):
-        try:
-            return await self.synchronizer._run_function_async(
-                self._exit(typ, value, traceback)
-            )
-        except UserCodeException as uc_exc:
-            raise uc_exc.exc from None
+    def __aexit__(self, typ, value, traceback):
+        coro = self._exit(typ, value, traceback)
+        coro = self.synchronizer._run_function_async(coro)
+        coro = unwrap_coro_exception(coro)
+        return coro
 
     def __exit__(self, typ, value, traceback):
         try:

@@ -8,7 +8,7 @@ import threading
 import time
 
 from .contextlib import AsyncGeneratorContextManager
-from .exceptions import UserCodeException, wrap_coro_exception
+from .exceptions import UserCodeException, wrap_coro_exception, unwrap_coro_exception
 
 _BUILTIN_ASYNC_METHODS = {
     "__aiter__": "__iter__",
@@ -159,14 +159,7 @@ class Synchronizer:
             if is_coroutine:
                 if is_async_context:
                     coro = self._run_function_async(res)
-
-                    async def unwrap_exc():
-                        try:
-                            return await coro
-                        except UserCodeException as uc_exc:
-                            raise uc_exc.exc from None
-
-                    return unwrap_exc()
+                    return unwrap_coro_exception(coro)
                 else:
                     try:
                         return self._run_function_sync(res, return_future)
