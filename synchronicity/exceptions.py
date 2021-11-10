@@ -22,3 +22,10 @@ def wrap_coro_exception(coro):
             raise UserCodeException(exc)
 
     return coro_wrapped()
+
+
+async def unwrap_coro_exception(coro):
+    try:
+        return await coro
+    except UserCodeException as uc_exc:
+        raise uc_exc.exc from None

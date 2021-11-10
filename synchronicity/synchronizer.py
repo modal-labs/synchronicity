@@ -8,7 +8,7 @@ import threading
 import time
 
 from .contextlib import AsyncGeneratorContextManager
-from .exceptions import UserCodeException, wrap_coro_exception
+from .exceptions import UserCodeException, wrap_coro_exception, unwrap_coro_exception
 
 _BUILTIN_ASYNC_METHODS = {
     "__aiter__": "__iter__",
@@ -157,22 +157,19 @@ class Synchronizer:
             is_coroutine = inspect.iscoroutine(res)
             is_asyncgen = inspect.isasyncgen(res)
             if is_coroutine:
+                # The run_function_* may throw UserCodeExceptions that
+                # need to be unwrapped here at the entrypoint
                 if is_async_context:
                     coro = self._run_function_async(res)
-
-                    async def unwrap_exc():
-                        try:
-                            return await coro
-                        except UserCodeException as uc_exc:
-                            raise uc_exc.exc from None
-
-                    return unwrap_exc()
+                    return unwrap_coro_exception(coro)
                 else:
                     try:
                         return self._run_function_sync(res, return_future)
                     except UserCodeException as uc_exc:
                         raise uc_exc.exc from None
             elif is_asyncgen:
+                # Note that the _run_generator_* functions handle their own
+                # unwrapping of exceptions (this happens during yielding)
                 if is_async_context:
                     return self._run_generator_async(res)
                 else:
