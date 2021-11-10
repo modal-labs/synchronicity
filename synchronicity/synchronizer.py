@@ -89,12 +89,12 @@ class Synchronizer:
             return fut.result()
 
     async def _run_function_async(self, coro):
+        coro = wrap_coro_exception(coro)
         current_loop = self._get_running_loop()
         loop = self._get_loop()
         if loop == current_loop:
             return await coro
 
-        coro = wrap_coro_exception(coro)
         c_fut = asyncio.run_coroutine_threadsafe(coro, loop)
         a_fut = asyncio.wrap_future(c_fut)
         return await a_fut
