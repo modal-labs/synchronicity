@@ -223,7 +223,7 @@ class Synchronizer:
         cls_metaclass = type
         cls_name = cls.__name__
         cls_bases = (cls,)
-        cls_dict = dict(cls.__dict__) | dict(_WRAPPED_ATTR=True)
+        cls_dict = dict(**cls.__dict__, **dict(_WRAPPED_ATTR=True))
         return self.create_class(cls_metaclass, cls_name, cls_bases, cls_dict)
 
     def __call__(self, object):
