@@ -157,6 +157,8 @@ class Synchronizer:
             is_coroutine = inspect.iscoroutine(res)
             is_asyncgen = inspect.isasyncgen(res)
             if is_coroutine:
+                # The run_function_* may throw UserCodeExceptions that
+                # need to be unwrapped here at the entrypoint
                 if is_async_context:
                     coro = self._run_function_async(res)
                     return unwrap_coro_exception(coro)
@@ -166,6 +168,8 @@ class Synchronizer:
                     except UserCodeException as uc_exc:
                         raise uc_exc.exc from None
             elif is_asyncgen:
+                # Note that the _run_generator_* functions handle their own
+                # unwrapping of exceptions (this happens during yielding)
                 if is_async_context:
                     return self._run_generator_async(res)
                 else:
