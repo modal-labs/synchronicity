@@ -23,9 +23,12 @@ _WRAPPED_ATTR = "_SYNCHRONICITY_HAS_WRAPPED_THIS_ALREADY"
 class Synchronizer:
     """Helps you offer a blocking (synchronous) interface to asynchronous code."""
 
-    def __init__(self, return_futures=False, multiwrap_warning=False):
+    def __init__(
+        self, return_futures=False, multiwrap_warning=False, async_leakage_warning=True
+    ):
         self._return_futures = return_futures
         self._multiwrap_warning = multiwrap_warning
+        self._async_leakage_warning = async_leakage_warning
         self._loop = None
         self._thread = None
         atexit.register(self._close_loop)
@@ -34,11 +37,13 @@ class Synchronizer:
         return {
             "_return_futures": self._return_futures,
             "_multiwrap_warning": self._multiwrap_warning,
+            "_async_leakage_warning": self._async_leakage_warning,
         }
 
     def __setstate__(self, d):
         self._return_futures = d["_return_futures"]
         self._multiwrap_warning = d["_multiwrap_warning"]
+        self._async_leakage_warning = d["_async_leakage_warning"]
 
     def _start_loop(self, loop):
         if self._loop and self._loop.is_running():
@@ -83,19 +88,46 @@ class Synchronizer:
     def _is_async_context(self):
         return bool(self._get_running_loop())
 
+    def _wrap_check_async_leakage(self, coro):
+        """Check if a coroutine returns another coroutine (or an async generator) and warn.
+
+        The reason this is important to catch is that otherwise even synchronized code might end up
+        "leaking" async code into the caller.
+        """
+        if not self._async_leakage_warning:
+            return coro
+
+        async def coro_wrapped():
+            value = await coro
+            # TODO: we should include the name of the original function here
+            if inspect.iscoroutine(value):
+                warnings.warn(
+                    f"Potential async leakage: coroutine returned a coroutine {value}."
+                )
+            elif inspect.isasyncgen(value):
+                warnings.warn(
+                    f"Potential async leakage: Coroutine returned an async generator {value}."
+                )
+            return value
+
+        return coro_wrapped()
+
     def _run_function_sync(self, coro, return_future):
+        coro = wrap_coro_exception(coro)
+        coro = self._wrap_check_async_leakage(coro)
         loop = self._get_loop()
         if return_future is None:
             return_future = self._return_futures
         if return_future:
+            coro = unwrap_coro_exception(coro)  # A bit of a special case
             return asyncio.run_coroutine_threadsafe(coro, loop)
         else:
-            coro = wrap_coro_exception(coro)
             fut = asyncio.run_coroutine_threadsafe(coro, loop)
             return fut.result()
 
     async def _run_function_async(self, coro):
         coro = wrap_coro_exception(coro)
+        coro = self._wrap_check_async_leakage(coro)
         current_loop = self._get_running_loop()
         loop = self._get_loop()
         if loop == current_loop:
@@ -174,7 +206,8 @@ class Synchronizer:
                 # need to be unwrapped here at the entrypoint
                 if is_async_context:
                     coro = self._run_function_async(res)
-                    return unwrap_coro_exception(coro)
+                    coro = unwrap_coro_exception(coro)
+                    return coro
                 else:
                     try:
                         return self._run_function_sync(res, return_future)
