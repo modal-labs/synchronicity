@@ -55,7 +55,7 @@ async def athrow_example_gen():
     try:
         await asyncio.sleep(0.1)
         yield "hello"
-    except ZeroDivisionError:
+    except KeyboardInterrupt:
         await asyncio.sleep(0.2)
         yield "world"
 
@@ -65,7 +65,7 @@ async def test_athrow_async():
     gen = Synchronizer()(athrow_example_gen)()
     v = await gen.asend(None)
     assert v == "hello"
-    v = await gen.athrow(ZeroDivisionError)
+    v = await gen.athrow(KeyboardInterrupt)
     assert v == "world"
 
 
@@ -73,5 +73,5 @@ def test_athrow_sync():
     gen = Synchronizer()(athrow_example_gen)()
     v = gen.send(None)
     assert v == "hello"
-    v = gen.throw(ZeroDivisionError)
+    v = gen.throw(KeyboardInterrupt)
     assert v == "world"

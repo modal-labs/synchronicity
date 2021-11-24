@@ -4,7 +4,7 @@ import traceback
 from synchronicity import Synchronizer
 
 
-class CustomException(Exception):
+class CustomException(BaseException):
     pass
 
 

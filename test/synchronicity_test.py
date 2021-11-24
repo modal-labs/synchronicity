@@ -114,7 +114,7 @@ async def test_function_many_parallel_async():
     assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
 
 
-class CustomException(Exception):
+class CustomException(BaseException):
     pass
 
 
@@ -396,5 +396,5 @@ def test_event_loop():
     assert s._thread.is_alive()
 
     # Starting a loop again before closing throws.
-    with pytest.raises(Exception):
+    with pytest.raises(BaseException):
         s._start_loop(new_loop)

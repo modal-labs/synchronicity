@@ -9,7 +9,7 @@ async def noop():
 
 
 async def error():
-    raise Exception("problem")
+    raise BaseException("problem")
 
 
 class Resource:
@@ -59,10 +59,10 @@ async def test_asynccontextmanager_async_raise():
     s = Synchronizer()
     f = s.asynccontextmanager(r.wrap)
     assert r.state == "none"
-    with pytest.raises(Exception):
+    with pytest.raises(BaseException):
         async with f():
             assert r.state == "entered"
-            raise Exception("boom")
+            raise BaseException("boom")
     assert r.state == "exited"
 
 
