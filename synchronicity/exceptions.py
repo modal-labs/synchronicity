@@ -18,7 +18,7 @@ def wrap_coro_exception(coro):
             raise exc
         except UserCodeException as exc:
             raise exc  # Pass-through in case it got double-wrapped
-        except Exception as exc:
+        except BaseException as exc:
             raise UserCodeException(exc)
 
     return coro_wrapped()

@@ -156,7 +156,7 @@ class Synchronizer:
             try:
                 value = yield value
                 is_exc = False
-            except Exception as exc:
+            except BaseException as exc:
                 value = exc
                 is_exc = True
 
@@ -183,7 +183,7 @@ class Synchronizer:
             try:
                 value = yield value
                 is_exc = False
-            except Exception as exc:
+            except BaseException as exc:
                 value = exc
                 is_exc = True
 
