@@ -12,6 +12,10 @@ async def f():
     raise CustomException("boom!")
 
 
+async def f_baseexc():
+    raise KeyboardInterrupt
+
+
 async def gen():
     raise CustomException("gen boom!")
     yield
@@ -35,6 +39,14 @@ def test_sync_to_async():
     s = Synchronizer()
     f_s = s(f)
     with pytest.raises(CustomException) as excinfo:
+        f_s()
+    check_traceback(excinfo.value)
+
+
+def test_sync_to_async():
+    s = Synchronizer()
+    f_baseexc_s = s(f_baseexc)
+    with pytest.raises(BaseException) as excinfo:
         f_s()
     check_traceback(excinfo.value)
 
