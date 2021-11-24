@@ -157,6 +157,21 @@ async def test_function_raises_async():
     assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
 
 
+async def f_raises_baseexc():
+    await asyncio.sleep(0.1)
+    raise KeyboardInterrupt
+
+
+def test_function_raises_baseexc_sync():
+    s = Synchronizer()
+    t0 = time.time()
+    with pytest.raises(BaseException):
+        f_raises_baseexc_s = s(f_raises_baseexc)
+        f_raises_baseexc_s()
+    assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
+
+
+
 async def gen(n):
     for i in range(n):
         await asyncio.sleep(0.1)

@@ -58,6 +58,8 @@ async def athrow_example_gen():
     except ZeroDivisionError:
         await asyncio.sleep(0.2)
         yield "world"
+    except BaseException:
+        yield "foobar"
 
 
 @pytest.mark.asyncio
@@ -75,3 +77,20 @@ def test_athrow_sync():
     assert v == "hello"
     v = gen.throw(ZeroDivisionError)
     assert v == "world"
+
+
+@pytest.mark.asyncio
+async def test_athrow_baseexc_async():
+    gen = Synchronizer()(athrow_example_gen)()
+    v = await gen.asend(None)
+    assert v == "hello"
+    v = await gen.athrow(KeyboardInterrupt)
+    assert v == "foobar"
+
+
+def test_athrow_baseexc_sync():
+    gen = Synchronizer()(athrow_example_gen)()
+    v = gen.send(None)
+    assert v == "hello"
+    v = gen.throw(KeyboardInterrupt)
+    assert v == "foobar"

@@ -84,3 +84,34 @@ async def test_asynccontextmanager_never_yield():
     with pytest.raises(RuntimeError):
         async with f():
             pass
+
+
+@pytest.mark.asyncio
+async def test_asynccontextmanager_nested():
+    s = Synchronizer()
+    finally_blocks = []
+
+    @s.asynccontextmanager
+    async def a():
+        try:
+            yield "foo"
+        finally:
+            finally_blocks.append("A")
+
+    @s.asynccontextmanager
+    async def b():
+        async with a() as it:
+            try:
+                yield it
+            finally:
+                finally_blocks.append("B")
+
+    with pytest.raises(BaseException):
+        async with b():
+            raise BaseException("boom!")
+
+    assert finally_blocks == ["B", "A"]
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
