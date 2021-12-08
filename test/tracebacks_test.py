@@ -96,3 +96,18 @@ async def test_async_to_async_ctx_mgr():
         async with ctx_mgr():
             pass
     check_traceback(excinfo.value)
+
+
+def test_recursive():
+    s = Synchronizer()
+
+    @s
+    async def f(n):
+        if n == 0:
+            raise CustomException("boom!")
+        else:
+            return await f(n-1)
+
+    with pytest.raises(CustomException) as excinfo:
+        f(10)
+    check_traceback(excinfo.value)

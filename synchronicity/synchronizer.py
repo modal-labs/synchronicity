@@ -165,13 +165,9 @@ class Synchronizer:
         while True:
             try:
                 if is_exc:
-                    value = await self._run_function_async(
-                        wrap_coro_exception(gen.athrow(value))
-                    )
+                    value = await self._run_function_async(gen.athrow(value))
                 else:
-                    value = await self._run_function_async(
-                        wrap_coro_exception(gen.asend(value))
-                    )
+                    value = await self._run_function_async(gen.asend(value))
             except UserCodeException as uc_exc:
                 if unwrap_user_excs:
                     raise uc_exc.exc from None
@@ -205,6 +201,11 @@ class Synchronizer:
                 # The run_function_* may throw UserCodeExceptions that
                 # need to be unwrapped here at the entrypoint
                 if is_async_context:
+                    if self._get_running_loop() == self._get_loop():
+                        # See #27. This is a bit of a hack needed to "shortcut" the exception
+                        # handling if we're within the same loop - there's no need to wrap and
+                        # unwrap the exception and it just adds unnecessary traceback spam.
+                        return res
                     coro = self._run_function_async(res)
                     coro = unwrap_coro_exception(coro)
                     return coro
