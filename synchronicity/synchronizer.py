@@ -201,6 +201,11 @@ class Synchronizer:
                 # The run_function_* may throw UserCodeExceptions that
                 # need to be unwrapped here at the entrypoint
                 if is_async_context:
+                    if self._get_running_loop() == self._get_loop():
+                        # See #27. This is a bit of a hack needed to "shortcut" the exception
+                        # handling if we're within the same loop - there's no need to wrap and
+                        # unwrap the exception and it just adds unnecessary traceback spam.
+                        return res
                     coro = self._run_function_async(res)
                     coro = unwrap_coro_exception(coro)
                     return coro
