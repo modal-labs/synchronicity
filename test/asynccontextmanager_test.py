@@ -113,5 +113,11 @@ async def test_asynccontextmanager_nested():
     assert finally_blocks == ["B", "A"]
 
 
-if __name__ == "__main__":
-    asyncio.run(main())
+@pytest.mark.asyncio
+async def test_asynccontextmanager_with_in_async():
+    r = Resource()
+    s = Synchronizer()
+    f = s.asynccontextmanager(r.wrap)
+    with pytest.raises(RuntimeError):
+        with f():
+            pass
