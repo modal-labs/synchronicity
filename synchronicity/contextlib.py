@@ -63,6 +63,8 @@ class AsyncGeneratorContextManager:
         return coro
 
     def __enter__(self):
+        if self.synchronizer._is_async_context():
+            raise RuntimeError("Attempt to use 'with' in async code. Did you mean 'async with'?")
         try:
             return self.synchronizer._run_function_sync(self._enter(), False)
         except UserCodeException as uc_exc:
