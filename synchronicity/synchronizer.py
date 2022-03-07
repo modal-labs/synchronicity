@@ -18,15 +18,13 @@ _BUILTIN_ASYNC_METHODS = {
 }
 
 _WRAPPED_ATTR = "_SYNCHRONICITY_HAS_WRAPPED_THIS_ALREADY"
+_RETURN_FUTURE_KWARG = "_future"
 
 
 class Synchronizer:
     """Helps you offer a blocking (synchronous) interface to asynchronous code."""
 
-    def __init__(
-        self, return_futures=False, multiwrap_warning=False, async_leakage_warning=True
-    ):
-        self._return_futures = return_futures
+    def __init__(self, multiwrap_warning=False, async_leakage_warning=True):
         self._multiwrap_warning = multiwrap_warning
         self._async_leakage_warning = async_leakage_warning
         self._loop = None
@@ -35,13 +33,11 @@ class Synchronizer:
 
     def __getstate__(self):
         return {
-            "_return_futures": self._return_futures,
             "_multiwrap_warning": self._multiwrap_warning,
             "_async_leakage_warning": self._async_leakage_warning,
         }
 
     def __setstate__(self, d):
-        self._return_futures = d["_return_futures"]
         self._multiwrap_warning = d["_multiwrap_warning"]
         self._async_leakage_warning = d["_async_leakage_warning"]
 
@@ -112,18 +108,19 @@ class Synchronizer:
 
         return coro_wrapped()
 
-    def _run_function_sync(self, coro, return_future):
+    def _run_function_sync(self, coro):
         coro = wrap_coro_exception(coro)
         coro = self._wrap_check_async_leakage(coro)
         loop = self._get_loop()
-        if return_future is None:
-            return_future = self._return_futures
-        if return_future:
-            coro = unwrap_coro_exception(coro)  # A bit of a special case
-            return asyncio.run_coroutine_threadsafe(coro, loop)
-        else:
-            fut = asyncio.run_coroutine_threadsafe(coro, loop)
-            return fut.result()
+        fut = asyncio.run_coroutine_threadsafe(coro, loop)
+        return fut.result()
+
+    def _run_function_sync_future(self, coro):
+        coro = wrap_coro_exception(coro)
+        coro = self._wrap_check_async_leakage(coro)
+        loop = self._get_loop()
+        coro = unwrap_coro_exception(coro)  # A bit of a special case
+        return asyncio.run_coroutine_threadsafe(coro, loop)
 
     async def _run_function_async(self, coro):
         coro = wrap_coro_exception(coro)
@@ -142,13 +139,9 @@ class Synchronizer:
         while True:
             try:
                 if is_exc:
-                    value = self._run_function_sync(
-                        gen.athrow(value), return_future=False
-                    )
+                    value = self._run_function_sync(gen.athrow(value))
                 else:
-                    value = self._run_function_sync(
-                        gen.asend(value), return_future=False
-                    )
+                    value = self._run_function_sync(gen.asend(value))
             except UserCodeException as uc_exc:
                 raise uc_exc.exc from None
             except StopAsyncIteration:
@@ -183,7 +176,7 @@ class Synchronizer:
                 value = exc
                 is_exc = True
 
-    def _wrap_callable(self, f, return_future=None):
+    def _wrap_callable(self, f, allow_futures=True):
         if hasattr(f, _WRAPPED_ATTR):
             if self._multiwrap_warning:
                 warnings.warn(
@@ -193,11 +186,21 @@ class Synchronizer:
 
         @functools.wraps(f)
         def f_wrapped(*args, **kwargs):
+            return_future = kwargs.pop(_RETURN_FUTURE_KWARG, False)
             res = f(*args, **kwargs)
             is_async_context = self._is_async_context()
             is_coroutine = inspect.iscoroutine(res)
             is_asyncgen = inspect.isasyncgen(res)
-            if is_coroutine:
+            if return_future:
+                if not allow_futures:
+                    raise Exceptions("Can not return future for this function")
+                elif is_coroutine:
+                    return self._run_function_sync_future(res)
+                elif is_asyncgen:
+                    raise Exception("Can not return futures for generators")
+                else:
+                    return res
+            elif is_coroutine:
                 # The run_function_* may throw UserCodeExceptions that
                 # need to be unwrapped here at the entrypoint
                 if is_async_context:
@@ -211,7 +214,7 @@ class Synchronizer:
                     return coro
                 else:
                     try:
-                        return self._run_function_sync(res, return_future)
+                        return self._run_function_sync(res)
                     except UserCodeException as uc_exc:
                         raise uc_exc.exc from None
             elif is_asyncgen:
@@ -233,7 +236,7 @@ class Synchronizer:
             if k in _BUILTIN_ASYNC_METHODS:
                 k_sync = _BUILTIN_ASYNC_METHODS[k]
                 new_dict[k] = v
-                new_dict[k_sync] = self._wrap_callable(v, return_future=False)
+                new_dict[k_sync] = self._wrap_callable(v, allow_futures=False)
             elif callable(v):
                 new_dict[k] = self._wrap_callable(v)
             elif isinstance(v, staticmethod):

@@ -126,19 +126,19 @@ data = db_conn.query('select * from foo')
 Returning futures
 -----------------
 
-You can also make it return a `Future` object by instantiating the `Synchronizer` class with `return_futures=True`. This can be useful if you want to dispatch many calls from a blocking context, but you want to resolve them roughly in parallel:
+You can also make functions return a `Future` object by adding `_future=True` to any call. This can be useful if you want to dispatch many calls from a blocking context, but you want to resolve them roughly in parallel:
 
 ```python
 from synchronicity import Synchronizer
 
-synchronizer = Synchronizer(return_futures=True)
+synchronizer = Synchronizer()
 
 @synchronizer
 async def f(x):
     await asyncio.sleep(1.0)
     return x**2
 
-futures = [f(i) for i in range(10)]  # This returns immediately
+futures = [f(i, _future=True) for i in range(10)]  # This returns immediately
 rets = [fut.result() for fut in futures]  # This should take ~1s to run, resolving all futures in parallel
 print('first ten squares:', rets)
 ```
