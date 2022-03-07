@@ -29,11 +29,11 @@ def test_function_sync():
 
 
 def test_function_sync_future():
-    s = Synchronizer(return_futures=True)
+    s = Synchronizer()
     t0 = time.time()
     f_s = s(f)
     assert f_s.__name__ == "f"
-    fut = f_s(42)
+    fut = f_s(42, _future=True)
     assert isinstance(fut, concurrent.futures.Future)
     assert time.time() - t0 < SLEEP_DELAY
     assert fut.result() == 1764
@@ -92,10 +92,10 @@ def test_function_many_parallel_sync():
 
 
 def test_function_many_parallel_sync_futures():
-    s = Synchronizer(return_futures=True)
+    s = Synchronizer()
     g = s(f)
     t0 = time.time()
-    futs = [g(i) for i in range(100)]
+    futs = [g(i, _future=True) for i in range(100)]
     assert isinstance(futs[0], concurrent.futures.Future)
     assert time.time() - t0 < SLEEP_DELAY
     assert [fut.result() for fut in futs] == [z ** 2 for z in range(100)]
@@ -133,10 +133,10 @@ def test_function_raises_sync():
 
 
 def test_function_raises_sync_futures():
-    s = Synchronizer(return_futures=True)
+    s = Synchronizer()
     t0 = time.time()
     f_raises_s = s(f_raises)
-    fut = f_raises_s()
+    fut = f_raises_s(_future=True)
     assert isinstance(fut, concurrent.futures.Future)
     assert time.time() - t0 < SLEEP_DELAY
     with pytest.raises(CustomException):
@@ -231,10 +231,10 @@ def test_sync_lambda_returning_coroutine_sync():
 
 
 def test_sync_lambda_returning_coroutine_sync_futures():
-    s = Synchronizer(return_futures=True)
+    s = Synchronizer()
     t0 = time.time()
     g = s(lambda z: f(z + 1))
-    fut = g(42)
+    fut = g(42, _future=True)
     assert isinstance(fut, concurrent.futures.Future)
     assert time.time() - t0 < SLEEP_DELAY
     assert fut.result() == 1849
@@ -326,7 +326,7 @@ def test_class_sync():
 
 
 def test_class_sync_futures():
-    s = Synchronizer(return_futures=True)
+    s = Synchronizer()
     NewClass = s(MyClass)
     assert NewClass.__name__ == "MyClass"
     obj = NewClass(x=42)
@@ -334,7 +334,7 @@ def test_class_sync_futures():
     assert isinstance(obj, Base)
     assert obj._x == 42
     obj.start()
-    fut = obj.get_result()
+    fut = obj.get_result(_future=True)
     assert isinstance(fut, concurrent.futures.Future)
     assert fut.result() == 1764
 

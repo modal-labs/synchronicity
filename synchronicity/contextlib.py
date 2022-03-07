@@ -64,9 +64,11 @@ class AsyncGeneratorContextManager:
 
     def __enter__(self):
         if self.synchronizer._is_async_context():
-            raise RuntimeError("Attempt to use 'with' in async code. Did you mean 'async with'?")
+            raise RuntimeError(
+                "Attempt to use 'with' in async code. Did you mean 'async with'?"
+            )
         try:
-            return self.synchronizer._run_function_sync(self._enter(), False)
+            return self.synchronizer._run_function_sync(self._enter())
         except UserCodeException as uc_exc:
             raise uc_exc.exc from None
 
@@ -79,7 +81,7 @@ class AsyncGeneratorContextManager:
     def __exit__(self, typ, value, traceback):
         try:
             return self.synchronizer._run_function_sync(
-                self._exit(typ, value, traceback), False
+                self._exit(typ, value, traceback)
             )
         except UserCodeException as uc_exc:
             raise uc_exc.exc from None
