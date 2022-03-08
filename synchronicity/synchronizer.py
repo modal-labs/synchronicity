@@ -9,8 +9,7 @@ import time
 import warnings
 
 from .contextlib import AsyncGeneratorContextManager
-from .exceptions import (UserCodeException, unwrap_coro_exception,
-                         wrap_coro_exception)
+from .exceptions import UserCodeException, unwrap_coro_exception, wrap_coro_exception
 from .interface import Interface
 
 _BUILTIN_ASYNC_METHODS = {
@@ -248,7 +247,9 @@ class Synchronizer:
             if k in _BUILTIN_ASYNC_METHODS:
                 k_sync = _BUILTIN_ASYNC_METHODS[k]
                 new_dict[k] = v
-                new_dict[k_sync] = self._wrap_callable(v, interface, allow_futures=False)
+                new_dict[k_sync] = self._wrap_callable(
+                    v, interface, allow_futures=False
+                )
             elif callable(v):
                 new_dict[k] = self._wrap_callable(v, interface)
             elif isinstance(v, staticmethod):
@@ -266,7 +267,9 @@ class Synchronizer:
         cls_name = cls.__name__
         cls_bases = (cls,)
         cls_dict = cls.__dict__
-        return self.create_class(interface, cls_metaclass, cls_name, cls_bases, cls_dict)
+        return self.create_class(
+            interface, cls_metaclass, cls_name, cls_bases, cls_dict
+        )
 
     def _wrap(self, object, interface):
         if inspect.isclass(object):
