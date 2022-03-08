@@ -10,6 +10,7 @@ import warnings
 
 from .contextlib import AsyncGeneratorContextManager
 from .exceptions import UserCodeException, wrap_coro_exception, unwrap_coro_exception
+from .interface import Interface
 
 _BUILTIN_ASYNC_METHODS = {
     "__aiter__": "__iter__",
@@ -24,7 +25,13 @@ _RETURN_FUTURE_KWARG = "_future"
 class Synchronizer:
     """Helps you offer a blocking (synchronous) interface to asynchronous code."""
 
-    def __init__(self, multiwrap_warning=False, async_leakage_warning=True):
+    def __init__(
+        self,
+        interface=Interface.AUTODETECT,
+        multiwrap_warning=False,
+        async_leakage_warning=True,
+    ):
+        self._interface = interface
         self._multiwrap_warning = multiwrap_warning
         self._async_leakage_warning = async_leakage_warning
         self._loop = None
@@ -33,11 +40,13 @@ class Synchronizer:
 
     def __getstate__(self):
         return {
+            "_interface": self._interface,
             "_multiwrap_warning": self._multiwrap_warning,
             "_async_leakage_warning": self._async_leakage_warning,
         }
 
     def __setstate__(self, d):
+        self._interface = d["_interface"]
         self._multiwrap_warning = d["_multiwrap_warning"]
         self._async_leakage_warning = d["_async_leakage_warning"]
 
@@ -81,8 +90,14 @@ class Synchronizer:
             # Python 3.6 compatibility
             return asyncio._get_running_loop()
 
-    def _is_async_context(self):
-        return bool(self._get_running_loop())
+    def _get_interface(self):
+        if self._interface == Interface.AUTODETECT:
+            if self._get_running_loop():
+                return Interface.ASYNC
+            else:
+                return Interface.BLOCKING
+        else:
+            return self._interface
 
     def _wrap_check_async_leakage(self, coro):
         """Check if a coroutine returns another coroutine (or an async generator) and warn.
@@ -188,7 +203,8 @@ class Synchronizer:
         def f_wrapped(*args, **kwargs):
             return_future = kwargs.pop(_RETURN_FUTURE_KWARG, False)
             res = f(*args, **kwargs)
-            is_async_context = self._is_async_context()
+            interface = self._get_interface()
+            assert interface in [Interface.ASYNC, Interface.BLOCKING]
             is_coroutine = inspect.iscoroutine(res)
             is_asyncgen = inspect.isasyncgen(res)
             if return_future:
@@ -203,7 +219,7 @@ class Synchronizer:
             elif is_coroutine:
                 # The run_function_* may throw UserCodeExceptions that
                 # need to be unwrapped here at the entrypoint
-                if is_async_context:
+                if interface == Interface.ASYNC:
                     if self._get_running_loop() == self._get_loop():
                         # See #27. This is a bit of a hack needed to "shortcut" the exception
                         # handling if we're within the same loop - there's no need to wrap and
@@ -212,7 +228,7 @@ class Synchronizer:
                     coro = self._run_function_async(res)
                     coro = unwrap_coro_exception(coro)
                     return coro
-                else:
+                elif interface == Interface.BLOCKING:
                     try:
                         return self._run_function_sync(res)
                     except UserCodeException as uc_exc:
@@ -220,9 +236,9 @@ class Synchronizer:
             elif is_asyncgen:
                 # Note that the _run_generator_* functions handle their own
                 # unwrapping of exceptions (this happens during yielding)
-                if is_async_context:
+                if interface == Interface.ASYNC:
                     return self._run_generator_async(res)
-                else:
+                elif interface == Interface.BLOCKING:
                     return self._run_generator_sync(res)
             else:
                 return res

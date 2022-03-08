@@ -1,4 +1,5 @@
 from .exceptions import UserCodeException, unwrap_coro_exception
+from .interface import Interface
 
 
 class AsyncGeneratorContextManager:
@@ -63,7 +64,7 @@ class AsyncGeneratorContextManager:
         return coro
 
     def __enter__(self):
-        if self.synchronizer._is_async_context():
+        if self.synchronizer._get_interface() == Interface.ASYNC:
             raise RuntimeError(
                 "Attempt to use 'with' in async code. Did you mean 'async with'?"
             )
