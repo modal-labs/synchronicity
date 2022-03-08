@@ -9,7 +9,8 @@ import time
 import warnings
 
 from .contextlib import AsyncGeneratorContextManager
-from .exceptions import UserCodeException, wrap_coro_exception, unwrap_coro_exception
+from .exceptions import (UserCodeException, unwrap_coro_exception,
+                         wrap_coro_exception)
 from .interface import Interface
 
 _BUILTIN_ASYNC_METHODS = {
