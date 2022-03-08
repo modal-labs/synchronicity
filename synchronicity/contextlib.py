@@ -11,23 +11,25 @@ class AsyncGeneratorContextManager:
     TODO: add back support for filter_tracebacks (doesn't work in Python 3.6)
     """
 
-    def __init__(self, synchronizer, func, args, kwargs):
-        self.synchronizer = synchronizer
+    def __init__(self, synchronizer, interface, func, args, kwargs):
+        self._synchronizer = synchronizer
+        self._interface = interface
+
         # Run it in the correct thread
-        self.gen = synchronizer._run_generator_async(
+        self._gen = synchronizer._run_generator_async(
             func(*args, **kwargs), unwrap_user_excs=False
         )
 
     async def _enter(self):
         try:
-            return await self.gen.__anext__()
+            return await self._gen.__anext__()
         except StopAsyncIteration:
             raise RuntimeError("generator didn't yield") from None
 
     async def _exit(self, typ, value, traceback):
         if typ is None:
             try:
-                await self.gen.__anext__()
+                await self._gen.__anext__()
             except StopAsyncIteration:
                 return False
             else:
@@ -36,7 +38,7 @@ class AsyncGeneratorContextManager:
             if value is None:
                 value = typ()
             try:
-                ret = self.gen.athrow(typ, value, traceback)
+                ret = self._gen.athrow(typ, value, traceback)
                 await ret
             except StopAsyncIteration as exc:
                 return exc is not value
@@ -59,29 +61,30 @@ class AsyncGeneratorContextManager:
 
     def __aenter__(self):
         coro = self._enter()
-        coro = self.synchronizer._run_function_async(coro)
+        coro = self._synchronizer._run_function_async(coro)
         coro = unwrap_coro_exception(coro)
         return coro
 
     def __enter__(self):
-        if self.synchronizer._get_interface() == Interface.ASYNC:
+        runtime_interface = self._synchronizer._get_runtime_interface(self._interface)
+        if runtime_interface == Interface.ASYNC:
             raise RuntimeError(
                 "Attempt to use 'with' in async code. Did you mean 'async with'?"
             )
         try:
-            return self.synchronizer._run_function_sync(self._enter())
+            return self._synchronizer._run_function_sync(self._enter())
         except UserCodeException as uc_exc:
             raise uc_exc.exc from None
 
     def __aexit__(self, typ, value, traceback):
         coro = self._exit(typ, value, traceback)
-        coro = self.synchronizer._run_function_async(coro)
+        coro = self._synchronizer._run_function_async(coro)
         coro = unwrap_coro_exception(coro)
         return coro
 
     def __exit__(self, typ, value, traceback):
         try:
-            return self.synchronizer._run_function_sync(
+            return self._synchronizer._run_function_sync(
                 self._exit(typ, value, traceback)
             )
         except UserCodeException as uc_exc:
