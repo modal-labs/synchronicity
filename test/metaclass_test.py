@@ -10,7 +10,7 @@ def test_metaclass():
 
     class ObjectMetaclass(type):
         def __new__(metacls, name, bases, dct):
-            new_cls = s.create_class(Interface.BLOCKING, metacls, name, bases, dct)
+            new_cls = s.create_class(metacls, name, bases, dct)
             return new_cls
 
     class ObjectBase(metaclass=ObjectMetaclass):

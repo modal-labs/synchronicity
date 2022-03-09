@@ -241,7 +241,7 @@ class Synchronizer:
         setattr(f_wrapped, _WRAPPED_ATTR, True)
         return f_wrapped
 
-    def create_class(self, interface, cls_metaclass, cls_name, cls_bases, cls_dict):
+    def create_class(self, cls_metaclass, cls_name, cls_bases, cls_dict, interface=Interface.AUTODETECT):
         new_dict = {}
         for k, v in cls_dict.items():
             if k in _BUILTIN_ASYNC_METHODS:
@@ -268,7 +268,7 @@ class Synchronizer:
         cls_bases = (cls,)
         cls_dict = cls.__dict__
         return self.create_class(
-            interface, cls_metaclass, cls_name, cls_bases, cls_dict
+            cls_metaclass, cls_name, cls_bases, cls_dict, interface
         )
 
     def _wrap(self, object, interface):
