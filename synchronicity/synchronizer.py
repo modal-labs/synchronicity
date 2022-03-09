@@ -9,7 +9,8 @@ import time
 import warnings
 
 from .contextlib import AsyncGeneratorContextManager
-from .exceptions import UserCodeException, wrap_coro_exception, unwrap_coro_exception
+from .exceptions import UserCodeException, unwrap_coro_exception, wrap_coro_exception
+from .interface import Interface
 
 _BUILTIN_ASYNC_METHODS = {
     "__aiter__": "__iter__",
@@ -24,7 +25,11 @@ _RETURN_FUTURE_KWARG = "_future"
 class Synchronizer:
     """Helps you offer a blocking (synchronous) interface to asynchronous code."""
 
-    def __init__(self, multiwrap_warning=False, async_leakage_warning=True):
+    def __init__(
+        self,
+        multiwrap_warning=False,
+        async_leakage_warning=True,
+    ):
         self._multiwrap_warning = multiwrap_warning
         self._async_leakage_warning = async_leakage_warning
         self._loop = None
@@ -81,8 +86,13 @@ class Synchronizer:
             # Python 3.6 compatibility
             return asyncio._get_running_loop()
 
-    def _is_async_context(self):
-        return bool(self._get_running_loop())
+    def _get_runtime_interface(self, interface):
+        """Returns one out of Interface.ASYNC or Interface.BLOCKING"""
+        if interface == Interface.AUTODETECT:
+            return Interface.ASYNC if self._get_running_loop() else Interface.BLOCKING
+        else:
+            assert interface in (Interface.ASYNC, Interface.BLOCKING)
+            return interface
 
     def _wrap_check_async_leakage(self, coro):
         """Check if a coroutine returns another coroutine (or an async generator) and warn.
@@ -176,7 +186,7 @@ class Synchronizer:
                 value = exc
                 is_exc = True
 
-    def _wrap_callable(self, f, allow_futures=True):
+    def _wrap_callable(self, f, interface, allow_futures=True):
         if hasattr(f, _WRAPPED_ATTR):
             if self._multiwrap_warning:
                 warnings.warn(
@@ -188,12 +198,13 @@ class Synchronizer:
         def f_wrapped(*args, **kwargs):
             return_future = kwargs.pop(_RETURN_FUTURE_KWARG, False)
             res = f(*args, **kwargs)
-            is_async_context = self._is_async_context()
             is_coroutine = inspect.iscoroutine(res)
             is_asyncgen = inspect.isasyncgen(res)
+            runtime_interface = self._get_runtime_interface(interface)
+
             if return_future:
                 if not allow_futures:
-                    raise Exceptions("Can not return future for this function")
+                    raise Exception("Can not return future for this function")
                 elif is_coroutine:
                     return self._run_function_sync_future(res)
                 elif is_asyncgen:
@@ -203,7 +214,7 @@ class Synchronizer:
             elif is_coroutine:
                 # The run_function_* may throw UserCodeExceptions that
                 # need to be unwrapped here at the entrypoint
-                if is_async_context:
+                if runtime_interface == Interface.ASYNC:
                     if self._get_running_loop() == self._get_loop():
                         # See #27. This is a bit of a hack needed to "shortcut" the exception
                         # handling if we're within the same loop - there's no need to wrap and
@@ -212,7 +223,7 @@ class Synchronizer:
                     coro = self._run_function_async(res)
                     coro = unwrap_coro_exception(coro)
                     return coro
-                else:
+                elif runtime_interface == Interface.BLOCKING:
                     try:
                         return self._run_function_sync(res)
                     except UserCodeException as uc_exc:
@@ -220,9 +231,9 @@ class Synchronizer:
             elif is_asyncgen:
                 # Note that the _run_generator_* functions handle their own
                 # unwrapping of exceptions (this happens during yielding)
-                if is_async_context:
+                if runtime_interface == Interface.ASYNC:
                     return self._run_generator_async(res)
-                else:
+                elif runtime_interface == Interface.BLOCKING:
                     return self._run_generator_sync(res)
             else:
                 return res
@@ -230,43 +241,62 @@ class Synchronizer:
         setattr(f_wrapped, _WRAPPED_ATTR, True)
         return f_wrapped
 
-    def create_class(self, cls_metaclass, cls_name, cls_bases, cls_dict):
+    def create_class(self, cls_metaclass, cls_name, cls_bases, cls_dict, interface=Interface.AUTODETECT):
         new_dict = {}
         for k, v in cls_dict.items():
             if k in _BUILTIN_ASYNC_METHODS:
                 k_sync = _BUILTIN_ASYNC_METHODS[k]
                 new_dict[k] = v
-                new_dict[k_sync] = self._wrap_callable(v, allow_futures=False)
+                new_dict[k_sync] = self._wrap_callable(
+                    v, interface, allow_futures=False
+                )
             elif callable(v):
-                new_dict[k] = self._wrap_callable(v)
+                new_dict[k] = self._wrap_callable(v, interface)
             elif isinstance(v, staticmethod):
                 # TODO(erikbern): this feels pretty hacky
-                new_dict[k] = staticmethod(self._wrap_callable(v.__func__))
+                new_dict[k] = staticmethod(self._wrap_callable(v.__func__, interface))
             elif isinstance(v, classmethod):
                 # TODO(erikbern): this feels pretty hacky
-                new_dict[k] = classmethod(self._wrap_callable(v.__func__))
+                new_dict[k] = classmethod(self._wrap_callable(v.__func__, interface))
             else:
                 new_dict[k] = v
         return type.__new__(cls_metaclass, cls_name, cls_bases, new_dict)
 
-    def _wrap_class(self, cls):
+    def _wrap_class(self, cls, interface):
         cls_metaclass = type
         cls_name = cls.__name__
         cls_bases = (cls,)
         cls_dict = cls.__dict__
-        return self.create_class(cls_metaclass, cls_name, cls_bases, cls_dict)
+        return self.create_class(
+            cls_metaclass, cls_name, cls_bases, cls_dict, interface
+        )
 
-    def __call__(self, object):
+    def _wrap(self, object, interface):
         if inspect.isclass(object):
-            return self._wrap_class(object)
+            return self._wrap_class(object, interface)
         elif callable(object):
-            return self._wrap_callable(object)
+            return self._wrap_callable(object, interface)
         else:
             raise Exception("Argument %s is not a class or a callable" % object)
 
-    def asynccontextmanager(self, func):
+    def wrap_async(self, object):
+        return self._wrap(object, Interface.ASYNC)
+
+    def wrap_blocking(self, object):
+        return self._wrap(object, Interface.BLOCKING)
+
+    def wrap_autodetect(self, object):
+        # TODO(erikbern): deprecate?
+        return self._wrap(object, Interface.AUTODETECT)
+
+    def __call__(self, object):
+        return self.wrap_autodetect(object)
+
+    def asynccontextmanager(self, func, interface=Interface.AUTODETECT):
+        # TODO(erikbern): enforce defining the interface type
+
         @functools.wraps(func)
         def helper(*args, **kwargs):
-            return AsyncGeneratorContextManager(self, func, args, kwargs)
+            return AsyncGeneratorContextManager(self, interface, func, args, kwargs)
 
         return helper
