@@ -315,9 +315,11 @@ class Synchronizer:
     # New interface that doesn't mutate objects
 
     def mark(self, object):
-        for interface in Interface:
-            self._marked[(object, interface)] = self._wrap(object, interface)
+        if object not in self._marked:
+            self._marked[object] = dict([
+                (interface, self._wrap(object, interface)) for interface in Interface
+            ])
         return object
 
     def get(self, object, interface):
-        return self._marked[(object, interface)]
+        return self._marked[object][interface]
