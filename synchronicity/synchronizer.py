@@ -44,7 +44,6 @@ class Synchronizer:
     _PICKLE_ATTRS = [
         "_multiwrap_warning",
         "_async_leakage_warning",
-        "_marked",
     ]
 
     def __getstate__(self):
