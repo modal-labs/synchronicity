@@ -242,7 +242,16 @@ class Synchronizer:
                         # See #27. This is a bit of a hack needed to "shortcut" the exception
                         # handling if we're within the same loop - there's no need to wrap and
                         # unwrap the exception and it just adds unnecessary traceback spam.
-                        return res
+
+                        # TODO(erikbern): I don't this should ever happen other than in weird cases
+                        # like how we set the thread loop for pytest to the one in synchronicity
+                        # during Modal tests
+
+                        async def unwrap_coro():
+                            return self._translate(await res, interface)
+
+                        return unwrap_coro()
+
                     coro = self._run_function_async(res, interface)
                     coro = unwrap_coro_exception(coro)
                     return coro
