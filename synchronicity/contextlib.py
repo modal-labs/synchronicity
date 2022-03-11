@@ -17,9 +17,7 @@ class AsyncGeneratorContextManager:
 
         # Run it in the correct thread
         self._gen = synchronizer._run_generator_async(
-            func(*args, **kwargs),
-            self._interface,
-            unwrap_user_excs=False
+            func(*args, **kwargs), self._interface, unwrap_user_excs=False
         )
 
     async def _enter(self):

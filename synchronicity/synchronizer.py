@@ -378,9 +378,9 @@ class Synchronizer:
             setattr(object, _MARKED_ATTR, str(uuid.uuid4()))
         object_id = dct[_MARKED_ATTR]
         if object_id not in self._marked:
-            self._marked[object_id] = dict([
-                (interface, self._wrap(object, interface)) for interface in Interface
-            ])
+            self._marked[object_id] = dict(
+                [(interface, self._wrap(object, interface)) for interface in Interface]
+            )
         return object
 
     def get(self, object, interface):
