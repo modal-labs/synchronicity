@@ -291,6 +291,16 @@ class Synchronizer:
                 elif runtime_interface == Interface.BLOCKING:
                     return self._run_generator_sync(res, interface)
             else:
+                if callable(res):
+                    # TODO: this is needed for decorator wrappers that returns functions
+                    # Maybe a bit of a hacky special case that deserves its own decorator
+
+                    @functools.wraps(res)
+                    def f_wrapped(*args, **kwargs):
+                        return self._translate_out(res(*args, **kwargs), interface)
+
+                    return f_wrapped
+
                 return self._translate_out(res, interface)
 
         setattr(f_wrapped, _WRAPPED_ATTR, True)
