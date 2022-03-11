@@ -371,15 +371,17 @@ class Synchronizer:
     def mark(self, object):
         # We can't use hasattr here because it might read the attribute on a parent class
         dct = object.__dict__
-        if _MARKED_ATTR not in dct:
+        if _MARKED_ATTR in dct:
+            object_id = dct[_MARKED_ATTR]
+        else:
             # TODO: minor race condition risk here
-            # Setattr always writes to object.__dict__
-            setattr(object, _MARKED_ATTR, str(uuid.uuid4()))
-        object_id = dct[_MARKED_ATTR]
+            object_id = str(uuid.uuid4())
         if object_id not in self._marked:
             self._marked[object_id] = dict(
                 [(interface, self._wrap(object, interface)) for interface in Interface]
             )
+        # Setattr always writes to object.__dict__
+        setattr(object, _MARKED_ATTR, object_id)
         return object
 
     def get(self, object, interface):
@@ -416,4 +418,5 @@ class Synchronizer:
 
     def __call__(self, object):
         self.mark(object)
-        return self.get(object, Interface.AUTODETECT)
+        wrapped = self.get(object, Interface.AUTODETECT)
+        return wrapped
