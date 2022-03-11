@@ -106,7 +106,7 @@ def test_recursive():
         if n == 0:
             raise CustomException("boom!")
         else:
-            return await f(n-1)
+            return await f(n - 1)
 
     with pytest.raises(CustomException) as excinfo:
         f(10)

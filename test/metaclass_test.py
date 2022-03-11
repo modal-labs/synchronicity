@@ -5,6 +5,7 @@ from synchronicity import Synchronizer, Interface
 
 SLEEP_DELAY = 0.1
 
+
 def test_metaclass():
     s = Synchronizer()
 
@@ -16,12 +17,12 @@ def test_metaclass():
     class ObjectBase(metaclass=ObjectMetaclass):
         async def square(self, x):
             await asyncio.sleep(SLEEP_DELAY)
-            return x ** 2
+            return x**2
 
     class ObjectDerived(ObjectBase):
         async def cube(self, x):
             await asyncio.sleep(SLEEP_DELAY)
-            return x ** 3
+            return x**3
 
     # Test base class
     base = ObjectBase()
