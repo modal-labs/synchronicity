@@ -34,17 +34,20 @@ class Synchronizer:
         self._async_leakage_warning = async_leakage_warning
         self._loop = None
         self._thread = None
+        self._marked = {}  # classes/function we have pre-wrapped
         atexit.register(self._close_loop)
 
     def __getstate__(self):
         return {
             "_multiwrap_warning": self._multiwrap_warning,
             "_async_leakage_warning": self._async_leakage_warning,
+            "_marked": marked,
         }
 
     def __setstate__(self, d):
         self._multiwrap_warning = d["_multiwrap_warning"]
         self._async_leakage_warning = d["_async_leakage_warning"]
+        self._marked = d["_marked"]
 
     def _start_loop(self, loop):
         if self._loop and self._loop.is_running():
@@ -241,7 +244,14 @@ class Synchronizer:
         setattr(f_wrapped, _WRAPPED_ATTR, True)
         return f_wrapped
 
-    def create_class(self, cls_metaclass, cls_name, cls_bases, cls_dict, interface=Interface.AUTODETECT):
+    def create_class(
+        self,
+        cls_metaclass,
+        cls_name,
+        cls_bases,
+        cls_dict,
+        interface=Interface.AUTODETECT,
+    ):
         new_dict = {}
         for k, v in cls_dict.items():
             if k in _BUILTIN_ASYNC_METHODS:
@@ -300,3 +310,13 @@ class Synchronizer:
             return AsyncGeneratorContextManager(self, interface, func, args, kwargs)
 
         return helper
+
+    # New interface that doesn't mutate objects
+
+    def mark(self, object):
+        for interface in Interface:
+            self._marked[(object, interface)] = self._wrap(object, interface)
+        return object
+
+    def get(self, object, interface):
+        return self._marked[(object, interface)]
