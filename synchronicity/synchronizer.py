@@ -37,17 +37,18 @@ class Synchronizer:
         self._marked = {}  # classes/function we have pre-wrapped
         atexit.register(self._close_loop)
 
+    _PICKLE_ATTRS = [
+        "_multiwrap_warning",
+        "_async_leakage_warning",
+        "_marked",
+    ]
+
     def __getstate__(self):
-        return {
-            "_multiwrap_warning": self._multiwrap_warning,
-            "_async_leakage_warning": self._async_leakage_warning,
-            "_marked": marked,
-        }
+        return dict([(attr, getattr(self, attr)) for attr in self._PICKLE_ATTRS])
 
     def __setstate__(self, d):
-        self._multiwrap_warning = d["_multiwrap_warning"]
-        self._async_leakage_warning = d["_async_leakage_warning"]
-        self._marked = d["_marked"]
+        for attr in self._PICKLE_ATTRS:
+            setattr(self, attr, d[attr])
 
     def _start_loop(self, loop):
         if self._loop and self._loop.is_running():
