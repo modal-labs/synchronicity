@@ -17,7 +17,9 @@ class AsyncGeneratorContextManager:
 
         # Run it in the correct thread
         self._gen = synchronizer._run_generator_async(
-            func(*args, **kwargs), unwrap_user_excs=False
+            func(*args, **kwargs),
+            self._interface,
+            unwrap_user_excs=False
         )
 
     async def _enter(self):
@@ -61,7 +63,7 @@ class AsyncGeneratorContextManager:
 
     def __aenter__(self):
         coro = self._enter()
-        coro = self._synchronizer._run_function_async(coro)
+        coro = self._synchronizer._run_function_async(coro, self._interface)
         coro = unwrap_coro_exception(coro)
         return coro
 
@@ -72,20 +74,21 @@ class AsyncGeneratorContextManager:
                 "Attempt to use 'with' in async code. Did you mean 'async with'?"
             )
         try:
-            return self._synchronizer._run_function_sync(self._enter())
+            return self._synchronizer._run_function_sync(self._enter(), self._interface)
         except UserCodeException as uc_exc:
             raise uc_exc.exc from None
 
     def __aexit__(self, typ, value, traceback):
         coro = self._exit(typ, value, traceback)
-        coro = self._synchronizer._run_function_async(coro)
+        coro = self._synchronizer._run_function_async(coro, self._interface)
         coro = unwrap_coro_exception(coro)
         return coro
 
     def __exit__(self, typ, value, traceback):
         try:
             return self._synchronizer._run_function_sync(
-                self._exit(typ, value, traceback)
+                self._exit(typ, value, traceback),
+                self._interface,
             )
         except UserCodeException as uc_exc:
             raise uc_exc.exc from None
