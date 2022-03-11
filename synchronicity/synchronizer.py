@@ -280,6 +280,11 @@ class Synchronizer:
                 new_dict[k_sync] = self._wrap_callable(
                     v, interface, allow_futures=False
                 )
+            elif k == "__new__":
+                # We leverage __new__ to translate between classes
+                # Wrapping this one creates an infinite recurision
+                # TODO(erikbern): feels hacky to ignore this one?
+                pass
             elif callable(v):
                 new_dict[k] = self._wrap_callable(v, interface)
             elif isinstance(v, staticmethod):
