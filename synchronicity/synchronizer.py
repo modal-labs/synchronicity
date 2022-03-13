@@ -353,7 +353,7 @@ class Synchronizer:
     def _wrap(self, object, interface):
         if inspect.isclass(object):
             new_object = self._wrap_class(object, interface)
-        elif callable(object):  # TODO: don't include objects with a __call__ method
+        elif inspect.isfunction(object):
             new_object = self._wrap_callable(object, interface)
         else:
             raise Exception("Argument %s is not a class or a callable" % object)
