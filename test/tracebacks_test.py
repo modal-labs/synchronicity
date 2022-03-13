@@ -101,13 +101,14 @@ async def test_async_to_async_ctx_mgr():
 def test_recursive():
     s = Synchronizer()
 
-    @s
+    @s.mark
     async def f(n):
         if n == 0:
             raise CustomException("boom!")
         else:
-            return await f(n-1)
+            return await f(n - 1)
 
     with pytest.raises(CustomException) as excinfo:
-        f(10)
+        f_blocking = s.get_blocking(f)
+        f_blocking(10)
     check_traceback(excinfo.value)

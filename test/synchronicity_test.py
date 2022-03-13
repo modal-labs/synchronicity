@@ -11,7 +11,7 @@ SLEEP_DELAY = 0.1
 
 async def f(x):
     await asyncio.sleep(SLEEP_DELAY)
-    return x ** 2
+    return x**2
 
 
 async def f2(fn, x):
@@ -98,7 +98,7 @@ def test_function_many_parallel_sync_futures():
     futs = [g(i, _future=True) for i in range(100)]
     assert isinstance(futs[0], concurrent.futures.Future)
     assert time.time() - t0 < SLEEP_DELAY
-    assert [fut.result() for fut in futs] == [z ** 2 for z in range(100)]
+    assert [fut.result() for fut in futs] == [z**2 for z in range(100)]
     assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
 
 
@@ -110,7 +110,7 @@ async def test_function_many_parallel_async():
     coros = [g(i) for i in range(100)]
     assert inspect.iscoroutine(coros[0])
     assert time.time() - t0 < SLEEP_DELAY
-    assert await asyncio.gather(*coros) == [z ** 2 for z in range(100)]
+    assert await asyncio.gather(*coros) == [z**2 for z in range(100)]
     assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
 
 
@@ -169,7 +169,6 @@ def test_function_raises_baseexc_sync():
         f_raises_baseexc_s = s(f_raises_baseexc)
         f_raises_baseexc_s()
     assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
-
 
 
 async def gen(n):
@@ -272,7 +271,7 @@ class MyClass(Base):
 
     async def get_result(self):
         ret = await self._task
-        return ret ** 2
+        return ret**2
 
     async def __aenter__(self):
         await asyncio.sleep(SLEEP_DELAY)

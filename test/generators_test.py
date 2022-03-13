@@ -29,7 +29,7 @@ def test_generator_order_sync():
 
 async def async_bidirectional_producer(i):
     j = yield i
-    assert j == i ** 2
+    assert j == i**2
 
 
 @pytest.mark.asyncio

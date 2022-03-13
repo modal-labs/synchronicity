@@ -5,7 +5,7 @@ from synchronicity import Synchronizer
 
 
 def f(x):
-    return x ** 2
+    return x**2
 
 
 def test_multiwrap_warning(recwarn):
