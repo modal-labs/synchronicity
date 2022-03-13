@@ -152,6 +152,12 @@ class Synchronizer:
         else:
             return object
 
+    def _translate_coro_out(self, coro, interface):
+        async def unwrap_coro():
+            return self._translate_out(await coro, interface)
+
+        return unwrap_coro()
+
     def _run_function_sync(self, coro, interface):
         coro = wrap_coro_exception(coro)
         coro = self._wrap_check_async_leakage(coro)
@@ -164,8 +170,10 @@ class Synchronizer:
         coro = wrap_coro_exception(coro)
         coro = self._wrap_check_async_leakage(coro)
         loop = self._get_loop()
-        coro = unwrap_coro_exception(coro)  # A bit of a special case
-        return asyncio.run_coroutine_threadsafe(coro, loop)  # TODO: translate_out
+        # For futures, we unwrap the result at this point, not in f_wrapped
+        coro = unwrap_coro_exception(coro)
+        coro = self._translate_coro_out(coro, interface)
+        return asyncio.run_coroutine_threadsafe(coro, loop)
 
     async def _run_function_async(self, coro, interface):
         coro = wrap_coro_exception(coro)
@@ -268,11 +276,7 @@ class Synchronizer:
                         # TODO(erikbern): I don't this should ever happen other than in weird cases
                         # like how we set the thread loop for pytest to the one in synchronicity
                         # during Modal tests
-
-                        async def unwrap_coro():
-                            return self._translate_out(await res, interface)
-
-                        return unwrap_coro()
+                        return self._translate_coro_out(res, interface)
 
                     coro = self._run_function_async(res, interface)
                     coro = unwrap_coro_exception(coro)
