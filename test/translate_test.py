@@ -20,7 +20,16 @@ def test_translate():
             return self.foo
 
         def set(self, foo):
+            assert isinstance(foo, Foo)
             self.foo = foo
+
+        @classmethod
+        def cls_in(cls):
+            assert cls == FooProvider
+
+        @classmethod
+        def cls_out(cls):
+            return FooProvider
 
     Foo_blocking = s.get_blocking(Foo)
     FooProvider_blocking = s.get_blocking(FooProvider)
@@ -35,3 +44,7 @@ def test_translate():
     foo = Foo_blocking()
     foo_provider_blocking.set(foo)
     assert foo_provider_blocking.get() == foo
+
+    # Make sure classes are translated properly too
+    FooProvider_blocking.cls_in()
+    assert FooProvider_blocking.cls_out() == FooProvider_blocking

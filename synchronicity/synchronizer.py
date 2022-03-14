@@ -141,16 +141,26 @@ class Synchronizer:
 
     def _translate_in(self, object):
         # If it's an external object, translate it to the internal type
-        return getattr(object, _ORIGINAL_INST_ATTR, object)
+        if inspect.isclass(object):
+            return getattr(object, _ORIGINAL_CLS_ATTR, object)
+        else:
+            return getattr(object, _ORIGINAL_INST_ATTR, object)
 
     def _translate_out(self, object, interface):
         # If it's an internal object, translate it to the external interface
-        cls_dct = object.__class__.__dict__
-        if _WRAPPED_CLS_ATTR in cls_dct:
-            # This is an *instance* of a synchronized class, translate its type
-            return self._wrap_instance(object, interface)
+        if inspect.isclass(object):
+            cls_dct = object.__dict__
+            if _WRAPPED_CLS_ATTR in cls_dct:
+                return cls_dct[_WRAPPED_CLS_ATTR][interface]
+            else:
+                return object
         else:
-            return object
+            cls_dct = object.__class__.__dict__
+            if _WRAPPED_CLS_ATTR in cls_dct:
+                # This is an *instance* of a synchronized class, translate its type
+                return self._wrap_instance(object, interface)
+            else:
+                return object
 
     def _translate_coro_out(self, coro, interface):
         async def unwrap_coro():
