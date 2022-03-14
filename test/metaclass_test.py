@@ -1,4 +1,5 @@
 import asyncio
+import pytest
 import time
 
 from synchronicity import Synchronizer, Interface
