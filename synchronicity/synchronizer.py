@@ -21,8 +21,11 @@ _BUILTIN_ASYNC_METHODS = {
 _WRAPPED_ATTR = "_SYNCHRONICITY_HAS_WRAPPED_THIS_ALREADY"
 _RETURN_FUTURE_KWARG = "_future"
 
-_MARKED_ATTR = "_SYNCHRONICITY_MARKED"
-_ORIGINAL_ATTR = "_SYNCHRONICITY_ORIGINAL"
+_WRAPPED_CLS_ATTR = "_SYNCHRONICITY_WRAPPED_CLS"
+_ORIGINAL_CLS_ATTR = "_SYNCHRONICITY_ORIGINAL_CLS"
+
+_WRAPPED_INST_ATTR = "_SYNCHRONICITY_WRAPPED_INST"
+_ORIGINAL_INST_ATTR = "_SYNCHRONICITY_ORIGINAL_INST"
 
 
 class Synchronizer:
@@ -123,29 +126,29 @@ class Synchronizer:
 
         return coro_wrapped()
 
+    def _wrap_instance(self, object, interface):
+        # Takes an object and creates a new proxy object for it
+        # They will share the same underlying __dict__
+        interface_instances = object.__dict__.setdefault(_WRAPPED_INST_ATTR, {})
+        if interface not in interface_instances:
+            cls_dct = object.__class__.__dict__
+            interfaces = cls_dct[_WRAPPED_CLS_ATTR]
+            interface_cls = interfaces[interface]
+            new_object = object.__new__(interface_cls)
+            new_object.__dict__ = object.__dict__
+            interface_instances[interface] = new_object
+        return interface_instances[interface]
+
     def _translate_in(self, object):
         # If it's an external object, translate it to the internal type
-        cls_dct = object.__class__.__dict__
-        if _ORIGINAL_ATTR in cls_dct:
-            # We're passing a synchronized class into a function,
-            # translate it to the original type
-            new_cls = cls_dct[_ORIGINAL_ATTR]
-            new_object = object.__new__(new_cls)
-            new_object.__dict__ = object.__dict__
-            return new_object
-        else:
-            return object
+        return getattr(object, _ORIGINAL_INST_ATTR, object)
 
     def _translate_out(self, object, interface):
         # If it's an internal object, translate it to the external interface
         cls_dct = object.__class__.__dict__
-        if _MARKED_ATTR in cls_dct:
+        if _WRAPPED_CLS_ATTR in cls_dct:
             # This is an *instance* of a synchronized class, translate its type
-            # TODO: this is duplicated code in self.get so let's clean up
-            new_cls = cls_dct[_MARKED_ATTR][interface]
-            new_object = object.__new__(new_cls)
-            new_object.__dict__ = object.__dict__
-            return new_object
+            return self._wrap_instance(object, interface)
         else:
             return object
 
@@ -305,15 +308,28 @@ class Synchronizer:
         setattr(f_wrapped, _WRAPPED_ATTR, True)
         return f_wrapped
 
+    def _wrap_constructor(self, cls, interface):
+        """Returns a custom __new__ for the subclass."""
+        def my_new(wrapped_cls, *args, **kwargs):
+            base_class_instance = cls(*args, **kwargs)
+            wrapped_instance = self._wrap_instance(base_class_instance, interface)
+            return wrapped_instance
+
+        return my_new
+
     def create_class(
         self,
+        cls,
         cls_metaclass,
         cls_name,
         cls_bases,
         cls_dict,
         interface=Interface.AUTODETECT,
     ):
-        new_dict = {_WRAPPED_ATTR: True}
+        new_dict = {
+            _WRAPPED_ATTR: True,
+            "__new__": self._wrap_constructor(cls, interface),
+        }
         for k, v in cls_dict.items():
             if k in _BUILTIN_ASYNC_METHODS:
                 k_sync = _BUILTIN_ASYNC_METHODS[k]
@@ -321,10 +337,9 @@ class Synchronizer:
                 new_dict[k_sync] = self._wrap_callable(
                     v, interface, allow_futures=False
                 )
-            elif k == "__new__":
-                # We leverage __new__ to translate between classes
-                # Wrapping this one creates an infinite recurision
-                # TODO(erikbern): feels hacky to ignore this one?
+            elif k in ["__new__", "__init__"]:
+                # Skip constructors in the wrapped class
+                # Instead, delegate to the base class constructor and wrap it
                 pass
             elif callable(v):
                 new_dict[k] = self._wrap_callable(v, interface)
@@ -344,7 +359,7 @@ class Synchronizer:
         cls_bases = (cls,)
         cls_dict = cls.__dict__
         return self.create_class(
-            cls_metaclass, cls_name, cls_bases, cls_dict, interface
+            cls, cls_metaclass, cls_name, cls_bases, cls_dict, interface
         )
 
     def _wrap(self, object, interface):
@@ -354,7 +369,7 @@ class Synchronizer:
             new_object = self._wrap_callable(object, interface)
         else:
             raise Exception("Argument %s is not a class or a callable" % object)
-        setattr(new_object, _ORIGINAL_ATTR, object)
+        setattr(new_object, _ORIGINAL_CLS_ATTR, object)
         return new_object
 
     def asynccontextmanager(self, func, interface=Interface.AUTODETECT):
@@ -371,27 +386,24 @@ class Synchronizer:
     def mark(self, object):
         # We can't use hasattr here because it might read the attribute on a parent class
         dct = object.__dict__
-        if _MARKED_ATTR in dct:
+        if _WRAPPED_CLS_ATTR in dct:
             pass  # TODO: we should warn here
         interfaces = dict(
             [(interface, self._wrap(object, interface)) for interface in Interface]
         )
         # Setattr always writes to object.__dict__
-        setattr(object, _MARKED_ATTR, interfaces)
+        setattr(object, _WRAPPED_CLS_ATTR, interfaces)
         return object
 
     def get(self, object, interface):
         cls_dct = object.__class__.__dict__
         dct = object.__dict__
-        if _MARKED_ATTR in dct:
-            # This is a class or function, return the synchronized version
-            return dct[_MARKED_ATTR][interface]
-        elif _MARKED_ATTR in cls_dct:
+        if _WRAPPED_CLS_ATTR in cls_dct:
             # This is an *instance* of a synchronized class, translate its type
-            new_cls = cls_dct[_MARKED_ATTR][interface]
-            new_object = object.__new__(new_cls)
-            new_object.__dict__ = object.__dict__
-            return new_object
+            return self._wrap_instance(object, interface)
+        if _WRAPPED_CLS_ATTR in dct:
+            # This is a class or function, return the synchronized version
+            return dct[_WRAPPED_CLS_ATTR][interface]
         else:
             raise Exception(f"Class/function {object} has not been registered")
 
