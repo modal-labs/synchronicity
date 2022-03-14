@@ -1,7 +1,7 @@
 import pytest
 import traceback
 
-from synchronicity import Synchronizer
+from synchronicity import Interface, Synchronizer
 
 
 class CustomException(Exception):
@@ -101,7 +101,6 @@ async def test_async_to_async_ctx_mgr():
 def test_recursive():
     s = Synchronizer()
 
-    @s.mark
     async def f(n):
         if n == 0:
             raise CustomException("boom!")
@@ -109,6 +108,6 @@ def test_recursive():
             return await f(n - 1)
 
     with pytest.raises(CustomException) as excinfo:
-        f_blocking = s.get_blocking(f)
+        f_blocking = s.create(f)[Interface.BLOCKING]
         f_blocking(10)
     check_traceback(excinfo.value)

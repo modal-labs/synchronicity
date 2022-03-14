@@ -1,17 +1,15 @@
 import asyncio
 import pytest
 
-from synchronicity import Synchronizer
+from synchronicity import Interface, Synchronizer
 
 
 def test_translate():
     s = Synchronizer()
 
-    @s.mark
     class Foo:
         pass
 
-    @s.mark
     class FooProvider:
         def __init__(self):
             self.foo = Foo()
@@ -31,8 +29,8 @@ def test_translate():
         def cls_out(cls):
             return FooProvider
 
-    Foo_blocking = s.get_blocking(Foo)
-    FooProvider_blocking = s.get_blocking(FooProvider)
+    Foo_blocking = s.create(Foo)[Interface.BLOCKING]
+    FooProvider_blocking = s.create(FooProvider)[Interface.BLOCKING]
     foo_provider_blocking = FooProvider_blocking()
 
     # Make sure two instances translated out are the same
