@@ -7,7 +7,6 @@ from synchronicity import Synchronizer, Interface
 SLEEP_DELAY = 0.1
 
 
-@pytest.mark.skip("metaclass support is deprecated anyway")
 def test_metaclass():
     s = Synchronizer()
 

@@ -319,17 +319,16 @@ class Synchronizer:
 
     def create_class(
         self,
-        cls,
         cls_metaclass,
         cls_name,
         cls_bases,
         cls_dict,
+        wrapped_cls=None,
         interface=Interface.AUTODETECT,
     ):
-        new_dict = {
-            _WRAPPED_ATTR: True,
-            "__new__": self._wrap_constructor(cls, interface),
-        }
+        new_dict = {_WRAPPED_ATTR: True}
+        if wrapped_cls is not None:
+            new_dict["__new__"] = self._wrap_constructor(wrapped_cls, interface)
         for k, v in cls_dict.items():
             if k in _BUILTIN_ASYNC_METHODS:
                 k_sync = _BUILTIN_ASYNC_METHODS[k]
@@ -337,8 +336,8 @@ class Synchronizer:
                 new_dict[k_sync] = self._wrap_callable(
                     v, interface, allow_futures=False
                 )
-            elif k in ["__new__", "__init__"]:
-                # Skip constructors in the wrapped class
+            elif k == "__new__":
+                # Skip custom __new__ in the wrapped class
                 # Instead, delegate to the base class constructor and wrap it
                 pass
             elif callable(v):
@@ -359,7 +358,7 @@ class Synchronizer:
         cls_bases = (cls,)
         cls_dict = cls.__dict__
         return self.create_class(
-            cls, cls_metaclass, cls_name, cls_bases, cls_dict, interface
+            cls_metaclass, cls_name, cls_bases, cls_dict, cls, interface
         )
 
     def _wrap(self, object, interface):
