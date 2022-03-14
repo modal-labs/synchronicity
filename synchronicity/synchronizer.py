@@ -6,7 +6,6 @@ import inspect
 import queue
 import threading
 import time
-import uuid
 import warnings
 
 from .contextlib import AsyncGeneratorContextManager
@@ -38,7 +37,6 @@ class Synchronizer:
         self._async_leakage_warning = async_leakage_warning
         self._loop = None
         self._thread = None
-        self._marked = {}  # classes/function we have pre-wrapped
         atexit.register(self._close_loop)
 
     _PICKLE_ATTRS = [
@@ -144,8 +142,7 @@ class Synchronizer:
         if _MARKED_ATTR in cls_dct:
             # This is an *instance* of a synchronized class, translate its type
             # TODO: this is duplicated code in self.get so let's clean up
-            object_id = cls_dct[_MARKED_ATTR]
-            new_cls = self._marked[object_id][interface]
+            new_cls = cls_dct[_MARKED_ATTR][interface]
             new_object = object.__new__(new_cls)
             new_object.__dict__ = object.__dict__
             return new_object
@@ -375,16 +372,12 @@ class Synchronizer:
         # We can't use hasattr here because it might read the attribute on a parent class
         dct = object.__dict__
         if _MARKED_ATTR in dct:
-            object_id = dct[_MARKED_ATTR]
-        else:
-            # TODO: minor race condition risk here
-            object_id = str(uuid.uuid4())
-        if object_id not in self._marked:
-            self._marked[object_id] = dict(
-                [(interface, self._wrap(object, interface)) for interface in Interface]
-            )
+            pass  # TODO: we should warn here
+        interfaces = dict(
+            [(interface, self._wrap(object, interface)) for interface in Interface]
+        )
         # Setattr always writes to object.__dict__
-        setattr(object, _MARKED_ATTR, object_id)
+        setattr(object, _MARKED_ATTR, interfaces)
         return object
 
     def get(self, object, interface):
@@ -392,12 +385,10 @@ class Synchronizer:
         dct = object.__dict__
         if _MARKED_ATTR in dct:
             # This is a class or function, return the synchronized version
-            object_id = dct[_MARKED_ATTR]
-            return self._marked[object_id][interface]
+            return dct[_MARKED_ATTR][interface]
         elif _MARKED_ATTR in cls_dct:
             # This is an *instance* of a synchronized class, translate its type
-            object_id = cls_dct[_MARKED_ATTR]
-            new_cls = self._marked[object_id][interface]
+            new_cls = cls_dct[_MARKED_ATTR][interface]
             new_object = object.__new__(new_cls)
             new_object.__dict__ = object.__dict__
             return new_object
