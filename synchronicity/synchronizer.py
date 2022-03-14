@@ -395,15 +395,23 @@ class Synchronizer:
     # New interface that (almost) doesn't mutate objects
 
     def create(self, object, names={}):  # TODO: this should really be __call__ later
-        # We can't use hasattr here because it might read the attribute on a parent class
-        dct = object.__dict__
-        if _WRAPPED_CLS_ATTR in dct:
-            pass  # TODO: we should warn here
-        interfaces = dict(
-            [(interface, self._wrap(object, interface, names.get(interface, None))) for interface in Interface]
-        )
-        # Setattr always writes to object.__dict__
-        setattr(object, _WRAPPED_CLS_ATTR, interfaces)
+        cls_dct = object.__class__.__dict__
+        if _WRAPPED_CLS_ATTR in cls_dct:
+            # This is an instance, for which interfaces are created dynamically
+            interfaces = dict(
+                [(interface, self._wrap_instance(object, interface)) for interface in Interface]
+            )
+        else:
+            # This is a class or a function, which are pre-wrapped
+            # We can't use hasattr here because it might read the attribute on a parent class
+            dct = object.__dict__
+            if _WRAPPED_CLS_ATTR in dct:
+                pass  # TODO: we should warn here
+            interfaces = dict(
+                [(interface, self._wrap(object, interface, names.get(interface, None))) for interface in Interface]
+            )
+            # Setattr always writes to object.__dict__
+            setattr(object, _WRAPPED_CLS_ATTR, interfaces)
         return interfaces
 
     # Old interface that we should consider purging
