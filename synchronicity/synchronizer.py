@@ -141,14 +141,14 @@ class Synchronizer:
 
     def _translate_in(self, object):
         # If it's an external object, translate it to the internal type
-        if inspect.isclass(object):
+        if inspect.isclass(object):  # TODO: functions?
             return getattr(object, _ORIGINAL_CLS_ATTR, object)
         else:
             return getattr(object, _ORIGINAL_INST_ATTR, object)
 
     def _translate_out(self, object, interface):
         # If it's an internal object, translate it to the external interface
-        if inspect.isclass(object):
+        if inspect.isclass(object):  # TODO: functions?
             cls_dct = object.__dict__
             if _WRAPPED_CLS_ATTR in cls_dct:
                 return cls_dct[_WRAPPED_CLS_ATTR][interface]
