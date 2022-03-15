@@ -343,6 +343,7 @@ class Synchronizer:
             new_dict["__new__"] = self._wrap_constructor(wrapped_cls, interface)
         for k, v in cls_dict.items():
             if k in _BUILTIN_ASYNC_METHODS:
+                # TODO: we should only set the async or sync methods, not both
                 k_sync = _BUILTIN_ASYNC_METHODS[k]
                 new_dict[k] = v
                 new_dict[k_sync] = self._wrap_callable(
@@ -383,12 +384,13 @@ class Synchronizer:
         setattr(new_object, _ORIGINAL_CLS_ATTR, object)
         return new_object
 
-    def asynccontextmanager(self, func, interface=Interface.AUTODETECT):
-        # TODO(erikbern): enforce defining the interface type
+    def asynccontextmanager(self, func):
+        # Synchronize it (will force return type to be translated properly
+        self.create(AsyncGeneratorContextManager)
 
         @functools.wraps(func)
         def helper(*args, **kwargs):
-            return AsyncGeneratorContextManager(self, interface, func, args, kwargs)
+            return AsyncGeneratorContextManager(self, func, args, kwargs)
 
         return helper
 
@@ -413,6 +415,9 @@ class Synchronizer:
             # Setattr always writes to object.__dict__
             setattr(object, _WRAPPED_CLS_ATTR, interfaces)
         return interfaces
+
+    def is_synchronized(self, object):
+        return getattr(object, _WRAPPED_ATTR, False)
 
     # Old interface that we should consider purging
 
