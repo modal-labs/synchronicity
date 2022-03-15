@@ -313,7 +313,7 @@ class Synchronizer:
                 elif runtime_interface == Interface.BLOCKING:
                     return self._run_generator_sync(res, interface)
             else:
-                if inspect.isfunction(res):
+                if inspect.isfunction(res) or isinstance(res, functools.partial):  # TODO: HACKY HACK
                     # TODO: this is needed for decorator wrappers that returns functions
                     # Maybe a bit of a hacky special case that deserves its own decorator
                     @functools.wraps(res)
