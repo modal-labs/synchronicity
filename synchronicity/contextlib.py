@@ -40,8 +40,8 @@ def get_ctx_mgr_cls():
                     if exc is value:
                         return False
                     if (
-                            isinstance(value, (StopIteration, StopAsyncIteration))
-                            and exc.__cause__ is value
+                        isinstance(value, (StopIteration, StopAsyncIteration))
+                        and exc.__cause__ is value
                     ):
                         return False
                     raise
@@ -52,4 +52,3 @@ def get_ctx_mgr_cls():
                 raise RuntimeError("generator didn't stop after athrow()")
 
     return AsyncGeneratorContextManager
-

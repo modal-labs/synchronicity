@@ -313,13 +313,18 @@ class Synchronizer:
                 elif runtime_interface == Interface.BLOCKING:
                     return self._run_generator_sync(res, interface)
             else:
-                if inspect.isfunction(res) or isinstance(res, functools.partial):  # TODO: HACKY HACK
+                if inspect.isfunction(res) or isinstance(
+                    res, functools.partial
+                ):  # TODO: HACKY HACK
                     # TODO: this is needed for decorator wrappers that returns functions
                     # Maybe a bit of a hacky special case that deserves its own decorator
                     @functools.wraps(res)
                     def f_wrapped(*args, **kwargs):
                         args = tuple(self._translate_in(arg) for arg in args)
-                        kwargs = dict((key, self._translate_in(arg)) for key, arg in kwargs.items())
+                        kwargs = dict(
+                            (key, self._translate_in(arg))
+                            for key, arg in kwargs.items()
+                        )
                         f_res = res(*args, **kwargs)
                         return self._translate_out(f_res, interface)
 
@@ -334,6 +339,7 @@ class Synchronizer:
 
     def _wrap_constructor(self, cls, interface):
         """Returns a custom __new__ for the subclass."""
+
         def my_new(wrapped_cls, *args, **kwargs):
             base_class_instance = cls(*args, **kwargs)
             wrapped_instance = self._wrap_instance(base_class_instance, interface)
@@ -361,9 +367,7 @@ class Synchronizer:
                         v, interface, allow_futures=False
                     )
                 if interface in (Interface.ASYNC, Interface.AUTODETECT):
-                    new_dict[k] = self._wrap_callable(
-                        v, interface, allow_futures=False
-                    )
+                    new_dict[k] = self._wrap_callable(v, interface, allow_futures=False)
             elif k == "__new__":
                 # Skip custom __new__ in the wrapped class
                 # Instead, delegate to the base class constructor and wrap it
@@ -413,7 +417,10 @@ class Synchronizer:
         if _WRAPPED_CLS_ATTR in cls_dct:
             # This is an instance, for which interfaces are created dynamically
             interfaces = dict(
-                [(interface, self._wrap_instance(object, interface)) for interface in Interface]
+                [
+                    (interface, self._wrap_instance(object, interface))
+                    for interface in Interface
+                ]
             )
         else:
             # This is a class or a function, which are pre-wrapped
@@ -422,7 +429,13 @@ class Synchronizer:
             if _WRAPPED_CLS_ATTR in dct:
                 pass  # TODO: we should warn here
             interfaces = dict(
-                [(interface, self._wrap(object, interface, names.get(interface, None))) for interface in Interface]
+                [
+                    (
+                        interface,
+                        self._wrap(object, interface, names.get(interface, None)),
+                    )
+                    for interface in Interface
+                ]
             )
             # Setattr always writes to object.__dict__
             setattr(object, _WRAPPED_CLS_ATTR, interfaces)
