@@ -355,12 +355,15 @@ class Synchronizer:
             new_dict["__new__"] = self._wrap_constructor(wrapped_cls, interface)
         for k, v in cls_dict.items():
             if k in _BUILTIN_ASYNC_METHODS:
-                # TODO: we should only set the async or sync methods, not both
                 k_sync = _BUILTIN_ASYNC_METHODS[k]
-                new_dict[k] = v
-                new_dict[k_sync] = self._wrap_callable(
-                    v, interface, allow_futures=False
-                )
+                if interface in (Interface.BLOCKING, Interface.AUTODETECT):
+                    new_dict[k_sync] = self._wrap_callable(
+                        v, interface, allow_futures=False
+                    )
+                if interface in (Interface.ASYNC, Interface.AUTODETECT):
+                    new_dict[k] = self._wrap_callable(
+                        v, interface, allow_futures=False
+                    )
             elif k == "__new__":
                 # Skip custom __new__ in the wrapped class
                 # Instead, delegate to the base class constructor and wrap it
