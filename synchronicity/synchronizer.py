@@ -8,7 +8,7 @@ import threading
 import time
 import warnings
 
-from .contextlib import AsyncGeneratorContextManager
+from .contextlib import get_ctx_mgr_cls
 from .exceptions import UserCodeException, unwrap_coro_exception, wrap_coro_exception
 from .interface import Interface
 
@@ -40,6 +40,11 @@ class Synchronizer:
         self._async_leakage_warning = async_leakage_warning
         self._loop = None
         self._thread = None
+
+        # Prep a synchronized context manager
+        self._ctx_mgr_cls = get_ctx_mgr_cls()
+        self.create(self._ctx_mgr_cls)
+
         atexit.register(self._close_loop)
 
     _PICKLE_ATTRS = [
@@ -137,14 +142,18 @@ class Synchronizer:
             new_object = object.__new__(interface_cls)
             new_object.__dict__ = object.__dict__
             interface_instances[interface] = new_object
+            # Store a reference to the original object
+            # Note that it writes it to the original too because they share dicts
+            setattr(new_object, _ORIGINAL_INST_ATTR, object)
         return interface_instances[interface]
 
     def _translate_in(self, object):
         # If it's an external object, translate it to the internal type
         if inspect.isclass(object):  # TODO: functions?
-            return getattr(object, _ORIGINAL_CLS_ATTR, object)
+            new_object = getattr(object, _ORIGINAL_CLS_ATTR, object)
         else:
-            return getattr(object, _ORIGINAL_INST_ATTR, object)
+            new_object = getattr(object, _ORIGINAL_INST_ATTR, object)
+        return new_object
 
     def _translate_out(self, object, interface):
         # If it's an internal object, translate it to the external interface
@@ -240,7 +249,7 @@ class Synchronizer:
                 value = exc
                 is_exc = True
 
-    def _wrap_callable(self, f, interface, allow_futures=True):
+    def _wrap_callable(self, f, interface, name=None, allow_futures=True):
         if hasattr(f, _WRAPPED_ATTR):
             if self._multiwrap_warning:
                 warnings.warn(
@@ -304,17 +313,22 @@ class Synchronizer:
                 elif runtime_interface == Interface.BLOCKING:
                     return self._run_generator_sync(res, interface)
             else:
-                if inspect.isfunction(res):
+                if inspect.isfunction(res) or isinstance(res, functools.partial):  # TODO: HACKY HACK
                     # TODO: this is needed for decorator wrappers that returns functions
                     # Maybe a bit of a hacky special case that deserves its own decorator
                     @functools.wraps(res)
                     def f_wrapped(*args, **kwargs):
-                        return self._translate_out(res(*args, **kwargs), interface)
+                        args = tuple(self._translate_in(arg) for arg in args)
+                        kwargs = dict((key, self._translate_in(arg)) for key, arg in kwargs.items())
+                        f_res = res(*args, **kwargs)
+                        return self._translate_out(f_res, interface)
 
                     return f_wrapped
 
                 return self._translate_out(res, interface)
 
+        if name is not None:
+            f_wrapped.__name__ = name
         setattr(f_wrapped, _WRAPPED_ATTR, True)
         return f_wrapped
 
@@ -341,6 +355,7 @@ class Synchronizer:
             new_dict["__new__"] = self._wrap_constructor(wrapped_cls, interface)
         for k, v in cls_dict.items():
             if k in _BUILTIN_ASYNC_METHODS:
+                # TODO: we should only set the async or sync methods, not both
                 k_sync = _BUILTIN_ASYNC_METHODS[k]
                 new_dict[k] = v
                 new_dict[k_sync] = self._wrap_callable(
@@ -362,69 +377,53 @@ class Synchronizer:
                 new_dict[k] = v
         return type.__new__(cls_metaclass, cls_name, cls_bases, new_dict)
 
-    def _wrap_class(self, cls, interface):
+    def _wrap_class(self, cls, interface, name):
         cls_metaclass = type
-        cls_name = cls.__name__
+        cls_name = name if name is not None else cls.__name__
         cls_bases = (cls,)
         cls_dict = cls.__dict__
         return self.create_class(
             cls_metaclass, cls_name, cls_bases, cls_dict, cls, interface
         )
 
-    def _wrap(self, object, interface):
+    def _wrap(self, object, interface, name):
         if inspect.isclass(object):
-            new_object = self._wrap_class(object, interface)
+            new_object = self._wrap_class(object, interface, name)
         elif inspect.isfunction(object):
-            new_object = self._wrap_callable(object, interface)
+            new_object = self._wrap_callable(object, interface, name)
         else:
             raise Exception("Argument %s is not a class or a callable" % object)
         setattr(new_object, _ORIGINAL_CLS_ATTR, object)
         return new_object
 
-    def asynccontextmanager(self, func, interface=Interface.AUTODETECT):
-        # TODO(erikbern): enforce defining the interface type
-
+    def asynccontextmanager(self, func):
         @functools.wraps(func)
         def helper(*args, **kwargs):
-            return AsyncGeneratorContextManager(self, interface, func, args, kwargs)
+            return self._ctx_mgr_cls(func, args, kwargs)
 
         return helper
 
-    # New interface that doesn't mutate objects
+    # New interface that (almost) doesn't mutate objects
 
-    def mark(self, object):
-        # We can't use hasattr here because it might read the attribute on a parent class
-        dct = object.__dict__
-        if _WRAPPED_CLS_ATTR in dct:
-            pass  # TODO: we should warn here
-        interfaces = dict(
-            [(interface, self._wrap(object, interface)) for interface in Interface]
-        )
-        # Setattr always writes to object.__dict__
-        setattr(object, _WRAPPED_CLS_ATTR, interfaces)
-        return object
-
-    def get(self, object, interface):
+    def create(self, object, names={}):  # TODO: this should really be __call__ later
         cls_dct = object.__class__.__dict__
-        dct = object.__dict__
         if _WRAPPED_CLS_ATTR in cls_dct:
-            # This is an *instance* of a synchronized class, translate its type
-            return self._wrap_instance(object, interface)
-        if _WRAPPED_CLS_ATTR in dct:
-            # This is a class or function, return the synchronized version
-            return dct[_WRAPPED_CLS_ATTR][interface]
+            # This is an instance, for which interfaces are created dynamically
+            interfaces = dict(
+                [(interface, self._wrap_instance(object, interface)) for interface in Interface]
+            )
         else:
-            raise Exception(f"Class/function {object} has not been registered")
-
-    def get_async(self, object):
-        return self.get(object, Interface.ASYNC)
-
-    def get_blocking(self, object):
-        return self.get(object, Interface.BLOCKING)
-
-    def get_autodetect(self, object):
-        # TODO(erikbern): deprecate?
-        return self.get(object, Interface.AUTODETECT)
+            # This is a class or a function, which are pre-wrapped
+            # We can't use hasattr here because it might read the attribute on a parent class
+            dct = object.__dict__
+            if _WRAPPED_CLS_ATTR in dct:
+                pass  # TODO: we should warn here
+            interfaces = dict(
+                [(interface, self._wrap(object, interface, names.get(interface, None))) for interface in Interface]
+            )
+            # Setattr always writes to object.__dict__
+            setattr(object, _WRAPPED_CLS_ATTR, interfaces)
+        return interfaces
 
     def is_synchronized(self, object):
         return getattr(object, _WRAPPED_ATTR, False)
@@ -432,6 +431,5 @@ class Synchronizer:
     # Old interface that we should consider purging
 
     def __call__(self, object):
-        self.mark(object)
-        wrapped = self.get(object, Interface.AUTODETECT)
-        return wrapped
+        interfaces = self.create(object)
+        return interfaces[Interface.AUTODETECT]
