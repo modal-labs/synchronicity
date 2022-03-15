@@ -8,7 +8,7 @@ import threading
 import time
 import warnings
 
-from .contextlib import AsyncGeneratorContextManager
+from .contextlib import get_ctx_mgr_cls
 from .exceptions import UserCodeException, unwrap_coro_exception, wrap_coro_exception
 from .interface import Interface
 
@@ -40,6 +40,11 @@ class Synchronizer:
         self._async_leakage_warning = async_leakage_warning
         self._loop = None
         self._thread = None
+
+        # Prep a synchronized context manager
+        self._ctx_mgr_cls = get_ctx_mgr_cls()
+        self.create(self._ctx_mgr_cls)
+
         atexit.register(self._close_loop)
 
     _PICKLE_ATTRS = [
@@ -142,9 +147,10 @@ class Synchronizer:
     def _translate_in(self, object):
         # If it's an external object, translate it to the internal type
         if inspect.isclass(object):  # TODO: functions?
-            return getattr(object, _ORIGINAL_CLS_ATTR, object)
+            new_object = getattr(object, _ORIGINAL_CLS_ATTR, object)
         else:
-            return getattr(object, _ORIGINAL_INST_ATTR, object)
+            new_object = getattr(object, _ORIGINAL_INST_ATTR, object)
+        return new_object
 
     def _translate_out(self, object, interface):
         # If it's an internal object, translate it to the external interface
@@ -385,12 +391,9 @@ class Synchronizer:
         return new_object
 
     def asynccontextmanager(self, func):
-        # Synchronize it (will force return type to be translated properly
-        self.create(AsyncGeneratorContextManager)
-
         @functools.wraps(func)
         def helper(*args, **kwargs):
-            return AsyncGeneratorContextManager(self, func, args, kwargs)
+            return self._ctx_mgr_cls(func, args, kwargs)
 
         return helper
 
