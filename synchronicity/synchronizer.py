@@ -142,6 +142,9 @@ class Synchronizer:
             new_object = object.__new__(interface_cls)
             new_object.__dict__ = object.__dict__
             interface_instances[interface] = new_object
+            # Store a reference to the original object
+            # Note that it writes it to the original too because they share dicts
+            setattr(new_object, _ORIGINAL_INST_ATTR, object)
         return interface_instances[interface]
 
     def _translate_in(self, object):
@@ -315,7 +318,10 @@ class Synchronizer:
                     # Maybe a bit of a hacky special case that deserves its own decorator
                     @functools.wraps(res)
                     def f_wrapped(*args, **kwargs):
-                        return self._translate_out(res(*args, **kwargs), interface)
+                        args = tuple(self._translate_in(arg) for arg in args)
+                        kwargs = dict((key, self._translate_in(arg)) for key, arg in kwargs.items())
+                        f_res = res(*args, **kwargs)
+                        return self._translate_out(f_res, interface)
 
                     return f_wrapped
 

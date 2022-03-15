@@ -18,7 +18,7 @@ def test_translate():
             return self.foo
 
         def set(self, foo):
-            assert isinstance(foo, Foo)
+            assert type(foo) == Foo
             self.foo = foo
 
         @classmethod
@@ -29,8 +29,10 @@ def test_translate():
         def cls_out(cls):
             return FooProvider
 
-    Foo_blocking = s.create(Foo)[Interface.BLOCKING]
-    FooProvider_blocking = s.create(FooProvider)[Interface.BLOCKING]
+    names = {Interface.BLOCKING: "Foo_blocking"}
+    Foo_blocking = s.create(Foo, names)[Interface.BLOCKING]
+    names = {Interface.BLOCKING: "FooProvider_blocking"}
+    FooProvider_blocking = s.create(FooProvider, names)[Interface.BLOCKING]
     foo_provider_blocking = FooProvider_blocking()
 
     # Make sure two instances translated out are the same
@@ -40,6 +42,7 @@ def test_translate():
 
     # Translate an object in and then back out, make sure it's the same
     foo = Foo_blocking()
+    assert type(foo) != Foo
     foo_provider_blocking.set(foo)
     assert foo_provider_blocking.get() == foo
 
