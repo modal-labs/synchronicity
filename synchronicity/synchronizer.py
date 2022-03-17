@@ -302,7 +302,6 @@ class Synchronizer:
                 )
             return f
 
-        @functools.wraps(f)
         def f_wrapped(*args, **kwargs):
             return_future = kwargs.pop(_RETURN_FUTURE_KWARG, False)
 
@@ -374,8 +373,10 @@ class Synchronizer:
 
                 return self._translate_out(res, interface)
 
-        if name is not None:
-            f_wrapped.__name__ = name
+        f_wrapped.__name__ = name if name is not None else f.__name__
+        f_wrapped.__qualname__ = name if name is not None else f.__qualname__
+        f_wrapped.__module__ = f.__module__
+        f_wrapped.__doc__ = f.__doc__
         setattr(f_wrapped, _ORIGINAL_ATTR, f)
         return f_wrapped
 
@@ -438,6 +439,11 @@ class Synchronizer:
         )
 
     def _wrap_class_or_function(self, object, interface):
+        if _WRAPPED_ATTR not in object.__dict__:
+            setattr(object, _WRAPPED_ATTR, {})
+        interfaces = object.__dict__[_WRAPPED_ATTR]
+        if interface in interfaces:
+            return interfaces[interface]
         name = self.get_name(object, interface)
         if inspect.isclass(object):
             new_object = self._wrap_class(object, interface, name)
@@ -445,6 +451,7 @@ class Synchronizer:
             new_object = self._wrap_callable(object, interface, name)
         else:
             raise Exception("Argument %s is not a class or a callable" % object)
+        interfaces[interface] = new_object
         return new_object
 
     def asynccontextmanager(self, func):
@@ -457,32 +464,19 @@ class Synchronizer:
     # New interface that (almost) doesn't mutate objects
 
     def create(self, object):  # TODO: this should really be __call__ later
-        cls_dct = object.__class__.__dict__
-        if _WRAPPED_ATTR in cls_dct:
-            # This is an instance, for which interfaces are created dynamically
-            interfaces = dict(
-                [
-                    (interface, self._wrap_instance(object, interface))
-                    for interface in Interface
-                ]
-            )
+        if inspect.isclass(object) or inspect.isfunction(object):
+            # This is a class/function, for which we cache the interfaces
+            interfaces = {}
+            for interface in Interface:
+                interfaces[interface] = self._wrap_class_or_function(object, interface)
+            return interfaces
+        elif _WRAPPED_ATTR in object.__class__.__dict__:
+            # TODO: this requires that the class is already synchronized
+            interfaces = {}
+            for interface in Interface:
+                interfaces[interface] = self._wrap_instance(object, interface)
         else:
-            # This is a class or a function, which are pre-wrapped
-            # We can't use hasattr here because it might read the attribute on a parent class
-            dct = object.__dict__
-            if _WRAPPED_ATTR in dct:
-                pass  # TODO: we should warn here
-            interfaces = dict(
-                [
-                    (
-                        interface,
-                        self._wrap_class_or_function(object, interface),
-                    )
-                    for interface in Interface
-                ]
-            )
-            # Setattr always writes to object.__dict__
-            setattr(object, _WRAPPED_ATTR, interfaces)
+            raise Exception("Can only wrap classes, functions, and instances of synchronized classes")
         return interfaces
 
     def is_synchronized(self, object):
