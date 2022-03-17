@@ -147,7 +147,7 @@ class Synchronizer:
             setattr(new_object, _ORIGINAL_INST_ATTR, object)
         return interface_instances[interface]
 
-    def _translate_in(self, object):
+    def _translate_scalar_in(self, object):
         # If it's an external object, translate it to the internal type
         if inspect.isclass(object):  # TODO: functions?
             new_object = getattr(object, _ORIGINAL_CLS_ATTR, object)
@@ -155,7 +155,7 @@ class Synchronizer:
             new_object = getattr(object, _ORIGINAL_INST_ATTR, object)
         return new_object
 
-    def _translate_out(self, object, interface):
+    def _translate_scalar_out(self, object, interface):
         # If it's an internal object, translate it to the external interface
         if inspect.isclass(object):  # TODO: functions?
             cls_dct = object.__dict__
@@ -170,6 +170,27 @@ class Synchronizer:
                 return self._wrap_instance(object, interface)
             else:
                 return object
+
+    def _recurse_map(self, mapper, object):
+        print(f"_recurse_map({mapper}, {object})")
+        if type(object) == list:
+            return list(self._recurse_map(mapper, item) for item in object)
+        elif type(object) == tuple:
+            return tuple(self._recurse_map(mapper, item) for item in object)
+        elif type(object) == dict:
+            return dict((key, self._recurse_map(mapper, item)) for key, item in object.items())
+        else:
+            return mapper(object)
+
+    def _translate_in(self, object):
+        res = self._recurse_map(self._translate_scalar_in, object)
+        print(object, "->", res)
+        return res
+
+    def _translate_out(self, object, interface):
+        res = self._recurse_map(lambda scalar: self._translate_scalar_out(scalar, interface), object)
+        print(object, "->", res)
+        return res
 
     def _translate_coro_out(self, coro, interface):
         async def unwrap_coro():
@@ -268,8 +289,8 @@ class Synchronizer:
 
             # If this gets called with an argument that represents an external type,
             # translate it into an internal type
-            args = tuple(self._translate_in(arg) for arg in args)
-            kwargs = dict((key, self._translate_in(arg)) for key, arg in kwargs.items())
+            args = self._translate_in(args)
+            kwargs = self._translate_in(kwargs)
 
             # Call the function
             res = f(*args, **kwargs)
@@ -325,11 +346,8 @@ class Synchronizer:
                     # Maybe a bit of a hacky special case that deserves its own decorator
                     @functools.wraps(res)
                     def f_wrapped(*args, **kwargs):
-                        args = tuple(self._translate_in(arg) for arg in args)
-                        kwargs = dict(
-                            (key, self._translate_in(arg))
-                            for key, arg in kwargs.items()
-                        )
+                        args = self._translate_in(args)
+                        kwargs = self._translate_in(kwargs)
                         f_res = res(*args, **kwargs)
                         return self._translate_out(f_res, interface)
 
@@ -447,7 +465,11 @@ class Synchronizer:
         return interfaces
 
     def is_synchronized(self, object):
-        return getattr(object, _WRAPPED_ATTR, False)
+        # TODO: add tests for this
+        if inspect.isclass(object) or inspect.isfunction(object):
+            return getattr(object, _WRAPPED_ATTR, False)
+        else:
+            return getattr(object.__class__, _WRAPPED_ATTR, False)
 
     # Old interface that we should consider purging
 
