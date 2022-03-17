@@ -17,6 +17,9 @@ def test_translate():
         def get(self):
             return self.foo
 
+        def get2(self):
+            return [self.foo, self.foo]
+
         def set(self, foo):
             assert type(foo) == Foo
             self.foo = foo
@@ -39,6 +42,10 @@ def test_translate():
     foo1 = foo_provider_blocking.get()
     foo2 = foo_provider_blocking.get()
     assert foo1 == foo2
+
+    # Make sure we can return a list
+    foos = foo_provider_blocking.get2()
+    return foos == [foo1, foo2]
 
     # Translate an object in and then back out, make sure it's the same
     foo = Foo_blocking()
