@@ -3,8 +3,10 @@ import pytest
 
 from synchronicity import Synchronizer
 
+events = []
 
-async def async_producer(events):
+
+async def async_producer():
     for i in range(10):
         events.append("producer")
         yield i
@@ -12,17 +14,17 @@ async def async_producer(events):
 
 @pytest.mark.asyncio
 async def test_generator_order_async():
-    events = []
+    events.clear()
     async_producer_synchronized = Synchronizer()(async_producer)
-    async for i in async_producer_synchronized(events):
+    async for i in async_producer_synchronized():
         events.append("consumer")
     assert events == ["producer", "consumer"] * 10
 
 
 def test_generator_order_sync():
-    events = []
+    events.clear()
     async_producer_synchronized = Synchronizer()(async_producer)
-    for i in async_producer_synchronized(events):
+    for i in async_producer_synchronized():
         events.append("consumer")
     assert events == ["producer", "consumer"] * 10
 
