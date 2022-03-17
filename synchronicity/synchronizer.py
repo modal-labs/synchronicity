@@ -18,7 +18,6 @@ _BUILTIN_ASYNC_METHODS = {
     "__aexit__": "__exit__",
 }
 
-_WRAPPED_ATTR = "_SYNCHRONICITY_HAS_WRAPPED_THIS_ALREADY"
 _RETURN_FUTURE_KWARG = "_future"
 
 _WRAPPED_CLS_ATTR = "_SYNCHRONICITY_WRAPPED_CLS"
@@ -271,7 +270,7 @@ class Synchronizer:
                 is_exc = True
 
     def _wrap_callable(self, f, interface, name=None, allow_futures=True):
-        if hasattr(f, _WRAPPED_ATTR):
+        if hasattr(f, _ORIGINAL_CLS_ATTR):
             if self._multiwrap_warning:
                 warnings.warn(
                     f"Function {f} is already wrapped, but getting wrapped again"
@@ -352,7 +351,7 @@ class Synchronizer:
 
         if name is not None:
             f_wrapped.__name__ = name
-        setattr(f_wrapped, _WRAPPED_ATTR, True)
+        setattr(f_wrapped, _ORIGINAL_CLS_ATTR, f)
         return f_wrapped
 
     def _wrap_constructor(self, cls, interface):
@@ -374,7 +373,7 @@ class Synchronizer:
         wrapped_cls=None,
         interface=Interface.AUTODETECT,
     ):
-        new_dict = {_WRAPPED_ATTR: True}
+        new_dict = {}
         if wrapped_cls is not None:
             new_dict["__new__"] = self._wrap_constructor(wrapped_cls, interface)
         for k, v in cls_dict.items():
@@ -464,9 +463,9 @@ class Synchronizer:
     def is_synchronized(self, object):
         # TODO: add tests for this
         if inspect.isclass(object) or inspect.isfunction(object):
-            return getattr(object, _WRAPPED_ATTR, False)
+            return getattr(object, _ORIGINAL_CLS_ATTR, False)
         else:
-            return getattr(object.__class__, _WRAPPED_ATTR, False)
+            return getattr(object.__class__, _ORIGINAL_CLS_ATTR, False)
 
     # Old interface that we should consider purging
 
