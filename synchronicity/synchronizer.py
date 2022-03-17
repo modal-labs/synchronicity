@@ -489,9 +489,9 @@ class Synchronizer:
     def is_synchronized(self, object):
         # TODO: add tests for this
         if inspect.isclass(object) or inspect.isfunction(object):
-            return getattr(object, _ORIGINAL_ATTR, False)
+            return hasattr(object, _ORIGINAL_ATTR)
         else:
-            return getattr(object.__class__, _ORIGINAL_ATTR, False)
+            return hasattr(object.__class__, _ORIGINAL_ATTR)
 
     # Old interface that we should consider purging
 
