@@ -84,10 +84,10 @@ class Synchronizer:
         if self._thread is not None:
             self._thread.join()
 
-    def _get_loop(self):
-        if self._loop is not None:
-            return self._loop
-        return self._start_loop(asyncio.new_event_loop())
+    def _get_loop(self, start=False):
+        if self._loop is None and start:
+            return self._start_loop(asyncio.new_event_loop())
+        return self._loop
 
     def _get_running_loop(self):
         if hasattr(asyncio, "get_running_loop"):
@@ -178,9 +178,14 @@ class Synchronizer:
         return unwrap_coro()
 
     def _run_function_sync(self, coro, interface):
+        current_loop = self._get_running_loop()
+        loop = self._get_loop()
+        if loop is not None and loop == current_loop:
+            raise Exception("Deadlock detected: calling a sync function from the synchronizer loop")
+
         coro = wrap_coro_exception(coro)
         coro = self._wrap_check_async_leakage(coro)
-        loop = self._get_loop()
+        loop = self._get_loop(start=True)
         fut = asyncio.run_coroutine_threadsafe(coro, loop)
         value = fut.result()
         return self._translate_out(value, interface)
@@ -188,7 +193,7 @@ class Synchronizer:
     def _run_function_sync_future(self, coro, interface):
         coro = wrap_coro_exception(coro)
         coro = self._wrap_check_async_leakage(coro)
-        loop = self._get_loop()
+        loop = self._get_loop(start=True)
         # For futures, we unwrap the result at this point, not in f_wrapped
         coro = unwrap_coro_exception(coro)
         coro = self._translate_coro_out(coro, interface)
@@ -198,7 +203,7 @@ class Synchronizer:
         coro = wrap_coro_exception(coro)
         coro = self._wrap_check_async_leakage(coro)
         current_loop = self._get_running_loop()
-        loop = self._get_loop()
+        loop = self._get_loop(start=True)
         if loop == current_loop:
             value = await coro
         else:
