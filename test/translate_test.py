@@ -32,27 +32,27 @@ def test_translate():
         def cls_out(cls):
             return FooProvider
 
-    names = {Interface.BLOCKING: "Foo_blocking"}
-    Foo_blocking = s.create(Foo, names)[Interface.BLOCKING]
-    names = {Interface.BLOCKING: "FooProvider_blocking"}
-    FooProvider_blocking = s.create(FooProvider, names)[Interface.BLOCKING]
-    foo_provider_blocking = FooProvider_blocking()
+    BlockingFoo = s.create(Foo)[Interface.BLOCKING]
+    assert BlockingFoo.__name__ == "BlockingFoo"
+    BlockingFooProvider = s.create(FooProvider)[Interface.BLOCKING]
+    assert BlockingFooProvider.__name__ == "BlockingFooProvider"
+    blocking_foo_provider = BlockingFooProvider()
 
     # Make sure two instances translated out are the same
-    foo1 = foo_provider_blocking.get()
-    foo2 = foo_provider_blocking.get()
+    foo1 = blocking_foo_provider.get()
+    foo2 = blocking_foo_provider.get()
     assert foo1 == foo2
 
     # Make sure we can return a list
-    foos = foo_provider_blocking.get2()
+    foos = blocking_foo_provider.get2()
     return foos == [foo1, foo2]
 
     # Translate an object in and then back out, make sure it's the same
-    foo = Foo_blocking()
+    foo = BlockingFoo()
     assert type(foo) != Foo
-    foo_provider_blocking.set(foo)
-    assert foo_provider_blocking.get() == foo
+    blocking_foo_provider.set(foo)
+    assert blocking_foo_provider.get() == foo
 
     # Make sure classes are translated properly too
-    FooProvider_blocking.cls_in()
-    assert FooProvider_blocking.cls_out() == FooProvider_blocking
+    BlockingFooProvider.cls_in()
+    assert BlockingFooProvider.cls_out() == BlockingFooProvider
