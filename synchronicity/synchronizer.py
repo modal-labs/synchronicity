@@ -172,7 +172,6 @@ class Synchronizer:
                 return object
 
     def _recurse_map(self, mapper, object):
-        print(f"_recurse_map({mapper}, {object})")
         if type(object) == list:
             return list(self._recurse_map(mapper, item) for item in object)
         elif type(object) == tuple:
@@ -183,14 +182,10 @@ class Synchronizer:
             return mapper(object)
 
     def _translate_in(self, object):
-        res = self._recurse_map(self._translate_scalar_in, object)
-        print(object, "->", res)
-        return res
+        return self._recurse_map(self._translate_scalar_in, object)
 
     def _translate_out(self, object, interface):
-        res = self._recurse_map(lambda scalar: self._translate_scalar_out(scalar, interface), object)
-        print(object, "->", res)
-        return res
+        return self._recurse_map(lambda scalar: self._translate_scalar_out(scalar, interface), object)
 
     def _translate_coro_out(self, coro, interface):
         async def unwrap_coro():
@@ -405,6 +400,8 @@ class Synchronizer:
                 new_dict[k] = classmethod(self._wrap_callable(v.__func__, interface))
             else:
                 new_dict[k] = v
+
+        # TODO: we don't wrap inherited methods! This seems like a bug
         return type.__new__(cls_metaclass, cls_name, cls_bases, new_dict)
 
     def _wrap_class(self, cls, interface, name):
