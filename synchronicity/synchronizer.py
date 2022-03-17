@@ -447,7 +447,11 @@ class Synchronizer:
         return interfaces
 
     def is_synchronized(self, object):
-        return getattr(object, _WRAPPED_ATTR, False)
+        # TODO: add tests for this
+        if inspect.isclass(object) or inspect.isfunction(object):
+            return getattr(object, _WRAPPED_ATTR, False)
+        else:
+            return getattr(object.__class__, _WRAPPED_ATTR, False)
 
     # Old interface that we should consider purging
 
