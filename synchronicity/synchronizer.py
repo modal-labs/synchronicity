@@ -20,9 +20,11 @@ _BUILTIN_ASYNC_METHODS = {
 
 _RETURN_FUTURE_KWARG = "_future"
 
-_WRAPPED_CLS_ATTR = "_SYNCHRONICITY_WRAPPED_CLS"
-_ORIGINAL_CLS_ATTR = "_SYNCHRONICITY_ORIGINAL_CLS"
+# For classes and functions
+_WRAPPED_ATTR = "_SYNCHRONICITY_WRAPPED_CLS"
+_ORIGINAL_ATTR = "_SYNCHRONICITY_ORIGINAL_CLS"
 
+# For instances
 _WRAPPED_INST_ATTR = "_SYNCHRONICITY_WRAPPED_INST"
 _ORIGINAL_INST_ATTR = "_SYNCHRONICITY_ORIGINAL_INST"
 
@@ -136,7 +138,7 @@ class Synchronizer:
         interface_instances = object.__dict__.setdefault(_WRAPPED_INST_ATTR, {})
         if interface not in interface_instances:
             cls_dct = object.__class__.__dict__
-            interfaces = cls_dct[_WRAPPED_CLS_ATTR]
+            interfaces = cls_dct[_WRAPPED_ATTR]
             interface_cls = interfaces[interface]
             new_object = object.__new__(interface_cls)
             new_object.__dict__ = object.__dict__
@@ -149,7 +151,7 @@ class Synchronizer:
     def _translate_scalar_in(self, object):
         # If it's an external object, translate it to the internal type
         if inspect.isclass(object):  # TODO: functions?
-            new_object = getattr(object, _ORIGINAL_CLS_ATTR, object)
+            new_object = getattr(object, _ORIGINAL_ATTR, object)
         else:
             new_object = getattr(object, _ORIGINAL_INST_ATTR, object)
         return new_object
@@ -158,13 +160,13 @@ class Synchronizer:
         # If it's an internal object, translate it to the external interface
         if inspect.isclass(object):  # TODO: functions?
             cls_dct = object.__dict__
-            if _WRAPPED_CLS_ATTR in cls_dct:
-                return cls_dct[_WRAPPED_CLS_ATTR][interface]
+            if _WRAPPED_ATTR in cls_dct:
+                return cls_dct[_WRAPPED_ATTR][interface]
             else:
                 return object
         else:
             cls_dct = object.__class__.__dict__
-            if _WRAPPED_CLS_ATTR in cls_dct:
+            if _WRAPPED_ATTR in cls_dct:
                 # This is an *instance* of a synchronized class, translate its type
                 return self._wrap_instance(object, interface)
             else:
@@ -270,7 +272,7 @@ class Synchronizer:
                 is_exc = True
 
     def _wrap_callable(self, f, interface, name=None, allow_futures=True):
-        if hasattr(f, _ORIGINAL_CLS_ATTR):
+        if hasattr(f, _ORIGINAL_ATTR):
             if self._multiwrap_warning:
                 warnings.warn(
                     f"Function {f} is already wrapped, but getting wrapped again"
@@ -351,7 +353,7 @@ class Synchronizer:
 
         if name is not None:
             f_wrapped.__name__ = name
-        setattr(f_wrapped, _ORIGINAL_CLS_ATTR, f)
+        setattr(f_wrapped, _ORIGINAL_ATTR, f)
         return f_wrapped
 
     def _wrap_constructor(self, cls, interface):
@@ -419,7 +421,7 @@ class Synchronizer:
             new_object = self._wrap_callable(object, interface, name)
         else:
             raise Exception("Argument %s is not a class or a callable" % object)
-        setattr(new_object, _ORIGINAL_CLS_ATTR, object)
+        setattr(new_object, _ORIGINAL_ATTR, object)
         return new_object
 
     def asynccontextmanager(self, func):
@@ -433,7 +435,7 @@ class Synchronizer:
 
     def create(self, object, names={}):  # TODO: this should really be __call__ later
         cls_dct = object.__class__.__dict__
-        if _WRAPPED_CLS_ATTR in cls_dct:
+        if _WRAPPED_ATTR in cls_dct:
             # This is an instance, for which interfaces are created dynamically
             interfaces = dict(
                 [
@@ -445,7 +447,7 @@ class Synchronizer:
             # This is a class or a function, which are pre-wrapped
             # We can't use hasattr here because it might read the attribute on a parent class
             dct = object.__dict__
-            if _WRAPPED_CLS_ATTR in dct:
+            if _WRAPPED_ATTR in dct:
                 pass  # TODO: we should warn here
             interfaces = dict(
                 [
@@ -457,15 +459,15 @@ class Synchronizer:
                 ]
             )
             # Setattr always writes to object.__dict__
-            setattr(object, _WRAPPED_CLS_ATTR, interfaces)
+            setattr(object, _WRAPPED_ATTR, interfaces)
         return interfaces
 
     def is_synchronized(self, object):
         # TODO: add tests for this
         if inspect.isclass(object) or inspect.isfunction(object):
-            return getattr(object, _ORIGINAL_CLS_ATTR, False)
+            return getattr(object, _ORIGINAL_ATTR, False)
         else:
-            return getattr(object.__class__, _ORIGINAL_CLS_ATTR, False)
+            return getattr(object.__class__, _ORIGINAL_ATTR, False)
 
     # Old interface that we should consider purging
 
