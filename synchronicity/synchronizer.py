@@ -201,7 +201,9 @@ class Synchronizer:
         elif type(object) == tuple:
             return tuple(self._recurse_map(mapper, item) for item in object)
         elif type(object) == dict:
-            return dict((key, self._recurse_map(mapper, item)) for key, item in object.items())
+            return dict(
+                (key, self._recurse_map(mapper, item)) for key, item in object.items()
+            )
         else:
             return mapper(object)
 
@@ -209,7 +211,9 @@ class Synchronizer:
         return self._recurse_map(self._translate_scalar_in, object)
 
     def _translate_out(self, object, interface):
-        return self._recurse_map(lambda scalar: self._translate_scalar_out(scalar, interface), object)
+        return self._recurse_map(
+            lambda scalar: self._translate_scalar_out(scalar, interface), object
+        )
 
     def _translate_coro_out(self, coro, interface):
         async def unwrap_coro():
@@ -221,7 +225,9 @@ class Synchronizer:
         current_loop = self._get_running_loop()
         loop = self._get_loop()
         if loop is not None and loop == current_loop:
-            raise Exception("Deadlock detected: calling a sync function from the synchronizer loop")
+            raise Exception(
+                "Deadlock detected: calling a sync function from the synchronizer loop"
+            )
 
         coro = wrap_coro_exception(coro)
         coro = self._wrap_check_async_leakage(coro)
@@ -476,7 +482,9 @@ class Synchronizer:
             for interface in Interface:
                 interfaces[interface] = self._wrap_instance(object, interface)
         else:
-            raise Exception("Can only wrap classes, functions, and instances of synchronized classes")
+            raise Exception(
+                "Can only wrap classes, functions, and instances of synchronized classes"
+            )
         return interfaces
 
     def is_synchronized(self, object):
