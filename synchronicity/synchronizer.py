@@ -28,6 +28,20 @@ _ORIGINAL_ATTR = "_SYNCHRONICITY_ORIGINAL_CLS"
 _WRAPPED_INST_ATTR = "_SYNCHRONICITY_WRAPPED_INST"
 _ORIGINAL_INST_ATTR = "_SYNCHRONICITY_ORIGINAL_INST"
 
+# Default names for classes
+_CLASS_PREFIXES = {
+    Interface.AUTODETECT: "Auto",
+    Interface.BLOCKING: "Blocking",
+    Interface.ASYNC: "Async",
+}
+
+# Default names for functions
+_FUNCTION_PREFIXES = {
+    Interface.AUTODETECT: "auto_",
+    Interface.BLOCKING: "blocking_",
+    Interface.ASYNC: "async_",
+}
+
 
 class Synchronizer:
     """Helps you offer a blocking (synchronous) interface to asynchronous code."""
@@ -52,6 +66,15 @@ class Synchronizer:
         "_multiwrap_warning",
         "_async_leakage_warning",
     ]
+
+    def get_name(self, object, interface):
+        # TODO: make it possible to override this
+        if inspect.isclass(object):
+            return _CLASS_PREFIXES[interface] + object.__name__
+        elif inspect.isfunction(object):
+            return _FUNCTION_PREFIXES[interface] + object.__name__
+        else:
+            raise Exception("Can only compute names for classes and functions")
 
     def __getstate__(self):
         return dict([(attr, getattr(self, attr)) for attr in self._PICKLE_ATTRS])
@@ -414,7 +437,8 @@ class Synchronizer:
             cls_metaclass, cls_name, cls_bases, cls_dict, cls, interface
         )
 
-    def _wrap(self, object, interface, name):
+    def _wrap_class_or_function(self, object, interface):
+        name = self.get_name(object, interface)
         if inspect.isclass(object):
             new_object = self._wrap_class(object, interface, name)
         elif inspect.isfunction(object):
@@ -433,7 +457,7 @@ class Synchronizer:
 
     # New interface that (almost) doesn't mutate objects
 
-    def create(self, object, names={}):  # TODO: this should really be __call__ later
+    def create(self, object):  # TODO: this should really be __call__ later
         cls_dct = object.__class__.__dict__
         if _WRAPPED_ATTR in cls_dct:
             # This is an instance, for which interfaces are created dynamically
@@ -453,7 +477,7 @@ class Synchronizer:
                 [
                     (
                         interface,
-                        self._wrap(object, interface, names.get(interface, None)),
+                        self._wrap_class_or_function(object, interface),
                     )
                     for interface in Interface
                 ]
