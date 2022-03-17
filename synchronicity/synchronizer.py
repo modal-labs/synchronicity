@@ -398,7 +398,7 @@ class Synchronizer:
         wrapped_cls=None,
         interface=Interface.AUTODETECT,
     ):
-        new_dict = {}
+        new_dict = {_ORIGINAL_ATTR: wrapped_cls}
         if wrapped_cls is not None:
             new_dict["__new__"] = self._wrap_constructor(wrapped_cls, interface)
         for k, v in cls_dict.items():
@@ -445,7 +445,6 @@ class Synchronizer:
             new_object = self._wrap_callable(object, interface, name)
         else:
             raise Exception("Argument %s is not a class or a callable" % object)
-        setattr(new_object, _ORIGINAL_ATTR, object)
         return new_object
 
     def asynccontextmanager(self, func):
@@ -487,7 +486,6 @@ class Synchronizer:
         return interfaces
 
     def is_synchronized(self, object):
-        # TODO: add tests for this
         if inspect.isclass(object) or inspect.isfunction(object):
             return hasattr(object, _ORIGINAL_ATTR)
         else:
