@@ -45,7 +45,7 @@ def test_translate():
 
     # Make sure we can return a list
     foos = blocking_foo_provider.get2()
-    return foos == [foo1, foo2]
+    assert foos == [foo1, foo2]
 
     # Translate an object in and then back out, make sure it's the same
     foo = BlockingFoo()
