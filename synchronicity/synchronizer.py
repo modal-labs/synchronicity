@@ -382,18 +382,24 @@ class Synchronizer:
         setattr(f_wrapped, _ORIGINAL_ATTR, f)
         return f_wrapped
 
-    def _wrap_proxy_method(self, method):
+    def _wrap_proxy_method(self, method, interface, allow_futures=True):
+        method = self._wrap_callable(method, interface, allow_futures=allow_futures)
         @functools.wraps(method)
         def proxy_method(self, *args, **kwargs):
             instance = getattr(self, _ORIGINAL_INST_ATTR)
             return method(instance, *args, **kwargs)
         return proxy_method
 
-    def _wrap_proxy_classmethod(self, method, cls):
+    def _wrap_proxy_staticmethod(self, method, interface):
+        method = self._wrap_callable(method.__func__, interface)
+        return staticmethod(method)
+
+    def _wrap_proxy_classmethod(self, method, interface, cls):
+        method = self._wrap_callable(method.__func__, interface)
         @functools.wraps(method)
         def proxy_classmethod(self, *args, **kwargs):
             return method(cls, *args, **kwargs)
-        return proxy_classmethod
+        return classmethod(proxy_classmethod)
 
     def _wrap_proxy_constructor(self, cls, interface):
         """Returns a custom __init__ for the subclass."""
@@ -427,23 +433,20 @@ class Synchronizer:
             if k in _BUILTIN_ASYNC_METHODS:
                 k_sync = _BUILTIN_ASYNC_METHODS[k]
                 if interface in (Interface.BLOCKING, Interface.AUTODETECT):
-                    new_dict[k_sync] = self._wrap_proxy_method(self._wrap_callable(
-                        v, interface, allow_futures=False
-                    ))
+                    new_dict[k_sync] = self._wrap_proxy_method(v, interface, allow_futures=False)
                 if interface in (Interface.ASYNC, Interface.AUTODETECT):
-                    new_dict[k] = self._wrap_proxy_method(self._wrap_callable(v, interface, allow_futures=False))
+                    new_dict[k] = self._wrap_proxy_method(v, interface, allow_futures=False)
             elif k in ("__new__", "__init__"):
                 # Skip custom constructor in the wrapped class
                 # Instead, delegate to the base class constructor and wrap it
                 pass
             elif isinstance(v, staticmethod):
                 # TODO(erikbern): this feels pretty hacky
-                new_dict[k] = staticmethod(self._wrap_callable(v.__func__, interface))
+                new_dict[k] = self._wrap_proxy_staticmethod(v, interface)
             elif isinstance(v, classmethod):
-                # TODO(erikbern): this feels pretty hacky
-                new_dict[k] = classmethod(self._wrap_proxy_classmethod(self._wrap_callable(v.__func__, interface), wrapped_cls))
+                new_dict[k] = self._wrap_proxy_classmethod(v, interface, wrapped_cls)
             elif callable(v):
-                new_dict[k] = self._wrap_proxy_method(self._wrap_callable(v, interface))
+                new_dict[k] = self._wrap_proxy_method(v, interface)
             else:
                 new_dict[k] = v
 
