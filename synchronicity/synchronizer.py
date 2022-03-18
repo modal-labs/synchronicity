@@ -436,14 +436,14 @@ class Synchronizer:
                 # Skip custom constructor in the wrapped class
                 # Instead, delegate to the base class constructor and wrap it
                 pass
-            elif callable(v):
-                new_dict[k] = self._wrap_proxy_method(self._wrap_callable(v, interface))
             elif isinstance(v, staticmethod):
                 # TODO(erikbern): this feels pretty hacky
                 new_dict[k] = staticmethod(self._wrap_callable(v.__func__, interface))
             elif isinstance(v, classmethod):
                 # TODO(erikbern): this feels pretty hacky
                 new_dict[k] = classmethod(self._wrap_proxy_classmethod(self._wrap_callable(v.__func__, interface), wrapped_cls))
+            elif callable(v):
+                new_dict[k] = self._wrap_proxy_method(self._wrap_callable(v, interface))
             else:
                 new_dict[k] = v
 
