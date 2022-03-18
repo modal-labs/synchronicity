@@ -297,12 +297,12 @@ class MyClass(Base):
 
 def test_class_sync():
     s = Synchronizer()
-    NewClass = s(MyClass)
-    assert NewClass.__name__ == "AutoMyClass"
-    obj = NewClass(x=42)
-    assert isinstance(obj, MyClass)
-    assert isinstance(obj, Base)
-    assert obj._x == 42
+    AutoMyClass = s(MyClass)
+    AutoBase = s(Base)
+    assert AutoMyClass.__name__ == "AutoMyClass"
+    obj = AutoMyClass(x=42)
+    assert isinstance(obj, AutoMyClass)
+    assert isinstance(obj, AutoBase)
     obj.start()
     ret = obj.get_result()
     assert ret == 1764
@@ -314,11 +314,11 @@ def test_class_sync():
     assert time.time() - t0 > 2 * SLEEP_DELAY
 
     t0 = time.time()
-    assert NewClass.my_static_method() == 43
+    assert AutoMyClass.my_static_method() == 43
     assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
 
     t0 = time.time()
-    assert NewClass.my_class_method() == 44
+    assert AutoMyClass.my_class_method() == 44
     assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
 
     assert list(z for z in obj) == list(range(42))
@@ -326,12 +326,12 @@ def test_class_sync():
 
 def test_class_sync_futures():
     s = Synchronizer()
-    NewClass = s(MyClass)
-    assert NewClass.__name__ == "AutoMyClass"
-    obj = NewClass(x=42)
-    assert isinstance(obj, MyClass)
-    assert isinstance(obj, Base)
-    assert obj._x == 42
+    AutoMyClass = s(MyClass)
+    AutoBase = s(Base)
+    assert AutoMyClass.__name__ == "AutoMyClass"
+    obj = AutoMyClass(x=42)
+    assert isinstance(obj, AutoMyClass)
+    assert isinstance(obj, AutoBase)
     obj.start()
     fut = obj.get_result(_future=True)
     assert isinstance(fut, concurrent.futures.Future)
@@ -348,12 +348,12 @@ def test_class_sync_futures():
 @pytest.mark.asyncio
 async def test_class_async():
     s = Synchronizer()
-    NewClass = s(MyClass)
-    assert NewClass.__name__ == "AutoMyClass"
-    obj = NewClass(x=42)
-    assert isinstance(obj, MyClass)
-    assert isinstance(obj, Base)
-    assert obj._x == 42
+    AutoMyClass = s(MyClass)
+    AutoBase = s(Base)
+    assert AutoMyClass.__name__ == "AutoMyClass"
+    obj = AutoMyClass(x=42)
+    assert isinstance(obj, AutoMyClass)
+    assert isinstance(obj, AutoBase)
     await obj.start()
     coro = obj.get_result()
     assert inspect.iscoroutine(coro)
@@ -375,11 +375,11 @@ async def test_class_async():
 @pytest.mark.asyncio
 async def test_class_async_back_and_forth():
     s = Synchronizer()
-    NewClass = s(MyClass)
-    obj = NewClass(x=42)
-    assert isinstance(obj, MyClass)
-    assert isinstance(obj, Base)
-    assert obj._x == 42
+    AutoMyClass = s(MyClass)
+    AutoBase = s(Base)
+    obj = AutoMyClass(x=42)
+    assert isinstance(obj, AutoMyClass)
+    assert isinstance(obj, AutoBase)
     await obj.start()
 
     def get(o):
