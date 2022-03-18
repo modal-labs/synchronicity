@@ -434,9 +434,7 @@ class Synchronizer:
         if name is None:
             name = cls.__name__
         bases = tuple(
-            self._wrap_class_or_function(base, interface)
-            if base != object
-            else object
+            self._wrap_class_or_function(base, interface) if base != object else object
             for base in cls.__bases__
         )
         new_dict = {_ORIGINAL_ATTR: cls}
