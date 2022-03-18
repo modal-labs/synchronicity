@@ -42,7 +42,6 @@ _FUNCTION_PREFIXES = {
     Interface.ASYNC: "async_",
 }
 
-
 class Synchronizer:
     """Helps you offer a blocking (synchronous) interface to asynchronous code."""
 
@@ -157,17 +156,14 @@ class Synchronizer:
 
     def _wrap_instance(self, object, interface):
         # Takes an object and creates a new proxy object for it
-        # They will share the same underlying __dict__
         interface_instances = object.__dict__.setdefault(_WRAPPED_INST_ATTR, {})
         if interface not in interface_instances:
             cls_dct = object.__class__.__dict__
             interfaces = cls_dct[_WRAPPED_ATTR]
             interface_cls = interfaces[interface]
-            new_object = object.__new__(interface_cls)
-            new_object.__dict__ = object.__dict__
+            new_object = interface_cls.__new__(interface_cls)
             interface_instances[interface] = new_object
             # Store a reference to the original object
-            # Note that it writes it to the original too because they share dicts
             setattr(new_object, _ORIGINAL_INST_ATTR, object)
         return interface_instances[interface]
 
@@ -386,61 +382,82 @@ class Synchronizer:
         setattr(f_wrapped, _ORIGINAL_ATTR, f)
         return f_wrapped
 
-    def _wrap_constructor(self, cls, interface):
-        """Returns a custom __new__ for the subclass."""
+    def _wrap_proxy_method(self, method):
+        @functools.wraps(method)
+        def proxy_method(self, *args, **kwargs):
+            instance = getattr(self, _ORIGINAL_INST_ATTR)
+            return method(instance, *args, **kwargs)
+        return proxy_method
 
-        def my_new(wrapped_cls, *args, **kwargs):
-            base_class_instance = cls(*args, **kwargs)
-            wrapped_instance = self._wrap_instance(base_class_instance, interface)
-            return wrapped_instance
+    def _wrap_proxy_classmethod(self, method, cls):
+        @functools.wraps(method)
+        def proxy_classmethod(self, *args, **kwargs):
+            return method(cls, *args, **kwargs)
+        return proxy_classmethod
 
-        return my_new
+    def _wrap_proxy_constructor(self, cls, interface):
+        """Returns a custom __init__ for the subclass."""
 
-    def create_class(
+        def my_init(wrapped_self, *args, **kwargs):
+            # Create base instance
+            instance = cls(*args, **kwargs)
+
+            # Register self as the wrapped one
+            interface_instances = {interface: wrapped_self}
+            setattr(instance, _WRAPPED_INST_ATTR, interface_instances)
+
+            # Store a reference to the original object
+            setattr(wrapped_self, _ORIGINAL_INST_ATTR, instance)
+
+        return my_init
+
+    def _create_class(
         self,
         cls_metaclass,
         cls_name,
         cls_bases,
         cls_dict,
-        wrapped_cls=None,
-        interface=Interface.AUTODETECT,
+        wrapped_cls,
+        interface,
     ):
         new_dict = {_ORIGINAL_ATTR: wrapped_cls}
         if wrapped_cls is not None:
-            new_dict["__new__"] = self._wrap_constructor(wrapped_cls, interface)
+            new_dict["__init__"] = self._wrap_proxy_constructor(wrapped_cls, interface)
         for k, v in cls_dict.items():
             if k in _BUILTIN_ASYNC_METHODS:
                 k_sync = _BUILTIN_ASYNC_METHODS[k]
                 if interface in (Interface.BLOCKING, Interface.AUTODETECT):
-                    new_dict[k_sync] = self._wrap_callable(
+                    new_dict[k_sync] = self._wrap_proxy_method(self._wrap_callable(
                         v, interface, allow_futures=False
-                    )
+                    ))
                 if interface in (Interface.ASYNC, Interface.AUTODETECT):
-                    new_dict[k] = self._wrap_callable(v, interface, allow_futures=False)
-            elif k == "__new__":
-                # Skip custom __new__ in the wrapped class
+                    new_dict[k] = self._wrap_proxy_method(self._wrap_callable(v, interface, allow_futures=False))
+            elif k in ("__new__", "__init__"):
+                # Skip custom constructor in the wrapped class
                 # Instead, delegate to the base class constructor and wrap it
                 pass
-            elif callable(v):
-                new_dict[k] = self._wrap_callable(v, interface)
             elif isinstance(v, staticmethod):
                 # TODO(erikbern): this feels pretty hacky
                 new_dict[k] = staticmethod(self._wrap_callable(v.__func__, interface))
             elif isinstance(v, classmethod):
                 # TODO(erikbern): this feels pretty hacky
-                new_dict[k] = classmethod(self._wrap_callable(v.__func__, interface))
+                new_dict[k] = classmethod(self._wrap_proxy_classmethod(self._wrap_callable(v.__func__, interface), wrapped_cls))
+            elif callable(v):
+                new_dict[k] = self._wrap_proxy_method(self._wrap_callable(v, interface))
             else:
                 new_dict[k] = v
 
-        # TODO: we don't wrap inherited methods! This seems like a bug
         return type.__new__(cls_metaclass, cls_name, cls_bases, new_dict)
 
     def _wrap_class(self, cls, interface, name):
         cls_metaclass = type
         cls_name = name if name is not None else cls.__name__
-        cls_bases = (cls,)
+        cls_bases = tuple(
+            self._wrap_class_or_function(cls_base, interface) if cls_base != object else object
+            for cls_base in cls.__bases__
+        )
         cls_dict = cls.__dict__
-        return self.create_class(
+        return self._create_class(
             cls_metaclass, cls_name, cls_bases, cls_dict, cls, interface
         )
 

@@ -19,6 +19,9 @@ class Resource:
     def __init__(self):
         self.state = "none"
 
+    def get_state(self):
+        return self.state
+
     @s.asynccontextmanager
     async def wrap(self):
         self.state = "entered"
@@ -40,30 +43,30 @@ class Resource:
 
 def test_asynccontextmanager_sync():
     r = s(Resource)()
-    assert r.state == "none"
+    assert r.get_state() == "none"
     with r.wrap():
-        assert r.state == "entered"
-    assert r.state == "exited"
+        assert r.get_state() == "entered"
+    assert r.get_state() == "exited"
 
 
 @pytest.mark.asyncio
 async def test_asynccontextmanager_async():
     r = s(Resource)()
-    assert r.state == "none"
+    assert r.get_state() == "none"
     async with r.wrap():
-        assert r.state == "entered"
-    assert r.state == "exited"
+        assert r.get_state() == "entered"
+    assert r.get_state() == "exited"
 
 
 @pytest.mark.asyncio
 async def test_asynccontextmanager_async_raise():
     r = s(Resource)()
-    assert r.state == "none"
+    assert r.get_state() == "none"
     with pytest.raises(Exception):
         async with r.wrap():
-            assert r.state == "entered"
+            assert r.get_state() == "entered"
             raise Exception("boom")
-    assert r.state == "exited"
+    assert r.get_state() == "exited"
 
 
 @pytest.mark.asyncio
