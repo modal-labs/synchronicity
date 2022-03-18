@@ -20,6 +20,10 @@ def test_translate():
         def get2(self):
             return [self.foo, self.foo]
 
+        @property
+        def pget(self):
+            return self.foo
+
         def set(self, foo):
             assert type(foo) == Foo
             self.foo = foo
@@ -46,6 +50,10 @@ def test_translate():
     # Make sure we can return a list
     foos = blocking_foo_provider.get2()
     assert foos == [foo1, foo2]
+
+    # Make sure properties work
+    foo = blocking_foo_provider.pget
+    assert isinstance(foo, BlockingFoo)
 
     # Translate an object in and then back out, make sure it's the same
     foo = BlockingFoo()

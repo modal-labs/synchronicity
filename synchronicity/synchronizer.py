@@ -406,6 +406,14 @@ class Synchronizer:
 
         return classmethod(proxy_classmethod)
 
+    def _wrap_proxy_property(self, prop, interface):
+        kwargs = {}
+        for attr in ["fget", "fset", "fdel"]:
+            if getattr(prop, attr):
+                func = getattr(prop, attr)
+                kwargs[attr] = self._wrap_proxy_method(func, interface, False)
+        return property(**kwargs)
+
     def _wrap_proxy_constructor(self, cls, interface):
         """Returns a custom __init__ for the subclass."""
 
@@ -454,10 +462,10 @@ class Synchronizer:
                 new_dict[k] = self._wrap_proxy_staticmethod(v, interface)
             elif isinstance(v, classmethod):
                 new_dict[k] = self._wrap_proxy_classmethod(v, interface, wrapped_cls)
+            elif isinstance(v, property):
+                new_dict[k] = self._wrap_proxy_property(v, interface)
             elif callable(v):
                 new_dict[k] = self._wrap_proxy_method(v, interface)
-            else:
-                new_dict[k] = v
 
         return type.__new__(cls_metaclass, cls_name, cls_bases, new_dict)
 
