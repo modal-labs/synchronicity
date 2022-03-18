@@ -397,12 +397,12 @@ class Synchronizer:
         method = self._wrap_callable(method.__func__, interface)
         return staticmethod(method)
 
-    def _wrap_proxy_classmethod(self, method, interface, cls):
+    def _wrap_proxy_classmethod(self, method, interface):
         method = self._wrap_callable(method.__func__, interface)
 
         @functools.wraps(method)
-        def proxy_classmethod(self, *args, **kwargs):
-            return method(cls, *args, **kwargs)
+        def proxy_classmethod(wrapped_cls, *args, **kwargs):
+            return method(wrapped_cls, *args, **kwargs)
 
         return classmethod(proxy_classmethod)
 
@@ -430,19 +430,19 @@ class Synchronizer:
 
         return my_init
 
-    def _create_class(
-        self,
-        cls_metaclass,
-        cls_name,
-        cls_bases,
-        cls_dict,
-        wrapped_cls,
-        interface,
-    ):
-        new_dict = {_ORIGINAL_ATTR: wrapped_cls}
-        if wrapped_cls is not None:
-            new_dict["__init__"] = self._wrap_proxy_constructor(wrapped_cls, interface)
-        for k, v in cls_dict.items():
+    def _wrap_class(self, cls, interface, name):
+        if name is None:
+            name = cls.__name__
+        bases = tuple(
+            self._wrap_class_or_function(base, interface)
+            if base != object
+            else object
+            for base in cls.__bases__
+        )
+        new_dict = {_ORIGINAL_ATTR: cls}
+        if cls is not None:
+            new_dict["__init__"] = self._wrap_proxy_constructor(cls, interface)
+        for k, v in cls.__dict__.items():
             if k in _BUILTIN_ASYNC_METHODS:
                 k_sync = _BUILTIN_ASYNC_METHODS[k]
                 if interface in (Interface.BLOCKING, Interface.AUTODETECT):
@@ -461,27 +461,15 @@ class Synchronizer:
                 # TODO(erikbern): this feels pretty hacky
                 new_dict[k] = self._wrap_proxy_staticmethod(v, interface)
             elif isinstance(v, classmethod):
-                new_dict[k] = self._wrap_proxy_classmethod(v, interface, wrapped_cls)
+                new_dict[k] = self._wrap_proxy_classmethod(v, interface)
             elif isinstance(v, property):
                 new_dict[k] = self._wrap_proxy_property(v, interface)
             elif callable(v):
                 new_dict[k] = self._wrap_proxy_method(v, interface)
 
-        return type.__new__(cls_metaclass, cls_name, cls_bases, new_dict)
-
-    def _wrap_class(self, cls, interface, name):
-        cls_metaclass = type
-        cls_name = name if name is not None else cls.__name__
-        cls_bases = tuple(
-            self._wrap_class_or_function(cls_base, interface)
-            if cls_base != object
-            else object
-            for cls_base in cls.__bases__
-        )
-        cls_dict = cls.__dict__
-        return self._create_class(
-            cls_metaclass, cls_name, cls_bases, cls_dict, cls, interface
-        )
+        new_cls = type.__new__(type, name, bases, new_dict)
+        new_cls.__module__ = cls.__module__
+        return new_cls
 
     def _wrap_class_or_function(self, object, interface):
         if _WRAPPED_ATTR not in object.__dict__:
