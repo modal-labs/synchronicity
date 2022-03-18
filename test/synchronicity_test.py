@@ -392,7 +392,9 @@ async def test_class_async_back_and_forth():
 
 
 # The problem here is that f is already synchronized by another synchronizer, which shouldn't be allowed
-@pytest.mark.skip(reason="Skip this until we've made it impossible to re-synchronize objects")
+@pytest.mark.skip(
+    reason="Skip this until we've made it impossible to re-synchronize objects"
+)
 def test_event_loop():
     s = Synchronizer()
     t0 = time.time()
