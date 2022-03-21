@@ -425,9 +425,7 @@ class Synchronizer:
         @functools.wraps(constructor)
         def my_new(wrapped_cls, *args, **kwargs):
             # Create base instance
-            args = self._translate_in(args)
-            kwargs = self._translate_in(kwargs)
-            instance = cls(*args, **kwargs)
+            instance = cls.__new__(cls)
 
             # Created wrapped instance
             wrapped_instance = object.__new__(wrapped_cls)
@@ -439,20 +437,16 @@ class Synchronizer:
             # Store a reference to the original object
             setattr(wrapped_instance, _ORIGINAL_INST_ATTR, instance)
 
-            # Run constructor
-            # This should always return either an instance of the class,
-            # or a coroutine (if the interface is ASYNC)
+            # Run constructor, make sure it returns None, then return the instance.
+            args = self._translate_in(args)
+            kwargs = self._translate_in(kwargs)
             res = constructor(instance, *args, **kwargs)
             if inspect.iscoroutine(res):
-                # If the constructor returns a coroutine, resolve that, but
-                # make sure the _instance_ is returned
-                # TODO: we should check that the interface isn't blocking etc
-                async def wrapped_constructor():
-                    await res
-                    return wrapped_instance
-
-                return wrapped_constructor()
-
+                # This can happen if a constructor is defined as `async __init__`
+                # and the interface is ASYNC
+                # TODO: not awaiting res will lead to a spurious warning:
+                # RuntimeWarning: coroutine ... was never awaited
+                raise RuntimeError(f"Constructor of {cls} returned coroutine")
             elif res is not None:
                 raise RuntimeError(f"Constructor of {cls} returned value {res}")
             return wrapped_instance

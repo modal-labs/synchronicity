@@ -21,16 +21,10 @@ def test_async_constructor():
     assert isinstance(foo, BlockingFoo)
 
     # Try using the async interface
+    # It should fail since the function returns a coroutine
     AsyncFoo = s.create(Foo)[Interface.ASYNC]
-    foo = AsyncFoo()
-    assert inspect.iscoroutine(foo)
-
-    # Make sure resolving the coroutine results in an object
-    t0 = time.time()
-    loop = asyncio.get_event_loop()
-    foo = loop.run_until_complete(foo)
-    assert 0.09 <= time.time() - t0 <= 0.11
-    assert isinstance(foo, AsyncFoo)
+    with pytest.raises(RuntimeError):
+        foo = AsyncFoo()
 
 
 def test_sync_constructor():
@@ -39,7 +33,13 @@ def test_sync_constructor():
             pass
 
     s = Synchronizer()
+
+    # Try the blocking interface
     BlockingFoo = s.create(Foo)[Interface.BLOCKING]
-    t0 = time.time()
     foo = BlockingFoo()
     assert isinstance(foo, BlockingFoo)
+
+    # Try the async interface
+    AsyncFoo = s.create(Foo)[Interface.ASYNC]
+    foo = AsyncFoo()
+    assert isinstance(foo, AsyncFoo)
