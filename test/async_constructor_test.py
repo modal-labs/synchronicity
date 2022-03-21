@@ -27,7 +27,8 @@ def test_async_constructor():
 
     # Make sure resolving the coroutine results in an object
     t0 = time.time()
-    foo = asyncio.run(foo)
+    loop = asyncio.get_event_loop()
+    foo = loop.run_until_complete(foo)
     assert 0.09 <= time.time() - t0 <= 0.11
     assert isinstance(foo, AsyncFoo)
 
