@@ -162,7 +162,7 @@ class Synchronizer:
             cls_dct = object.__class__.__dict__
             interfaces = cls_dct[_WRAPPED_ATTR]
             interface_cls = interfaces[interface]
-            new_object = interface_cls.__new__(interface_cls)
+            new_object = object.__new__(interface_cls)
             interface_instances[interface] = new_object
             # Store a reference to the original object
             setattr(new_object, _ORIGINAL_INST_ATTR, object)
@@ -382,9 +382,8 @@ class Synchronizer:
 
         f_wrapped.__name__ = name if name is not None else f.__name__
         f_wrapped.__qualname__ = name if name is not None else f.__qualname__
-        f_wrapped.__module__ = f.__module__
-        f_wrapped.__doc__ = f.__doc__
-
+        f_wrapped.__module__ = getattr(f, "__module__", None)
+        f_wrapped.__doc__ = getattr(f, "__doc__", None)
         setattr(f_wrapped, _ORIGINAL_ATTR, f)
         return f_wrapped
 
@@ -421,21 +420,44 @@ class Synchronizer:
 
     def _wrap_proxy_constructor(self, cls, interface):
         """Returns a custom __init__ for the subclass."""
+        constructor = self._wrap_callable(cls.__init__, interface)
 
-        def my_init(wrapped_self, *args, **kwargs):
+        @functools.wraps(constructor)
+        def my_new(wrapped_cls, *args, **kwargs):
             # Create base instance
             args = self._translate_in(args)
             kwargs = self._translate_in(kwargs)
             instance = cls(*args, **kwargs)
 
+            # Created wrapped instance
+            wrapped_instance = object.__new__(wrapped_cls)
+
             # Register self as the wrapped one
-            interface_instances = {interface: wrapped_self}
+            interface_instances = {interface: wrapped_instance}
             setattr(instance, _WRAPPED_INST_ATTR, interface_instances)
 
             # Store a reference to the original object
-            setattr(wrapped_self, _ORIGINAL_INST_ATTR, instance)
+            setattr(wrapped_instance, _ORIGINAL_INST_ATTR, instance)
 
-        return my_init
+            # Run constructor
+            # This should always return either an instance of the class,
+            # or a coroutine (if the interface is ASYNC)
+            res = constructor(instance, *args, **kwargs)
+            if inspect.iscoroutine(res):
+                # If the constructor returns a coroutine, resolve that, but
+                # make sure the _instance_ is returned
+                # TODO: we should check that the interface isn't blocking etc
+                async def wrapped_constructor():
+                    await res
+                    return wrapped_instance
+
+                return wrapped_constructor()
+
+            elif res is not None:
+                raise RuntimeError(f"Constructor of {cls} returned value {res}")
+            return wrapped_instance
+
+        return my_new
 
     def _wrap_class(self, cls, interface, name):
         if name is None:
@@ -446,7 +468,7 @@ class Synchronizer:
         )
         new_dict = {_ORIGINAL_ATTR: cls}
         if cls is not None:
-            new_dict["__init__"] = self._wrap_proxy_constructor(cls, interface)
+            new_dict["__new__"] = self._wrap_proxy_constructor(cls, interface)
         for k, v in cls.__dict__.items():
             if k in _BUILTIN_ASYNC_METHODS:
                 k_sync = _BUILTIN_ASYNC_METHODS[k]
