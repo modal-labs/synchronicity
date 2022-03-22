@@ -1,5 +1,6 @@
 import asyncio
 import atexit
+import collections.abc
 import concurrent.futures
 import functools
 import inspect
@@ -305,6 +306,7 @@ class Synchronizer:
                 )
             return f
 
+        @functools.wraps(f)
         def f_wrapped(*args, **kwargs):
             return_future = kwargs.pop(_RETURN_FUTURE_KWARG, False)
 
@@ -376,10 +378,17 @@ class Synchronizer:
 
                 return self._translate_out(res, interface)
 
+        if interface == Interface.ASYNC and inspect.iscoroutinefunction(f):
+            if "return" in f.__annotations__:
+                f_wrapped.__annotations__["return"] = collections.abc.Awaitable[f.__annotations__["return"]]
+            else:
+                f_wrapped.__annotations__["return"] = collections.abc.Awaitable
+
         f_wrapped.__name__ = name if name is not None else f.__name__
         f_wrapped.__qualname__ = name if name is not None else f.__qualname__
         f_wrapped.__module__ = f.__module__
         f_wrapped.__doc__ = f.__doc__
+
         setattr(f_wrapped, _ORIGINAL_ATTR, f)
         return f_wrapped
 
