@@ -35,3 +35,28 @@ async def test_async():
     rets = await asyncio.gather(*coros)
     assert rets == [200, 300]
     assert 0.3 <= time.time() - t0 <= 0.4
+
+
+@pytest.mark.asyncio
+async def test_translate():
+    s = Synchronizer()
+
+    class Foo:
+        def __init__(self, x):
+            self.x = x
+
+        def get(self):
+            return self.x
+
+    BlockingFoo = s.create(Foo)[Interface.BLOCKING]
+
+    def f(foo):
+        assert isinstance(foo, BlockingFoo)
+        x = foo.get()
+        return BlockingFoo(x + 1)
+
+    f_cb = s.create_callback(Interface.BLOCKING, f)
+
+    foo1 = Foo(42)
+    foo2 = await f_cb(foo1)
+    assert foo2.x == 43
