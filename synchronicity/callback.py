@@ -6,7 +6,7 @@ class Callback:
     """A callback is when synchronized call needs to call outside functions passed into it.
 
     Currently only supports non-generator functions."""
-    def __init__(self, synchronizer, interface, f):
+    def __init__(self, synchronizer, f, interface):
         self._synchronizer = synchronizer
         self._interface = interface
         self._f = f
