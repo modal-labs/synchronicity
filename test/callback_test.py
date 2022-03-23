@@ -3,7 +3,6 @@ import pytest
 import time
 
 from synchronicity import Interface, Synchronizer
-from synchronicity.callback import Callback
 
 
 def sleep(t):
@@ -19,7 +18,7 @@ async def sleep_async(t):
 @pytest.mark.asyncio
 async def test_blocking():
     s = Synchronizer()
-    sleep_cb = Callback(s, Interface.BLOCKING, sleep)
+    sleep_cb = s.create_callback(Interface.BLOCKING, sleep)
     t0 = time.time()
     coros = [sleep_cb(i * 0.01) for i in range(1, 11)]
     assert len(coros) == 10
@@ -30,7 +29,7 @@ async def test_blocking():
 @pytest.mark.asyncio
 async def test_async():
     s = Synchronizer()
-    sleep_cb = Callback(s, Interface.ASYNC, sleep_async)
+    sleep_cb = s.create_callback(Interface.ASYNC, sleep_async)
     t0 = time.time()
     coros = [sleep_cb(i * 0.01) for i in range(1, 11)]
     assert len(coros) == 10
