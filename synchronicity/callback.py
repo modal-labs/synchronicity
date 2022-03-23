@@ -17,10 +17,15 @@ class Callback:
         if inspect.iscoroutine(res):
             try:
                 loop = asyncio.new_event_loop()
-                res = loop.run_until_complete(res)
+                return loop.run_until_complete(res)
             finally:
                 loop.close()
-        return res
+        elif inspect.isasyncgen(res):
+            raise RuntimeError("Async generators are not supported")
+        elif inspect.isgenerator(res):
+            raise RuntimeError("Generators are not supported")
+        else:
+            return res
 
     async def __call__(self, *args, **kwargs):
         # This translates the opposite way from the code in the synchronizer
