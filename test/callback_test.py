@@ -20,10 +20,9 @@ async def test_blocking():
     s = Synchronizer()
     sleep_cb = s.create_callback(Interface.BLOCKING, sleep)
     t0 = time.time()
-    coros = [sleep_cb(i * 0.01) for i in range(1, 11)]
-    assert len(coros) == 10
+    coros = [sleep_cb(0.2), sleep_cb(0.3)]
     rets = await asyncio.gather(*coros)
-    assert 0.095 <= time.time() - t0 <= 0.105
+    assert 0.3 <= time.time() - t0 <= 0.4  # make sure they run in parallel
 
 
 @pytest.mark.asyncio
@@ -31,7 +30,6 @@ async def test_async():
     s = Synchronizer()
     sleep_cb = s.create_callback(Interface.ASYNC, sleep_async)
     t0 = time.time()
-    coros = [sleep_cb(i * 0.01) for i in range(1, 11)]
-    assert len(coros) == 10
+    coros = [sleep_cb(0.2), sleep_cb(0.3)]
     rets = await asyncio.gather(*coros)
-    assert 0.095 <= time.time() - t0 <= 0.105
+    assert 0.3 <= time.time() - t0 <= 0.4
