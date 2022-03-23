@@ -1,14 +1,12 @@
 import asyncio
 import atexit
-import collections.abc
-import concurrent.futures
 import functools
 import inspect
-import queue
 import threading
 import time
 import warnings
 
+from .async_utils import wraps_by_interface, async_compat_wraps
 from .contextlib import get_ctx_mgr_cls
 from .exceptions import UserCodeException, unwrap_coro_exception, wrap_coro_exception
 from .interface import Interface
@@ -306,7 +304,7 @@ class Synchronizer:
                 )
             return f
 
-        @functools.wraps(f)
+        @wraps_by_interface(interface, f)
         def f_wrapped(*args, **kwargs):
             return_future = kwargs.pop(_RETURN_FUTURE_KWARG, False)
 
@@ -367,7 +365,7 @@ class Synchronizer:
                 ):  # TODO: HACKY HACK
                     # TODO: this is needed for decorator wrappers that returns functions
                     # Maybe a bit of a hacky special case that deserves its own decorator
-                    @functools.wraps(res)
+                    @wraps_by_interface(interface, res)
                     def f_wrapped(*args, **kwargs):
                         args = self._translate_in(args)
                         kwargs = self._translate_in(kwargs)
@@ -377,12 +375,6 @@ class Synchronizer:
                     return f_wrapped
 
                 return self._translate_out(res, interface)
-
-        if interface == Interface.ASYNC and inspect.iscoroutinefunction(f):
-            if "return" in f.__annotations__:
-                f_wrapped.__annotations__["return"] = collections.abc.Awaitable[f.__annotations__["return"]]
-            else:
-                f_wrapped.__annotations__["return"] = collections.abc.Awaitable
 
         f_wrapped.__name__ = name if name is not None else f.__name__
         f_wrapped.__qualname__ = name if name is not None else f.__qualname__
@@ -395,7 +387,7 @@ class Synchronizer:
     def _wrap_proxy_method(self, method, interface, allow_futures=True):
         method = self._wrap_callable(method, interface, allow_futures=allow_futures)
 
-        @functools.wraps(method)
+        @wraps_by_interface(interface, method)
         def proxy_method(self, *args, **kwargs):
             instance = getattr(self, _ORIGINAL_INST_ATTR)
             return method(instance, *args, **kwargs)
@@ -409,7 +401,7 @@ class Synchronizer:
     def _wrap_proxy_classmethod(self, method, interface):
         method = self._wrap_callable(method.__func__, interface)
 
-        @functools.wraps(method)
+        @wraps_by_interface(interface, method)
         def proxy_classmethod(wrapped_cls, *args, **kwargs):
             return method(wrapped_cls, *args, **kwargs)
 
@@ -481,9 +473,15 @@ class Synchronizer:
     def _wrap_class_or_function(self, object, interface):
         if _WRAPPED_ATTR not in object.__dict__:
             setattr(object, _WRAPPED_ATTR, {})
+
         interfaces = object.__dict__[_WRAPPED_ATTR]
         if interface in interfaces:
+            if self._multiwrap_warning:
+                warnings.warn(
+                    f"Object {object} is already wrapped, but getting wrapped again"
+                )
             return interfaces[interface]
+
         name = self.get_name(object, interface)
         if inspect.isclass(object):
             new_object = self._wrap_class(object, interface, name)
