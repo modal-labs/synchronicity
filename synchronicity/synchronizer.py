@@ -6,6 +6,7 @@ import threading
 import time
 import warnings
 
+from .callback import Callback
 from .async_utils import wraps_by_interface, async_compat_wraps
 from .contextlib import get_ctx_mgr_cls
 from .exceptions import UserCodeException, unwrap_coro_exception, wrap_coro_exception
@@ -295,6 +296,9 @@ class Synchronizer:
             except BaseException as exc:
                 value = exc
                 is_exc = True
+
+    def create_callback(self, f, interface):
+        return Callback(self, f, interface)
 
     def _wrap_callable(self, f, interface, name=None, allow_futures=True):
         if hasattr(f, _ORIGINAL_ATTR):
