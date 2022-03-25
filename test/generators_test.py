@@ -1,7 +1,7 @@
 import asyncio
 import pytest
 
-from synchronicity import Synchronizer
+from synchronicity import Synchronizer, Interface
 
 events = []
 
@@ -16,6 +16,15 @@ async def async_producer():
 async def test_generator_order_async():
     events.clear()
     async_producer_synchronized = Synchronizer()(async_producer)
+    async for i in async_producer_synchronized():
+        events.append("consumer")
+    assert events == ["producer", "consumer"] * 10
+
+
+@pytest.mark.asyncio
+async def test_generator_order_explicit_async():
+    events.clear()
+    async_producer_synchronized = Synchronizer().create(async_producer)[Interface.ASYNC]
     async for i in async_producer_synchronized():
         events.append("consumer")
     assert events == ["producer", "consumer"] * 10

@@ -7,7 +7,7 @@ import time
 import warnings
 
 from .callback import Callback
-from .async_utils import wraps_by_interface, async_compat_wraps
+from .async_wrap import wraps_by_interface, async_compat_wraps
 from .contextlib import get_ctx_mgr_cls
 from .exceptions import UserCodeException, unwrap_coro_exception, wrap_coro_exception
 from .interface import Interface
