@@ -17,7 +17,7 @@ def async_compat_wraps(func):
         def asyncfunc_deco(user_wrapper):
             @functools.wraps(func)
             async def wrapper(*args, **kwargs):
-                return user_wrapper(*args, **kwargs)
+                return await user_wrapper(*args, **kwargs)
 
             return wrapper
         return asyncfunc_deco
