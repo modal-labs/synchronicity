@@ -423,6 +423,8 @@ class Synchronizer:
 
         def my_init(wrapped_self, *args, **kwargs):
             # Create base instance
+            args = self._translate_in(args)
+            kwargs = self._translate_in(kwargs)
             instance = cls(*args, **kwargs)
 
             # Register self as the wrapped one
