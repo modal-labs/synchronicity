@@ -11,8 +11,12 @@ def test_translate():
         pass
 
     class FooProvider:
-        def __init__(self):
-            self.foo = Foo()
+        def __init__(self, foo=None):
+            if foo is not None:
+                assert type(foo) == Foo
+                self.foo = foo
+            else:
+                self.foo = Foo()
 
         def get(self):
             return self.foo
@@ -40,27 +44,32 @@ def test_translate():
     assert BlockingFoo.__name__ == "BlockingFoo"
     BlockingFooProvider = s.create(FooProvider)[Interface.BLOCKING]
     assert BlockingFooProvider.__name__ == "BlockingFooProvider"
-    blocking_foo_provider = BlockingFooProvider()
+    foo_provider = BlockingFooProvider()
 
     # Make sure two instances translated out are the same
-    foo1 = blocking_foo_provider.get()
-    foo2 = blocking_foo_provider.get()
+    foo1 = foo_provider.get()
+    foo2 = foo_provider.get()
     assert foo1 == foo2
 
     # Make sure we can return a list
-    foos = blocking_foo_provider.get2()
+    foos = foo_provider.get2()
     assert foos == [foo1, foo2]
 
     # Make sure properties work
-    foo = blocking_foo_provider.pget
+    foo = foo_provider.pget
     assert isinstance(foo, BlockingFoo)
 
     # Translate an object in and then back out, make sure it's the same
     foo = BlockingFoo()
     assert type(foo) != Foo
-    blocking_foo_provider.set(foo)
-    assert blocking_foo_provider.get() == foo
+    foo_provider.set(foo)
+    assert foo_provider.get() == foo
 
     # Make sure classes are translated properly too
     BlockingFooProvider.cls_in()
     assert BlockingFooProvider.cls_out() == BlockingFooProvider
+
+    # Make sure the constructor works
+    foo = BlockingFoo()
+    foo_provider = BlockingFooProvider(foo)
+    assert foo_provider.get() == foo
