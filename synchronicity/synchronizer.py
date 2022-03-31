@@ -444,9 +444,10 @@ class Synchronizer:
             if inspect.iscoroutine(res):
                 # This can happen if a constructor is defined as `async __init__`
                 # and the interface is ASYNC
-                # TODO: not awaiting res will lead to a spurious warning:
-                # RuntimeWarning: coroutine ... was never awaited
-                raise RuntimeError(f"Constructor of {cls} returned coroutine")
+                try:
+                    res.close()
+                finally:
+                    raise RuntimeError(f"Constructor of {cls} returned coroutine")
             elif res is not None:
                 raise RuntimeError(f"Constructor of {cls} returned value {res}")
             return wrapped_instance
