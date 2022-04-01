@@ -12,11 +12,13 @@ def gen_classes():
     class Foo:
         @constructor(Interface.BLOCKING)
         async def create_blocking(self, x):
+            """Do the blocking magic"""
             await asyncio.sleep(0.1)
             self._x = x
 
         @constructor(Interface.ASYNC)
         def create_async(self, x):
+            """Do the async magic"""
             self._x = x + 7
 
         @property
@@ -46,3 +48,7 @@ def test_async_constructor():
     foo = AsyncFoo(42)
     assert time.time() - t0 < 0.01
     assert foo.x == 49
+
+    # Check docstrings
+    assert BlockingFoo.__init__.__doc__ == "Do the blocking magic"
+    assert AsyncFoo.__init__.__doc__ == "Do the async magic"

@@ -434,7 +434,6 @@ class Synchronizer:
         """Returns a custom __init__ for the subclass."""
         constructor = self._wrap_callable(method, interface)
 
-        @functools.wraps(constructor)
         def my_new(wrapped_cls, *args, **kwargs):
             # Create base instance
             instance = cls.__new__(cls)
@@ -449,6 +448,13 @@ class Synchronizer:
             # Store a reference to the original object
             setattr(wrapped_instance, _ORIGINAL_INST_ATTR, instance)
 
+            # Return the newly constructed instance
+            return wrapped_instance
+
+        @functools.wraps(constructor)
+        def my_init(wrapped_instance, *args, **kwargs):
+            instance = getattr(wrapped_instance, _ORIGINAL_INST_ATTR)
+
             # Run constructor, make sure it returns None, then return the instance.
             args = self._translate_in(args)
             kwargs = self._translate_in(kwargs)
@@ -462,9 +468,8 @@ class Synchronizer:
                     raise RuntimeError(f"Constructor of {cls} returned coroutine")
             elif res is not None:
                 raise RuntimeError(f"Constructor of {cls} returned value {res}")
-            return wrapped_instance
 
-        return my_new
+        return my_new, my_init
 
     def _wrap_class(self, cls, interface, name):
         if name is None:
@@ -503,9 +508,9 @@ class Synchronizer:
                 new_dict[k] = self._wrap_proxy_method(v, interface)
 
         # Create the constructor
-        # TODO: we should probably split it into __new__ and __init__
-        # for proper docstrings later
-        new_dict["__new__"] = self._wrap_proxy_constructor(cls, constructor_method, interface)
+        wrapped_new, wrapped_init = self._wrap_proxy_constructor(cls, constructor_method, interface)
+        new_dict["__new__"] = wrapped_new
+        new_dict["__init__"] = wrapped_init
 
         new_cls = type.__new__(type, name, bases, new_dict)
         new_cls.__module__ = cls.__module__
