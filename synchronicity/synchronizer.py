@@ -43,6 +43,18 @@ _FUNCTION_PREFIXES = {
 }
 
 
+# Decorator that marks a method as constructor
+_CONSTRUCTOR_ATTR = "_SYNCHRONICITY_CONSTRUCTOR"
+
+def constructor(interface):
+    def mark_method(func):
+        if not hasattr(func, _CONSTRUCTOR_ATTR):
+            setattr(func, _CONSTRUCTOR_ATTR, [])
+        getattr(func, _CONSTRUCTOR_ATTR).append(interface)
+        return func
+    return mark_method
+
+
 class Synchronizer:
     """Helps you offer a blocking (synchronous) interface to asynchronous code."""
 
@@ -418,9 +430,9 @@ class Synchronizer:
                 kwargs[attr] = self._wrap_proxy_method(func, interface, False)
         return property(**kwargs)
 
-    def _wrap_proxy_constructor(self, cls, interface):
+    def _wrap_proxy_constructor(self, cls, method, interface):
         """Returns a custom __init__ for the subclass."""
-        constructor = self._wrap_callable(cls.__init__, interface)
+        constructor = self._wrap_callable(method, interface)
 
         @functools.wraps(constructor)
         def my_new(wrapped_cls, *args, **kwargs):
@@ -462,9 +474,10 @@ class Synchronizer:
             for base in cls.__bases__
         )
         new_dict = {_ORIGINAL_ATTR: cls}
-        if cls is not None:
-            new_dict["__new__"] = self._wrap_proxy_constructor(cls, interface)
+        constructor_method = cls.__init__  # default
         for k, v in cls.__dict__.items():
+            if interface in getattr(v, _CONSTRUCTOR_ATTR, []):
+                constructor_method = v
             if k in _BUILTIN_ASYNC_METHODS:
                 k_sync = _BUILTIN_ASYNC_METHODS[k]
                 if interface in (Interface.BLOCKING, Interface.AUTODETECT):
@@ -488,6 +501,11 @@ class Synchronizer:
                 new_dict[k] = self._wrap_proxy_property(v, interface)
             elif callable(v):
                 new_dict[k] = self._wrap_proxy_method(v, interface)
+
+        # Create the constructor
+        # TODO: we should probably split it into __new__ and __init__
+        # for proper docstrings later
+        new_dict["__new__"] = self._wrap_proxy_constructor(cls, constructor_method, interface)
 
         new_cls = type.__new__(type, name, bases, new_dict)
         new_cls.__module__ = cls.__module__
