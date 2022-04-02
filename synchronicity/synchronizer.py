@@ -46,11 +46,9 @@ _FUNCTION_PREFIXES = {
 # Decorator that marks a method as constructor
 _CONSTRUCTOR_ATTR = "_SYNCHRONICITY_CONSTRUCTOR"
 
-def constructor(interface):
+def constructor(*interfaces):
     def mark_method(func):
-        if not hasattr(func, _CONSTRUCTOR_ATTR):
-            setattr(func, _CONSTRUCTOR_ATTR, [])
-        getattr(func, _CONSTRUCTOR_ATTR).append(interface)
+        setattr(func, _CONSTRUCTOR_ATTR, interfaces)
         return func
     return mark_method
 
@@ -430,35 +428,41 @@ class Synchronizer:
                 kwargs[attr] = self._wrap_proxy_method(func, interface, False)
         return property(**kwargs)
 
-    def _wrap_proxy_constructor(self, cls, method, interface):
-        """Returns a custom __init__ for the subclass."""
-        constructor = self._wrap_callable(method, interface)
-
+    def _wrap_proxy_new(self, cls, interface):
+        """Returns a custom __new__ for the subclass."""
         def my_new(wrapped_cls, *args, **kwargs):
+            original_cls = getattr(wrapped_cls, _ORIGINAL_ATTR)
+
             # Create base instance
-            instance = cls.__new__(cls)
+            original_instance = original_cls.__new__(original_cls)
 
             # Created wrapped instance
             wrapped_instance = object.__new__(wrapped_cls)
 
             # Register self as the wrapped one
             interface_instances = {interface: wrapped_instance}
-            setattr(instance, _WRAPPED_INST_ATTR, interface_instances)
+            setattr(original_instance, _WRAPPED_INST_ATTR, interface_instances)
 
             # Store a reference to the original object
-            setattr(wrapped_instance, _ORIGINAL_INST_ATTR, instance)
+            setattr(wrapped_instance, _ORIGINAL_INST_ATTR, original_instance)
 
             # Return the newly constructed instance
             return wrapped_instance
 
+        return my_new
+
+    def _wrap_proxy_constructor(self, cls, method, interface):
+        """Returns a custom __init__ for the subclass."""
+        constructor = self._wrap_callable(method, interface)
+
         @functools.wraps(constructor)
         def my_init(wrapped_instance, *args, **kwargs):
-            instance = getattr(wrapped_instance, _ORIGINAL_INST_ATTR)
+            original_instance = getattr(wrapped_instance, _ORIGINAL_INST_ATTR)
 
             # Run constructor, make sure it returns None, then return the instance.
             args = self._translate_in(args)
             kwargs = self._translate_in(kwargs)
-            res = constructor(instance, *args, **kwargs)
+            res = constructor(original_instance, *args, **kwargs)
             if inspect.iscoroutine(res):
                 # This can happen if a constructor is defined as `async __init__`
                 # and the interface is ASYNC
@@ -469,7 +473,7 @@ class Synchronizer:
             elif res is not None:
                 raise RuntimeError(f"Constructor of {cls} returned value {res}")
 
-        return my_new, my_init
+        return my_init
 
     def _wrap_class(self, cls, interface, name):
         if name is None:
@@ -479,11 +483,16 @@ class Synchronizer:
             for base in cls.__bases__
         )
         new_dict = {_ORIGINAL_ATTR: cls}
-        constructor_method = cls.__init__  # default
+        default_constructor_method = None  # If we find an undecorated __init__
+        custom_constructor_method = None
         for k, v in cls.__dict__.items():
-            if interface in getattr(v, _CONSTRUCTOR_ATTR, []):
-                constructor_method = v
-            if k in _BUILTIN_ASYNC_METHODS:
+            if hasattr(v, _CONSTRUCTOR_ATTR) and interface in getattr(v, _CONSTRUCTOR_ATTR):
+                custom_constructor_method = v
+            elif k == "__init__" and not hasattr(v, _CONSTRUCTOR_ATTR):
+                default_constructor_method = v
+            elif k in ("__new__", "__init__"):
+                pass
+            elif k in _BUILTIN_ASYNC_METHODS:
                 k_sync = _BUILTIN_ASYNC_METHODS[k]
                 if interface in (Interface.BLOCKING, Interface.AUTODETECT):
                     new_dict[k_sync] = self._wrap_proxy_method(
@@ -493,10 +502,6 @@ class Synchronizer:
                     new_dict[k] = self._wrap_proxy_method(
                         v, interface, allow_futures=False
                     )
-            elif k in ("__new__", "__init__"):
-                # Skip custom constructor in the wrapped class
-                # Instead, delegate to the base class constructor and wrap it
-                pass
             elif isinstance(v, staticmethod):
                 # TODO(erikbern): this feels pretty hacky
                 new_dict[k] = self._wrap_proxy_staticmethod(v, interface)
@@ -507,10 +512,16 @@ class Synchronizer:
             elif callable(v):
                 new_dict[k] = self._wrap_proxy_method(v, interface)
 
-        # Create the constructor
-        wrapped_new, wrapped_init = self._wrap_proxy_constructor(cls, constructor_method, interface)
+        # Create a custom new class
+        wrapped_new = self._wrap_proxy_new(cls, interface)
         new_dict["__new__"] = wrapped_new
-        new_dict["__init__"] = wrapped_init
+                
+        # Create the constructor if it exists
+        # If it doesn't exists then some superconstructor will be called instead
+        constructor_method = custom_constructor_method or default_constructor_method
+        if constructor_method is not None:
+            wrapped_init = self._wrap_proxy_constructor(cls, constructor_method, interface)
+            new_dict["__init__"] = wrapped_init
 
         new_cls = type.__new__(type, name, bases, new_dict)
         new_cls.__module__ = cls.__module__
