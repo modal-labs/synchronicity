@@ -52,7 +52,7 @@ def test_async_constructor():
     assert AsyncFoo.__init__.__doc__ == "Do the async magic"
 
     # Try a subclass that inherits
-    
+
     class Bar(Foo):
         pass
 
@@ -67,7 +67,7 @@ def test_async_constructor():
     assert bar.x == 49
 
     # Try a subclass that uses to the superconstructor
-    
+
     class Baz(Bar):
         @constructor(Interface.BLOCKING, Interface.ASYNC)
         def create(self, x, y):

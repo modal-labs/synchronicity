@@ -46,10 +46,12 @@ _FUNCTION_PREFIXES = {
 # Decorator that marks a method as constructor
 _CONSTRUCTOR_ATTR = "_SYNCHRONICITY_CONSTRUCTOR"
 
+
 def constructor(*interfaces):
     def mark_method(func):
         setattr(func, _CONSTRUCTOR_ATTR, interfaces)
         return func
+
     return mark_method
 
 
@@ -430,6 +432,7 @@ class Synchronizer:
 
     def _wrap_proxy_new(self, cls, interface):
         """Returns a custom __new__ for the subclass."""
+
         def my_new(wrapped_cls, *args, **kwargs):
             original_cls = getattr(wrapped_cls, _ORIGINAL_ATTR)
 
@@ -486,7 +489,9 @@ class Synchronizer:
         default_constructor_method = None  # If we find an undecorated __init__
         custom_constructor_method = None
         for k, v in cls.__dict__.items():
-            if hasattr(v, _CONSTRUCTOR_ATTR) and interface in getattr(v, _CONSTRUCTOR_ATTR):
+            if hasattr(v, _CONSTRUCTOR_ATTR) and interface in getattr(
+                v, _CONSTRUCTOR_ATTR
+            ):
                 custom_constructor_method = v
             elif k == "__init__" and not hasattr(v, _CONSTRUCTOR_ATTR):
                 default_constructor_method = v
@@ -515,12 +520,14 @@ class Synchronizer:
         # Create a custom new class
         wrapped_new = self._wrap_proxy_new(cls, interface)
         new_dict["__new__"] = wrapped_new
-                
+
         # Create the constructor if it exists
         # If it doesn't exists then some superconstructor will be called instead
         constructor_method = custom_constructor_method or default_constructor_method
         if constructor_method is not None:
-            wrapped_init = self._wrap_proxy_constructor(cls, constructor_method, interface)
+            wrapped_init = self._wrap_proxy_constructor(
+                cls, constructor_method, interface
+            )
             new_dict["__init__"] = wrapped_init
 
         new_cls = type.__new__(type, name, bases, new_dict)

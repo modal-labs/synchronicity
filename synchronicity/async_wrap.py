@@ -14,12 +14,14 @@ def async_compat_wraps(func):
     Note: Does not forward async generator information other than explicit annotations
     """
     if inspect.iscoroutinefunction(func):
+
         def asyncfunc_deco(user_wrapper):
             @functools.wraps(func)
             async def wrapper(*args, **kwargs):
                 return await user_wrapper(*args, **kwargs)
 
             return wrapper
+
         return asyncfunc_deco
 
     return functools.wraps(func)
