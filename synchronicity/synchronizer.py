@@ -369,21 +369,17 @@ class Synchronizer:
                 ):  # TODO: HACKY HACK
                     # TODO: this is needed for decorator wrappers that returns functions
                     # Maybe a bit of a hacky special case that deserves its own decorator
-                    @wraps_by_interface(interface, res)
-                    def f_wrapped(*args, **kwargs):
-                        args = self._translate_in(args)
-                        kwargs = self._translate_in(kwargs)
-                        f_res = res(*args, **kwargs)
-                        return self._translate_out(f_res, interface)
-
-                    return f_wrapped
+                    return self._wrap_callable(res, interface)
 
                 return self._translate_out(res, interface)
 
-        f_wrapped.__name__ = name if name is not None else f.__name__
-        f_wrapped.__qualname__ = name if name is not None else f.__qualname__
-        f_wrapped.__module__ = f.__module__
-        f_wrapped.__doc__ = f.__doc__
+        defaults = {"__name__": name, "__qualname__": name}
+        for attr in ["__name__", "__qualname__", "__module__", "__doc__"]:
+            set_attr_to = defaults.get(attr)
+            if set_attr_to is None:
+                set_attr_to = getattr(f, attr, None)
+            if set_attr_to is not None:
+                setattr(f_wrapped, attr, set_attr_to)
 
         setattr(f_wrapped, _ORIGINAL_ATTR, f)
         return f_wrapped
