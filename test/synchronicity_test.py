@@ -4,7 +4,7 @@ import inspect
 import pytest
 import time
 
-from synchronicity import Synchronizer
+from synchronicity import Synchronizer, Interface
 
 SLEEP_DELAY = 0.1
 
@@ -416,3 +416,20 @@ def test_event_loop():
     # Starting a loop again before closing throws.
     with pytest.raises(Exception):
         s._start_loop(new_loop)
+
+
+
+@pytest.mark.parametrize("interface_type", [Interface.BLOCKING, Interface.ASYNC, Interface.AUTODETECT])
+def test_doc_transfer(interface_type):
+    class Foo:
+        """Hello"""
+
+        def foo(self):
+            """hello"""
+
+    s = Synchronizer()
+    output_class = s.create(Foo)[interface_type]
+
+    assert output_class.__doc__ == "Hello"
+    assert output_class.foo.__doc__ == "hello"
+
