@@ -474,6 +474,7 @@ class Synchronizer:
 
         new_cls = type.__new__(type, name, bases, new_dict)
         new_cls.__module__ = cls.__module__
+        new_cls.__doc__ = cls.__doc__
         return new_cls
 
     def _wrap_class_or_function(self, object, interface):
