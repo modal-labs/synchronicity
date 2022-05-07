@@ -165,16 +165,18 @@ class Synchronizer:
             new_object = interface_cls.__new__(interface_cls)
             interface_instances[interface] = new_object
             # Store a reference to the original object
-            setattr(new_object, _ORIGINAL_INST_ATTR, object)
+            new_object.__dict__[_ORIGINAL_INST_ATTR] = object
         return interface_instances[interface]
 
     def _translate_scalar_in(self, object):
         # If it's an external object, translate it to the internal type
-        if inspect.isclass(object):  # TODO: functions?
-            new_object = getattr(object, _ORIGINAL_ATTR, object)
+        if hasattr(object, "__dict__"):
+            if inspect.isclass(object):  # TODO: functions?
+                return object.__dict__.get(_ORIGINAL_ATTR, object)
+            else:
+                return object.__dict__.get(_ORIGINAL_INST_ATTR, object)
         else:
-            new_object = getattr(object, _ORIGINAL_INST_ATTR, object)
-        return new_object
+            return object
 
     def _translate_scalar_out(self, object, interface):
         # If it's an internal object, translate it to the external interface
@@ -393,7 +395,7 @@ class Synchronizer:
 
         @wraps_by_interface(interface, method)
         def proxy_method(self, *args, **kwargs):
-            instance = getattr(self, _ORIGINAL_INST_ATTR)
+            instance = self.__dict__[_ORIGINAL_INST_ATTR]
             return method(instance, *args, **kwargs)
 
         return proxy_method
@@ -430,10 +432,10 @@ class Synchronizer:
 
             # Register self as the wrapped one
             interface_instances = {interface: wrapped_self}
-            setattr(instance, _WRAPPED_INST_ATTR, interface_instances)
+            instance.__dict__[_WRAPPED_INST_ATTR] = interface_instances
 
             # Store a reference to the original object
-            setattr(wrapped_self, _ORIGINAL_INST_ATTR, instance)
+            wrapped_self.__dict__[_ORIGINAL_INST_ATTR] = instance
 
         return my_init
 
