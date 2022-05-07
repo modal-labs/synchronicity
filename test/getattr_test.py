@@ -14,7 +14,8 @@ def test_getattr():
         def __init__(self):
             self._attrs = {}
 
-        def __getattr__(self, k):
+        async def __getattr__(self, k):
+            await asyncio.sleep(0.01)
             if k in self.__annotations__:
                 return self.__dict__[k]
             else:
@@ -32,12 +33,11 @@ def test_getattr():
 
     foo = Foo()
     foo.x = 42
-    assert foo.x == 42
+    assert asyncio.run(foo.x) == 42
     with pytest.raises(KeyError):
-        foo.y
+        asyncio.run(foo.y)
 
     BlockingFoo = s.create(Foo)[Interface.BLOCKING]
-    assert BlockingFoo.__name__ == "BlockingFoo"
 
     blocking_foo = BlockingFoo()
     blocking_foo.x = 42
@@ -47,3 +47,8 @@ def test_getattr():
 
     blocking_foo = BlockingFoo.make_foo()
     assert isinstance(blocking_foo, BlockingFoo)
+
+    AsyncFoo = s.create(Foo)[Interface.ASYNC]
+    async_foo = AsyncFoo()
+    async_foo.x = 42
+    assert asyncio.run(async_foo.x) == 42
