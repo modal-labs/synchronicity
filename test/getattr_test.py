@@ -26,6 +26,10 @@ def test_getattr():
             else:
                 self._attrs[k] = v
 
+        @staticmethod
+        def make_foo():
+            return Foo()
+
     foo = Foo()
     foo.x = 42
     assert foo.x == 42
@@ -40,3 +44,6 @@ def test_getattr():
     assert blocking_foo.x == 42
     with pytest.raises(KeyError):
         blocking_foo.y
+
+    blocking_foo = BlockingFoo.make_foo()
+    assert isinstance(blocking_foo, BlockingFoo)
