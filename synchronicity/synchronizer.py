@@ -100,13 +100,8 @@ class Synchronizer:
         return self._loop
 
     def _close_loop(self):
-        if self._loop is not None and self._loop.is_running():
-            self._loop.call_soon_threadsafe(self._loop.stop)
-            while self._loop.is_running():
-                time.sleep(0.01)
-            self._loop.close()
         if self._thread is not None:
-            self._thread.join()
+            self._thread.join(timeout=0)
 
     def _get_loop(self, start=False):
         if self._loop is None and start:
