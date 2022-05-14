@@ -55,6 +55,7 @@ class Synchronizer:
         self._async_leakage_warning = async_leakage_warning
         self._loop = None
         self._thread = None
+        self._stopping = None
 
         # Prep a synchronized context manager
         self._ctx_mgr_cls = get_ctx_mgr_cls()
@@ -91,17 +92,31 @@ class Synchronizer:
 
         def run_forever():
             self._loop = loop
+            self._stopping = asyncio.Event(loop=loop)
             is_ready.set()
-            self._loop.run_forever()
+            try:
+                loop.run_until_complete(self._stopping.wait())
+            finally:
+                try:
+                    # This follows asyncio.run
+                    asyncio.runners._cancel_all_tasks(self._loop)
+                    loop.run_until_complete(loop.shutdown_asyncgens())
+                    loop.run_until_complete(loop.shutdown_default_executor())
+                finally:
+                    loop.close()
 
-        self._thread = threading.Thread(target=lambda: run_forever(), daemon=True)
-        self._thread.start()  # TODO: we should join the thread at some point
+        self._thread = threading.Thread(target=run_forever, daemon=True)
+        self._thread.start()
         is_ready.wait()  # TODO: this might block for a very short time
         return self._loop
 
     def _close_loop(self):
         if self._thread is not None:
-            self._thread.join(timeout=0)
+            def stop():
+                self._stopping.set()
+            # This also serves the purpose of waking up an idle loop
+            self._loop.call_soon_threadsafe(stop)
+            self._thread.join()
 
     def _get_loop(self, start=False):
         if self._loop is None and start:
