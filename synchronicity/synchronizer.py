@@ -84,28 +84,23 @@ class Synchronizer:
         for attr in self._PICKLE_ATTRS:
             setattr(self, attr, d[attr])
 
-    def _start_loop(self, loop):
+    def _start_loop(self):
         if self._loop and self._loop.is_running():
             raise Exception("Synchronicity loop already running.")
 
         is_ready = threading.Event()
 
-        def run_forever():
-            self._loop = loop
-            self._stopping = asyncio.Event(loop=loop)
-            is_ready.set()
-            try:
-                loop.run_until_complete(self._stopping.wait())
-            finally:
-                try:
-                    # This follows asyncio.run
-                    asyncio.runners._cancel_all_tasks(self._loop)
-                    loop.run_until_complete(loop.shutdown_asyncgens())
-                    loop.run_until_complete(loop.shutdown_default_executor())
-                finally:
-                    loop.close()
+        def thread_inner():
+            async def loop_inner():
+                self._loop = asyncio.get_running_loop()
+                self._stopping = asyncio.Event()
+                is_ready.set()
+                await self._stopping.wait()  # wait until told to stop
 
-        self._thread = threading.Thread(target=run_forever, daemon=True)
+            asyncio.run(loop_inner())
+
+
+        self._thread = threading.Thread(target=thread_inner, daemon=True)
         self._thread.start()
         is_ready.wait()  # TODO: this might block for a very short time
         return self._loop
@@ -120,7 +115,7 @@ class Synchronizer:
 
     def _get_loop(self, start=False):
         if self._loop is None and start:
-            return self._start_loop(asyncio.new_event_loop())
+            return self._start_loop()
         return self._loop
 
     def _get_running_loop(self):
