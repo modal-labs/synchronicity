@@ -97,8 +97,12 @@ class Synchronizer:
                 is_ready.set()
                 await self._stopping.wait()  # wait until told to stop
 
-            asyncio.run(loop_inner())
-
+            if hasattr(asyncio, "run"):  # Py 3.7+
+                asyncio.run(loop_inner())
+            else:  # Py 3.6
+                # This won't handle shutting down properly (running finally: blocks etc)
+                loop = asyncio.get_event_loop()
+                loop.run_until_complete(loop_inner())
 
         self._thread = threading.Thread(target=thread_inner, daemon=True)
         self._thread.start()
