@@ -97,12 +97,7 @@ class Synchronizer:
                 is_ready.set()
                 await self._stopping.wait()  # wait until told to stop
 
-            if hasattr(asyncio, "run"):  # Py 3.7+
-                asyncio.run(loop_inner())
-            else:  # Py 3.6
-                # This won't handle shutting down properly (running finally: blocks etc)
-                loop = asyncio.get_event_loop()
-                loop.run_until_complete(loop_inner())
+            asyncio.run(loop_inner())
 
         self._thread = threading.Thread(target=thread_inner, daemon=True)
         self._thread.start()
@@ -123,14 +118,10 @@ class Synchronizer:
         return self._loop
 
     def _get_running_loop(self):
-        if hasattr(asyncio, "get_running_loop"):
-            try:
-                return asyncio.get_running_loop()
-            except RuntimeError:
-                return
-        else:
-            # Python 3.6 compatibility
-            return asyncio._get_running_loop()
+        try:
+            return asyncio.get_running_loop()
+        except RuntimeError:
+            return
 
     def _get_runtime_interface(self, interface):
         """Returns one out of Interface.ASYNC or Interface.BLOCKING"""

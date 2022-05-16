@@ -5,10 +5,11 @@ def get_ctx_mgr_cls():
     class AsyncGeneratorContextManager:
         """This is basically copied (but slightly modified) from contextlib.py
 
-        We could have just synchronized the built-in class, but it was added in Python 3.7, so
-        we're including most of the logic here, in order to make it work with Python 3.6 as well.
+        TODO: maybe let's just synchronize the contextlib class? We didn't do it previously
+        since it was added in 3.7 and we wanted to offer it for 3.6, but we don't support
+        3.6 now anyway.
 
-        TODO: add back support for filter_tracebacks (doesn't work in Python 3.6)
+        TODO: add back support for filter_tracebacks
         """
 
         def __init__(self, func, args, kwargs):
