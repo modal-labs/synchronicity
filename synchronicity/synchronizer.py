@@ -106,10 +106,9 @@ class Synchronizer:
 
     def _close_loop(self):
         if self._thread is not None:
-            def stop():
-                self._stopping.set()
-            # This also serves the purpose of waking up an idle loop
-            self._loop.call_soon_threadsafe(stop)
+            if not self._loop.is_closed():
+                # This also serves the purpose of waking up an idle loop
+                self._loop.call_soon_threadsafe(self._stopping.set)
             self._thread.join()
 
     def _get_loop(self, start=False):
