@@ -31,15 +31,11 @@ def test_getattr():
         def make_foo():
             return Foo()
 
-    def run(coro):
-        # Python 3.6 compat
-        return asyncio.get_event_loop().run_until_complete(coro)
-
     foo = Foo()
     foo.x = 42
-    assert run(foo.x) == 42
+    assert asyncio.run(foo.x) == 42
     with pytest.raises(KeyError):
-        run(foo.y)
+        asyncio.run(foo.y)
 
     BlockingFoo = s.create(Foo)[Interface.BLOCKING]
 
@@ -55,4 +51,4 @@ def test_getattr():
     AsyncFoo = s.create(Foo)[Interface.ASYNC]
     async_foo = AsyncFoo()
     async_foo.x = 42
-    assert run(async_foo.x) == 42
+    assert asyncio.run(async_foo.x) == 42

@@ -55,6 +55,7 @@ class Synchronizer:
         self._async_leakage_warning = async_leakage_warning
         self._loop = None
         self._thread = None
+        self._stopping = None
 
         # Prep a synchronized context manager
         self._ctx_mgr_cls = get_ctx_mgr_cls()
@@ -83,40 +84,44 @@ class Synchronizer:
         for attr in self._PICKLE_ATTRS:
             setattr(self, attr, d[attr])
 
-    def _start_loop(self, loop):
+    def _start_loop(self):
         if self._loop and self._loop.is_running():
             raise Exception("Synchronicity loop already running.")
 
         is_ready = threading.Event()
 
-        def run_forever():
-            self._loop = loop
-            is_ready.set()
-            self._loop.run_forever()
+        def thread_inner():
+            async def loop_inner():
+                self._loop = asyncio.get_running_loop()
+                self._stopping = asyncio.Event()
+                is_ready.set()
+                await self._stopping.wait()  # wait until told to stop
 
-        self._thread = threading.Thread(target=lambda: run_forever(), daemon=True)
-        self._thread.start()  # TODO: we should join the thread at some point
+            asyncio.run(loop_inner())
+
+        self._thread = threading.Thread(target=thread_inner, daemon=True)
+        self._thread.start()
         is_ready.wait()  # TODO: this might block for a very short time
         return self._loop
 
     def _close_loop(self):
         if self._thread is not None:
-            self._thread.join(timeout=0)
+            def stop():
+                self._stopping.set()
+            # This also serves the purpose of waking up an idle loop
+            self._loop.call_soon_threadsafe(stop)
+            self._thread.join()
 
     def _get_loop(self, start=False):
         if self._loop is None and start:
-            return self._start_loop(asyncio.new_event_loop())
+            return self._start_loop()
         return self._loop
 
     def _get_running_loop(self):
-        if hasattr(asyncio, "get_running_loop"):
-            try:
-                return asyncio.get_running_loop()
-            except RuntimeError:
-                return
-        else:
-            # Python 3.6 compatibility
-            return asyncio._get_running_loop()
+        try:
+            return asyncio.get_running_loop()
+        except RuntimeError:
+            return
 
     def _get_runtime_interface(self, interface):
         """Returns one out of Interface.ASYNC or Interface.BLOCKING"""
