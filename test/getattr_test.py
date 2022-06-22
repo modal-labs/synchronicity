@@ -25,6 +25,10 @@ def test_getattr():
             else:
                 self._attrs[k] = v
 
+        @property
+        def z(self):
+            return self._attrs["x"]
+
         @staticmethod
         def make_foo():
             return Foo()
@@ -34,6 +38,7 @@ def test_getattr():
     assert asyncio.run(foo.x) == 42
     with pytest.raises(KeyError):
         asyncio.run(foo.y)
+    assert foo.z == 42
 
     BlockingFoo = s.create(Foo)[Interface.BLOCKING]
 
@@ -42,6 +47,7 @@ def test_getattr():
     assert blocking_foo.x == 42
     with pytest.raises(KeyError):
         blocking_foo.y
+    assert blocking_foo.z == 42
 
     blocking_foo = BlockingFoo.make_foo()
     assert isinstance(blocking_foo, BlockingFoo)
@@ -50,3 +56,4 @@ def test_getattr():
     async_foo = AsyncFoo()
     async_foo.x = 42
     assert asyncio.run(async_foo.x) == 42
+    assert async_foo.z == 42
