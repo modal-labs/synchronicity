@@ -16,13 +16,11 @@ def test_getattr():
 
         async def __getattr__(self, k):
             await asyncio.sleep(0.01)
-            if k in self.__annotations__:
-                return self.__dict__[k]
-            else:
-                return self._attrs[k]
+            return self._attrs[k]
 
         def __setattr__(self, k, v):
             if k in self.__annotations__:
+                # Only needed because the constructor sets _attrs
                 self.__dict__[k] = v
             else:
                 self._attrs[k] = v
