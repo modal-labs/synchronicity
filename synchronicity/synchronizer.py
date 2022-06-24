@@ -301,6 +301,13 @@ class Synchronizer:
     def create_callback(self, f, interface):
         return Callback(self, f, interface)
 
+    def _update_wrapper(self, f, f_wrapped, name=None):
+        """Very similar to functools.update_wrapper"""
+        f_wrapped.__name__ = name if name is not None else f.__name__
+        f_wrapped.__qualname__ = name if name is not None else f.__qualname__
+        f_wrapped.__module__ = f.__module__
+        f_wrapped.__doc__ = f.__doc__
+
     def _wrap_callable(self, f, interface, name=None, allow_futures=True):
         if hasattr(f, _ORIGINAL_ATTR):
             if self._multiwrap_warning:
@@ -381,11 +388,7 @@ class Synchronizer:
 
                 return self._translate_out(res, interface)
 
-        f_wrapped.__name__ = name if name is not None else f.__name__
-        f_wrapped.__qualname__ = name if name is not None else f.__qualname__
-        f_wrapped.__module__ = f.__module__
-        f_wrapped.__doc__ = f.__doc__
-
+        self._update_wrapper(f, f_wrapped, name)
         setattr(f_wrapped, _ORIGINAL_ATTR, f)
         return f_wrapped
 
@@ -436,6 +439,7 @@ class Synchronizer:
             # Store a reference to the original object
             wrapped_self.__dict__[_ORIGINAL_INST_ATTR] = instance
 
+        self._update_wrapper(cls.__init__, my_init)
         return my_init
 
     def _wrap_class(self, cls, interface, name):
