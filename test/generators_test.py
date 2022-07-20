@@ -5,7 +5,6 @@ from synchronicity import Synchronizer, Interface
 
 events = []
 
-
 async def async_producer():
     for i in range(10):
         events.append("producer")
@@ -105,3 +104,24 @@ def test_athrow_baseexc_sync():
     assert v == "hello"
     v = gen.throw(KeyboardInterrupt)
     assert v == "foobar"
+
+
+async def ensure_stop_async_iteration():
+    try:
+        yield 42
+        yield 43
+    except BaseException as exc:
+        events.append(exc)
+
+
+def test_ensure_stop_async_iteration():
+    events.clear()
+
+    def create_generator():
+        gen_f = Synchronizer()(ensure_stop_async_iteration)
+        for x in gen_f():
+            break
+
+    create_generator()
+    assert len(events) == 1
+    assert isinstance(events[0], GeneratorExit)
