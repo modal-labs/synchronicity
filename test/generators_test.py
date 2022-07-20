@@ -125,3 +125,22 @@ def test_ensure_stop_async_iteration():
     create_generator()
     assert len(events) == 1
     assert isinstance(events[0], GeneratorExit)
+
+
+class MyGenerator:
+    def __aiter__(self):
+        return async_producer()
+
+    def __del__(self):
+        events.append("destructor")
+
+
+def test_custom_generator():
+    events.clear()
+    s = Synchronizer()
+    BlockingMyGenerator = s.create(MyGenerator)[Interface.BLOCKING]
+    blocking_my_generator = BlockingMyGenerator()
+    for x in blocking_my_generator:
+        events.append("consumer")
+    del blocking_my_generator
+    assert events == ["producer", "consumer"] * 10 + ["destructor"]
