@@ -1,3 +1,4 @@
+import sys
 from .exceptions import UserCodeException, unwrap_coro_exception
 
 
@@ -30,6 +31,12 @@ def get_ctx_mgr_cls():
                 else:
                     raise RuntimeError("generator didn't stop")
             else:
+                if sys.version_info < (3, 7, 9) and typ == GeneratorExit:
+                    # fix for weird error pre 3.7.9 https://bugs.python.org/issue33786
+                    # not sure if it breaks something else though so lets version gate it
+                    typ = StopAsyncIteration
+                    value = typ()
+
                 if value is None:
                     value = typ()
                 try:
