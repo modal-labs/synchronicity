@@ -7,7 +7,7 @@ class UserCodeException(Exception):
         # There's always going to be one place inside synchronicity where we
         # catch the exception. We can always safely remove that frame from the
         # traceback.
-        self.exc = exc.with_traceback(exc.__traceback__.tb_next)
+        self.exc = exc
 
 
 def wrap_coro_exception(coro):
@@ -19,6 +19,7 @@ def wrap_coro_exception(coro):
         except UserCodeException as exc:
             raise exc  # Pass-through in case it got double-wrapped
         except BaseException as exc:
+            exc = exc.with_traceback(exc.__traceback__.tb_next)
             raise UserCodeException(exc)
 
     return coro_wrapped()

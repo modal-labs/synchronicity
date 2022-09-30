@@ -308,7 +308,7 @@ class Synchronizer:
             f_wrapped.__name__ = name
             f_wrapped.__qualname__ = name
 
-    def _wrap_callable(self, f, interface, name=None, allow_futures=True):
+    def _wrap_callable(self, f, interface, name=None, allow_futures=True, unwrap_user_excs=True):
         if hasattr(f, _ORIGINAL_ATTR):
             if self._multiwrap_warning:
                 warnings.warn(
@@ -363,7 +363,11 @@ class Synchronizer:
                     try:
                         return self._run_function_sync(res, interface)
                     except UserCodeException as uc_exc:
-                        raise uc_exc.exc from None
+                        # Used to skip a frame when called from `proxy_method`.
+                        if unwrap_user_excs:
+                            raise uc_exc.exc from None
+                        else:
+                            raise uc_exc
             elif is_asyncgen:
                 # Note that the _run_generator_* functions handle their own
                 # unwrapping of exceptions (this happens during yielding)
@@ -393,12 +397,15 @@ class Synchronizer:
         return f_wrapped
 
     def _wrap_proxy_method(self, method, interface, allow_futures=True):
-        method = self._wrap_callable(method, interface, allow_futures=allow_futures)
+        method = self._wrap_callable(method, interface, allow_futures=allow_futures, unwrap_user_excs=False)
 
         @wraps_by_interface(interface, method)
         def proxy_method(self, *args, **kwargs):
             instance = self.__dict__[_ORIGINAL_INST_ATTR]
-            return method(instance, *args, **kwargs)
+            try:
+                return method(instance, *args, **kwargs)
+            except UserCodeException as uc_exc:
+                raise uc_exc.exc from None
 
         return proxy_method
 
