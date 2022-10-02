@@ -346,16 +346,6 @@ class Synchronizer:
                 # The run_function_* may throw UserCodeExceptions that
                 # need to be unwrapped here at the entrypoint
                 if runtime_interface == Interface.ASYNC:
-                    if self._get_running_loop() == self._get_loop():
-                        # See #27. This is a bit of a hack needed to "shortcut" the exception
-                        # handling if we're within the same loop - there's no need to wrap and
-                        # unwrap the exception and it just adds unnecessary traceback spam.
-
-                        # TODO(erikbern): I don't this should ever happen other than in weird cases
-                        # like how we set the thread loop for pytest to the one in synchronicity
-                        # during Modal tests
-                        return self._translate_coro_out(res, interface)
-
                     coro = self._run_function_async(res, interface)
                     coro = unwrap_coro_exception(coro)
                     return coro
