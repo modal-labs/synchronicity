@@ -46,6 +46,7 @@ class Synchronizer:
         self._multiwrap_warning = multiwrap_warning
         self._async_leakage_warning = async_leakage_warning
         self._loop = None
+        self._loop_creation_lock = threading.Lock()
         self._thread = None
         self._stopping = None
 
@@ -91,24 +92,25 @@ class Synchronizer:
             setattr(self, attr, d[attr])
 
     def _start_loop(self):
-        if self._loop and self._loop.is_running():
-            raise Exception("Synchronicity loop already running.")
+        with self._loop_creation_lock:
+            if self._loop and self._loop.is_running():
+                return
 
-        is_ready = threading.Event()
+            is_ready = threading.Event()
 
-        def thread_inner():
-            async def loop_inner():
-                self._loop = asyncio.get_running_loop()
-                self._stopping = asyncio.Event()
-                is_ready.set()
-                await self._stopping.wait()  # wait until told to stop
+            def thread_inner():
+                async def loop_inner():
+                    self._loop = asyncio.get_running_loop()
+                    self._stopping = asyncio.Event()
+                    is_ready.set()
+                    await self._stopping.wait()  # wait until told to stop
 
-            asyncio.run(loop_inner())
+                asyncio.run(loop_inner())
 
-        self._thread = threading.Thread(target=thread_inner, daemon=True)
-        self._thread.start()
-        is_ready.wait()  # TODO: this might block for a very short time
-        return self._loop
+            self._thread = threading.Thread(target=thread_inner, daemon=True)
+            self._thread.start()
+            is_ready.wait()  # TODO: this might block for a very short time
+            return self._loop
 
     def _close_loop(self):
         if self._thread is not None:
@@ -116,6 +118,7 @@ class Synchronizer:
                 # This also serves the purpose of waking up an idle loop
                 self._loop.call_soon_threadsafe(self._stopping.set)
             self._thread.join()
+            self._thread = None
 
     def _get_loop(self, start=False):
         if self._loop is None and start:
