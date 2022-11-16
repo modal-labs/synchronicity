@@ -5,7 +5,7 @@ async def run():
     try:
         while True:
             print("running")
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0.3)
     finally:
         print("stopping")
         await asyncio.sleep(0.1)

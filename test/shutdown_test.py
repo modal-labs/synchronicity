@@ -5,7 +5,6 @@ import signal
 import sys
 
 
-@pytest.mark.timeout(5)
 def test_shutdown():
     # We run it in a separate process so we can simulate interrupting it
     fn = os.path.join(os.path.dirname(__file__), "_shutdown.py")
@@ -15,7 +14,7 @@ def test_shutdown():
         stderr=sys.stderr,
         env={"PYTHONUNBUFFERED": "1"},
     )
-    for i in range(7):  # this number doesn't matter, it's a while loop
+    for i in range(3):  # this number doesn't matter, it's a while loop
         assert p.stdout.readline() == b"running\n"
     p.send_signal(signal.SIGINT)
     assert p.stdout.readline() == b"stopping\n"
