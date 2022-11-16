@@ -117,14 +117,26 @@ class Synchronizer:
         return self._loop
 
     def _get_running_loop(self):
+        # TODO: delete this method
         try:
             return asyncio.get_running_loop()
         except RuntimeError:
             return
 
+    def _is_inside_loop(self):
+        loop = self._get_loop()
+        if loop is None:
+            return False
+        if threading.current_thread() != self._thread:
+            # gevent does something bad that causes asyncio.get_running_loop() to return self._loop
+            return False
+        current_loop = self._get_running_loop()
+        return loop == current_loop
+
     def _get_runtime_interface(self, interface):
         """Returns one out of Interface.ASYNC or Interface.BLOCKING"""
         if interface == Interface.AUTODETECT:
+            # TODO: delete this method
             return Interface.ASYNC if self._get_running_loop() else Interface.BLOCKING
         else:
             assert interface in (Interface.ASYNC, Interface.BLOCKING)
@@ -220,9 +232,7 @@ class Synchronizer:
         return unwrap_coro()
 
     def _run_function_sync(self, coro, interface):
-        current_loop = self._get_running_loop()
-        loop = self._get_loop()
-        if loop is not None and loop == current_loop:
+        if self._is_inside_loop():
             raise Exception(
                 "Deadlock detected: calling a sync function from the synchronizer loop"
             )
@@ -246,9 +256,8 @@ class Synchronizer:
     async def _run_function_async(self, coro, interface):
         coro = wrap_coro_exception(coro)
         coro = self._wrap_check_async_leakage(coro)
-        current_loop = self._get_running_loop()
         loop = self._get_loop(start=True)
-        if loop == current_loop:
+        if self._is_inside_loop():
             value = await coro
         else:
             c_fut = asyncio.run_coroutine_threadsafe(coro, loop)
