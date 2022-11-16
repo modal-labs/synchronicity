@@ -24,7 +24,7 @@ class Resource:
     def get_state(self):
         return self.state
 
-    @s.asynccontextmanager
+    @asynccontextmanager
     async def wrap(self):
         self.state = "entered"
         try:
@@ -32,12 +32,12 @@ class Resource:
         finally:
             self.state = "exited"
 
-    @s.asynccontextmanager
+    @asynccontextmanager
     async def wrap_yield_twice(self):
         yield
         yield
 
-    @s.asynccontextmanager
+    @asynccontextmanager
     async def wrap_never_yield(self):
         if False:
             yield
@@ -93,7 +93,7 @@ async def test_asynccontextmanager_nested():
     finally_blocks = []
 
     @s
-    @s.asynccontextmanager
+    @asynccontextmanager
     async def a():
         try:
             yield "foo"
@@ -101,7 +101,7 @@ async def test_asynccontextmanager_nested():
             finally_blocks.append("A")
 
     @s
-    @s.asynccontextmanager
+    @asynccontextmanager
     async def b():
         async with a() as it:
             try:
@@ -129,7 +129,7 @@ async def test_asynccontextmanager_with_in_async():
 def test_generatorexit_in_async_generator():
     s = Synchronizer()
 
-    @s.asynccontextmanager
+    @asynccontextmanager
     async def foo():
         yield
 

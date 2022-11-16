@@ -513,11 +513,12 @@ class Synchronizer:
         return new_object
 
     def asynccontextmanager(self, func):
-        @functools.wraps(func)
-        def helper(*args, **kwargs):
-            return self._ctx_mgr_cls(func, args, kwargs)
-
-        return helper
+        warnings.warn(
+            "No need to use Synchronizer.asynccontextmanager,"
+            "can just use contextlib.asynccontextmanager instead.",
+            DeprecationWarning
+        )
+        return contextlib.asynccontextmanager(func)
 
     # New interface that (almost) doesn't mutate objects
 
