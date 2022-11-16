@@ -1,5 +1,6 @@
 import asyncio
 import atexit
+import contextlib
 import functools
 import inspect
 import threading
@@ -8,7 +9,6 @@ import warnings
 
 from .callback import Callback
 from .async_wrap import wraps_by_interface
-from .contextlib import get_ctx_mgr_cls
 from .exceptions import UserCodeException, unwrap_coro_exception, wrap_coro_exception
 from .interface import Interface
 
@@ -64,7 +64,7 @@ class Synchronizer:
         self._original_inst_attr = "_sync_original_inst_%d" % id(self)
 
         # Prep a synchronized context manager
-        self._ctx_mgr_cls = get_ctx_mgr_cls()
+        self._ctx_mgr_cls = contextlib._AsyncGeneratorContextManager
         self.create(self._ctx_mgr_cls)
 
         atexit.register(self._close_loop)
