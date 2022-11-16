@@ -3,11 +3,11 @@ import atexit
 import functools
 import inspect
 import threading
-import time
+import platform
 import warnings
 
 from .callback import Callback
-from .async_wrap import wraps_by_interface, async_compat_wraps
+from .async_wrap import wraps_by_interface
 from .contextlib import get_ctx_mgr_cls
 from .exceptions import UserCodeException, unwrap_coro_exception, wrap_coro_exception
 from .interface import Interface
@@ -56,6 +56,12 @@ class Synchronizer:
         self._loop = None
         self._thread = None
         self._stopping = None
+
+        if platform.system() == "Windows":
+            # default event loop policy on windows spits out errors when
+            # closing the event loop, so use WindowsSelectorEventLoopPolicy instead
+            # https://stackoverflow.com/questions/45600579/asyncio-event-loop-is-closed-when-getting-loop
+            asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
         # Prep a synchronized context manager
         self._ctx_mgr_cls = get_ctx_mgr_cls()
