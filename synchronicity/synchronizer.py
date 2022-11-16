@@ -20,14 +20,6 @@ _BUILTIN_ASYNC_METHODS = {
 
 _RETURN_FUTURE_KWARG = "_future"
 
-# For classes and functions
-_WRAPPED_ATTR = "_SYNCHRONICITY_WRAPPED_CLS"
-_ORIGINAL_ATTR = "_SYNCHRONICITY_ORIGINAL_CLS"
-
-# For instances
-_WRAPPED_INST_ATTR = "_SYNCHRONICITY_WRAPPED_INST"
-_ORIGINAL_INST_ATTR = "_SYNCHRONICITY_ORIGINAL_INST"
-
 # Default names for classes
 _CLASS_PREFIXES = {
     Interface.AUTODETECT: "Auto",
@@ -62,6 +54,14 @@ class Synchronizer:
             # closing the event loop, so use WindowsSelectorEventLoopPolicy instead
             # https://stackoverflow.com/questions/45600579/asyncio-event-loop-is-closed-when-getting-loop
             asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+        # For classes and functions
+        self._wrapped_attr = "_sync_wrapped_%d" % id(self)
+        self._original_attr = "_sync_original_%d" % id(self)
+
+        # For instances
+        self._wrapped_inst_attr = "_sync_wrapped_inst_%d" % id(self)
+        self._original_inst_attr = "_sync_original_inst_%d" % id(self)
 
         # Prep a synchronized context manager
         self._ctx_mgr_cls = get_ctx_mgr_cls()
@@ -174,24 +174,24 @@ class Synchronizer:
 
     def _wrap_instance(self, object, interface):
         # Takes an object and creates a new proxy object for it
-        interface_instances = object.__dict__.setdefault(_WRAPPED_INST_ATTR, {})
+        interface_instances = object.__dict__.setdefault(self._wrapped_inst_attr, {})
         if interface not in interface_instances:
             cls_dct = object.__class__.__dict__
-            interfaces = cls_dct[_WRAPPED_ATTR]
+            interfaces = cls_dct[self._wrapped_attr]
             interface_cls = interfaces[interface]
             new_object = interface_cls.__new__(interface_cls)
             interface_instances[interface] = new_object
             # Store a reference to the original object
-            new_object.__dict__[_ORIGINAL_INST_ATTR] = object
+            new_object.__dict__[self._original_inst_attr] = object
         return interface_instances[interface]
 
     def _translate_scalar_in(self, object):
         # If it's an external object, translate it to the internal type
         if hasattr(object, "__dict__"):
             if inspect.isclass(object):  # TODO: functions?
-                return object.__dict__.get(_ORIGINAL_ATTR, object)
+                return object.__dict__.get(self._original_attr, object)
             else:
-                return object.__dict__.get(_ORIGINAL_INST_ATTR, object)
+                return object.__dict__.get(self._original_inst_attr, object)
         else:
             return object
 
@@ -199,13 +199,13 @@ class Synchronizer:
         # If it's an internal object, translate it to the external interface
         if inspect.isclass(object):  # TODO: functions?
             cls_dct = object.__dict__
-            if _WRAPPED_ATTR in cls_dct:
-                return cls_dct[_WRAPPED_ATTR][interface]
+            if self._wrapped_attr in cls_dct:
+                return cls_dct[self._wrapped_attr][interface]
             else:
                 return object
         else:
             cls_dct = object.__class__.__dict__
-            if _WRAPPED_ATTR in cls_dct:
+            if self._wrapped_attr in cls_dct:
                 # This is an *instance* of a synchronized class, translate its type
                 return self._wrap_instance(object, interface)
             else:
@@ -324,7 +324,7 @@ class Synchronizer:
             f_wrapped.__qualname__ = name
 
     def _wrap_callable(self, f, interface, name=None, allow_futures=True, unwrap_user_excs=True):
-        if hasattr(f, _ORIGINAL_ATTR):
+        if hasattr(f, self._original_attr):
             if self._multiwrap_warning:
                 warnings.warn(
                     f"Function {f} is already wrapped, but getting wrapped again"
@@ -398,15 +398,15 @@ class Synchronizer:
                 return self._translate_out(res, interface)
 
         self._update_wrapper(f_wrapped, f, name)
-        setattr(f_wrapped, _ORIGINAL_ATTR, f)
+        setattr(f_wrapped, self._original_attr, f)
         return f_wrapped
 
     def _wrap_proxy_method(self, method, interface, allow_futures=True):
         method = self._wrap_callable(method, interface, allow_futures=allow_futures, unwrap_user_excs=False)
 
         @wraps_by_interface(interface, method)
-        def proxy_method(self, *args, **kwargs):
-            instance = self.__dict__[_ORIGINAL_INST_ATTR]
+        def proxy_method(wrapped_self, *args, **kwargs):
+            instance = wrapped_self.__dict__[self._original_inst_attr]
             try:
                 return method(instance, *args, **kwargs)
             except UserCodeException as uc_exc:
@@ -446,10 +446,10 @@ class Synchronizer:
 
             # Register self as the wrapped one
             interface_instances = {interface: wrapped_self}
-            instance.__dict__[_WRAPPED_INST_ATTR] = interface_instances
+            instance.__dict__[self._wrapped_inst_attr] = interface_instances
 
             # Store a reference to the original object
-            wrapped_self.__dict__[_ORIGINAL_INST_ATTR] = instance
+            wrapped_self.__dict__[self._original_inst_attr] = instance
 
         self._update_wrapper(my_init, cls.__init__)
         return my_init
@@ -461,7 +461,7 @@ class Synchronizer:
             self._wrap_class_or_function(base, interface) if base != object else object
             for base in cls.__bases__
         )
-        new_dict = {_ORIGINAL_ATTR: cls}
+        new_dict = {self._original_attr: cls}
         if cls is not None:
             new_dict["__init__"] = self._wrap_proxy_constructor(cls, interface)
         for k, v in cls.__dict__.items():
@@ -495,10 +495,10 @@ class Synchronizer:
         return new_cls
 
     def _wrap_class_or_function(self, object, interface):
-        if _WRAPPED_ATTR not in object.__dict__:
-            setattr(object, _WRAPPED_ATTR, {})
+        if self._wrapped_attr not in object.__dict__:
+            setattr(object, self._wrapped_attr, {})
 
-        interfaces = object.__dict__[_WRAPPED_ATTR]
+        interfaces = object.__dict__[self._wrapped_attr]
         if interface in interfaces:
             if self._multiwrap_warning:
                 warnings.warn(
@@ -532,7 +532,7 @@ class Synchronizer:
             for interface in Interface:
                 interfaces[interface] = self._wrap_class_or_function(object, interface)
             return interfaces
-        elif _WRAPPED_ATTR in object.__class__.__dict__:
+        elif self._wrapped_attr in object.__class__.__dict__:
             # TODO: this requires that the class is already synchronized
             interfaces = {}
             for interface in Interface:
@@ -545,9 +545,9 @@ class Synchronizer:
 
     def is_synchronized(self, object):
         if inspect.isclass(object) or inspect.isfunction(object):
-            return hasattr(object, _ORIGINAL_ATTR)
+            return hasattr(object, self._original_attr)
         else:
-            return hasattr(object.__class__, _ORIGINAL_ATTR)
+            return hasattr(object.__class__, self._original_attr)
 
     # Old interface that we should consider purging
 
