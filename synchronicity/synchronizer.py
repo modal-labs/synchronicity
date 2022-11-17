@@ -94,7 +94,7 @@ class Synchronizer:
     def _start_loop(self):
         with self._loop_creation_lock:
             if self._loop and self._loop.is_running():
-                return
+                return self._loop
 
             is_ready = threading.Event()
 
