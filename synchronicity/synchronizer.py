@@ -97,7 +97,6 @@ class Synchronizer:
                 return self._loop
 
             is_ready = threading.Event()
-
             def thread_inner():
                 async def loop_inner():
                     self._loop = asyncio.get_running_loop()

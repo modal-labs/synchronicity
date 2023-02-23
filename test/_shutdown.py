@@ -6,6 +6,9 @@ async def run():
         while True:
             print("running")
             await asyncio.sleep(0.3)
+    except asyncio.CancelledError:
+        print("cancelled")
+        raise
     finally:
         print("stopping")
         await asyncio.sleep(0.1)
@@ -13,4 +16,8 @@ async def run():
 
 
 s = Synchronizer()
-s(run)()
+
+try:
+    s(run)()
+except KeyboardInterrupt:
+    pass
