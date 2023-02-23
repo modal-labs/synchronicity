@@ -1,3 +1,6 @@
+import asyncio
+
+
 class UserCodeException(Exception):
     """This is used to wrap and unwrap exceptions in "user code".
 
@@ -14,10 +17,15 @@ def wrap_coro_exception(coro):
     async def coro_wrapped():
         try:
             return await coro
-        except StopAsyncIteration as exc:
-            raise exc
-        except UserCodeException as exc:
-            raise exc  # Pass-through in case it got double-wrapped
+        except StopAsyncIteration:
+            raise
+        except asyncio.CancelledError:
+            # we don't want to wrap these since cancelled Task's are otherwise
+            # not properly marked as cancelled, and then not treated correctly
+            # during event loop shutdown (perhaps in other places too)
+            raise
+        except UserCodeException:
+            raise  # Pass-through in case it got double-wrapped
         except BaseException as exc:
             exc = exc.with_traceback(exc.__traceback__.tb_next)
             raise UserCodeException(exc)

@@ -11,11 +11,14 @@ def test_shutdown():
     p = subprocess.Popen(
         [sys.executable, fn],
         stdout=subprocess.PIPE,
-        stderr=sys.stderr,
+        stderr=subprocess.PIPE,
         env={"PYTHONUNBUFFERED": "1"},
     )
     for i in range(3):  # this number doesn't matter, it's a while loop
         assert p.stdout.readline() == b"running\n"
     p.send_signal(signal.SIGINT)
+    assert p.stdout.readline() == b"cancelled\n"
     assert p.stdout.readline() == b"stopping\n"
     assert p.stdout.readline() == b"exiting\n"
+    stderr_content = p.stderr.read()
+    assert b"Traceback" not in stderr_content

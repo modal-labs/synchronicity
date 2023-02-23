@@ -97,19 +97,12 @@ class Synchronizer:
                 return self._loop
 
             is_ready = threading.Event()
-
             def thread_inner():
                 async def loop_inner():
                     self._loop = asyncio.get_running_loop()
                     self._stopping = asyncio.Event()
                     is_ready.set()
                     await self._stopping.wait()  # wait until told to stop
-                    # mute asyncio errors that appear during tear down of
-                    # the event loop
-                    # Otherwise it's common to get RuntimeErrors if
-                    # threadpool executors get shut down before tasks
-                    # using them are done running
-                    self._loop.set_exception_handler(lambda a, b: None)
 
                 asyncio.run(loop_inner())
 
