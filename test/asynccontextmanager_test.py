@@ -44,7 +44,7 @@ class Resource:
 
 
 def test_asynccontextmanager_sync():
-    r = s(Resource)()
+    r = s.create_blocking(Resource)()
     assert r.get_state() == "none"
     with r.wrap():
         assert r.get_state() == "entered"
@@ -53,7 +53,7 @@ def test_asynccontextmanager_sync():
 
 @pytest.mark.asyncio
 async def test_asynccontextmanager_async():
-    r = s(Resource)()
+    r = s.create_async(Resource)()
     assert r.get_state() == "none"
     async with r.wrap():
         assert r.get_state() == "entered"
@@ -62,7 +62,7 @@ async def test_asynccontextmanager_async():
 
 @pytest.mark.asyncio
 async def test_asynccontextmanager_async_raise():
-    r = s(Resource)()
+    r = s.create_async(Resource)()
     assert r.get_state() == "none"
     with pytest.raises(Exception):
         async with r.wrap():
@@ -73,7 +73,7 @@ async def test_asynccontextmanager_async_raise():
 
 @pytest.mark.asyncio
 async def test_asynccontextmanager_yield_twice():
-    r = s(Resource)()
+    r = s.create_async(Resource)()
     with pytest.raises(RuntimeError):
         async with r.wrap_yield_twice():
             pass
@@ -81,7 +81,7 @@ async def test_asynccontextmanager_yield_twice():
 
 @pytest.mark.asyncio
 async def test_asynccontextmanager_never_yield():
-    r = s(Resource)()
+    r = s.create_async(Resource)()
     with pytest.raises(RuntimeError):
         async with r.wrap_never_yield():
             pass
@@ -92,7 +92,7 @@ async def test_asynccontextmanager_nested():
     s = Synchronizer()
     finally_blocks = []
 
-    @s
+    @s.create_async
     @asynccontextmanager
     async def a():
         try:
@@ -100,7 +100,7 @@ async def test_asynccontextmanager_nested():
         finally:
             finally_blocks.append("A")
 
-    @s
+    @s.create_async
     @asynccontextmanager
     async def b():
         async with a() as it:
@@ -116,11 +116,10 @@ async def test_asynccontextmanager_nested():
     assert finally_blocks == ["B", "A"]
 
 
-@pytest.mark.skip(reason="This one will be much easier to fix once AUTODETECT is gone")
 @pytest.mark.asyncio
 async def test_asynccontextmanager_with_in_async():
-    r = s(Resource)()
-    with pytest.raises(RuntimeError):
+    r = s.create_async(Resource)()
+    with pytest.raises(AttributeError):
         with r.wrap():
             pass
 

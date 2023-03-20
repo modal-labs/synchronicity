@@ -18,6 +18,6 @@ async def run():
 s = Synchronizer()
 
 try:
-    s(run)()
+    s.create_blocking(run)()
 except KeyboardInterrupt:
     pass

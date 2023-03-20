@@ -21,8 +21,8 @@ async def f2(fn, x):
 def test_function_sync():
     s = Synchronizer()
     t0 = time.time()
-    f_s = s(f)
-    assert f_s.__name__ == "auto_f"
+    f_s = s.create_blocking(f)
+    assert f_s.__name__ == "blocking_f"
     ret = f_s(42)
     assert ret == 1764
     assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
@@ -31,8 +31,8 @@ def test_function_sync():
 def test_function_sync_future():
     s = Synchronizer()
     t0 = time.time()
-    f_s = s(f)
-    assert f_s.__name__ == "auto_f"
+    f_s = s.create_blocking(f)
+    assert f_s.__name__ == "blocking_f"
     fut = f_s(42, _future=True)
     assert isinstance(fut, concurrent.futures.Future)
     assert time.time() - t0 < SLEEP_DELAY
@@ -44,8 +44,8 @@ def test_function_sync_future():
 async def test_function_async():
     s = Synchronizer()
     t0 = time.time()
-    f_s = s(f)
-    assert f_s.__name__ == "auto_f"
+    f_s = s.create_async(f)
+    assert f_s.__name__ == "async_f"
     coro = f_s(42)
     assert inspect.iscoroutine(coro)
     assert time.time() - t0 < SLEEP_DELAY
@@ -53,15 +53,15 @@ async def test_function_async():
     assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
 
     # Make sure the same-loop calls work
-    f2_s = s(f2)
-    assert f2_s.__name__ == "auto_f2"
+    f2_s = s.create_async(f2)
+    assert f2_s.__name__ == "async_f2"
     coro = f2_s(f_s, 42)
     assert await coro == 1764
 
     # Make sure cross-loop calls work
     s2 = Synchronizer()
-    f2_s2 = s2(f2)
-    assert f2_s2.__name__ == "auto_f2"
+    f2_s2 = s2.create_async(f2)
+    assert f2_s2.__name__ == "async_f2"
     coro = f2_s2(f_s, 42)
     assert await coro == 1764
 
@@ -74,7 +74,7 @@ async def test_function_async_block_event_loop():
         # This blocks the event loop, but not the main event loop
         time.sleep(SLEEP_DELAY)
 
-    spinlock_s = s(spinlock)
+    spinlock_s = s.create_async(spinlock)
     spinlock_coro = spinlock_s()
     sleep_coro = asyncio.sleep(SLEEP_DELAY)
 
@@ -85,7 +85,7 @@ async def test_function_async_block_event_loop():
 
 def test_function_many_parallel_sync():
     s = Synchronizer()
-    g = s(f)
+    g = s.create_blocking(f)
     t0 = time.time()
     rets = [g(i) for i in range(10)]  # Will resolve serially
     assert len(rets) * SLEEP_DELAY < time.time() - t0 < (len(rets) + 1) * SLEEP_DELAY
@@ -93,7 +93,7 @@ def test_function_many_parallel_sync():
 
 def test_function_many_parallel_sync_futures():
     s = Synchronizer()
-    g = s(f)
+    g = s.create_blocking(f)
     t0 = time.time()
     futs = [g(i, _future=True) for i in range(100)]
     assert isinstance(futs[0], concurrent.futures.Future)
@@ -105,7 +105,7 @@ def test_function_many_parallel_sync_futures():
 @pytest.mark.asyncio
 async def test_function_many_parallel_async():
     s = Synchronizer()
-    g = s(f)
+    g = s.create_async(f)
     t0 = time.time()
     coros = [g(i) for i in range(100)]
     assert inspect.iscoroutine(coros[0])
@@ -127,7 +127,7 @@ def test_function_raises_sync():
     s = Synchronizer()
     t0 = time.time()
     with pytest.raises(CustomException):
-        f_raises_s = s(f_raises)
+        f_raises_s = s.create_blocking(f_raises)
         f_raises_s()
     assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
 
@@ -135,7 +135,7 @@ def test_function_raises_sync():
 def test_function_raises_sync_futures():
     s = Synchronizer()
     t0 = time.time()
-    f_raises_s = s(f_raises)
+    f_raises_s = s.create_blocking(f_raises)
     fut = f_raises_s(_future=True)
     assert isinstance(fut, concurrent.futures.Future)
     assert time.time() - t0 < SLEEP_DELAY
@@ -148,7 +148,7 @@ def test_function_raises_sync_futures():
 async def test_function_raises_async():
     s = Synchronizer()
     t0 = time.time()
-    f_raises_s = s(f_raises)
+    f_raises_s = s.create_async(f_raises)
     coro = f_raises_s()
     assert inspect.iscoroutine(coro)
     assert time.time() - t0 < SLEEP_DELAY
@@ -166,7 +166,7 @@ def test_function_raises_baseexc_sync():
     s = Synchronizer()
     t0 = time.time()
     with pytest.raises(BaseException):
-        f_raises_baseexc_s = s(f_raises_baseexc)
+        f_raises_baseexc_s = s.create_blocking(f_raises_baseexc)
         f_raises_baseexc_s()
     assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
 
@@ -185,7 +185,7 @@ async def gen2(generator, n):
 def test_generator_sync():
     s = Synchronizer()
     t0 = time.time()
-    gen_s = s(gen)
+    gen_s = s.create_blocking(gen)
     it = gen_s(3)
     assert inspect.isgenerator(it)
     assert time.time() - t0 < SLEEP_DELAY
@@ -198,7 +198,7 @@ def test_generator_sync():
 async def test_generator_async():
     s = Synchronizer()
     t0 = time.time()
-    gen_s = s(gen)
+    gen_s = s.create_async(gen)
     asyncgen = gen_s(3)
     assert inspect.isasyncgen(asyncgen)
     assert time.time() - t0 < SLEEP_DELAY
@@ -207,14 +207,14 @@ async def test_generator_async():
     assert time.time() - t0 > len(l) * SLEEP_DELAY
 
     # Make sure same-loop calls work
-    gen2_s = s(gen2)
+    gen2_s = s.create_async(gen2)
     asyncgen = gen2_s(gen_s, 3)
     l = [z async for z in asyncgen]
     assert l == [0, 1, 2]
 
     # Make sure cross-loop calls work
     s2 = Synchronizer()
-    gen2_s2 = s2(gen2)
+    gen2_s2 = s2.create_async(gen2)
     asyncgen = gen2_s2(gen_s, 3)
     l = [z async for z in asyncgen]
     assert l == [0, 1, 2]
@@ -223,7 +223,7 @@ async def test_generator_async():
 def test_sync_lambda_returning_coroutine_sync():
     s = Synchronizer()
     t0 = time.time()
-    g = s(lambda z: f(z + 1))
+    g = s.create_blocking(lambda z: f(z + 1))
     ret = g(42)
     assert ret == 1849
     assert time.time() - t0 > SLEEP_DELAY
@@ -232,7 +232,7 @@ def test_sync_lambda_returning_coroutine_sync():
 def test_sync_lambda_returning_coroutine_sync_futures():
     s = Synchronizer()
     t0 = time.time()
-    g = s(lambda z: f(z + 1))
+    g = s.create_blocking(lambda z: f(z + 1))
     fut = g(42, _future=True)
     assert isinstance(fut, concurrent.futures.Future)
     assert time.time() - t0 < SLEEP_DELAY
@@ -244,7 +244,7 @@ def test_sync_lambda_returning_coroutine_sync_futures():
 async def test_sync_lambda_returning_coroutine_async():
     s = Synchronizer()
     t0 = time.time()
-    g = s(lambda z: f(z + 1))
+    g = s.create_async(lambda z: f(z + 1))
     coro = g(42)
     assert inspect.iscoroutine(coro)
     assert time.time() - t0 < SLEEP_DELAY
@@ -297,12 +297,12 @@ class MyClass(Base):
 
 def test_class_sync():
     s = Synchronizer()
-    AutoMyClass = s(MyClass)
-    AutoBase = s(Base)
-    assert AutoMyClass.__name__ == "AutoMyClass"
-    obj = AutoMyClass(x=42)
-    assert isinstance(obj, AutoMyClass)
-    assert isinstance(obj, AutoBase)
+    BlockingMyClass = s.create_blocking(MyClass)
+    BlockingBase = s.create_blocking(Base)
+    assert BlockingMyClass.__name__ == "BlockingMyClass"
+    obj = BlockingMyClass(x=42)
+    assert isinstance(obj, BlockingMyClass)
+    assert isinstance(obj, BlockingBase)
     obj.start()
     ret = obj.get_result()
     assert ret == 1764
@@ -314,11 +314,11 @@ def test_class_sync():
     assert time.time() - t0 > 2 * SLEEP_DELAY
 
     t0 = time.time()
-    assert AutoMyClass.my_static_method() == 43
+    assert BlockingMyClass.my_static_method() == 43
     assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
 
     t0 = time.time()
-    assert AutoMyClass.my_class_method() == 44
+    assert BlockingMyClass.my_class_method() == 44
     assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
 
     assert list(z for z in obj) == list(range(42))
@@ -326,12 +326,12 @@ def test_class_sync():
 
 def test_class_sync_futures():
     s = Synchronizer()
-    AutoMyClass = s(MyClass)
-    AutoBase = s(Base)
-    assert AutoMyClass.__name__ == "AutoMyClass"
-    obj = AutoMyClass(x=42)
-    assert isinstance(obj, AutoMyClass)
-    assert isinstance(obj, AutoBase)
+    BlockingMyClass = s.create_blocking(MyClass)
+    BlockingBase = s.create_blocking(Base)
+    assert BlockingMyClass.__name__ == "BlockingMyClass"
+    obj = BlockingMyClass(x=42)
+    assert isinstance(obj, BlockingMyClass)
+    assert isinstance(obj, BlockingBase)
     obj.start()
     fut = obj.get_result(_future=True)
     assert isinstance(fut, concurrent.futures.Future)
@@ -348,12 +348,12 @@ def test_class_sync_futures():
 @pytest.mark.asyncio
 async def test_class_async():
     s = Synchronizer()
-    AutoMyClass = s(MyClass)
-    AutoBase = s(Base)
-    assert AutoMyClass.__name__ == "AutoMyClass"
-    obj = AutoMyClass(x=42)
-    assert isinstance(obj, AutoMyClass)
-    assert isinstance(obj, AutoBase)
+    AsyncMyClass = s.create_async(MyClass)
+    AsyncBase = s.create_async(Base)
+    assert AsyncMyClass.__name__ == "AsyncMyClass"
+    obj = AsyncMyClass(x=42)
+    assert isinstance(obj, AsyncMyClass)
+    assert isinstance(obj, AsyncBase)
     await obj.start()
     coro = obj.get_result()
     assert inspect.iscoroutine(coro)
@@ -375,30 +375,35 @@ async def test_class_async():
 @pytest.mark.asyncio
 async def test_class_async_back_and_forth():
     s = Synchronizer()
-    AutoMyClass = s(MyClass)
-    AutoBase = s(Base)
-    obj = AutoMyClass(x=42)
-    assert isinstance(obj, AutoMyClass)
-    assert isinstance(obj, AutoBase)
-    await obj.start()
+    AsyncMyClass = s.create_async(MyClass)
+    AsyncBase = s.create_async(Base)
+    async_obj = AsyncMyClass(x=42)
+    assert isinstance(async_obj, AsyncMyClass)
+    assert isinstance(async_obj, AsyncBase)
+    await async_obj.start()
 
     def get(o):
         return o.get_result()  # Blocking
 
+    # Make it into a sync object
+    blocking_obj = s._translate_out(s._translate_in(async_obj), Interface.BLOCKING)
+    assert type(blocking_obj).__name__ == "BlockingMyClass"
+
+    # Run it in a sync context
     loop = asyncio.get_event_loop()
-    fut = loop.run_in_executor(None, get, obj)
+    fut = loop.run_in_executor(None, get, blocking_obj)
     ret = await fut
     assert ret == 1764
 
 
-# The problem here is that f is already synchronized by another synchronizer, which shouldn't be allowed
+    # The problem here is that f is already synchronized by another synchronizer, which shouldn't be allowed
 @pytest.mark.skip(
     reason="Skip this until we've made it impossible to re-synchronize objects"
 )
 def test_event_loop():
     s = Synchronizer()
     t0 = time.time()
-    f_s = s(f)
+    f_s = s.create_blocking(f)
     assert f_s(42) == 42 * 42
     assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
     assert s._thread.is_alive()
@@ -419,7 +424,7 @@ def test_event_loop():
 
 
 
-@pytest.mark.parametrize("interface_type", [Interface.BLOCKING, Interface.ASYNC, Interface.AUTODETECT])
+@pytest.mark.parametrize("interface_type", [Interface.BLOCKING, Interface.ASYNC])
 def test_doc_transfer(interface_type):
     class Foo:
         """Hello"""

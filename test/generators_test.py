@@ -14,7 +14,7 @@ async def async_producer():
 @pytest.mark.asyncio
 async def test_generator_order_async():
     events.clear()
-    async_producer_synchronized = Synchronizer()(async_producer)
+    async_producer_synchronized = Synchronizer().create_async(async_producer)
     async for i in async_producer_synchronized():
         events.append("consumer")
     assert events == ["producer", "consumer"] * 10
@@ -23,7 +23,7 @@ async def test_generator_order_async():
 @pytest.mark.asyncio
 async def test_generator_order_explicit_async():
     events.clear()
-    async_producer_synchronized = Synchronizer().create(async_producer)[Interface.ASYNC]
+    async_producer_synchronized = Synchronizer().create_async(async_producer)
     async for i in async_producer_synchronized():
         events.append("consumer")
     assert events == ["producer", "consumer"] * 10
@@ -31,7 +31,7 @@ async def test_generator_order_explicit_async():
 
 def test_generator_order_sync():
     events.clear()
-    async_producer_synchronized = Synchronizer()(async_producer)
+    async_producer_synchronized = Synchronizer().create_blocking(async_producer)
     for i in async_producer_synchronized():
         events.append("consumer")
     assert events == ["producer", "consumer"] * 10
@@ -44,7 +44,7 @@ async def async_bidirectional_producer(i):
 
 @pytest.mark.asyncio
 async def test_bidirectional_generator_async():
-    f = Synchronizer()(async_bidirectional_producer)
+    f = Synchronizer().create_async(async_bidirectional_producer)
     gen = f(42)
     value = await gen.asend(None)
     assert value == 42
@@ -53,7 +53,7 @@ async def test_bidirectional_generator_async():
 
 
 def test_bidirectional_generator_sync():
-    f = Synchronizer()(async_bidirectional_producer)
+    f = Synchronizer().create_blocking(async_bidirectional_producer)
     gen = f(42)
     value = gen.send(None)
     assert value == 42
@@ -74,7 +74,7 @@ async def athrow_example_gen():
 
 @pytest.mark.asyncio
 async def test_athrow_async():
-    gen = Synchronizer()(athrow_example_gen)()
+    gen = Synchronizer().create_async(athrow_example_gen)()
     v = await gen.asend(None)
     assert v == "hello"
     v = await gen.athrow(ZeroDivisionError)
@@ -82,7 +82,7 @@ async def test_athrow_async():
 
 
 def test_athrow_sync():
-    gen = Synchronizer()(athrow_example_gen)()
+    gen = Synchronizer().create_blocking(athrow_example_gen)()
     v = gen.send(None)
     assert v == "hello"
     v = gen.throw(ZeroDivisionError)
@@ -91,7 +91,7 @@ def test_athrow_sync():
 
 @pytest.mark.asyncio
 async def test_athrow_baseexc_async():
-    gen = Synchronizer()(athrow_example_gen)()
+    gen = Synchronizer().create_async(athrow_example_gen)()
     v = await gen.asend(None)
     assert v == "hello"
     v = await gen.athrow(KeyboardInterrupt)
@@ -99,7 +99,7 @@ async def test_athrow_baseexc_async():
 
 
 def test_athrow_baseexc_sync():
-    gen = Synchronizer()(athrow_example_gen)()
+    gen = Synchronizer().create_blocking(athrow_example_gen)()
     v = gen.send(None)
     assert v == "hello"
     v = gen.throw(KeyboardInterrupt)
@@ -118,7 +118,7 @@ def test_ensure_stop_async_iteration():
     events.clear()
 
     def create_generator():
-        gen_f = Synchronizer()(ensure_stop_async_iteration)
+        gen_f = Synchronizer().create_blocking(ensure_stop_async_iteration)
         for x in gen_f():
             break
 
@@ -135,7 +135,7 @@ class MyGenerator:
 def test_custom_generator():
     events.clear()
     s = Synchronizer()
-    BlockingMyGenerator = s.create(MyGenerator)[Interface.BLOCKING]
+    BlockingMyGenerator = s.create_blocking(MyGenerator)
     blocking_my_generator = BlockingMyGenerator()
     for x in blocking_my_generator:
         events.append("consumer")
