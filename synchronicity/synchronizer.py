@@ -69,15 +69,6 @@ class Synchronizer:
         "_async_leakage_warning",
     ]
 
-    def get_name(self, object, interface):
-        # TODO: make it possible to override this
-        if inspect.isclass(object):
-            return _CLASS_PREFIXES[interface] + object.__name__
-        elif inspect.isfunction(object):
-            return _FUNCTION_PREFIXES[interface] + object.__name__
-        else:
-            raise Exception("Can only compute names for classes and functions")
-
     def __getstate__(self):
         return dict([(attr, getattr(self, attr)) for attr in self._PICKLE_ATTRS])
 
@@ -162,8 +153,11 @@ class Synchronizer:
 
     def _wrap_instance(self, object, interface):
         # Takes an object and creates a new proxy object for it
-        cls_dct = object.__class__.__dict__
+        cls = object.__class__
+        cls_dct = cls.__dict__
         interfaces = cls_dct[self._wrapped_attr]
+        if interface not in interfaces:
+            raise RuntimeError(f"Class {cls} has not synchronized {interface}.")
         interface_cls = interfaces[interface]
         new_object = interface_cls.__new__(interface_cls)
         # Store a reference to the original object
@@ -314,6 +308,9 @@ class Synchronizer:
                 )
             return f
 
+        if name is None:
+            name = _FUNCTION_PREFIXES[interface] + f.__name__
+
         @wraps_by_interface(interface, f)
         def f_wrapped(*args, **kwargs):
             return_future = kwargs.pop(_RETURN_FUTURE_KWARG, False)
@@ -437,10 +434,8 @@ class Synchronizer:
         return my_init
 
     def _wrap_class(self, cls, interface, name):
-        if name is None:
-            name = cls.__name__
         bases = tuple(
-            self._wrap(base, interface) if base != object else object
+            self._wrap(base, interface, require_already_wrapped=(name is not None)) if base != object else object
             for base in cls.__bases__
         )
         new_dict = {self._original_attr: cls}
@@ -471,12 +466,15 @@ class Synchronizer:
             elif callable(v):
                 new_dict[k] = self._wrap_proxy_method(v, interface)
 
+        if name is None:
+            name = _CLASS_PREFIXES[interface] + cls.__name__
+
         new_cls = type.__new__(type, name, bases, new_dict)
         new_cls.__module__ = cls.__module__
         new_cls.__doc__ = cls.__doc__
         return new_cls
 
-    def _wrap(self, object, interface):
+    def _wrap(self, object, interface, name = None, require_already_wrapped = False):
         # This method works for classes, functions, and instances
         # It wraps the object, and caches the wrapped object
         if self._wrapped_attr not in object.__dict__:
@@ -495,11 +493,13 @@ class Synchronizer:
                 )
             return interfaces[interface]
 
+        if require_already_wrapped:
+            # This happens if a class has a custom name but its base class doesn't
+            raise RuntimeError(f"{object} needs to be serialized explicitly with a custom name")
+
         if inspect.isclass(object):
-            name = self.get_name(object, interface)
             new_object = self._wrap_class(object, interface, name)
         elif inspect.isfunction(object):
-            name = self.get_name(object, interface)
             new_object = self._wrap_callable(object, interface, name)
         elif self._wrapped_attr in object.__class__.__dict__:
             new_object = self._wrap_instance(object, interface)
@@ -518,20 +518,21 @@ class Synchronizer:
 
     # New interface that (almost) doesn't mutate objects
 
+    def create_one(self, object, interface, name = None):
+        return self._wrap(object, interface, name)
+
     def create(self, object):
-        # TODO(erikbern): make this one take the interface as an argument,
-        # instead of returning a dict
-        # TODO(erikbern): make this one take the new class name as an argument
+        # DEPRECATED
         interfaces = {}
         for interface in Interface:
             interfaces[interface] = self._wrap(object, interface)
         return interfaces
 
-    def create_blocking(self, object):
-        return self.create(object)[Interface.BLOCKING]
+    def create_blocking(self, object, name = None):
+        return self.create_one(object, Interface.BLOCKING, name)
 
-    def create_async(self, object):
-        return self.create(object)[Interface.ASYNC]
+    def create_async(self, object, name = None):
+        return self.create_one(object, Interface.ASYNC, name)
 
     def is_synchronized(self, object):
         if inspect.isclass(object) or inspect.isfunction(object):
