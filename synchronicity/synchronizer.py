@@ -54,13 +54,9 @@ class Synchronizer:
             # https://stackoverflow.com/questions/45600579/asyncio-event-loop-is-closed-when-getting-loop
             asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-        # For classes and functions
+        # Special attribute we use to go from wrapped <-> original
         self._wrapped_attr = "_sync_wrapped_%d" % id(self)
         self._original_attr = "_sync_original_%d" % id(self)
-
-        # For instances
-        self._wrapped_inst_attr = "_sync_wrapped_inst_%d" % id(self)
-        self._original_inst_attr = "_sync_original_inst_%d" % id(self)
 
         # Prep a synchronized context manager
         self._ctx_mgr_cls = contextlib._AsyncGeneratorContextManager
@@ -166,7 +162,7 @@ class Synchronizer:
 
     def _wrap_instance(self, object, interface):
         # Takes an object and creates a new proxy object for it
-        interface_instances = object.__dict__.setdefault(self._wrapped_inst_attr, {})
+        interface_instances = object.__dict__.setdefault(self._wrapped_attr, {})
         if interface not in interface_instances:
             cls_dct = object.__class__.__dict__
             interfaces = cls_dct[self._wrapped_attr]
@@ -174,7 +170,7 @@ class Synchronizer:
             new_object = interface_cls.__new__(interface_cls)
             interface_instances[interface] = new_object
             # Store a reference to the original object
-            new_object.__dict__[self._original_inst_attr] = object
+            new_object.__dict__[self._original_attr] = object
         return interface_instances[interface]
 
     def _translate_scalar_in(self, object):
@@ -183,7 +179,7 @@ class Synchronizer:
             if inspect.isclass(object):  # TODO: functions?
                 return object.__dict__.get(self._original_attr, object)
             else:
-                return object.__dict__.get(self._original_inst_attr, object)
+                return object.__dict__.get(self._original_attr, object)
         else:
             return object
 
@@ -395,7 +391,7 @@ class Synchronizer:
 
         @wraps_by_interface(interface, method)
         def proxy_method(wrapped_self, *args, **kwargs):
-            instance = wrapped_self.__dict__[self._original_inst_attr]
+            instance = wrapped_self.__dict__[self._original_attr]
             try:
                 return method(instance, *args, **kwargs)
             except UserCodeException as uc_exc:
@@ -435,10 +431,10 @@ class Synchronizer:
 
             # Register self as the wrapped one
             interface_instances = {interface: wrapped_self}
-            instance.__dict__[self._wrapped_inst_attr] = interface_instances
+            instance.__dict__[self._wrapped_attr] = interface_instances
 
             # Store a reference to the original object
-            wrapped_self.__dict__[self._original_inst_attr] = instance
+            wrapped_self.__dict__[self._original_attr] = instance
 
         self._update_wrapper(my_init, cls.__init__)
         return my_init
