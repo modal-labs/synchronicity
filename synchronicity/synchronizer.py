@@ -477,6 +477,8 @@ class Synchronizer:
         return new_cls
 
     def _wrap(self, object, interface):
+        # This method works for classes, functions, and instances
+        # It wraps the object, and caches the wrapped object
         if self._wrapped_attr not in object.__dict__:
             if isinstance(object.__dict__, dict):
                 # This works for instances
@@ -520,21 +522,9 @@ class Synchronizer:
         # TODO(erikbern): make this one take the interface as an argument,
         # instead of returning a dict
         # TODO(erikbern): make this one take the new class name as an argument
-        if inspect.isclass(object) or inspect.isfunction(object):
-            # This is a class/function, for which we cache the interfaces
-            interfaces = {}
-            for interface in Interface:
-                interfaces[interface] = self._wrap(object, interface)
-            return interfaces
-        elif self._wrapped_attr in object.__class__.__dict__:
-            # TODO: this requires that the class is already synchronized
-            interfaces = {}
-            for interface in Interface:
-                interfaces[interface] = self._wrap(object, interface)
-        else:
-            raise Exception(
-                "Can only wrap classes, functions, and instances of synchronized classes"
-            )
+        interfaces = {}
+        for interface in Interface:
+            interfaces[interface] = self._wrap(object, interface)
         return interfaces
 
     def create_blocking(self, object):
