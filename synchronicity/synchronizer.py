@@ -22,14 +22,12 @@ _RETURN_FUTURE_KWARG = "_future"
 
 # Default names for classes
 _CLASS_PREFIXES = {
-    Interface.AUTODETECT: "Auto",
     Interface.BLOCKING: "Blocking",
     Interface.ASYNC: "Async",
 }
 
 # Default names for functions
 _FUNCTION_PREFIXES = {
-    Interface.AUTODETECT: "auto_",
     Interface.BLOCKING: "blocking_",
     Interface.ASYNC: "async_",
 }
@@ -140,15 +138,6 @@ class Synchronizer:
             return False
         current_loop = self._get_running_loop()
         return loop == current_loop
-
-    def _get_runtime_interface(self, interface):
-        """Returns one out of Interface.ASYNC or Interface.BLOCKING"""
-        if interface == Interface.AUTODETECT:
-            # TODO: delete this method
-            return Interface.ASYNC if self._get_running_loop() else Interface.BLOCKING
-        else:
-            assert interface in (Interface.ASYNC, Interface.BLOCKING)
-            return interface
 
     def _wrap_check_async_leakage(self, coro):
         """Check if a coroutine returns another coroutine (or an async generator) and warn.
@@ -344,7 +333,6 @@ class Synchronizer:
             # Figure out if this is a coroutine or something
             is_coroutine = inspect.iscoroutine(res)
             is_asyncgen = inspect.isasyncgen(res)
-            runtime_interface = self._get_runtime_interface(interface)
 
             if return_future:
                 if not allow_futures:
@@ -358,11 +346,11 @@ class Synchronizer:
             elif is_coroutine:
                 # The run_function_* may throw UserCodeExceptions that
                 # need to be unwrapped here at the entrypoint
-                if runtime_interface == Interface.ASYNC:
+                if interface == Interface.ASYNC:
                     coro = self._run_function_async(res, interface)
                     coro = unwrap_coro_exception(coro)
                     return coro
-                elif runtime_interface == Interface.BLOCKING:
+                elif interface == Interface.BLOCKING:
                     try:
                         return self._run_function_sync(res, interface)
                     except UserCodeException as uc_exc:
@@ -374,9 +362,9 @@ class Synchronizer:
             elif is_asyncgen:
                 # Note that the _run_generator_* functions handle their own
                 # unwrapping of exceptions (this happens during yielding)
-                if runtime_interface == Interface.ASYNC:
+                if interface == Interface.ASYNC:
                     return self._run_generator_async(res, interface)
-                elif runtime_interface == Interface.BLOCKING:
+                elif interface == Interface.BLOCKING:
                     return self._run_generator_sync(res, interface)
             else:
                 if inspect.isfunction(res) or isinstance(
@@ -465,11 +453,11 @@ class Synchronizer:
         for k, v in cls.__dict__.items():
             if k in _BUILTIN_ASYNC_METHODS:
                 k_sync = _BUILTIN_ASYNC_METHODS[k]
-                if interface in (Interface.BLOCKING, Interface.AUTODETECT):
+                if interface == Interface.BLOCKING:
                     new_dict[k_sync] = self._wrap_proxy_method(
                         v, interface, allow_futures=False
                     )
-                if interface in (Interface.ASYNC, Interface.AUTODETECT):
+                if interface == Interface.ASYNC:
                     new_dict[k] = self._wrap_proxy_method(
                         v, interface, allow_futures=False
                     )
@@ -524,7 +512,10 @@ class Synchronizer:
 
     # New interface that (almost) doesn't mutate objects
 
-    def create(self, object):  # TODO: this should really be __call__ later
+    def create(self, object):
+        # TODO(erikbern): make this one take the interface as an argument,
+        # instead of returning a dict
+        # TODO(erikbern): make this one take the new class name as an argument
         if inspect.isclass(object) or inspect.isfunction(object):
             # This is a class/function, for which we cache the interfaces
             interfaces = {}
@@ -542,14 +533,14 @@ class Synchronizer:
             )
         return interfaces
 
+    def create_blocking(self, object):
+        return self.create(object)[Interface.BLOCKING]
+
+    def create_async(self, object):
+        return self.create(object)[Interface.ASYNC]
+
     def is_synchronized(self, object):
         if inspect.isclass(object) or inspect.isfunction(object):
             return hasattr(object, self._original_attr)
         else:
             return hasattr(object.__class__, self._original_attr)
-
-    # Old interface that we should consider purging
-
-    def __call__(self, object):
-        interfaces = self.create(object)
-        return interfaces[Interface.AUTODETECT]

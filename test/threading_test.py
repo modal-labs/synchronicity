@@ -24,7 +24,7 @@ async def f(i):
 def test_multithreaded(n_threads=20):
     s = Synchronizer()
 
-    f_s = s(f)
+    f_s = s.create_blocking(f)
 
     t0 = time.time()
     with concurrent.futures.ThreadPoolExecutor(max_workers=n_threads) as executor:
