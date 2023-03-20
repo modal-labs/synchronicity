@@ -443,7 +443,7 @@ class Synchronizer:
         if name is None:
             name = cls.__name__
         bases = tuple(
-            self._wrap_class_or_function(base, interface) if base != object else object
+            self._wrap(base, interface) if base != object else object
             for base in cls.__bases__
         )
         new_dict = {self._original_attr: cls}
@@ -479,7 +479,7 @@ class Synchronizer:
         new_cls.__doc__ = cls.__doc__
         return new_cls
 
-    def _wrap_class_or_function(self, object, interface):
+    def _wrap(self, object, interface):
         if self._wrapped_attr not in object.__dict__:
             setattr(object, self._wrapped_attr, {})
 
@@ -519,7 +519,7 @@ class Synchronizer:
             # This is a class/function, for which we cache the interfaces
             interfaces = {}
             for interface in Interface:
-                interfaces[interface] = self._wrap_class_or_function(object, interface)
+                interfaces[interface] = self._wrap(object, interface)
             return interfaces
         elif self._wrapped_attr in object.__class__.__dict__:
             # TODO: this requires that the class is already synchronized
