@@ -162,16 +162,13 @@ class Synchronizer:
 
     def _wrap_instance(self, object, interface):
         # Takes an object and creates a new proxy object for it
-        interface_instances = object.__dict__.setdefault(self._wrapped_attr, {})
-        if interface not in interface_instances:
-            cls_dct = object.__class__.__dict__
-            interfaces = cls_dct[self._wrapped_attr]
-            interface_cls = interfaces[interface]
-            new_object = interface_cls.__new__(interface_cls)
-            interface_instances[interface] = new_object
-            # Store a reference to the original object
-            new_object.__dict__[self._original_attr] = object
-        return interface_instances[interface]
+        cls_dct = object.__class__.__dict__
+        interfaces = cls_dct[self._wrapped_attr]
+        interface_cls = interfaces[interface]
+        new_object = interface_cls.__new__(interface_cls)
+        # Store a reference to the original object
+        new_object.__dict__[self._original_attr] = object
+        return new_object
 
     def _translate_scalar_in(self, object):
         # If it's an external object, translate it to the internal type
@@ -195,7 +192,7 @@ class Synchronizer:
             cls_dct = object.__class__.__dict__
             if self._wrapped_attr in cls_dct:
                 # This is an *instance* of a synchronized class, translate its type
-                return self._wrap_instance(object, interface)
+                return self._wrap(object, interface)
             else:
                 return object
 
@@ -481,7 +478,12 @@ class Synchronizer:
 
     def _wrap(self, object, interface):
         if self._wrapped_attr not in object.__dict__:
-            setattr(object, self._wrapped_attr, {})
+            if isinstance(object.__dict__, dict):
+                # This works for instances
+                object.__dict__.setdefault(self._wrapped_attr, {})
+            else:
+                # This works for classes & functions
+                setattr(object, self._wrapped_attr, {})
 
         interfaces = object.__dict__[self._wrapped_attr]
         if interface in interfaces:
@@ -491,11 +493,14 @@ class Synchronizer:
                 )
             return interfaces[interface]
 
-        name = self.get_name(object, interface)
         if inspect.isclass(object):
+            name = self.get_name(object, interface)
             new_object = self._wrap_class(object, interface, name)
         elif inspect.isfunction(object):
+            name = self.get_name(object, interface)
             new_object = self._wrap_callable(object, interface, name)
+        elif self._wrapped_attr in object.__class__.__dict__:
+            new_object = self._wrap_instance(object, interface)
         else:
             raise Exception("Argument %s is not a class or a callable" % object)
         interfaces[interface] = new_object
@@ -525,7 +530,7 @@ class Synchronizer:
             # TODO: this requires that the class is already synchronized
             interfaces = {}
             for interface in Interface:
-                interfaces[interface] = self._wrap_instance(object, interface)
+                interfaces[interface] = self._wrap(object, interface)
         else:
             raise Exception(
                 "Can only wrap classes, functions, and instances of synchronized classes"
