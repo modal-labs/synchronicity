@@ -95,6 +95,7 @@ class Synchronizer:
                 return self._loop
 
             is_ready = threading.Event()
+
             def thread_inner():
                 async def loop_inner():
                     self._loop = asyncio.get_running_loop()
@@ -310,7 +311,9 @@ class Synchronizer:
             f_wrapped.__name__ = name
             f_wrapped.__qualname__ = name
 
-    def _wrap_callable(self, f, interface, name=None, allow_futures=True, unwrap_user_excs=True):
+    def _wrap_callable(
+        self, f, interface, name=None, allow_futures=True, unwrap_user_excs=True
+    ):
         if hasattr(f, self._original_attr):
             if self._multiwrap_warning:
                 warnings.warn(
@@ -386,7 +389,9 @@ class Synchronizer:
         return f_wrapped
 
     def _wrap_proxy_method(self, method, interface, allow_futures=True):
-        method = self._wrap_callable(method, interface, allow_futures=allow_futures, unwrap_user_excs=False)
+        method = self._wrap_callable(
+            method, interface, allow_futures=allow_futures, unwrap_user_excs=False
+        )
 
         @wraps_by_interface(interface, method)
         def proxy_method(wrapped_self, *args, **kwargs):
@@ -504,7 +509,7 @@ class Synchronizer:
         warnings.warn(
             "No need to use Synchronizer.asynccontextmanager,"
             "can just use contextlib.asynccontextmanager instead.",
-            DeprecationWarning
+            DeprecationWarning,
         )
         return contextlib.asynccontextmanager(func)
 
