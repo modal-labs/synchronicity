@@ -116,11 +116,10 @@ async def test_asynccontextmanager_nested():
     assert finally_blocks == ["B", "A"]
 
 
-@pytest.mark.skip(reason="This one will be much easier to fix once AUTODETECT is gone")
 @pytest.mark.asyncio
 async def test_asynccontextmanager_with_in_async():
     r = s.create_async(Resource)()
-    with pytest.raises(RuntimeError):
+    with pytest.raises(AttributeError):
         with r.wrap():
             pass
 
