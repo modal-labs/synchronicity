@@ -1,7 +1,8 @@
 import functools
 import inspect
 
-from synchronicity import Interface
+from .exceptions import UserCodeException
+from .interface import Interface
 
 
 def async_compat_wraps(func):
@@ -17,7 +18,10 @@ def async_compat_wraps(func):
         def asyncfunc_deco(user_wrapper):
             @functools.wraps(func)
             async def wrapper(*args, **kwargs):
-                return await user_wrapper(*args, **kwargs)
+                try:
+                    return await user_wrapper(*args, **kwargs)
+                except UserCodeException as uc_exc:
+                    raise uc_exc.exc from None
 
             return wrapper
         return asyncfunc_deco

@@ -344,13 +344,11 @@ class Synchronizer:
                 else:
                     return res
             elif is_coroutine:
-                # The run_function_* may throw UserCodeExceptions that
-                # need to be unwrapped here at the entrypoint
                 if interface == Interface.ASYNC:
                     coro = self._run_function_async(res, interface)
-                    coro = unwrap_coro_exception(coro)
                     return coro
                 elif interface == Interface.BLOCKING:
+                    # This is the entrypoint, so we need to unwrap the exception here
                     try:
                         return self._run_function_sync(res, interface)
                     except UserCodeException as uc_exc:
