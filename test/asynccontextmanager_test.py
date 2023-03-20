@@ -124,7 +124,6 @@ async def test_asynccontextmanager_with_in_async():
             pass
 
 
-
 def test_generatorexit_in_async_generator():
     s = Synchronizer()
 
@@ -138,4 +137,3 @@ def test_generatorexit_in_async_generator():
 
     with pytest.raises(GeneratorExit):
         asyncio.run(main())
-

@@ -10,6 +10,6 @@ def test_is_synchronized():
     class Foo:
         pass
 
-    BlockingFoo = s.create(Foo)[Interface.BLOCKING]
+    BlockingFoo = s.create_blocking(Foo)
     assert s.is_synchronized(Foo) == False
     assert s.is_synchronized(BlockingFoo) == True

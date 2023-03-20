@@ -40,9 +40,9 @@ def test_translate():
         def cls_out(cls):
             return FooProvider
 
-    BlockingFoo = s.create(Foo)[Interface.BLOCKING]
+    BlockingFoo = s.create(Foo, Interface.BLOCKING)
     assert BlockingFoo.__name__ == "BlockingFoo"
-    BlockingFooProvider = s.create(FooProvider)[Interface.BLOCKING]
+    BlockingFooProvider = s.create(FooProvider, Interface.BLOCKING)
     assert BlockingFooProvider.__name__ == "BlockingFooProvider"
     foo_provider = BlockingFooProvider()
 

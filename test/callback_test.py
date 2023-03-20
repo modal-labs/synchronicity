@@ -48,7 +48,7 @@ async def test_translate():
         def get(self):
             return self.x
 
-    BlockingFoo = s.create(Foo)[Interface.BLOCKING]
+    BlockingFoo = s.create_blocking(Foo)
 
     def f(foo):
         assert isinstance(foo, BlockingFoo)

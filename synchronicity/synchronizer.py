@@ -64,7 +64,8 @@ class Synchronizer:
 
         # Prep a synchronized context manager
         self._ctx_mgr_cls = contextlib._AsyncGeneratorContextManager
-        self.create(self._ctx_mgr_cls)
+        self.create(self._ctx_mgr_cls, Interface.ASYNC)
+        self.create(self._ctx_mgr_cls, Interface.BLOCKING)
 
         atexit.register(self._close_loop)
 
@@ -168,7 +169,12 @@ class Synchronizer:
         # Takes an object and creates a new proxy object for it
         interface_instances = object.__dict__.setdefault(self._wrapped_inst_attr, {})
         if interface not in interface_instances:
-            cls_dct = object.__class__.__dict__
+            cls = object.__class__
+            cls_dct = cls.__dict__
+            if interface not in cls_dct[self._wrapped_attr]:
+                # This class hasn't been wrapped before
+                # A bit of a weird special case
+                self._wrap_class_or_function(cls, interface, name=None)
             interfaces = cls_dct[self._wrapped_attr]
             interface_cls = interfaces[interface]
             new_object = interface_cls.__new__(interface_cls)
@@ -483,7 +489,7 @@ class Synchronizer:
         new_cls.__doc__ = cls.__doc__
         return new_cls
 
-    def _wrap_class_or_function(self, object, interface):
+    def _wrap_class_or_function(self, object, interface, name=None):
         if self._wrapped_attr not in object.__dict__:
             setattr(object, self._wrapped_attr, {})
 
@@ -495,7 +501,8 @@ class Synchronizer:
                 )
             return interfaces[interface]
 
-        name = self.get_name(object, interface)
+        if name is None:
+            name = self.get_name(object, interface)
         if inspect.isclass(object):
             new_object = self._wrap_class(object, interface, name)
         elif inspect.isfunction(object):
@@ -513,34 +520,23 @@ class Synchronizer:
         )
         return contextlib.asynccontextmanager(func)
 
-    # New interface that (almost) doesn't mutate objects
-
-    def create(self, object):
-        # TODO(erikbern): make this one take the interface as an argument,
-        # instead of returning a dict
-        # TODO(erikbern): make this one take the new class name as an argument
+    def create(self, object, interface, name=None):
         if inspect.isclass(object) or inspect.isfunction(object):
             # This is a class/function, for which we cache the interfaces
-            interfaces = {}
-            for interface in Interface:
-                interfaces[interface] = self._wrap_class_or_function(object, interface)
-            return interfaces
+            return self._wrap_class_or_function(object, interface, name)
         elif self._wrapped_attr in object.__class__.__dict__:
             # TODO: this requires that the class is already synchronized
-            interfaces = {}
-            for interface in Interface:
-                interfaces[interface] = self._wrap_instance(object, interface)
+            return self._wrap_instance(object, interface)
         else:
             raise Exception(
                 "Can only wrap classes, functions, and instances of synchronized classes"
             )
-        return interfaces
 
-    def create_blocking(self, object):
-        return self.create(object)[Interface.BLOCKING]
+    def create_blocking(self, object, name=None):
+        return self.create(object, Interface.BLOCKING, name)
 
-    def create_async(self, object):
-        return self.create(object)[Interface.ASYNC]
+    def create_async(self, object, name=None):
+        return self.create(object, Interface.ASYNC, name)
 
     def is_synchronized(self, object):
         if inspect.isclass(object) or inspect.isfunction(object):

@@ -395,8 +395,9 @@ async def test_class_async_back_and_forth():
     ret = await fut
     assert ret == 1764
 
-
     # The problem here is that f is already synchronized by another synchronizer, which shouldn't be allowed
+
+
 @pytest.mark.skip(
     reason="Skip this until we've made it impossible to re-synchronize objects"
 )
@@ -423,7 +424,6 @@ def test_event_loop():
         s._start_loop(new_loop)
 
 
-
 @pytest.mark.parametrize("interface_type", [Interface.BLOCKING, Interface.ASYNC])
 def test_doc_transfer(interface_type):
     class Foo:
@@ -433,8 +433,20 @@ def test_doc_transfer(interface_type):
             """hello"""
 
     s = Synchronizer()
-    output_class = s.create(Foo)[interface_type]
+    output_class = s.create(Foo, interface_type)
 
     assert output_class.__doc__ == "Hello"
     assert output_class.foo.__doc__ == "hello"
 
+
+def test_set_function_name():
+    s = Synchronizer()
+    f_s = s.create_blocking(f, "xyz")
+    assert f_s(42) == 1764
+    assert f_s.__name__ == "xyz"
+
+
+def test_set_class_name():
+    s = Synchronizer()
+    BlockingMyClass = s.create_blocking(MyClass, "XYZClass")
+    assert BlockingMyClass.__name__ == "XYZClass"

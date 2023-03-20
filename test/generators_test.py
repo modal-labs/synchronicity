@@ -5,6 +5,7 @@ from synchronicity import Synchronizer, Interface
 
 events = []
 
+
 async def async_producer():
     for i in range(10):
         events.append("producer")

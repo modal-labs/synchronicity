@@ -13,10 +13,8 @@ class _Api:
 
 def test_inspect_coroutinefunction():
     s = Synchronizer()
-    interfaces = s.create(_Api)
-
-    BlockingApi = interfaces[Interface.BLOCKING]
-    AioApi = interfaces[Interface.ASYNC]
+    BlockingApi = s.create_blocking(_Api)
+    AioApi = s.create_async(_Api)
 
     assert inspect.iscoroutinefunction(BlockingApi.blocking_func) == False
     assert inspect.iscoroutinefunction(BlockingApi.async_func) == False
