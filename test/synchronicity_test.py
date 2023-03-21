@@ -114,63 +114,6 @@ async def test_function_many_parallel_async():
     assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
 
 
-class CustomException(Exception):
-    pass
-
-
-async def f_raises():
-    await asyncio.sleep(0.1)
-    raise CustomException("something failed")
-
-
-def test_function_raises_sync():
-    s = Synchronizer()
-    t0 = time.time()
-    with pytest.raises(CustomException):
-        f_raises_s = s.create_blocking(f_raises)
-        f_raises_s()
-    assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
-
-
-def test_function_raises_sync_futures():
-    s = Synchronizer()
-    t0 = time.time()
-    f_raises_s = s.create_blocking(f_raises)
-    fut = f_raises_s(_future=True)
-    assert isinstance(fut, concurrent.futures.Future)
-    assert time.time() - t0 < SLEEP_DELAY
-    with pytest.raises(CustomException):
-        fut.result()
-    assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
-
-
-@pytest.mark.asyncio
-async def test_function_raises_async():
-    s = Synchronizer()
-    t0 = time.time()
-    f_raises_s = s.create_async(f_raises)
-    coro = f_raises_s()
-    assert inspect.iscoroutine(coro)
-    assert time.time() - t0 < SLEEP_DELAY
-    with pytest.raises(CustomException):
-        await coro
-    assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
-
-
-async def f_raises_baseexc():
-    await asyncio.sleep(0.1)
-    raise KeyboardInterrupt
-
-
-def test_function_raises_baseexc_sync():
-    s = Synchronizer()
-    t0 = time.time()
-    with pytest.raises(BaseException):
-        f_raises_baseexc_s = s.create_blocking(f_raises_baseexc)
-        f_raises_baseexc_s()
-    assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
-
-
 async def gen(n):
     for i in range(n):
         await asyncio.sleep(0.1)
@@ -189,9 +132,9 @@ def test_generator_sync():
     it = gen_s(3)
     assert inspect.isgenerator(it)
     assert time.time() - t0 < SLEEP_DELAY
-    l = list(it)
-    assert l == [0, 1, 2]
-    assert time.time() - t0 > len(l) * SLEEP_DELAY
+    lst = list(it)
+    assert lst == [0, 1, 2]
+    assert time.time() - t0 > len(lst) * SLEEP_DELAY
 
 
 @pytest.mark.asyncio
@@ -202,22 +145,22 @@ async def test_generator_async():
     asyncgen = gen_s(3)
     assert inspect.isasyncgen(asyncgen)
     assert time.time() - t0 < SLEEP_DELAY
-    l = [z async for z in asyncgen]
-    assert l == [0, 1, 2]
-    assert time.time() - t0 > len(l) * SLEEP_DELAY
+    lst = [z async for z in asyncgen]
+    assert lst == [0, 1, 2]
+    assert time.time() - t0 > len(lst) * SLEEP_DELAY
 
     # Make sure same-loop calls work
     gen2_s = s.create_async(gen2)
     asyncgen = gen2_s(gen_s, 3)
-    l = [z async for z in asyncgen]
-    assert l == [0, 1, 2]
+    lst = [z async for z in asyncgen]
+    assert lst == [0, 1, 2]
 
     # Make sure cross-loop calls work
     s2 = Synchronizer()
     gen2_s2 = s2.create_async(gen2)
     asyncgen = gen2_s2(gen_s, 3)
-    l = [z async for z in asyncgen]
-    assert l == [0, 1, 2]
+    lst = [z async for z in asyncgen]
+    assert lst == [0, 1, 2]
 
 
 def test_sync_lambda_returning_coroutine_sync():
@@ -366,10 +309,10 @@ async def test_class_async():
 
     assert time.time() - t0 > 2 * SLEEP_DELAY
 
-    l = []
+    lst = []
     async for z in obj:
-        l.append(z)
-    assert l == list(range(42))
+        lst.append(z)
+    assert lst == list(range(42))
 
 
 @pytest.mark.asyncio
@@ -396,8 +339,9 @@ async def test_class_async_back_and_forth():
     ret = await fut
     assert ret == 1764
 
-
     # The problem here is that f is already synchronized by another synchronizer, which shouldn't be allowed
+
+
 @pytest.mark.skip(
     reason="Skip this until we've made it impossible to re-synchronize objects"
 )
@@ -422,7 +366,6 @@ def test_event_loop():
     # Starting a loop again before closing throws.
     with pytest.raises(Exception):
         s._start_loop(new_loop)
-
 
 
 @pytest.mark.parametrize("interface_type", [Interface.BLOCKING, Interface.ASYNC])

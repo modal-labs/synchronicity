@@ -1,6 +1,7 @@
 import asyncio
 from synchronicity import Synchronizer
 
+
 async def run():
     try:
         while True:
