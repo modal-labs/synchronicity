@@ -64,3 +64,20 @@ def test_function_raises_baseexc_sync():
         f_raises_baseexc_s = s.create_blocking(f_raises_baseexc)
         f_raises_baseexc_s()
     assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
+
+
+def f_raises_syncwrap():
+    return f_raises()  # returns a coro
+
+
+@pytest.mark.asyncio
+async def test_function_raises_async_syncwrap():
+    s = Synchronizer()
+    t0 = time.time()
+    f_raises_syncwrap_s = s.create_async(f_raises_syncwrap)
+    coro = f_raises_syncwrap_s()
+    assert inspect.iscoroutine(coro)
+    assert time.time() - t0 < SLEEP_DELAY
+    with pytest.raises(CustomException):
+        await coro
+    assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
