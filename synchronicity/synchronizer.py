@@ -343,6 +343,7 @@ class Synchronizer:
             elif is_coroutine:
                 if interface == Interface.ASYNC:
                     coro = self._run_function_async(res, interface)
+                    coro = unwrap_coro_exception(coro)
                     return coro
                 elif interface == Interface.BLOCKING:
                     # This is the entrypoint, so we need to unwrap the exception here
