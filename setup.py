@@ -1,3 +1,3 @@
 from setuptools import setup
 
-setup(name="synchronicity", version="0.2.14")
+setup(name="synchronicity", version="0.3.0")
