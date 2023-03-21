@@ -509,14 +509,6 @@ class Synchronizer:
         interfaces[interface] = new_obj
         return new_obj
 
-    def asynccontextmanager(self, func):
-        warnings.warn(
-            "No need to use Synchronizer.asynccontextmanager,"
-            "can just use contextlib.asynccontextmanager instead.",
-            DeprecationWarning,
-        )
-        return contextlib.asynccontextmanager(func)
-
     # New interface that (almost) doesn't mutate objects
 
     def create_blocking(self, obj, name = None):

@@ -121,20 +121,3 @@ async def test_asynccontextmanager_with_in_async():
     with pytest.raises(AttributeError):
         with r.wrap():
             pass
-
-
-
-def test_generatorexit_in_async_generator():
-    s = Synchronizer()
-
-    @s.asynccontextmanager
-    async def foo():
-        yield
-
-    async def main():
-        async with foo():
-            raise GeneratorExit()
-
-    with pytest.raises(GeneratorExit):
-        asyncio.run(main())
-
