@@ -5,11 +5,12 @@ from synchronicity import Synchronizer
 
 s = Synchronizer()
 
+
 @s.create_blocking
 class MyClass:
     async def f(self, x):
         await asyncio.sleep(0.2)
-        return x ** 2
+        return x**2
 
     @s.nowrap
     def g(self, x):

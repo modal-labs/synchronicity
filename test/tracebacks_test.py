@@ -43,14 +43,6 @@ def test_sync_to_async():
     check_traceback(excinfo.value)
 
 
-def test_sync_to_async():
-    s = Synchronizer()
-    s.create_blocking(f_baseexc)
-    with pytest.raises(BaseException) as excinfo:
-        f_s()
-    check_traceback(excinfo.value)
-
-
 @pytest.mark.asyncio
 async def test_async_to_async():
     s = Synchronizer()

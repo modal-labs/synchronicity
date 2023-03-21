@@ -315,6 +315,8 @@ class Synchronizer:
         if name is None:
             name = _FUNCTION_PREFIXES[interface] + f.__name__
 
+        is_coroutinefunction = inspect.iscoroutinefunction(f)
+
         @wraps_by_interface(interface, f)
         def f_wrapped(*args, **kwargs):
             return_future = kwargs.pop(_RETURN_FUTURE_KWARG, False)
@@ -343,9 +345,15 @@ class Synchronizer:
             elif is_coroutine:
                 if interface == Interface.ASYNC:
                     coro = self._run_function_async(res, interface)
+                    if not is_coroutinefunction:
+                        # If this is a non-async function that returns a coroutine,
+                        # then this is the exit point, and we need to unwrap any
+                        # wrapped exception here. Otherwise, the exit point is
+                        # in async_wrap.py
+                        coro = unwrap_coro_exception(coro)
                     return coro
                 elif interface == Interface.BLOCKING:
-                    # This is the entrypoint, so we need to unwrap the exception here
+                    # This is the exit point, so we need to unwrap the exception here
                     try:
                         return self._run_function_sync(res, interface)
                     except UserCodeException as uc_exc:
@@ -443,7 +451,9 @@ class Synchronizer:
 
     def _wrap_class(self, cls, interface, name):
         bases = tuple(
-            self._wrap(base, interface, require_already_wrapped=(name is not None)) if base != object else object
+            self._wrap(base, interface, require_already_wrapped=(name is not None))
+            if base != object
+            else object
             for base in cls.__bases__
         )
         new_dict = {self._original_attr: cls}
@@ -482,7 +492,7 @@ class Synchronizer:
         new_cls.__doc__ = cls.__doc__
         return new_cls
 
-    def _wrap(self, obj, interface, name = None, require_already_wrapped = False):
+    def _wrap(self, obj, interface, name=None, require_already_wrapped=False):
         # This method works for classes, functions, and instances
         # It wraps the object, and caches the wrapped object
 
@@ -506,7 +516,9 @@ class Synchronizer:
 
         if require_already_wrapped:
             # This happens if a class has a custom name but its base class doesn't
-            raise RuntimeError(f"{obj} needs to be serialized explicitly with a custom name")
+            raise RuntimeError(
+                f"{obj} needs to be serialized explicitly with a custom name"
+            )
 
         # Wrap object (different cases based on the type)
         if inspect.isclass(obj):
@@ -528,10 +540,10 @@ class Synchronizer:
 
     # New interface that (almost) doesn't mutate objects
 
-    def create_blocking(self, obj, name = None):
+    def create_blocking(self, obj, name=None):
         return self._wrap(obj, Interface.BLOCKING, name)
 
-    def create_async(self, obj, name = None):
+    def create_async(self, obj, name=None):
         return self._wrap(obj, Interface.ASYNC, name)
 
     def is_synchronized(self, obj):

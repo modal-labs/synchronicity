@@ -1,9 +1,11 @@
 from gevent import monkey
+
 monkey.patch_all()
 
 import asyncio
 
 from synchronicity import Synchronizer
+
 
 async def f(x):
     await asyncio.sleep(0.1)
