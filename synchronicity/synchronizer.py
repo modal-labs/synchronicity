@@ -60,7 +60,8 @@ class Synchronizer:
 
         # Prep a synchronized context manager
         self._ctx_mgr_cls = contextlib._AsyncGeneratorContextManager
-        self.create(self._ctx_mgr_cls)
+        self.create_async(self._ctx_mgr_cls)
+        self.create_blocking(self._ctx_mgr_cls)
 
         atexit.register(self._close_loop)
 
@@ -518,21 +519,11 @@ class Synchronizer:
 
     # New interface that (almost) doesn't mutate objects
 
-    def create_one(self, object, interface, name = None):
-        return self._wrap(object, interface, name)
-
-    def create(self, object):
-        # DEPRECATED
-        interfaces = {}
-        for interface in Interface:
-            interfaces[interface] = self._wrap(object, interface)
-        return interfaces
-
     def create_blocking(self, object, name = None):
-        return self.create_one(object, Interface.BLOCKING, name)
+        return self._wrap(object, Interface.BLOCKING, name)
 
     def create_async(self, object, name = None):
-        return self.create_one(object, Interface.ASYNC, name)
+        return self._wrap(object, Interface.ASYNC, name)
 
     def is_synchronized(self, object):
         if inspect.isclass(object) or inspect.isfunction(object):

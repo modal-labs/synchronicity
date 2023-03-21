@@ -1,7 +1,7 @@
 import asyncio
 import pytest
 
-from synchronicity import Synchronizer, Interface
+from synchronicity import Synchronizer
 
 events = []
 
