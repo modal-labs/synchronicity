@@ -152,63 +152,63 @@ class Synchronizer:
 
         return coro_wrapped()
 
-    def _wrap_instance(self, object, interface):
+    def _wrap_instance(self, obj, interface):
         # Takes an object and creates a new proxy object for it
-        cls = object.__class__
+        cls = obj.__class__
         cls_dct = cls.__dict__
         interfaces = cls_dct[self._wrapped_attr]
         if interface not in interfaces:
             raise RuntimeError(f"Class {cls} has not synchronized {interface}.")
         interface_cls = interfaces[interface]
-        new_object = interface_cls.__new__(interface_cls)
+        new_obj = interface_cls.__new__(interface_cls)
         # Store a reference to the original object
-        new_object.__dict__[self._original_attr] = object
-        return new_object
+        new_obj.__dict__[self._original_attr] = obj
+        return new_obj
 
-    def _translate_scalar_in(self, object):
+    def _translate_scalar_in(self, obj):
         # If it's an external object, translate it to the internal type
-        if hasattr(object, "__dict__"):
-            if inspect.isclass(object):  # TODO: functions?
-                return object.__dict__.get(self._original_attr, object)
+        if hasattr(obj, "__dict__"):
+            if inspect.isclass(obj):  # TODO: functions?
+                return obj.__dict__.get(self._original_attr, obj)
             else:
-                return object.__dict__.get(self._original_attr, object)
+                return obj.__dict__.get(self._original_attr, obj)
         else:
-            return object
+            return obj
 
-    def _translate_scalar_out(self, object, interface):
+    def _translate_scalar_out(self, obj, interface):
         # If it's an internal object, translate it to the external interface
-        if inspect.isclass(object):  # TODO: functions?
-            cls_dct = object.__dict__
+        if inspect.isclass(obj):  # TODO: functions?
+            cls_dct = obj.__dict__
             if self._wrapped_attr in cls_dct:
                 return cls_dct[self._wrapped_attr][interface]
             else:
-                return object
+                return obj
         else:
-            cls_dct = object.__class__.__dict__
+            cls_dct = obj.__class__.__dict__
             if self._wrapped_attr in cls_dct:
                 # This is an *instance* of a synchronized class, translate its type
-                return self._wrap(object, interface)
+                return self._wrap(obj, interface)
             else:
-                return object
+                return obj
 
-    def _recurse_map(self, mapper, object):
-        if type(object) == list:
-            return list(self._recurse_map(mapper, item) for item in object)
-        elif type(object) == tuple:
-            return tuple(self._recurse_map(mapper, item) for item in object)
-        elif type(object) == dict:
+    def _recurse_map(self, mapper, obj):
+        if type(obj) == list:
+            return list(self._recurse_map(mapper, item) for item in obj)
+        elif type(obj) == tuple:
+            return tuple(self._recurse_map(mapper, item) for item in obj)
+        elif type(obj) == dict:
             return dict(
-                (key, self._recurse_map(mapper, item)) for key, item in object.items()
+                (key, self._recurse_map(mapper, item)) for key, item in obj.items()
             )
         else:
-            return mapper(object)
+            return mapper(obj)
 
-    def _translate_in(self, object):
-        return self._recurse_map(self._translate_scalar_in, object)
+    def _translate_in(self, obj):
+        return self._recurse_map(self._translate_scalar_in, obj)
 
-    def _translate_out(self, object, interface):
+    def _translate_out(self, obj, interface):
         return self._recurse_map(
-            lambda scalar: self._translate_scalar_out(scalar, interface), object
+            lambda scalar: self._translate_scalar_out(scalar, interface), obj
         )
 
     def _translate_coro_out(self, coro, interface):
@@ -475,39 +475,39 @@ class Synchronizer:
         new_cls.__doc__ = cls.__doc__
         return new_cls
 
-    def _wrap(self, object, interface, name = None, require_already_wrapped = False):
+    def _wrap(self, obj, interface, name = None, require_already_wrapped = False):
         # This method works for classes, functions, and instances
         # It wraps the object, and caches the wrapped object
-        if self._wrapped_attr not in object.__dict__:
-            if isinstance(object.__dict__, dict):
+        if self._wrapped_attr not in obj.__dict__:
+            if isinstance(obj.__dict__, dict):
                 # This works for instances
-                object.__dict__.setdefault(self._wrapped_attr, {})
+                obj.__dict__.setdefault(self._wrapped_attr, {})
             else:
                 # This works for classes & functions
-                setattr(object, self._wrapped_attr, {})
+                setattr(obj, self._wrapped_attr, {})
 
-        interfaces = object.__dict__[self._wrapped_attr]
+        interfaces = obj.__dict__[self._wrapped_attr]
         if interface in interfaces:
             if self._multiwrap_warning:
                 warnings.warn(
-                    f"Object {object} is already wrapped, but getting wrapped again"
+                    f"Object {obj} is already wrapped, but getting wrapped again"
                 )
             return interfaces[interface]
 
         if require_already_wrapped:
             # This happens if a class has a custom name but its base class doesn't
-            raise RuntimeError(f"{object} needs to be serialized explicitly with a custom name")
+            raise RuntimeError(f"{obj} needs to be serialized explicitly with a custom name")
 
-        if inspect.isclass(object):
-            new_object = self._wrap_class(object, interface, name)
-        elif inspect.isfunction(object):
-            new_object = self._wrap_callable(object, interface, name)
-        elif self._wrapped_attr in object.__class__.__dict__:
-            new_object = self._wrap_instance(object, interface)
+        if inspect.isclass(obj):
+            new_obj = self._wrap_class(obj, interface, name)
+        elif inspect.isfunction(obj):
+            new_obj = self._wrap_callable(obj, interface, name)
+        elif self._wrapped_attr in obj.__class__.__dict__:
+            new_obj = self._wrap_instance(obj, interface)
         else:
-            raise Exception("Argument %s is not a class or a callable" % object)
-        interfaces[interface] = new_object
-        return new_object
+            raise Exception("Argument %s is not a class or a callable" % obj)
+        interfaces[interface] = new_obj
+        return new_obj
 
     def asynccontextmanager(self, func):
         warnings.warn(
@@ -519,14 +519,14 @@ class Synchronizer:
 
     # New interface that (almost) doesn't mutate objects
 
-    def create_blocking(self, object, name = None):
-        return self._wrap(object, Interface.BLOCKING, name)
+    def create_blocking(self, obj, name = None):
+        return self._wrap(obj, Interface.BLOCKING, name)
 
-    def create_async(self, object, name = None):
-        return self._wrap(object, Interface.ASYNC, name)
+    def create_async(self, obj, name = None):
+        return self._wrap(obj, Interface.ASYNC, name)
 
-    def is_synchronized(self, object):
-        if inspect.isclass(object) or inspect.isfunction(object):
-            return hasattr(object, self._original_attr)
+    def is_synchronized(self, obj):
+        if inspect.isclass(obj) or inspect.isfunction(obj):
+            return hasattr(obj, self._original_attr)
         else:
-            return hasattr(object.__class__, self._original_attr)
+            return hasattr(obj.__class__, self._original_attr)
