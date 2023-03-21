@@ -1,7 +1,5 @@
-import asyncio
-import pytest
 
-from synchronicity import Interface, Synchronizer
+from synchronicity import Synchronizer
 
 
 def test_is_synchronized():
@@ -10,6 +8,6 @@ def test_is_synchronized():
     class Foo:
         pass
 
-    BlockingFoo = s.create(Foo)[Interface.BLOCKING]
-    assert s.is_synchronized(Foo) == False
-    assert s.is_synchronized(BlockingFoo) == True
+    BlockingFoo = s.create_blocking(Foo)
+    assert s.is_synchronized(Foo) is False
+    assert s.is_synchronized(BlockingFoo) is True

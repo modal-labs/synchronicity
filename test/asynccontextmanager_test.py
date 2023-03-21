@@ -3,7 +3,6 @@ from contextlib import asynccontextmanager
 import pytest
 
 from synchronicity import Synchronizer
-from synchronicity.interface import Interface
 
 
 async def noop():
@@ -128,7 +127,7 @@ async def test_asynccontextmanager_with_in_async():
 def test_generatorexit_in_async_generator():
     s = Synchronizer()
 
-    @asynccontextmanager
+    @s.asynccontextmanager
     async def foo():
         yield
 

@@ -2,7 +2,7 @@ import asyncio
 import pytest
 from typing import Dict, Any
 
-from synchronicity import Interface, Synchronizer
+from synchronicity import Synchronizer
 
 
 def test_getattr():
@@ -40,7 +40,7 @@ def test_getattr():
         asyncio.run(foo.y)
     assert foo.z == 42
 
-    BlockingFoo = s.create(Foo)[Interface.BLOCKING]
+    BlockingFoo = s.create_blocking(Foo)
 
     blocking_foo = BlockingFoo()
     blocking_foo.x = 42
@@ -52,7 +52,7 @@ def test_getattr():
     blocking_foo = BlockingFoo.make_foo()
     assert isinstance(blocking_foo, BlockingFoo)
 
-    AsyncFoo = s.create(Foo)[Interface.ASYNC]
+    AsyncFoo = s.create_async(Foo)
     async_foo = AsyncFoo()
     async_foo.x = 42
     assert asyncio.run(async_foo.x) == 42

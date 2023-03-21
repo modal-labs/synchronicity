@@ -1,6 +1,5 @@
 import subprocess
 import os
-import pytest
 import signal
 import sys
 

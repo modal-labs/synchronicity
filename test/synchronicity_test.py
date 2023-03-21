@@ -377,7 +377,7 @@ async def test_class_async_back_and_forth():
     s = Synchronizer()
     AsyncMyClass = s.create_async(MyClass)
     AsyncBase = s.create_async(Base)
-    BlockingMyClass = s.create_blocking(MyClass)
+    s.create_blocking(MyClass)
     async_obj = AsyncMyClass(x=42)
     assert isinstance(async_obj, AsyncMyClass)
     assert isinstance(async_obj, AsyncBase)
@@ -434,7 +434,7 @@ def test_doc_transfer(interface_type):
             """hello"""
 
     s = Synchronizer()
-    output_class = s.create(Foo)[interface_type]
+    output_class = s._wrap(Foo, interface_type)
 
     assert output_class.__doc__ == "Hello"
     assert output_class.foo.__doc__ == "hello"

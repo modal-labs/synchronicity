@@ -1,7 +1,7 @@
 import pytest
 import traceback
 
-from synchronicity import Interface, Synchronizer
+from synchronicity import Synchronizer
 
 
 class CustomException(Exception):
@@ -45,7 +45,7 @@ def test_sync_to_async():
 
 def test_sync_to_async():
     s = Synchronizer()
-    f_baseexc_s = s.create_blocking(f_baseexc)
+    s.create_blocking(f_baseexc)
     with pytest.raises(BaseException) as excinfo:
         f_s()
     check_traceback(excinfo.value)
