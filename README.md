@@ -59,7 +59,7 @@ from synchronicity import Synchronizer
 
 synchronizer = Synchronizer()
 
-@synchronizer
+@synchronizer.create_blocking
 async def f(x):
     await asyncio.sleep(1.0)
     return x**2
@@ -85,7 +85,7 @@ Generators
 The decorator also works on generators:
 
 ```python
-@synchronizer
+@synchronizer.create_blocking
 async def f(n):
     for i in range(n):
         await asyncio.sleep(1.0)
@@ -105,7 +105,7 @@ It also operates on classes by wrapping every method on the class:
 
 
 ```python
-@synchronizer
+@synchronizer.create_blocking
 class DBConnection:
     def __init__(self, url):
         self._url = url
@@ -133,7 +133,7 @@ from synchronicity import Synchronizer
 
 synchronizer = Synchronizer()
 
-@synchronizer
+@synchronizer.create_blocking
 async def f(x):
     await asyncio.sleep(1.0)
     return x**2
