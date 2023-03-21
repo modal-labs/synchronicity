@@ -58,6 +58,9 @@ class Synchronizer:
         self._wrapped_attr = "_sync_wrapped_%d" % id(self)
         self._original_attr = "_sync_original_%d" % id(self)
 
+        # Special attribute to mark something as non-wrappable
+        self._nowrap_attr = "_sync_nonwrap_%d" % id(self)
+
         # Prep a synchronized context manager
         self._ctx_mgr_cls = contextlib._AsyncGeneratorContextManager
         self.create_async(self._ctx_mgr_cls)
@@ -380,6 +383,10 @@ class Synchronizer:
         return f_wrapped
 
     def _wrap_proxy_method(self, method, interface, allow_futures=True):
+        if getattr(method, self._nowrap_attr, None):
+            # This method is marked as non-wrappable
+            return method
+
         method = self._wrap_callable(
             method, interface, allow_futures=allow_futures, unwrap_user_excs=False
         )
@@ -478,6 +485,8 @@ class Synchronizer:
     def _wrap(self, obj, interface, name = None, require_already_wrapped = False):
         # This method works for classes, functions, and instances
         # It wraps the object, and caches the wrapped object
+
+        # Get the list of existing interfaces
         if self._wrapped_attr not in obj.__dict__:
             if isinstance(obj.__dict__, dict):
                 # This works for instances
@@ -486,6 +495,7 @@ class Synchronizer:
                 # This works for classes & functions
                 setattr(obj, self._wrapped_attr, {})
 
+        # If this is already wrapped, return the existing interface
         interfaces = obj.__dict__[self._wrapped_attr]
         if interface in interfaces:
             if self._multiwrap_warning:
@@ -498,6 +508,7 @@ class Synchronizer:
             # This happens if a class has a custom name but its base class doesn't
             raise RuntimeError(f"{obj} needs to be serialized explicitly with a custom name")
 
+        # Wrap object (different cases based on the type)
         if inspect.isclass(obj):
             new_obj = self._wrap_class(obj, interface, name)
         elif inspect.isfunction(obj):
@@ -506,8 +517,14 @@ class Synchronizer:
             new_obj = self._wrap_instance(obj, interface)
         else:
             raise Exception("Argument %s is not a class or a callable" % obj)
+
+        # Store the interface on the obj and return
         interfaces[interface] = new_obj
         return new_obj
+
+    def nowrap(self, obj):
+        setattr(obj, self._nowrap_attr, True)
+        return obj
 
     # New interface that (almost) doesn't mutate objects
 
