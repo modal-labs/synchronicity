@@ -1,14 +1,16 @@
 import inspect
 import typing
 
-from synchronicity import async_wrap
+import synchronicity
+from synchronicity import async_wrap, Interface
 
+synchronizer = synchronicity.Synchronizer()
 
 def test_wrap_corofunc_using_async():
     async def foo():
         pass
 
-    @async_wrap.async_compat_wraps(foo)
+    @synchronizer.wraps_by_interface(Interface.ASYNC, foo)
     async def bar():
         pass
 
@@ -19,7 +21,7 @@ def test_wrap_corofunc_using_non_async():
     async def foo():
         pass
 
-    @async_wrap.async_compat_wraps(foo)
+    @synchronizer.wraps_by_interface(Interface.ASYNC, foo)
     def bar():
         pass
 
@@ -30,8 +32,9 @@ def test_wrap_annotated_asyncgen_using_async():
     async def foo() -> typing.AsyncGenerator[str, typing.Any]:
         yield "bar"
 
-    @async_wrap.async_compat_wraps(foo)
+    @synchronizer.wraps_by_interface(Interface.ASYNC, foo)
     async def bar():
         pass
 
+    # note that we do no explicit
     assert bar.__annotations__["return"] == typing.AsyncGenerator[str, typing.Any]

@@ -1,14 +1,16 @@
 import asyncio
 import atexit
+import collections.abc
 import contextlib
 import functools
 import inspect
 import threading
 import platform
+import typing
 import warnings
 
 from .callback import Callback
-from .async_wrap import wraps_by_interface
+from .async_wrap import type_compat_wraps
 from .exceptions import UserCodeException, unwrap_coro_exception, wrap_coro_exception
 from .interface import Interface
 
@@ -31,7 +33,6 @@ _FUNCTION_PREFIXES = {
     Interface.BLOCKING: "blocking_",
     Interface.ASYNC: "async_",
 }
-
 
 class Synchronizer:
     """Helps you offer a blocking (synchronous) interface to asynchronous code."""
@@ -61,7 +62,7 @@ class Synchronizer:
         # Special attribute to mark something as non-wrappable
         self._nowrap_attr = "_sync_nonwrap_%d" % id(self)
 
-        # Prep a synchronized context manager
+        # Prep a synchronized context manager in case one is returned and needs translation
         self._ctx_mgr_cls = contextlib._AsyncGeneratorContextManager
         self.create_async(self._ctx_mgr_cls)
         self.create_blocking(self._ctx_mgr_cls)
@@ -317,7 +318,7 @@ class Synchronizer:
 
         is_coroutinefunction = inspect.iscoroutinefunction(f)
 
-        @wraps_by_interface(interface, f)
+        @self.wraps_by_interface(interface, f)
         def f_wrapped(*args, **kwargs):
             return_future = kwargs.pop(_RETURN_FUTURE_KWARG, False)
 
@@ -375,7 +376,7 @@ class Synchronizer:
                 ):  # TODO: HACKY HACK
                     # TODO: this is needed for decorator wrappers that returns functions
                     # Maybe a bit of a hacky special case that deserves its own decorator
-                    @wraps_by_interface(interface, res)
+                    @self.wraps_by_interface(interface, res)
                     def f_wrapped(*args, **kwargs):
                         args = self._translate_in(args)
                         kwargs = self._translate_in(kwargs)
@@ -399,7 +400,7 @@ class Synchronizer:
             method, interface, allow_futures=allow_futures, unwrap_user_excs=False
         )
 
-        @wraps_by_interface(interface, method)
+        @self.wraps_by_interface(interface, method)
         def proxy_method(wrapped_self, *args, **kwargs):
             instance = wrapped_self.__dict__[self._original_attr]
             try:
@@ -416,7 +417,7 @@ class Synchronizer:
     def _wrap_proxy_classmethod(self, method, interface):
         method = self._wrap_callable(method.__func__, interface)
 
-        @wraps_by_interface(interface, method)
+        @self.wraps_by_interface(interface, method)
         def proxy_classmethod(wrapped_cls, *args, **kwargs):
             return method(wrapped_cls, *args, **kwargs)
 
@@ -490,6 +491,8 @@ class Synchronizer:
         new_cls = type.__new__(type, name, bases, new_dict)
         new_cls.__module__ = cls.__module__
         new_cls.__doc__ = cls.__doc__
+        if hasattr(cls, "__annotations__"):
+            new_cls.__annotations__ = {k: self._map_type_annotation(t, interface) for k, t in cls.__annotations__.items()}
         return new_cls
 
     def _wrap(self, obj, interface, name=None, require_already_wrapped=False):
@@ -551,3 +554,42 @@ class Synchronizer:
             return hasattr(obj, self._original_attr)
         else:
             return hasattr(obj.__class__, self._original_attr)
+
+    def wraps_by_interface(self, interface, func):
+        annotations = getattr(func, "__annotations__", {})
+        updated_annotations = {k: self._map_type_annotation(t, interface) for k, t in annotations.items()}
+        return type_compat_wraps(func, interface, updated_annotations)
+
+    def _map_type_annotation(self, type_annotation, interface: Interface):
+        # recursively map a nested type annotation to match the output interface
+        origin = getattr(type_annotation, "__origin__", None)
+        if origin is None:
+            # scalar - if type is synchronicity type, use the blocking/async version instead
+            if hasattr(type_annotation, self._wrapped_attr):
+                return getattr(type_annotation, self._wrapped_attr)[interface]
+            return type_annotation
+
+        args = getattr(type_annotation, "__args__", [])
+        mapped_args = tuple(self._map_type_annotation(arg, interface) for arg in args)
+        if interface == Interface.ASYNC:
+            # async interface should use same generic classes as original
+            return type_annotation.copy_with(mapped_args)
+
+        # blocking interface special generic translations:
+        if origin == collections.abc.AsyncGenerator:
+            return typing.Generator[mapped_args + (None,)]
+
+        if origin == contextlib.AbstractAsyncContextManager:
+            return typing.ContextManager[mapped_args]
+
+        if origin == collections.abc.AsyncIterable:
+            return typing.Iterable[mapped_args]
+
+        if origin == collections.abc.AsyncIterator:
+            return typing.Iterator[mapped_args]
+
+        if origin == collections.abc.Awaitable:
+            return mapped_args[0]
+
+        return type_annotation.copy_with(mapped_args)
+
