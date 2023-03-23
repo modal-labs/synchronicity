@@ -31,12 +31,10 @@ def type_compat_wraps(func, interface: Interface, new_annotations=None):
         return asyncfunc_deco
     else:
         def blockingfunc_deco(user_wrapper):
-            @functools.wraps(func)
-            def wrapper(*args, **kwargs):
-                return user_wrapper(*args, **kwargs)
+            wrapped = functools.wraps(func)(user_wrapper)
 
             if new_annotations:
-                wrapper.__annotations__ = new_annotations
+                wrapped.__annotations__ = new_annotations
 
-            return wrapper
+            return wrapped
         return blockingfunc_deco
