@@ -32,6 +32,9 @@ _FUNCTION_PREFIXES = {
     Interface.ASYNC: "async_",
 }
 
+def warn_old_modal_client():
+    warnings.warn("Using latest synchronicity with an old interface - please upgrade to latest modal-client!")
+
 
 class Synchronizer:
     """Helps you offer a blocking (synchronous) interface to asynchronous code."""
@@ -313,7 +316,12 @@ class Synchronizer:
             return f
 
         if name is None:
-            name = _FUNCTION_PREFIXES[interface] + f.__name__
+            if hasattr(self, "get_name"):
+                # super dumb backwards compatibility fix
+                warn_old_modal_client()
+                name = self.get_name(f, interface)
+            else:
+                name = _FUNCTION_PREFIXES[interface] + f.__name__
 
         is_coroutinefunction = inspect.iscoroutinefunction(f)
 
@@ -485,7 +493,12 @@ class Synchronizer:
                 new_dict[k] = self._wrap_proxy_method(v, interface)
 
         if name is None:
-            name = _CLASS_PREFIXES[interface] + cls.__name__
+            if hasattr(self, "get_name"):
+                # super dumb backwards compatibility fix
+                warn_old_modal_client()
+                name = self.get_name(cls, interface)
+            else:
+                name = _CLASS_PREFIXES[interface] + cls.__name__
 
         new_cls = type.__new__(type, name, bases, new_dict)
         new_cls.__module__ = cls.__module__
@@ -551,3 +564,18 @@ class Synchronizer:
             return hasattr(obj, self._original_attr)
         else:
             return hasattr(obj.__class__, self._original_attr)
+
+    ### DEPRECATED
+    # Only needed because old modal clients don't pin the synchronicity version,
+    # so we need this for backwards compatibility for a short while
+
+    def create(self, obj):
+        warn_old_modal_client()
+        return {
+            Interface.ASYNC: self.create_async(obj),
+            Interface.BLOCKING: self.create_blocking(obj),
+        }
+
+    def __call__(self, obj):
+        warn_old_modal_client()
+        return self.create_blocking(obj)
