@@ -22,12 +22,11 @@ class StubEmitter:
         self._indentation = "    "
 
     def formatannotation(self, annotation, base_module=None):
+        # modified version of the stdlib formatannotations:
         assert (
             base_module is None
         )  # don't think this arg is used by signature, but lets check
-        # modified version of the stdlib formatannotations:
-        # if isinstance(annotation, types.GenericAlias):
-        #     return str(annotation)
+
         origin = getattr(annotation, "__origin__", None)
         if origin is None:
             if isinstance(annotation, type):
