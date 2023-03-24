@@ -421,7 +421,7 @@ class Synchronizer:
 
     def _wrap_proxy_staticmethod(self, method, interface):
         method = self._wrap_callable(method.__func__, interface)
-        return staticmethod(method)
+        return staticmethod(self.wraps_by_interface(interface, method)(method))
 
     def _wrap_proxy_classmethod(self, method, interface):
         method = self._wrap_callable(method.__func__, interface)
