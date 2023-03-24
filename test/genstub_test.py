@@ -64,3 +64,49 @@ def test_async_func():
 def test_async_gen():
     assert _function_source(async_gen) == "import typing\n\nasync def async_gen() -> typing.AsyncGenerator[int, None]:\n    ...\n"
     assert _function_source(weird_async_gen) == "import typing\n\ndef weird_async_gen() -> typing.AsyncGenerator[int, None]:\n    ...\n"
+
+
+class Foo:
+    class_var: str
+    def some_method(self) -> bool:
+        return False
+
+    @classmethod
+    def some_class_method(cls) -> int:
+        return 1
+
+    @staticmethod
+    def some_staticmethod() -> float:
+        return 0.0
+    @property
+    def some_property(self) -> str:
+        return ""
+
+
+def test_class_generation():
+    emitter = StubEmitter("mod")
+    emitter.add_class(Foo)
+    source = emitter.get_source()
+
+    assert source == """class Foo:
+    class_var: str
+    def some_method(self) -> bool:
+        ...
+
+    @classmethod
+    def some_class_method(cls) -> int:
+        ...
+
+    @staticmethod
+    def some_staticmethod() -> float:
+        ...
+
+    @property
+    def some_property(self) -> str:
+        ...
+"""
+
+
+def test_base_classes():
+    # TODO: implement
+    pass

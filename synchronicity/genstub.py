@@ -12,20 +12,47 @@ class ReprObj:
     def __str__(self):
         return self._repr
 
+
+
 class StubEmitter:
     def __init__(self, target_module):
         self.target_module = target_module
         self.imports = set()
         self.parts = []
         self._indentation = "    "
+
+
+    def formatannotation(self, annotation, base_module=None):
+        assert base_module is None  # don't think this arg is used by signature, but lets check
+        # modified version of the stdlib formatannotations:
+        # if isinstance(annotation, types.GenericAlias):
+        #     return str(annotation)
+        origin = getattr(annotation, "__origin__", None)
+        if origin is None:
+            if isinstance(annotation, type):
+                if annotation == None.__class__:
+                    return "None"
+                if annotation.__module__ in ('builtins', self.target_module):
+                    return annotation.__qualname__
+                return annotation.__module__+'.'+annotation.__qualname__
+            return repr(annotation)
+        # generic:
+        args = getattr(annotation, "__args__", ())
+        return annotation.copy_with(tuple(ReprObj(self.formatannotation(arg)) for arg in args))
+
     def indent(self, level):
         return level * self._indentation
 
-    def add_function(self, func, indentation_level=0):
+    def _get_function(self, func, indentation_level=0):
+        # return source code of function and track imports
         for annotation in func.__annotations__.values():
             self._type_imports(annotation)
 
-        self.parts.append(self._get_func_stub_source(func, indentation_level))
+        return self._get_func_stub_source(func, indentation_level)
+
+    def add_function(self, func, indentation_level=0):
+        # adds function source code to module
+        self.parts.append(self._get_function(func, indentation_level))
 
     def _import_module(self, module: str):
         if module not in (self.target_module, "builtins"):
@@ -70,24 +97,35 @@ class StubEmitter:
         * General flexibility like not being able to maintain *comments* in the arg declarations if we want to
         """
 
-        def formatannotation(annotation, base_module=None):
-            assert base_module is None  # don't think this arg is used by signature, but lets check
-            # modified version of the stdlib formatannotations:
-            # if isinstance(annotation, types.GenericAlias):
-            #     return str(annotation)
-            origin = getattr(annotation, "__origin__", None)
-            if origin is None:
-                if isinstance(annotation, type):
-                    if annotation == None.__class__:
-                        return "None"
-                    if annotation.__module__ in ('builtins', self.target_module):
-                        return annotation.__qualname__
-                    return annotation.__module__+'.'+annotation.__qualname__
-                return repr(annotation)
-            # generic:
-            args = getattr(annotation, "__args__", ())
-            return annotation.copy_with(tuple(ReprObj(formatannotation(arg)) for arg in args))
-
         # haxx, please rewrite :'(
-        with mock.patch("inspect.formatannotation", formatannotation):
+        with mock.patch("inspect.formatannotation", self.formatannotation):
             return str(inspect.signature(func))
+
+    def add_class(self, cls):
+        decl = f"class {cls.__name__}:"
+        vars = []
+        methods = []
+
+        indent = self.indent(1)
+        for varname, annotation in getattr(cls, "__annotations__", {}).items():
+            vars.append(f"{indent}{varname}: {self.formatannotation(annotation, None)}")
+
+        for entity_name, entity in cls.__dict__.items():
+            if inspect.isfunction(entity):
+                methods.append(self._get_function(entity, 1))
+
+            elif isinstance(entity, classmethod):
+                methods.append(f"{indent}@classmethod\n{self._get_function(entity.__func__, 1)}")
+
+            elif isinstance(entity, staticmethod):
+                methods.append(f"{indent}@staticmethod\n{self._get_function(entity.__func__, 1)}")
+
+            elif isinstance(entity, property):
+                methods.append(f"{indent}@property\n{self._get_function(entity.fget, 1)}")
+
+
+        self.parts.append("\n".join([
+            decl,
+            *vars,
+            *methods,
+        ]))
