@@ -605,6 +605,9 @@ class Synchronizer:
         if origin == collections.abc.Awaitable:
             return mapped_args[0]
 
+        if origin == collections.abc.Coroutine:
+            return mapped_args[2]
+
         return type_annotation.copy_with(mapped_args)
 
 

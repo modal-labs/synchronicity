@@ -19,23 +19,17 @@ class _Foo:
     async def ctx(self) -> typing.AsyncGenerator[int, None]:
         yield 0
 
+    def return_awaitable(self) -> typing.Awaitable[str]:
+        pass
+
+    def return_coroutine(self) -> typing.Coroutine[None, None, str]:
+        pass
+
 s = synchronicity.Synchronizer()
 BlockingBar = s.create_blocking(_Bar, "BlockingBar")
 AsyncBar = s.create_async(_Bar, "AsyncBar")
 BlockingFoo = s.create_blocking(_Foo, "BlockingFoo")
 AsyncFoo = s.create_async(_Foo, "AsyncFoo")
-
-@pytest.mark.parametrize("t,interface,expected", [
-    (typing.AsyncGenerator[int, str], Interface.BLOCKING, typing.Generator[int, str, None]),
-    (typing.AsyncContextManager[_Foo], Interface.BLOCKING, typing.ContextManager[BlockingFoo]),
-    (typing.AsyncContextManager[_Foo], Interface.ASYNC, typing.AsyncContextManager[AsyncFoo]),
-    (typing.Awaitable[typing.Awaitable[str]], Interface.ASYNC, typing.Awaitable[typing.Awaitable[str]]),
-    (typing.Awaitable[typing.Awaitable[str]], Interface.BLOCKING, str),
-    (typing.AsyncIterable[str], Interface.BLOCKING, typing.Iterable[str]),
-    (typing.AsyncIterator[str], Interface.BLOCKING, typing.Iterator[str]),
-])
-def test_annotation_mapping(t, interface, expected):
-    assert s._map_type_annotation(t, interface) == expected
 
 
 def test_wrapped_function_replaces_annotation():
@@ -43,3 +37,19 @@ def test_wrapped_function_replaces_annotation():
     assert BlockingFoo.__annotations__["baz"] == BlockingBar
     assert AsyncFoo.ctx.__annotations__["return"] == typing.AsyncContextManager[int]
     assert BlockingFoo.ctx.__annotations__["return"] == typing.ContextManager[int]
+    assert BlockingFoo.return_awaitable.__annotations__["return"] == str
+    assert BlockingFoo.return_coroutine.__annotations__["return"] == str
+
+
+@pytest.mark.parametrize("t,interface,expected", [
+    (typing.AsyncGenerator[int, str], Interface.BLOCKING, typing.Generator[int, str, None]),
+    (typing.AsyncContextManager[_Foo], Interface.BLOCKING, typing.ContextManager[BlockingFoo]),
+    (typing.AsyncContextManager[_Foo], Interface.ASYNC, typing.AsyncContextManager[AsyncFoo]),
+    (typing.Awaitable[typing.Awaitable[str]], Interface.ASYNC, typing.Awaitable[typing.Awaitable[str]]),
+    (typing.Awaitable[typing.Awaitable[str]], Interface.BLOCKING, str),
+    (typing.Coroutine[None, None, str], Interface.BLOCKING, str),
+    (typing.AsyncIterable[str], Interface.BLOCKING, typing.Iterable[str]),
+    (typing.AsyncIterator[str], Interface.BLOCKING, typing.Iterator[str]),
+])
+def test_annotation_mapping(t, interface, expected):
+    assert s._map_type_annotation(t, interface) == expected
