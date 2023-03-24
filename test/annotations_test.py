@@ -33,6 +33,10 @@ class _Foo:
     def some_staticmethod() -> typing.Awaitable[int]:
         pass
 
+    async def some_async_gen(self) -> typing.AsyncGenerator[int, str]:
+        yield 1
+
+
 
 s = synchronicity.Synchronizer()
 BlockingBar = s.create_blocking(_Bar, "BlockingBar")
@@ -50,6 +54,7 @@ def test_wrapped_function_replaces_annotation():
     assert BlockingFoo.return_coroutine.__annotations__["return"] == str
     assert BlockingFoo.some_classmethod.__annotations__["return"] == float
     assert BlockingFoo.some_staticmethod.__annotations__["return"] == int
+    assert BlockingFoo.some_async_gen.__annotations__["return"] == typing.Generator[int, str, None]
 
 
 @pytest.mark.parametrize("t,interface,expected", [
