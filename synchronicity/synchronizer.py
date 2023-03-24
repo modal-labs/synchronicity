@@ -36,8 +36,11 @@ _FUNCTION_PREFIXES = {
     Interface.ASYNC: "async_",
 }
 
+
 def warn_old_modal_client():
-    warnings.warn("Using latest synchronicity with an old interface - please upgrade to latest modal-client!")
+    warnings.warn(
+        "Using latest synchronicity with an old interface - please upgrade to latest modal-client!"
+    )
 
 
 class Synchronizer:
@@ -509,7 +512,10 @@ class Synchronizer:
         new_cls.__module__ = cls.__module__
         new_cls.__doc__ = cls.__doc__
         if hasattr(cls, "__annotations__"):
-            new_cls.__annotations__ = {k: self._map_type_annotation(t, interface) for k, t in cls.__annotations__.items()}
+            new_cls.__annotations__ = {
+                k: self._map_type_annotation(t, interface)
+                for k, t in cls.__annotations__.items()
+            }
         return new_cls
 
     def _wrap(self, obj, interface, name=None, require_already_wrapped=False):
@@ -560,13 +566,17 @@ class Synchronizer:
 
     # New interface that (almost) doesn't mutate objects
 
-    def create_blocking(self, obj, name: Optional[str]=None, target_module: Optional[str]=None):
+    def create_blocking(
+        self, obj, name: Optional[str] = None, target_module: Optional[str] = None
+    ):
         wrapped = self._wrap(obj, Interface.BLOCKING, name)
         if name and target_module:
             self._target_modules[target_module][name] = wrapped
         return wrapped
 
-    def create_async(self, obj, name: Optional[str]=None, target_module: Optional[str]=None):
+    def create_async(
+        self, obj, name: Optional[str] = None, target_module: Optional[str] = None
+    ):
         wrapped = self._wrap(obj, Interface.ASYNC, name)
         if name and target_module:
             self._target_modules[target_module][name] = wrapped
@@ -580,7 +590,9 @@ class Synchronizer:
 
     def wraps_by_interface(self, interface, func):
         annotations = getattr(func, "__annotations__", {})
-        updated_annotations = {k: self._map_type_annotation(t, interface) for k, t in annotations.items()}
+        updated_annotations = {
+            k: self._map_type_annotation(t, interface) for k, t in annotations.items()
+        }
         return type_compat_wraps(func, interface, updated_annotations)
 
     def _map_type_annotation(self, type_annotation, interface: Interface):
@@ -618,7 +630,6 @@ class Synchronizer:
             return mapped_args[2]
 
         return type_annotation.copy_with(mapped_args)
-
 
     ### DEPRECATED
     # Only needed because old modal clients don't pin the synchronicity version,

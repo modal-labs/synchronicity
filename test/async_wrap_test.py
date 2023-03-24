@@ -6,6 +6,7 @@ from synchronicity import Interface
 
 synchronizer = synchronicity.Synchronizer()
 
+
 def test_wrap_corofunc_using_async():
     async def foo():
         pass
@@ -46,6 +47,7 @@ def test_wrap_staticmethod():
         async def a_static_method() -> typing.Awaitable[str]:
             async def wrapped():
                 return "hello"
+
             return wrapped()
 
     BlockingFoo = synchronizer.create_blocking(Foo)
@@ -57,4 +59,6 @@ def test_wrap_staticmethod():
     assert BlockingFoo.a_static_method.__annotations__["return"] == str
     assert AsyncFoo.a_static_method.__annotations__["return"] == typing.Awaitable[str]
     assert inspect.iscoroutinefunction(AsyncFoo.__dict__["a_static_method"].__func__)
-    assert not inspect.iscoroutinefunction(BlockingFoo.__dict__["a_static_method"].__func__)
+    assert not inspect.iscoroutinefunction(
+        BlockingFoo.__dict__["a_static_method"].__func__
+    )

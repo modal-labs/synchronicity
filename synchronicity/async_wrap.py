@@ -8,6 +8,7 @@ from .exceptions import UserCodeException
 from .interface import Interface
 from contextlib import asynccontextmanager as _asynccontextmanager
 
+
 def type_compat_wraps(func, interface: Interface, new_annotations=None):
     """Like functools.wraps but maintains `inspect.iscoroutinefunction` and allows custom type annotations overrides
 
@@ -26,12 +27,14 @@ def type_compat_wraps(func, interface: Interface, new_annotations=None):
                     return await user_wrapper(*args, **kwargs)
                 except UserCodeException as uc_exc:
                     raise uc_exc.exc from None
+
             if new_annotations:
                 wrapper.__annotations__ = new_annotations
             return wrapper
 
         return asyncfunc_deco
     else:
+
         def blockingfunc_deco(user_wrapper):
             wrapped = functools.wraps(func)(user_wrapper)
 
@@ -39,15 +42,17 @@ def type_compat_wraps(func, interface: Interface, new_annotations=None):
                 wrapped.__annotations__ = new_annotations
 
             return wrapped
+
         return blockingfunc_deco
-
-
 
 
 YIELD_TYPE = typing.TypeVar("YIELD_TYPE")
 SEND_TYPE = typing.TypeVar("SEND_TYPE")
 
-def asynccontextmanager(f: typing.AsyncGenerator[YIELD_TYPE, SEND_TYPE]) -> typing.Callable[[], typing.AsyncContextManager[YIELD_TYPE]]:
+
+def asynccontextmanager(
+    f: typing.AsyncGenerator[YIELD_TYPE, SEND_TYPE]
+) -> typing.Callable[[], typing.AsyncContextManager[YIELD_TYPE]]:
     """Wrapper around contextlib.asynccontextmanager that sets correct type annotations
 
     The standard library one doesn't
@@ -56,12 +61,20 @@ def asynccontextmanager(f: typing.AsyncGenerator[YIELD_TYPE, SEND_TYPE]) -> typi
 
     old_ret = acm_factory.__annotations__.pop("return", None)
     if old_ret is not None:
-        if old_ret.__origin__ in [collections.abc.AsyncGenerator, collections.abc.AsyncIterator, collections.abc.AsyncIterator]:
-            acm_factory.__annotations__["return"] = typing.AsyncContextManager[old_ret.__args__[0]]
+        if old_ret.__origin__ in [
+            collections.abc.AsyncGenerator,
+            collections.abc.AsyncIterator,
+            collections.abc.AsyncIterator,
+        ]:
+            acm_factory.__annotations__["return"] = typing.AsyncContextManager[
+                old_ret.__args__[0]
+            ]
         elif old_ret.__origin__ == contextlib.AbstractAsyncContextManager:
             # if the standard lib fixes the annotations in the future, lets not break it...
             return acm_factory
     else:
-        raise ValueError("To use the fixed @asynccontextmanager, make sure to properly annotate your wrapped function as an AsyncGenerator")
+        raise ValueError(
+            "To use the fixed @asynccontextmanager, make sure to properly annotate your wrapped function as an AsyncGenerator"
+        )
 
     return acm_factory

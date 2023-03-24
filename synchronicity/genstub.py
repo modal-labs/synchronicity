@@ -2,6 +2,7 @@ import inspect
 import types
 from unittest import mock
 
+
 class ReprObj:
     def __init__(self, repr):
         self._repr = repr
@@ -13,7 +14,6 @@ class ReprObj:
         return self._repr
 
 
-
 class StubEmitter:
     def __init__(self, target_module):
         self.target_module = target_module
@@ -21,9 +21,10 @@ class StubEmitter:
         self.parts = []
         self._indentation = "    "
 
-
     def formatannotation(self, annotation, base_module=None):
-        assert base_module is None  # don't think this arg is used by signature, but lets check
+        assert (
+            base_module is None
+        )  # don't think this arg is used by signature, but lets check
         # modified version of the stdlib formatannotations:
         # if isinstance(annotation, types.GenericAlias):
         #     return str(annotation)
@@ -32,13 +33,15 @@ class StubEmitter:
             if isinstance(annotation, type):
                 if annotation == None.__class__:
                     return "None"
-                if annotation.__module__ in ('builtins', self.target_module):
+                if annotation.__module__ in ("builtins", self.target_module):
                     return annotation.__qualname__
-                return annotation.__module__+'.'+annotation.__qualname__
+                return annotation.__module__ + "." + annotation.__qualname__
             return repr(annotation)
         # generic:
         args = getattr(annotation, "__args__", ())
-        return annotation.copy_with(tuple(ReprObj(self.formatannotation(arg)) for arg in args))
+        return annotation.copy_with(
+            tuple(ReprObj(self.formatannotation(arg)) for arg in args)
+        )
 
     def indent(self, level):
         return level * self._indentation
@@ -65,7 +68,9 @@ class StubEmitter:
             self._import_module(type_annotation.__module__)
             return
 
-        self._import_module(type_annotation.__module__)  # import the generic itself's module
+        self._import_module(
+            type_annotation.__module__
+        )  # import the generic itself's module
         for arg in getattr(type_annotation, "__args__", ()):
             self._type_imports(arg)
 
@@ -82,11 +87,13 @@ class StubEmitter:
         signature_indent = self.indent(indentation_level)
         body_indent = self.indent(indentation_level + 1)
         signature = self._custom_signature(func)
-        return "\n".join([
-            f"{signature_indent}{async_prefix}def {func.__name__}{signature}:",
-            f"{body_indent}...",
-            ""
-        ])
+        return "\n".join(
+            [
+                f"{signature_indent}{async_prefix}def {func.__name__}{signature}:",
+                f"{body_indent}...",
+                "",
+            ]
+        )
 
     def _custom_signature(self, func) -> str:
         """
@@ -115,17 +122,26 @@ class StubEmitter:
                 methods.append(self._get_function(entity, 1))
 
             elif isinstance(entity, classmethod):
-                methods.append(f"{indent}@classmethod\n{self._get_function(entity.__func__, 1)}")
+                methods.append(
+                    f"{indent}@classmethod\n{self._get_function(entity.__func__, 1)}"
+                )
 
             elif isinstance(entity, staticmethod):
-                methods.append(f"{indent}@staticmethod\n{self._get_function(entity.__func__, 1)}")
+                methods.append(
+                    f"{indent}@staticmethod\n{self._get_function(entity.__func__, 1)}"
+                )
 
             elif isinstance(entity, property):
-                methods.append(f"{indent}@property\n{self._get_function(entity.fget, 1)}")
+                methods.append(
+                    f"{indent}@property\n{self._get_function(entity.fget, 1)}"
+                )
 
-
-        self.parts.append("\n".join([
-            decl,
-            *vars,
-            *methods,
-        ]))
+        self.parts.append(
+            "\n".join(
+                [
+                    decl,
+                    *vars,
+                    *methods,
+                ]
+            )
+        )
