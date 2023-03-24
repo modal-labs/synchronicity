@@ -8,7 +8,9 @@ import threading
 import platform
 import typing
 import warnings
+from collections import defaultdict
 
+from typing import Optional, Dict, Any
 from .callback import Callback
 from .async_wrap import type_compat_wraps
 from .exceptions import UserCodeException, unwrap_coro_exception, wrap_coro_exception
@@ -46,6 +48,7 @@ class Synchronizer:
         multiwrap_warning=False,
         async_leakage_warning=True,
     ):
+        self._target_modules: Dict[str, Dict[Any]] = defaultdict(dict)
         self._multiwrap_warning = multiwrap_warning
         self._async_leakage_warning = async_leakage_warning
         self._loop = None
@@ -557,11 +560,17 @@ class Synchronizer:
 
     # New interface that (almost) doesn't mutate objects
 
-    def create_blocking(self, obj, name=None):
-        return self._wrap(obj, Interface.BLOCKING, name)
+    def create_blocking(self, obj, name: Optional[str]=None, target_module: Optional[str]=None):
+        wrapped = self._wrap(obj, Interface.BLOCKING, name)
+        if name and target_module:
+            self._target_modules[target_module][name] = wrapped
+        return wrapped
 
-    def create_async(self, obj, name=None):
-        return self._wrap(obj, Interface.ASYNC, name)
+    def create_async(self, obj, name: Optional[str]=None, target_module: Optional[str]=None):
+        wrapped = self._wrap(obj, Interface.ASYNC, name)
+        if name and target_module:
+            self._target_modules[target_module][name] = wrapped
+        return wrapped
 
     def is_synchronized(self, obj):
         if inspect.isclass(obj) or inspect.isfunction(obj):
