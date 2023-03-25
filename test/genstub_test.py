@@ -51,7 +51,7 @@ def weird_async_gen() -> typing.AsyncGenerator[int, None]:
 
 def _function_source(func):
     stub_emitter = StubEmitter("dummy")
-    stub_emitter.add_function(func)
+    stub_emitter.add_function(func, func.__name__)
     return stub_emitter.get_source()
 
 

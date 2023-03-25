@@ -45,16 +45,16 @@ class StubEmitter:
     def indent(self, level):
         return level * self._indentation
 
-    def _get_function(self, func, indentation_level=0):
+    def _get_function(self, func, name, indentation_level=0):
         # return source code of function and track imports
         for annotation in func.__annotations__.values():
             self._type_imports(annotation)
 
-        return self._get_func_stub_source(func, indentation_level)
+        return self._get_func_stub_source(func, name, indentation_level)
 
-    def add_function(self, func, indentation_level=0):
+    def add_function(self, func, name, indentation_level=0):
         # adds function source code to module
-        self.parts.append(self._get_function(func, indentation_level))
+        self.parts.append(self._get_function(func, name, indentation_level))
 
     def _import_module(self, module: str):
         if module not in (self.target_module, "builtins"):
@@ -75,10 +75,10 @@ class StubEmitter:
 
     def get_source(self):
         import_src = "\n".join(sorted(f"import {mod}" for mod in self.imports))
-        stubs = "\n\n".join(self.parts)
+        stubs = "\n".join(self.parts)
         return f"{import_src}\n\n{stubs}".lstrip()
 
-    def _get_func_stub_source(self, func, indentation_level):
+    def _get_func_stub_source(self, func, name, indentation_level):
         async_prefix = ""
         if inspect.iscoroutinefunction(func) or inspect.isasyncgenfunction(func):
             async_prefix = "async "
@@ -88,7 +88,7 @@ class StubEmitter:
         signature = self._custom_signature(func)
         return "\n".join(
             [
-                f"{signature_indent}{async_prefix}def {func.__name__}{signature}:",
+                f"{signature_indent}{async_prefix}def {name}{signature}:",
                 f"{body_indent}...",
                 "",
             ]
@@ -118,21 +118,21 @@ class StubEmitter:
 
         for entity_name, entity in cls.__dict__.items():
             if inspect.isfunction(entity):
-                methods.append(self._get_function(entity, 1))
+                methods.append(self._get_function(entity, entity_name, 1))
 
             elif isinstance(entity, classmethod):
                 methods.append(
-                    f"{indent}@classmethod\n{self._get_function(entity.__func__, 1)}"
+                    f"{indent}@classmethod\n{self._get_function(entity.__func__, entity_name, 1)}"
                 )
 
             elif isinstance(entity, staticmethod):
                 methods.append(
-                    f"{indent}@staticmethod\n{self._get_function(entity.__func__, 1)}"
+                    f"{indent}@staticmethod\n{self._get_function(entity.__func__, entity_name, 1)}"
                 )
 
             elif isinstance(entity, property):
                 methods.append(
-                    f"{indent}@property\n{self._get_function(entity.fget, 1)}"
+                    f"{indent}@property\n{self._get_function(entity.fget, entity_name, 1)}"
                 )
 
         self.parts.append(
