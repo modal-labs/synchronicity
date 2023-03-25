@@ -105,7 +105,7 @@ class StubEmitter:
 
         # haxx, please rewrite :'(
         with mock.patch("inspect.formatannotation", self.formatannotation):
-            return str(inspect.signature(func))
+            return str(inspect.signature(func, follow_wrapped=False))
 
     def add_class(self, cls):
         decl = f"class {cls.__name__}:"
