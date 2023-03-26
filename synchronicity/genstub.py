@@ -4,6 +4,8 @@ from unittest import mock
 
 
 class ReprObj:
+    # Hacky repr object so we can pass verbatim type annotations as partial arguments
+    # to generic and have them render correctly through `repr()`, used by inspect.Signature etc.
     def __init__(self, repr):
         self._repr = repr
 
@@ -13,6 +15,11 @@ class ReprObj:
     def __str__(self):
         return self._repr
 
+    def __call__(self):
+        # gets around some generic's automatic type checking of provided types
+        # otherwise we get errors like `provided argument is not a type`
+        pass
+
 
 class StubEmitter:
     def __init__(self, target_module):
@@ -21,11 +28,34 @@ class StubEmitter:
         self.parts = []
         self._indentation = "    "
 
+    @classmethod
+    def from_module(cls, module):
+        emitter = cls(module.__name__)
+        for entity_name, entity in module.__dict__.items():
+            if inspect.isclass(entity):
+                emitter.add_class(entity, entity_name)
+            elif inspect.isfunction(entity):
+                emitter.add_function(entity, entity_name, 0)
+
+        for varname, annotation in getattr(module, "__annotations__", {}).items():
+            emitter.add_variable(annotation, varname)
+
+        return emitter
+
+    def add_variable(self, annotation, name):
+        self.parts.append(self._get_var_annotation(name, annotation))
+
     def formatannotation(self, annotation, base_module=None):
-        # modified version of the stdlib formatannotations:
+        """modified version of `inspect.formatannotations`
+        * Uses verbatim `None` instead of `NoneType` for None-arguments in generic types
+        * Doesn't omit `typing.`-module from qualified imports in type names
+        * recurses through generic types using ReprObj wrapper
+        * ignores base_module (uses self.target_module instead)
+        """
+
         assert (
             base_module is None
-        )  # don't think this arg is used by signature, but lets check
+        )  # inspect.Signature isn't generally using the base_module arg afaik
 
         origin = getattr(annotation, "__origin__", None)
         if origin is None:
@@ -48,7 +78,7 @@ class StubEmitter:
     def _get_function(self, func, name, indentation_level=0):
         # return source code of function and track imports
         for annotation in func.__annotations__.values():
-            self._type_imports(annotation)
+            self._register_imports(annotation)
 
         return self._get_func_stub_source(func, name, indentation_level)
 
@@ -60,7 +90,7 @@ class StubEmitter:
         if module not in (self.target_module, "builtins"):
             self.imports.add(module)
 
-    def _type_imports(self, type_annotation):
+    def _register_imports(self, type_annotation):
         origin = getattr(type_annotation, "__origin__", None)
         if origin is None:
             # "scalar" base type
@@ -71,7 +101,7 @@ class StubEmitter:
             type_annotation.__module__
         )  # import the generic itself's module
         for arg in getattr(type_annotation, "__args__", ()):
-            self._type_imports(arg)
+            self._register_imports(arg)
 
     def get_source(self):
         import_src = "\n".join(sorted(f"import {mod}" for mod in self.imports))
@@ -101,45 +131,54 @@ class StubEmitter:
         * Some names for stdlib module object types omit the module qualification (notably typing)
         * We might have to stringify annotations to support forward/self references
         * General flexibility like not being able to maintain *comments* in the arg declarations if we want to
+        * We intentionally do not use follow_wrapped, since it will override runtime-transformed annotations on a wrapper
+
+        TODO: Might want to rip out the use of inspect.signature altogether to avoid this breaking if the
+            library internals change...
         """
 
         # haxx, please rewrite :'(
         with mock.patch("inspect.formatannotation", self.formatannotation):
-            return str(inspect.signature(func, follow_wrapped=False))
+            return str(inspect.signature(func, follow_wrapped=not hasattr(func, "__annotations__")))
 
-    def add_class(self, cls):
-        decl = f"class {cls.__name__}:"
-        vars = []
+    def _get_var_annotation(self, name, annotation):
+        self._register_imports(annotation)
+        return f"{name}: {self.formatannotation(annotation, None)}"
+
+    def add_class(self, cls, name):
+        decl = f"class {name}:"
+        var_annotations = []
         methods = []
 
-        indent = self.indent(1)
+        body_indent_level = 1
+        body_indent = self.indent(body_indent_level)
         for varname, annotation in getattr(cls, "__annotations__", {}).items():
-            vars.append(f"{indent}{varname}: {self.formatannotation(annotation, None)}")
+            var_annotations.append(f"{body_indent}{self._get_var_annotation(varname, annotation)}")
 
         for entity_name, entity in cls.__dict__.items():
             if inspect.isfunction(entity):
-                methods.append(self._get_function(entity, entity_name, 1))
+                methods.append(self._get_function(entity, entity_name, body_indent_level))
 
             elif isinstance(entity, classmethod):
                 methods.append(
-                    f"{indent}@classmethod\n{self._get_function(entity.__func__, entity_name, 1)}"
+                    f"{body_indent}@classmethod\n{self._get_function(entity.__func__, entity_name, body_indent_level)}"
                 )
 
             elif isinstance(entity, staticmethod):
                 methods.append(
-                    f"{indent}@staticmethod\n{self._get_function(entity.__func__, entity_name, 1)}"
+                    f"{body_indent}@staticmethod\n{self._get_function(entity.__func__, entity_name, body_indent_level)}"
                 )
 
             elif isinstance(entity, property):
                 methods.append(
-                    f"{indent}@property\n{self._get_function(entity.fget, entity_name, 1)}"
+                    f"{body_indent}@property\n{self._get_function(entity.fget, entity_name, body_indent_level)}"
                 )
 
         self.parts.append(
             "\n".join(
                 [
                     decl,
-                    *vars,
+                    *var_annotations,
                     *methods,
                 ]
             )
