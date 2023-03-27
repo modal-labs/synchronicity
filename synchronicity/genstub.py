@@ -179,7 +179,11 @@ class StubEmitter:
             if isinstance(annotation, type) or isinstance(annotation, TypeVar):
                 if annotation == None.__class__:  # check for "NoneType"
                     return "None"
-                name = annotation.__qualname__ if hasattr(annotation, "__qualname__") else annotation.__name__
+                name = (
+                    annotation.__qualname__
+                    if hasattr(annotation, "__qualname__")
+                    else annotation.__name__
+                )
                 if annotation.__module__ in ("builtins", self.target_module):
                     return name
                 return annotation.__module__ + "." + name

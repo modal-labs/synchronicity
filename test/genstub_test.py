@@ -183,7 +183,6 @@ def test_base_class_included_and_imported():
 
     Bar.__module__ = "export"
 
-
     stub = StubEmitter("export")
     stub.add_class(Bar, "Bar")
 
@@ -194,12 +193,13 @@ def test_base_class_included_and_imported():
     assert "base" not in src
 
 
-
 def test_typevar():
     T = typing.TypeVar("T")
     T.__module__ = "source_mod"
+
     def foo(arg: T) -> T:
         pass
+
     src = _function_source(foo)
     assert "import source_mod" in src
     assert "def foo(arg: source_mod.T) -> source_mod.T" in src
