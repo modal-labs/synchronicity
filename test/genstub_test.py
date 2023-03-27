@@ -144,7 +144,7 @@ def merged_signature(*sigs):
     sig = sigs[0].copy()
     return sig
 
-#@pytest.mark.skip("TODO: fix")
+
 def test_wrapped_function_with_new_annotations():
     """A wrapped function (in general, using functools.wraps/partial) would
     have an inspect.signature from the wrapped function by default
@@ -164,9 +164,29 @@ def test_wrapped_function_with_new_annotations():
         orig(*args, **kwargs)
 
     wrapper.__annotations__.update({"extra_arg": int, "arg": float})
-    assert _function_source(wrapper) == "def orig(extra_arg: int, arg: float):\n    ...\n"
+    assert (
+        _function_source(wrapper) == "def orig(extra_arg: int, arg: float):\n    ...\n"
+    )
 
-@pytest.mark.skip("TODO: implement")
-def test_base_classes():
-    # TODO: make classes include their base classes as imports/references in the type stub
-    pass
+
+def test_base_class_included_and_imported():
+    class Foo:
+        def base(self) -> str:
+            pass
+
+    Foo.__module__ = "dummy"
+
+    class Bar(Foo):
+        def sub(self) -> float:
+            pass
+
+    Bar.__module__ = "export"
+
+    stub = StubEmitter("export")
+    stub.add_class(Bar, "Bar")
+
+    src = stub.get_source()
+
+    assert "import dummy" in src
+    assert "class Foo(Bar)" in src
+    assert "base" not in src

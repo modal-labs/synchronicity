@@ -103,13 +103,6 @@ class StubEmitter:
         stubs = "\n".join(self.parts)
         return f"{import_src}\n\n{stubs}".lstrip()
 
-    def _get_function(self, func, name, indentation_level=0):
-        # return source code of function and track imports
-        for annotation in func.__annotations__.values():
-            self._register_imports(annotation)
-
-        return self._get_func_stub_source(func, name, indentation_level)
-
     def _import_module(self, module: str):
         if module not in (self.target_module, "builtins"):
             self.imports.add(module)
