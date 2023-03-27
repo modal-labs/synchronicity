@@ -1,5 +1,6 @@
 import inspect
 import types
+from typing import TypeVar
 from unittest import mock
 
 import sigtools.specifiers
@@ -56,7 +57,13 @@ class StubEmitter:
         self.parts.append(self._get_function(func, name, indentation_level))
 
     def add_class(self, cls, name):
-        decl = f"class {name}:"
+        bases = []
+        for b in cls.__bases__:
+            if b is not object:
+                self._register_imports(b)
+                bases.append(str(self._formatannotation(b)))
+        bases_str = "" if not bases else "(" + ", ".join(bases) + ")"
+        decl = f"class {name}{bases_str}:"
         var_annotations = []
         methods = []
 
@@ -144,6 +151,7 @@ class StubEmitter:
         * We might have to stringify annotations to support forward/self references
         * General flexibility like not being able to maintain *comments* in the arg declarations if we want to
         * We intentionally do not use follow_wrapped, since it will override runtime-transformed annotations on a wrapper
+        * TypeVars default repr is `~T` instead of `origin_module.T` etc.
         """
 
         # haxx, please rewrite to avoid monkey patch... :'(
@@ -168,12 +176,13 @@ class StubEmitter:
 
         origin = getattr(annotation, "__origin__", None)
         if origin is None:
-            if isinstance(annotation, type):
-                if annotation == None.__class__:
+            if isinstance(annotation, type) or isinstance(annotation, TypeVar):
+                if annotation == None.__class__:  # check for "NoneType"
                     return "None"
+                name = annotation.__qualname__ if hasattr(annotation, "__qualname__") else annotation.__name__
                 if annotation.__module__ in ("builtins", self.target_module):
-                    return annotation.__qualname__
-                return annotation.__module__ + "." + annotation.__qualname__
+                    return name
+                return annotation.__module__ + "." + name
             return repr(annotation)
         # generic:
         args = getattr(annotation, "__args__", ())

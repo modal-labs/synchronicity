@@ -175,6 +175,7 @@ def test_base_class_included_and_imported():
             pass
 
     Foo.__module__ = "dummy"
+    Foo.__qualname__ = "Foo"
 
     class Bar(Foo):
         def sub(self) -> float:
@@ -182,11 +183,23 @@ def test_base_class_included_and_imported():
 
     Bar.__module__ = "export"
 
+
     stub = StubEmitter("export")
     stub.add_class(Bar, "Bar")
 
     src = stub.get_source()
 
     assert "import dummy" in src
-    assert "class Foo(Bar)" in src
+    assert "class Bar(dummy.Foo):" in src
     assert "base" not in src
+
+
+
+def test_typevar():
+    T = typing.TypeVar("T")
+    T.__module__ = "source_mod"
+    def foo(arg: T) -> T:
+        pass
+    src = _function_source(foo)
+    assert "import source_mod" in src
+    assert "def foo(arg: source_mod.T) -> source_mod.T" in src
