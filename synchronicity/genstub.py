@@ -2,6 +2,8 @@ import inspect
 import types
 from unittest import mock
 
+import sigtools.specifiers
+
 
 class ReprObj:
     # Hacky repr object so we can pass verbatim type annotations as partial arguments
@@ -149,18 +151,11 @@ class StubEmitter:
         * We might have to stringify annotations to support forward/self references
         * General flexibility like not being able to maintain *comments* in the arg declarations if we want to
         * We intentionally do not use follow_wrapped, since it will override runtime-transformed annotations on a wrapper
-
-        TODO: Might want to rip out the use of inspect.signature altogether to avoid this breaking if the
-            library internals change...
         """
 
-        # haxx, please rewrite :'(
+        # haxx, please rewrite to avoid monkey patch... :'(
         with mock.patch("inspect.formatannotation", self._formatannotation):
-            return str(
-                inspect.signature(
-                    func, follow_wrapped=not hasattr(func, "__annotations__")
-                )
-            )
+            return str(sigtools.specifiers.signature(func))
 
     def _get_var_annotation(self, name, annotation):
         self._register_imports(annotation)

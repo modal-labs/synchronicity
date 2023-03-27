@@ -1,5 +1,4 @@
 import functools
-import inspect
 import typing
 
 import pytest
@@ -141,7 +140,11 @@ def test_class_generation():
     )
 
 
-@pytest.mark.skip("TODO: fix")
+def merged_signature(*sigs):
+    sig = sigs[0].copy()
+    return sig
+
+#@pytest.mark.skip("TODO: fix")
 def test_wrapped_function_with_new_annotations():
     """A wrapped function (in general, using functools.wraps/partial) would
     have an inspect.signature from the wrapped function by default
@@ -157,13 +160,11 @@ def test_wrapped_function_with_new_annotations():
         pass
 
     @functools.wraps(orig)
-    def wrapper(extra: int, *args, **kwargs):
+    def wrapper(extra_arg: int, *args, **kwargs):
         orig(*args, **kwargs)
 
-    wrapper.__annotations__["arg"] = float  # override annotation type
-
-    assert str(inspect.signature(wrapper)) == "(extra: int, arg: str)"
-
+    wrapper.__annotations__.update({"extra_arg": int, "arg": float})
+    assert _function_source(wrapper) == "def orig(extra_arg: int, arg: float):\n    ...\n"
 
 @pytest.mark.skip("TODO: implement")
 def test_base_classes():
