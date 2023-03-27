@@ -15,3 +15,5 @@ assert_type(b.gen(), typing.Generator[int, None, None])
 assert_type(
     e2e_example_export.some_instance, typing.Optional[e2e_example_export.BlockingFoo]
 )
+
+assert_type(b.some_static(), float)

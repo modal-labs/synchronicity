@@ -10,3 +10,7 @@ class _Foo:
 
     async def gen(self) -> AsyncGenerator[int, None]:
         yield 1
+
+    @staticmethod
+    def some_static(arg: str) -> float:
+        pass

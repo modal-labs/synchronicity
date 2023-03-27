@@ -7,8 +7,7 @@ from traceback import print_exc
 
 import pytest
 
-from synchronicity.genstub import StubEmitter
-
+from synchronicity.genstub import StubEmitter, write_stub
 
 helpers_dir = Path(__file__).parent / "genstub_helpers"
 assertion_file = helpers_dir / "e2e_example_type_assertions.py"
@@ -48,12 +47,7 @@ def temp_assertion_file(new_assertion):
 
 @pytest.fixture(scope="session")
 def interface_file():
-    import test.genstub_helpers.e2e_example_export as testmod
-
-    emitter = StubEmitter.from_module(testmod)
-    source = emitter.get_source()
-    stub_path = Path(testmod.__file__).with_suffix(".pyi")
-    stub_path.write_text(source)
+    write_stub("test.genstub_helpers.e2e_example_export")
     yield
 
 

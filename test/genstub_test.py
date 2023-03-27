@@ -1,8 +1,7 @@
 import functools
 import typing
 
-import pytest
-
+import synchronicity
 from synchronicity import Synchronizer
 from synchronicity.genstub import StubEmitter
 
@@ -52,9 +51,15 @@ def weird_async_gen() -> typing.AsyncGenerator[int, None]:
     return gen()
 
 
-def _function_source(func):
-    stub_emitter = StubEmitter("dummy")
+def _function_source(func, strip_mod=False):
+    stub_emitter = StubEmitter("dummy" if not strip_mod else func.__module__)
     stub_emitter.add_function(func, func.__name__)
+    return stub_emitter.get_source()
+
+
+def _class_source(cls, strip_mod=False):
+    stub_emitter = StubEmitter("dummy" if not strip_mod else cls.__module__)
+    stub_emitter.add_class(cls, cls.__name__)
     return stub_emitter.get_source()
 
 
@@ -174,22 +179,17 @@ def test_base_class_included_and_imported():
         def base(self) -> str:
             pass
 
-    Foo.__module__ = "dummy"
+    Foo.__module__ = "foomod"
     Foo.__qualname__ = "Foo"
 
     class Bar(Foo):
         def sub(self) -> float:
             pass
 
-    Bar.__module__ = "export"
+    src = _class_source(Bar, strip_mod=True)
 
-    stub = StubEmitter("export")
-    stub.add_class(Bar, "Bar")
-
-    src = stub.get_source()
-
-    assert "import dummy" in src
-    assert "class Bar(dummy.Foo):" in src
+    assert "import foomod" in src
+    assert "class Bar(foomod.Foo):" in src
     assert "base" not in src
 
 
@@ -203,3 +203,76 @@ def test_typevar():
     src = _function_source(foo)
     assert "import source_mod" in src
     assert "def foo(arg: source_mod.T) -> source_mod.T" in src
+
+
+def test_string_annotation():
+    stub_emitter = StubEmitter("dummy")
+    stub_emitter.add_variable(annotation="Foo", name="some_foo")  # string annotation
+    src = stub_emitter.get_source()
+    assert 'some_foo: "Foo"' in src or "some_foo: 'Foo'" in src
+
+
+def test_forward_ref():
+    class Foo:
+        def foo(self) -> "Bar":
+            pass
+
+    class Bar:
+        pass
+
+    # add in the same order here:
+    stub = StubEmitter(__name__)
+    stub.add_class(Foo, "Foo")
+    stub.add_class(Bar, "Bar")
+    src = stub.get_source()
+    assert "class Bar:" in src
+    assert "def foo(self) -> 'Bar':" in src
+
+
+def test_self_ref():
+    class Foo:
+        def foo(self) -> "Foo":
+            pass
+
+    src = _class_source(Foo, strip_mod=True)
+    assert "def foo(self) -> 'Foo'" in src
+
+
+def test_synchronicity_type_translation():
+    class _Foo:
+        pass
+
+    async def get_foo() -> _Foo:
+        pass
+
+    synchronizer = synchronicity.Synchronizer()
+    Foo = synchronizer.create_blocking(_Foo, "Foo", __name__)
+    get_foo = synchronizer.create_blocking(get_foo, "get_foo", __name__)
+
+    src = _function_source(get_foo, strip_mod=True)
+    assert "def get_foo() -> Foo" in src
+
+
+def test_synchronicity_self_ref():
+    class _Foo:
+        @staticmethod
+        async def foo() -> "_Foo":
+            pass
+
+    synchronizer = synchronicity.Synchronizer()
+    Foo = synchronizer.create_blocking(_Foo, "Foo", __name__)
+
+    src = _class_source(Foo, strip_mod=True)
+    assert "@staticmethod" in src
+    assert "    def foo() -> '_Foo'" in src  # TODO: this should return 'Foo' (!)
+
+
+def test_custom_generic():
+    T = typing.TypeVar("T")
+
+    class MyGeneric(typing.Generic[T]):
+        pass
+
+    src = _class_source(MyGeneric, strip_mod=True)
+
+    assert "class MyGeneric(typing.Generic[T]):" in src

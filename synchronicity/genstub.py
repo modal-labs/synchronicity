@@ -1,5 +1,7 @@
+import importlib
 import inspect
-import types
+import sys
+from pathlib import Path
 from typing import TypeVar
 from unittest import mock
 
@@ -9,7 +11,8 @@ import sigtools.specifiers
 class ReprObj:
     # Hacky repr object so we can pass verbatim type annotations as partial arguments
     # to generic and have them render correctly through `repr()`, used by inspect.Signature etc.
-    def __init__(self, repr):
+    def __init__(self, repr: str):
+        assert isinstance(repr, str), f"{repr} is not a string!"
         self._repr = repr
 
     def __repr__(self):
@@ -58,10 +61,13 @@ class StubEmitter:
 
     def add_class(self, cls, name):
         bases = []
-        for b in cls.__bases__:
+        orig_bases = (
+            cls.__orig_bases__ if hasattr(cls, "__orig_bases__") else cls.__bases__
+        )  # fix for generic base types
+        for b in orig_bases:
             if b is not object:
                 self._register_imports(b)
-                bases.append(str(self._formatannotation(b)))
+                bases.append(self._formatannotation(b))
         bases_str = "" if not bases else "(" + ", ".join(bases) + ")"
         decl = f"class {name}{bases_str}:"
         var_annotations = []
@@ -69,7 +75,7 @@ class StubEmitter:
 
         body_indent_level = 1
         body_indent = self._indent(body_indent_level)
-        for varname, annotation in getattr(cls, "__annotations__", {}).items():
+        for varname, annotation in cls.__dict__.get("__annotations__", {}).items():
             var_annotations.append(
                 f"{body_indent}{self._get_var_annotation(varname, annotation)}"
             )
@@ -118,7 +124,8 @@ class StubEmitter:
         origin = getattr(type_annotation, "__origin__", None)
         if origin is None:
             # "scalar" base type
-            self._import_module(type_annotation.__module__)
+            if hasattr(type_annotation, "__module__"):
+                self._import_module(type_annotation.__module__)
             return
 
         self._import_module(
@@ -190,8 +197,10 @@ class StubEmitter:
             return repr(annotation)
         # generic:
         args = getattr(annotation, "__args__", ())
-        return annotation.copy_with(
-            tuple(ReprObj(self._formatannotation(arg)) for arg in args)
+        return str(
+            annotation.copy_with(
+                tuple(ReprObj(self._formatannotation(arg)) for arg in args)
+            )
         )
 
     def _indent(self, level):
@@ -203,3 +212,18 @@ class StubEmitter:
             self._register_imports(annotation)
 
         return self._get_func_stub_source(func, name, indentation_level)
+
+
+def write_stub(module_path: str):
+    mod = importlib.import_module(module_path)
+    emitter = StubEmitter.from_module(mod)
+    source = emitter.get_source()
+    stub_path = Path(mod.__file__).with_suffix(".pyi")
+    stub_path.write_text(source)
+    return stub_path
+
+
+if __name__ == "__main__":
+    for module_path in sys.argv[1:]:
+        out_path = write_stub(module_path)
+        print(f"Wrote {out_path}")
