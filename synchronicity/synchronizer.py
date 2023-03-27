@@ -518,7 +518,14 @@ class Synchronizer:
             }
         return new_cls
 
-    def _wrap(self, obj, interface, name=None, require_already_wrapped=False, target_module=None):
+    def _wrap(
+        self,
+        obj,
+        interface,
+        name=None,
+        require_already_wrapped=False,
+        target_module=None,
+    ):
         # This method works for classes, functions, and instances
         # It wraps the object, and caches the wrapped object
 
@@ -548,7 +555,9 @@ class Synchronizer:
 
         # Wrap object (different cases based on the type)
         if inspect.isclass(obj):
-            new_obj = self._wrap_class(obj, interface, name, target_module=target_module)
+            new_obj = self._wrap_class(
+                obj, interface, name, target_module=target_module
+            )
         elif inspect.isfunction(obj):
             new_obj = self._wrap_callable(obj, interface, name)
         elif self._wrapped_attr in obj.__class__.__dict__:

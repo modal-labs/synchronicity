@@ -1,4 +1,8 @@
+import functools
+import inspect
 import typing
+
+import pytest
 
 from synchronicity import Synchronizer
 from synchronicity.genstub import StubEmitter
@@ -112,7 +116,7 @@ class Foo:
 
 def test_class_generation():
     emitter = StubEmitter("mod")
-    emitter.add_class(Foo)
+    emitter.add_class(Foo, "Foo")
     source = emitter.get_source()
 
     assert (
@@ -137,6 +141,31 @@ def test_class_generation():
     )
 
 
+@pytest.mark.skip("TODO: fix")
+def test_wrapped_function_with_new_annotations():
+    """A wrapped function (in general, using functools.wraps/partial) would
+    have an inspect.signature from the wrapped function by default
+    and from the wrapper function is inspect.signature gets the follow_wrapped=True
+    option. However, for the best type stub usability, the best would be to combine
+    all layers of wrapping, adding any additional arguments or annotations as updates
+    to the underlying wrapped function signature.
+
+    This test makes sure we do just that.
+    """
+
+    def orig(arg: str):
+        pass
+
+    @functools.wraps(orig)
+    def wrapper(extra: int, *args, **kwargs):
+        orig(*args, **kwargs)
+
+    wrapper.__annotations__["arg"] = float  # override annotation type
+
+    assert str(inspect.signature(wrapper)) == "(extra: int, arg: str)"
+
+
+@pytest.mark.skip("TODO: implement")
 def test_base_classes():
     # TODO: make classes include their base classes as imports/references in the type stub
     pass
