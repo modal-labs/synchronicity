@@ -32,8 +32,94 @@ _FUNCTION_PREFIXES = {
     Interface.ASYNC: "async_",
 }
 
+
 def warn_old_modal_client():
-    warnings.warn("Using latest synchronicity with an old interface - please upgrade to latest modal-client!")
+    warnings.warn(
+        "Using latest synchronicity with an old interface - please upgrade to latest modal-client!"
+    )
+
+
+class FWrapped:
+    def __init__(self, synchronizer, name, interface, allow_futures, f):
+        self._synchronizer = synchronizer
+        self._name = name
+        self._interface = interface
+        self._allow_futures = allow_futures
+        self._f = f
+        self._is_coroutinefunction = inspect.iscoroutinefunction(f)
+        synchronizer._update_wrapper(self, f, name)
+        setattr(self, synchronizer._original_attr, f)
+
+    # @wraps_by_interface(interface, f)
+    def __call__(self, *args, **kwargs):
+        return_future = kwargs.pop(_RETURN_FUTURE_KWARG, False)
+
+        # If this gets called with an argument that represents an external type,
+        # translate it into an internal type
+        args = self._synchronizer._translate_in(args)
+        kwargs = self._synchronizer._translate_in(kwargs)
+
+        # Call the function
+        res = self._f(*args, **kwargs)
+
+        # Figure out if this is a coroutine or something
+        is_coroutine = inspect.iscoroutine(res)
+        is_asyncgen = inspect.isasyncgen(res)
+
+        if return_future:
+            if not self._allow_futures:
+                raise Exception("Can not return future for this function")
+            elif is_coroutine:
+                return self._synchronizer._run_function_sync_future(
+                    res, self._interface
+                )
+            elif is_asyncgen:
+                raise Exception("Can not return futures for generators")
+            else:
+                return res
+        elif is_coroutine:
+            if self._interface == Interface.ASYNC:
+                coro = self._synchronizer._run_function_async(res, self._interface)
+                if not self._is_coroutinefunction:
+                    # If this is a non-async function that returns a coroutine,
+                    # then this is the exit point, and we need to unwrap any
+                    # wrapped exception here. Otherwise, the exit point is
+                    # in async_wrap.py
+                    coro = unwrap_coro_exception(coro)
+                return coro
+            elif self._interface == Interface.BLOCKING:
+                # This is the exit point, so we need to unwrap the exception here
+                try:
+                    return self._synchronizer._run_function_sync(res, self._interface)
+                except UserCodeException as uc_exc:
+                    # Used to skip a frame when called from `proxy_method`.
+                    if unwrap_user_excs:
+                        raise uc_exc.exc from None
+                    else:
+                        raise uc_exc
+        elif is_asyncgen:
+            # Note that the _run_generator_* functions handle their own
+            # unwrapping of exceptions (this happens during yielding)
+            if self._interface == Interface.ASYNC:
+                return self._synchronizer._run_generator_async(res, self._interface)
+            elif self._interface == Interface.BLOCKING:
+                return self._synchronizer._run_generator_sync(res, self._interface)
+        else:
+            if inspect.isfunction(res) or isinstance(
+                res, functools.partial
+            ):  # TODO: HACKY HACK
+                # TODO: this is needed for decorator wrappers that returns functions
+                # Maybe a bit of a hacky special case that deserves its own decorator
+                @wraps_by_interface(self._interface, res)
+                def f_wrapped(*args, **kwargs):
+                    args = self._synchronizer._translate_in(args)
+                    kwargs = self._synchronizer._translate_in(kwargs)
+                    f_res = res(*args, **kwargs)
+                    return self._synchronizer._translate_out(f_res, self._interface)
+
+                return f_wrapped
+
+            return self._synchronizer._translate_out(res, self._interface)
 
 
 class Synchronizer:
@@ -323,80 +409,7 @@ class Synchronizer:
             else:
                 name = _FUNCTION_PREFIXES[interface] + f.__name__
 
-        is_coroutinefunction = inspect.iscoroutinefunction(f)
-
-        @wraps_by_interface(interface, f)
-        def f_wrapped(*args, **kwargs):
-            return_future = kwargs.pop(_RETURN_FUTURE_KWARG, False)
-
-            # If this gets called with an argument that represents an external type,
-            # translate it into an internal type
-            args = self._translate_in(args)
-            kwargs = self._translate_in(kwargs)
-
-            # Call the function
-            res = f(*args, **kwargs)
-
-            # Figure out if this is a coroutine or something
-            is_coroutine = inspect.iscoroutine(res)
-            is_asyncgen = inspect.isasyncgen(res)
-
-            if return_future:
-                if not allow_futures:
-                    raise Exception("Can not return future for this function")
-                elif is_coroutine:
-                    return self._run_function_sync_future(res, interface)
-                elif is_asyncgen:
-                    raise Exception("Can not return futures for generators")
-                else:
-                    return res
-            elif is_coroutine:
-                if interface == Interface.ASYNC:
-                    coro = self._run_function_async(res, interface)
-                    if not is_coroutinefunction:
-                        # If this is a non-async function that returns a coroutine,
-                        # then this is the exit point, and we need to unwrap any
-                        # wrapped exception here. Otherwise, the exit point is
-                        # in async_wrap.py
-                        coro = unwrap_coro_exception(coro)
-                    return coro
-                elif interface == Interface.BLOCKING:
-                    # This is the exit point, so we need to unwrap the exception here
-                    try:
-                        return self._run_function_sync(res, interface)
-                    except UserCodeException as uc_exc:
-                        # Used to skip a frame when called from `proxy_method`.
-                        if unwrap_user_excs:
-                            raise uc_exc.exc from None
-                        else:
-                            raise uc_exc
-            elif is_asyncgen:
-                # Note that the _run_generator_* functions handle their own
-                # unwrapping of exceptions (this happens during yielding)
-                if interface == Interface.ASYNC:
-                    return self._run_generator_async(res, interface)
-                elif interface == Interface.BLOCKING:
-                    return self._run_generator_sync(res, interface)
-            else:
-                if inspect.isfunction(res) or isinstance(
-                    res, functools.partial
-                ):  # TODO: HACKY HACK
-                    # TODO: this is needed for decorator wrappers that returns functions
-                    # Maybe a bit of a hacky special case that deserves its own decorator
-                    @wraps_by_interface(interface, res)
-                    def f_wrapped(*args, **kwargs):
-                        args = self._translate_in(args)
-                        kwargs = self._translate_in(kwargs)
-                        f_res = res(*args, **kwargs)
-                        return self._translate_out(f_res, interface)
-
-                    return f_wrapped
-
-                return self._translate_out(res, interface)
-
-        self._update_wrapper(f_wrapped, f, name)
-        setattr(f_wrapped, self._original_attr, f)
-        return f_wrapped
+        return FWrapped(self, name, interface, allow_futures, f)
 
     def _wrap_proxy_method(self, method, interface, allow_futures=True):
         if getattr(method, self._nowrap_attr, None):
