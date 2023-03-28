@@ -306,12 +306,18 @@ class Synchronizer:
     def create_callback(self, f, interface):
         return Callback(self, f, interface)
 
-    def _update_wrapper(self, f_wrapped, f, name=None):
+    def _update_wrapper(self, f_wrapped, f, name=None, interface=None):
         """Very similar to functools.update_wrapper"""
         functools.update_wrapper(f_wrapped, f)
         if name is not None:
             f_wrapped.__name__ = name
             f_wrapped.__qualname__ = name
+
+        annotations = getattr(f_wrapped, "__annotations__", {})
+        updated_annotations = {
+            k: self._map_type_annotation(t, interface) for k, t in annotations.items()
+        }
+        f_wrapped.__annotations__ = updated_annotations
 
     def _wrap_callable(
         self, f, interface, name=None, allow_futures=True, unwrap_user_excs=True
@@ -402,22 +408,22 @@ class Synchronizer:
 
                 return self._translate_out(res, interface)
 
-        self._update_wrapper(f_wrapped, f, name)
+        self._update_wrapper(f_wrapped, f, name, interface)
         setattr(f_wrapped, self._original_attr, f)
         return f_wrapped
 
-    def _wrap_proxy_method(self, method, interface, allow_futures=True):
-        if getattr(method, self._nowrap_attr, None):
+    def _wrap_proxy_method(synchronizer_self, method, interface, allow_futures=True):
+        if getattr(method, synchronizer_self._nowrap_attr, None):
             # This method is marked as non-wrappable
             return method
 
-        method = self._wrap_callable(
+        method = synchronizer_self._wrap_callable(
             method, interface, allow_futures=allow_futures, unwrap_user_excs=False
         )
 
-        @self.wraps_by_interface(interface, method)
-        def proxy_method(wrapped_self, *args, **kwargs):
-            instance = wrapped_self.__dict__[self._original_attr]
+        @synchronizer_self.wraps_by_interface(interface, method)
+        def proxy_method(self, *args, **kwargs):
+            instance = self.__dict__[synchronizer_self._original_attr]
             try:
                 return method(instance, *args, **kwargs)
             except UserCodeException as uc_exc:
@@ -434,8 +440,8 @@ class Synchronizer:
         method = self._wrap_callable(method.__func__, interface)
 
         @self.wraps_by_interface(interface, method)
-        def proxy_classmethod(wrapped_cls, *args, **kwargs):
-            return method(wrapped_cls, *args, **kwargs)
+        def proxy_classmethod(cls, *args, **kwargs):
+            return method(cls, *args, **kwargs)
 
         return classmethod(proxy_classmethod)
 
@@ -447,23 +453,23 @@ class Synchronizer:
                 kwargs[attr] = self._wrap_proxy_method(func, interface, False)
         return property(**kwargs)
 
-    def _wrap_proxy_constructor(self, cls, interface):
+    def _wrap_proxy_constructor(synchronizer_self, cls, interface):
         """Returns a custom __init__ for the subclass."""
 
-        def my_init(wrapped_self, *args, **kwargs):
+        def my_init(self, *args, **kwargs):
             # Create base instance
-            args = self._translate_in(args)
-            kwargs = self._translate_in(kwargs)
+            args = synchronizer_self._translate_in(args)
+            kwargs = synchronizer_self._translate_in(kwargs)
             instance = cls(*args, **kwargs)
 
             # Register self as the wrapped one
-            interface_instances = {interface: wrapped_self}
-            instance.__dict__[self._wrapped_attr] = interface_instances
+            interface_instances = {interface: self}
+            instance.__dict__[synchronizer_self._wrapped_attr] = interface_instances
 
             # Store a reference to the original object
-            wrapped_self.__dict__[self._original_attr] = instance
+            self.__dict__[synchronizer_self._original_attr] = instance
 
-        self._update_wrapper(my_init, cls.__init__)
+        synchronizer_self._update_wrapper(my_init, cls.__init__, interface=interface)
         return my_init
 
     def _wrap_class(self, cls, interface, name, target_module=None):
@@ -599,11 +605,7 @@ class Synchronizer:
             return hasattr(obj.__class__, self._original_attr)
 
     def wraps_by_interface(self, interface, func):
-        annotations = getattr(func, "__annotations__", {})
-        updated_annotations = {
-            k: self._map_type_annotation(t, interface) for k, t in annotations.items()
-        }
-        return type_compat_wraps(func, interface, updated_annotations)
+        return type_compat_wraps(func, interface)
 
     def _map_type_annotation(self, type_annotation, interface: Interface):
         # recursively map a nested type annotation to match the output interface

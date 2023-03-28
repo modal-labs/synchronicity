@@ -9,7 +9,7 @@ from .interface import Interface
 from contextlib import asynccontextmanager as _asynccontextmanager
 
 
-def type_compat_wraps(func, interface: Interface, new_annotations=None):
+def type_compat_wraps(func, interface: Interface):
     """Like functools.wraps but maintains `inspect.iscoroutinefunction` and allows custom type annotations overrides
 
     Use this when the wrapper function is non-async but returns the coroutine resulting
@@ -28,8 +28,6 @@ def type_compat_wraps(func, interface: Interface, new_annotations=None):
                 except UserCodeException as uc_exc:
                     raise uc_exc.exc from None
 
-            if new_annotations:
-                wrapper.__annotations__ = new_annotations
             return wrapper
 
         return asyncfunc_deco
@@ -37,10 +35,6 @@ def type_compat_wraps(func, interface: Interface, new_annotations=None):
 
         def blockingfunc_deco(user_wrapper):
             wrapped = functools.wraps(func)(user_wrapper)
-
-            if new_annotations:
-                wrapped.__annotations__ = new_annotations
-
             return wrapped
 
         return blockingfunc_deco

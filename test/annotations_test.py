@@ -12,7 +12,7 @@ class _Bar:
 
 
 class _Foo:
-    baz: _Bar
+    baz: typing.Optional[_Bar]
 
     async def bar(self, arg1: typing.AsyncIterator[str]):
         pass
@@ -48,7 +48,7 @@ AsyncFoo = s.create_async(_Foo, "AsyncFoo")
 
 def test_wrapped_function_replaces_annotation():
     assert BlockingFoo.bar.__annotations__["arg1"] == typing.Iterator[str]
-    assert BlockingFoo.__annotations__["baz"] == BlockingBar
+    assert BlockingFoo.__annotations__["baz"] == typing.Union[BlockingBar, None]
     assert AsyncFoo.ctx.__annotations__["return"] == typing.AsyncContextManager[int]
     assert BlockingFoo.ctx.__annotations__["return"] == typing.ContextManager[int]
     assert BlockingFoo.return_awaitable.__annotations__["return"] == str

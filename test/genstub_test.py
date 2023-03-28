@@ -238,17 +238,17 @@ def test_self_ref():
     assert "def foo(self) -> 'Foo'" in src
 
 
-def test_synchronicity_type_translation():
-    class _Foo:
-        pass
+class _Foo:
+    pass
 
-    async def get_foo() -> _Foo:
+
+def test_synchronicity_type_translation():
+    async def _get_foo() -> _Foo:
         pass
 
     synchronizer = synchronicity.Synchronizer()
     Foo = synchronizer.create_blocking(_Foo, "Foo", __name__)
-    get_foo = synchronizer.create_blocking(get_foo, "get_foo", __name__)
-
+    get_foo = synchronizer.create_blocking(_get_foo, "get_foo", __name__)
     src = _function_source(get_foo, strip_mod=True)
     assert "def get_foo() -> Foo" in src
 
@@ -264,15 +264,25 @@ def test_synchronicity_self_ref():
 
     src = _class_source(Foo, strip_mod=True)
     assert "@staticmethod" in src
+    # There are a bunch of quirks with annotations to keep track of, esp. prior to Python 3.10:
+    # https://docs.python.org/3/howto/annotations.html#annotations-howto
     assert "    def foo() -> '_Foo'" in src  # TODO: this should return 'Foo' (!)
 
 
-def test_custom_generic():
-    T = typing.TypeVar("T")
+T = typing.TypeVar("T")
 
-    class MyGeneric(typing.Generic[T]):
+
+class MyGeneric(typing.Generic[T]):
+    pass
+
+
+def test_custom_generic():
+    s = synchronicity.Synchronizer()
+    s.create_blocking(typing.Generic)
+
+    class Specific(MyGeneric[str]):
         pass
 
-    src = _class_source(MyGeneric, strip_mod=True)
+    src = _class_source(Specific, strip_mod=True)
 
-    assert "class MyGeneric(typing.Generic[T]):" in src
+    assert "class Specific(MyGeneric[str]):" in src

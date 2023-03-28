@@ -55,11 +55,19 @@ def test_mypy_assertions(interface_file):
     run_mypy(assertion_file)
 
 
-def test_failing_assertion(interface_file):
+@pytest.mark.parametrize(
+    "failing_assertion",
+    [
+        "e2e_example_export.BlockingFoo(1)"  # int instead of str
+        "blocking_foo.some_static()"  # missing argument
+        "blocking_foo.some_static(True)"  # bool instead of str
+    ],
+)
+def test_failing_assertion(interface_file, failing_assertion):
     # since there appears to be no good way of asserting failing type checks (and skipping to the next assertion)
     # we do some mangling of the assertion file to do one-by-one tests
     with temp_assertion_file(
-        "e2e_example_export.BlockingFoo(1)"
+        failing_assertion
     ) as custom_file:  # we pass int instead of str
         with pytest.raises(FailedMyPyCheck):
             run_mypy(custom_file)

@@ -1,6 +1,7 @@
 import importlib
 import inspect
 import sys
+from inspect import _empty
 from pathlib import Path
 from typing import TypeVar
 from unittest import mock
@@ -162,8 +163,21 @@ class StubEmitter:
         """
 
         # haxx, please rewrite to avoid monkey patch... :'(
+        sig = sigtools.specifiers.signature(func)
+        annotations = getattr(func, "__annotations__", {}).copy()
+        if annotations:
+            new_params = []
+            for p in sig.parameters.values():
+                if p.name in annotations:
+                    p = p.replace(annotation=annotations[p.name])
+                new_params.append(p)
+            sig = sig.replace(
+                return_annotation=annotations.pop("return", _empty),
+                parameters=new_params,
+            )
+
         with mock.patch("inspect.formatannotation", self._formatannotation):
-            return str(sigtools.specifiers.signature(func))
+            return str(sig)
 
     def _get_var_annotation(self, name, annotation):
         self._register_imports(annotation)
@@ -197,11 +211,16 @@ class StubEmitter:
             return repr(annotation)
         # generic:
         args = getattr(annotation, "__args__", ())
-        return str(
+
+        formatted_annotation = str(
             annotation.copy_with(
                 tuple(ReprObj(self._formatannotation(arg)) for arg in args)
             )
         )
+        # this is a bit ugly, but gets rid of incorrect module qualification of Generic subclasses:
+        if formatted_annotation.startswith(self.target_module + "."):
+            return formatted_annotation.split(self.target_module + ".", 1)[1]
+        return formatted_annotation
 
     def _indent(self, level):
         return level * self._indentation
