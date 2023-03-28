@@ -40,11 +40,12 @@ def warn_old_modal_client():
 
 
 class FWrapped:
-    def __init__(self, synchronizer, name, interface, allow_futures, f):
+    def __init__(self, synchronizer, name, interface, allow_futures, unwrap_user_excs, f):
         self._synchronizer = synchronizer
         self._name = name
         self._interface = interface
         self._allow_futures = allow_futures
+        self._unwrap_user_excs = unwrap_user_excs
         self._f = f
         self._is_coroutinefunction = inspect.iscoroutinefunction(f)
         synchronizer._update_wrapper(self, f, name)
@@ -80,12 +81,7 @@ class FWrapped:
         elif is_coroutine:
             if self._interface == Interface.ASYNC:
                 coro = self._synchronizer._run_function_async(res, self._interface)
-                if not self._is_coroutinefunction:
-                    # If this is a non-async function that returns a coroutine,
-                    # then this is the exit point, and we need to unwrap any
-                    # wrapped exception here. Otherwise, the exit point is
-                    # in async_wrap.py
-                    coro = unwrap_coro_exception(coro)
+                coro = unwrap_coro_exception(coro)
                 return coro
             elif self._interface == Interface.BLOCKING:
                 # This is the exit point, so we need to unwrap the exception here
@@ -93,7 +89,7 @@ class FWrapped:
                     return self._synchronizer._run_function_sync(res, self._interface)
                 except UserCodeException as uc_exc:
                     # Used to skip a frame when called from `proxy_method`.
-                    if unwrap_user_excs:
+                    if self._unwrap_user_excs:
                         raise uc_exc.exc from None
                     else:
                         raise uc_exc
@@ -409,7 +405,7 @@ class Synchronizer:
             else:
                 name = _FUNCTION_PREFIXES[interface] + f.__name__
 
-        return FWrapped(self, name, interface, allow_futures, f)
+        return FWrapped(self, name, interface, allow_futures, unwrap_user_excs, f)
 
     def _wrap_proxy_method(self, method, interface, allow_futures=True):
         if getattr(method, self._nowrap_attr, None):
