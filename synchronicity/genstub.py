@@ -3,7 +3,8 @@ import inspect
 import sys
 from inspect import _empty
 from pathlib import Path
-from typing import TypeVar
+from types import GenericAlias
+from typing import TypeVar, Generic
 from unittest import mock
 
 import sigtools.specifiers
@@ -126,13 +127,25 @@ class StubEmitter:
         return f"{import_src}\n\n{stubs}".lstrip()
 
     def _ensure_import(self, typ):
+        # add import for a single type, non-recursive (See _register_imports)
+        # also marks the type name as directly referenced if it's part of the target module
+        # so we can sanity check
         module = typ.__module__
         if module not in (self.target_module, "builtins"):
             self.imports.add(module)
+
         if module in self.target_module:
-            self.referenced_global_types.add(typ.__name__)
+            if not hasattr(typ, "__name__"):
+                # weird special case with Generic subclasses in the target module...
+                generic_origin = typ.__origin__
+                assert issubclass(generic_origin, Generic)
+                name = generic_origin.__name__
+            else:
+                name = typ.__name__
+            self.referenced_global_types.add(name)
 
     def _register_imports(self, type_annotation):
+        # recursively makes sure a type and any of its type arguments (for generics) are imported
         origin = getattr(type_annotation, "__origin__", None)
         if origin is None:
             # "scalar" base type

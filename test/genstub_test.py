@@ -275,7 +275,6 @@ T = typing.TypeVar("T")
 class MyGeneric(typing.Generic[T]):
     pass
 
-
 def test_custom_generic():
     s = synchronicity.Synchronizer()
     s.create_blocking(typing.Generic)
