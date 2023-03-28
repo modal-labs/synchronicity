@@ -266,7 +266,7 @@ def test_synchronicity_self_ref():
     assert "@staticmethod" in src
     # There are a bunch of quirks with annotations to keep track of, esp. prior to Python 3.10:
     # https://docs.python.org/3/howto/annotations.html#annotations-howto
-    assert "    def foo() -> '_Foo'" in src  # TODO: this should return 'Foo' (!)
+    assert "    def foo() -> '_Foo'" in src  # TODO: this should be 'Foo'
 
 
 T = typing.TypeVar("T")

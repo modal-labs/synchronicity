@@ -10,7 +10,7 @@ import sigtools.specifiers
 
 
 class ReprObj:
-    # Hacky repr object so we can pass verbatim type annotations as partial arguments
+    # Hacky repr passthrough object so we can pass verbatim type annotations as partial arguments
     # to generic and have them render correctly through `repr()`, used by inspect.Signature etc.
     def __init__(self, repr: str):
         assert isinstance(repr, str), f"{repr} is not a string!"
@@ -23,7 +23,7 @@ class ReprObj:
         return self._repr
 
     def __call__(self):
-        # gets around some generic's automatic type checking of provided types
+        # being a callable gets around some generic's automatic type checking of provided types
         # otherwise we get errors like `provided argument is not a type`
         pass
 
@@ -34,6 +34,8 @@ class StubEmitter:
         self.imports = set()
         self.parts = []
         self._indentation = "    "
+        self.global_types = set()
+        self.referenced_global_types = set()
 
     @classmethod
     def from_module(cls, module):
@@ -61,6 +63,7 @@ class StubEmitter:
         self.parts.append(self._get_function(func, name, indentation_level))
 
     def add_class(self, cls, name):
+        self.global_types.add(name)
         bases = []
         orig_bases = (
             cls.__orig_bases__ if hasattr(cls, "__orig_bases__") else cls.__bases__
@@ -113,24 +116,32 @@ class StubEmitter:
         )
 
     def get_source(self):
+        missing_types = self.referenced_global_types - self.global_types
+        if missing_types:
+            print(f"WARNING: {self.target_module} missing the following referenced types, expected to be in module")
+            for t in missing_types:
+                print(t)
         import_src = "\n".join(sorted(f"import {mod}" for mod in self.imports))
         stubs = "\n".join(self.parts)
         return f"{import_src}\n\n{stubs}".lstrip()
 
-    def _import_module(self, module: str):
+    def _ensure_import(self, typ):
+        module = typ.__module__
         if module not in (self.target_module, "builtins"):
             self.imports.add(module)
+        if module in self.target_module:
+            self.referenced_global_types.add(typ.__name__)
 
     def _register_imports(self, type_annotation):
         origin = getattr(type_annotation, "__origin__", None)
         if origin is None:
             # "scalar" base type
             if hasattr(type_annotation, "__module__"):
-                self._import_module(type_annotation.__module__)
+                self._ensure_import(type_annotation)
             return
 
-        self._import_module(
-            type_annotation.__module__
+        self._ensure_import(
+            type_annotation
         )  # import the generic itself's module
         for arg in getattr(type_annotation, "__args__", ()):
             self._register_imports(arg)
