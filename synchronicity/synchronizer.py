@@ -117,6 +117,24 @@ class FWrapped:
 
             return self._synchronizer._translate_out(res, self._interface)
 
+    def __get__(self, obj, objtype=None):
+        if obj is None:
+            return self
+        obj_in = self._synchronizer._translate_scalar_in(obj)
+        res = self._f.__get__(obj_in)
+        if not callable(res):
+            # Typically just a @property returning a scalar
+            return self._synchronizer._translate_scalar_out(res, self._interface)
+        else:
+            # It's a normal method, bind it
+            return FWrapped(self._synchronizer, self._name, self._interface, self._allow_futures, self._unwrap_user_excs, res)
+
+    def __set__(self, key, value):
+        return self._f.__set__(key, value)
+
+    def __delete__(self, key):
+        return self._f.__delete__(key)
+
 
 class Synchronizer:
     """Helps you offer a blocking (synchronous) interface to asynchronous code."""
@@ -407,29 +425,6 @@ class Synchronizer:
 
         return FWrapped(self, name, interface, allow_futures, unwrap_user_excs, f)
 
-    def _wrap_proxy_method(self, method, interface, allow_futures=True):
-        if getattr(method, self._nowrap_attr, None):
-            # This method is marked as non-wrappable
-            return method
-
-        method = self._wrap_callable(
-            method, interface, allow_futures=allow_futures, unwrap_user_excs=False
-        )
-
-        @wraps_by_interface(interface, method)
-        def proxy_method(wrapped_self, *args, **kwargs):
-            instance = wrapped_self.__dict__[self._original_attr]
-            try:
-                return method(instance, *args, **kwargs)
-            except UserCodeException as uc_exc:
-                raise uc_exc.exc from None
-
-        return proxy_method
-
-    def _wrap_proxy_staticmethod(self, method, interface):
-        method = self._wrap_callable(method.__func__, interface)
-        return staticmethod(method)
-
     def _wrap_proxy_classmethod(self, method, interface):
         method = self._wrap_callable(method.__func__, interface)
 
@@ -438,14 +433,6 @@ class Synchronizer:
             return method(wrapped_cls, *args, **kwargs)
 
         return classmethod(proxy_classmethod)
-
-    def _wrap_proxy_property(self, prop, interface):
-        kwargs = {}
-        for attr in ["fget", "fset", "fdel"]:
-            if getattr(prop, attr):
-                func = getattr(prop, attr)
-                kwargs[attr] = self._wrap_proxy_method(func, interface, False)
-        return property(**kwargs)
 
     def _wrap_proxy_constructor(self, cls, interface):
         """Returns a custom __init__ for the subclass."""
@@ -480,26 +467,23 @@ class Synchronizer:
             if k in _BUILTIN_ASYNC_METHODS:
                 k_sync = _BUILTIN_ASYNC_METHODS[k]
                 if interface == Interface.BLOCKING:
-                    new_dict[k_sync] = self._wrap_proxy_method(
+                    new_dict[k_sync] = self._wrap_callable(
                         v, interface, allow_futures=False
                     )
                 if interface == Interface.ASYNC:
-                    new_dict[k] = self._wrap_proxy_method(
+                    new_dict[k] = self._wrap_callable(
                         v, interface, allow_futures=False
                     )
             elif k in ("__new__", "__init__"):
                 # Skip custom constructor in the wrapped class
                 # Instead, delegate to the base class constructor and wrap it
                 pass
-            elif isinstance(v, staticmethod):
-                # TODO(erikbern): this feels pretty hacky
-                new_dict[k] = self._wrap_proxy_staticmethod(v, interface)
             elif isinstance(v, classmethod):
                 new_dict[k] = self._wrap_proxy_classmethod(v, interface)
-            elif isinstance(v, property):
-                new_dict[k] = self._wrap_proxy_property(v, interface)
-            elif callable(v):
-                new_dict[k] = self._wrap_proxy_method(v, interface)
+            elif callable(v) or isinstance(v, property):
+                new_dict[k] = self._wrap_callable(v, interface, name=k)
+            else:
+                pass
 
         if name is None:
             if hasattr(self, "get_name"):
