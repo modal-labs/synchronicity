@@ -36,6 +36,8 @@ _FUNCTION_PREFIXES = {
     Interface.ASYNC: "async_",
 }
 
+TARGET_INTERFACE_ATTR = "_sync_target_interface"
+SYNCHRONIZER_ATTR = "_sync_synchronizer"
 
 def warn_old_modal_client():
     warnings.warn(
@@ -312,12 +314,8 @@ class Synchronizer:
         if name is not None:
             f_wrapped.__name__ = name
             f_wrapped.__qualname__ = name
-
-        annotations = getattr(f_wrapped, "__annotations__", {})
-        updated_annotations = {
-            k: self._map_type_annotation(t, interface) for k, t in annotations.items()
-        }
-        f_wrapped.__annotations__ = updated_annotations
+        setattr(f_wrapped, SYNCHRONIZER_ATTR, self)
+        setattr(f_wrapped, TARGET_INTERFACE_ATTR, interface)
 
     def _wrap_callable(
         self, f, interface, name=None, allow_futures=True, unwrap_user_excs=True
@@ -520,11 +518,8 @@ class Synchronizer:
         new_cls = type.__new__(type, name, bases, new_dict)
         new_cls.__module__ = cls.__module__ if target_module is None else target_module
         new_cls.__doc__ = cls.__doc__
-        if hasattr(cls, "__annotations__"):
-            new_cls.__annotations__ = {
-                k: self._map_type_annotation(t, interface)
-                for k, t in cls.__annotations__.items()
-            }
+        setattr(new_cls, TARGET_INTERFACE_ATTR, interface)
+        setattr(new_cls, SYNCHRONIZER_ATTR, self)
         return new_cls
 
     def _wrap(
@@ -608,42 +603,6 @@ class Synchronizer:
 
     def wraps_by_interface(self, interface, func):
         return type_compat_wraps(func, interface)
-
-    def _map_type_annotation(self, type_annotation, interface: Interface):
-        # recursively map a nested type annotation to match the output interface
-        origin = getattr(type_annotation, "__origin__", None)
-        if origin is None:
-            # scalar - if type is synchronicity type, use the blocking/async version instead
-            if hasattr(type_annotation, self._wrapped_attr):
-                return getattr(type_annotation, self._wrapped_attr)[interface]
-            return type_annotation
-
-        args = getattr(type_annotation, "__args__", [])
-        mapped_args = tuple(self._map_type_annotation(arg, interface) for arg in args)
-        if interface == Interface.ASYNC:
-            # async interface should use same generic classes as original
-            return type_annotation.copy_with(mapped_args)
-
-        # blocking interface special generic translations:
-        if origin == collections.abc.AsyncGenerator:
-            return typing.Generator[mapped_args + (None,)]
-
-        if origin == contextlib.AbstractAsyncContextManager:
-            return typing.ContextManager[mapped_args]
-
-        if origin == collections.abc.AsyncIterable:
-            return typing.Iterable[mapped_args]
-
-        if origin == collections.abc.AsyncIterator:
-            return typing.Iterator[mapped_args]
-
-        if origin == collections.abc.Awaitable:
-            return mapped_args[0]
-
-        if origin == collections.abc.Coroutine:
-            return mapped_args[2]
-
-        return type_annotation.copy_with(mapped_args)
 
     ### DEPRECATED
     # Only needed because old modal clients don't pin the synchronicity version,

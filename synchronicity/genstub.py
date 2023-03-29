@@ -1,12 +1,20 @@
+import collections
+import collections.abc
+import contextlib
 import importlib
 import inspect
 import sys
+import typing
 from inspect import _empty
 from pathlib import Path
 from typing import TypeVar, Generic
 from unittest import mock
 
 import sigtools.specifiers
+from sigtools._signatures import EmptyAnnotation, UpgradedAnnotation
+
+from synchronicity import Interface
+from synchronicity.synchronizer import TARGET_INTERFACE_ATTR, SYNCHRONIZER_ATTR
 
 
 class ReprObj:
@@ -77,8 +85,15 @@ class StubEmitter:
         var_annotations = []
         methods = []
 
+        # TODO(elias): translate class annotations, including postponed annotations
+        # new_cls.__annotations__ = {
+        #     k: self._map_type_annotation(t, interface)
+        #     for k, t in cls.__annotations__.items()
+        # }
+
         body_indent_level = 1
         body_indent = self._indent(body_indent_level)
+
         for varname, annotation in cls.__dict__.get("__annotations__", {}).items():
             var_annotations.append(
                 f"{body_indent}{self._get_var_annotation(varname, annotation)}"
@@ -114,6 +129,7 @@ class StubEmitter:
                 ]
             )
         )
+
 
     def get_source(self):
         missing_types = self.referenced_global_types - self.global_types
@@ -166,6 +182,7 @@ class StubEmitter:
         signature_indent = self._indent(indentation_level)
         body_indent = self._indent(indentation_level + 1)
         signature = self._custom_signature(func)
+
         return "\n".join(
             [
                 f"{signature_indent}{async_prefix}def {name}{signature}:",
@@ -187,17 +204,69 @@ class StubEmitter:
 
         # haxx, please rewrite to avoid monkey patch... :'(
         sig = sigtools.specifiers.signature(func)
-        annotations = getattr(func, "__annotations__", {}).copy()
-        if annotations:
-            new_params = []
-            for p in sig.parameters.values():
-                if p.name in annotations:
-                    p = p.replace(annotation=annotations[p.name])
-                new_params.append(p)
+
+        # Translate signature annotations:
+
+        # Return annotation:
+        synchronicity_target_interface = getattr(func, TARGET_INTERFACE_ATTR, None)
+        synchronizer = getattr(func, SYNCHRONIZER_ATTR, None)
+        # translate type annotations on all synchronicity functions
+        # it's done here since there may be postponed evaluated annotations (forward/self refs) that
+        # can't be evaluated when the functions are wrapped by the synchronizer
+        def ensure_live_annotation(annotation):
+            # simple version of Python 3.10 inspect.get_annotations() functionality
+            if isinstance(annotation, str):
+                if synchronicity_target_interface:
+                    home_module = getattr(func, synchronizer._original_attr).__module__
+                else:
+                    home_module = func.__module__
+                mod = importlib.import_module(home_module)
+                return eval(annotation, mod.__dict__)
+            return annotation
+
+        if sig.upgraded_return_annotation is not EmptyAnnotation:
+            return_annotation = sig.upgraded_return_annotation.source_value()
+            return_annotation = ensure_live_annotation(return_annotation)
+
+            if synchronicity_target_interface is not None:
+                return_annotation = self._map_type_annotation(return_annotation, synchronizer=synchronizer, interface=synchronicity_target_interface)
             sig = sig.replace(
-                return_annotation=annotations.pop("return", _empty),
-                parameters=new_params,
+                return_annotation=return_annotation,
+                upgraded_return_annotation=UpgradedAnnotation.upgrade(return_annotation, func, None)   # not sure if needed
             )
+            self._register_imports(return_annotation)
+
+        new_parameters = []
+        for param in sig.parameters.values():
+            if param.upgraded_annotation is not EmptyAnnotation:
+                raw_annotation = param.upgraded_annotation.source_value()
+                raw_annotation = ensure_live_annotation(raw_annotation)
+                if synchronicity_target_interface is not None:
+                    raw_annotation = self._map_type_annotation(raw_annotation, synchronizer=synchronizer, interface=synchronicity_target_interface)
+
+                self._register_imports(raw_annotation)
+                new_parameters.append(param.replace(
+                    annotation=raw_annotation,
+                    upgraded_annotation=UpgradedAnnotation.upgrade(raw_annotation, func, param.name)  # not sure if needed...
+                ))
+            else:
+                new_parameters.append(param)
+
+        sig = sig.replace(parameters=new_parameters)
+
+        # return source code of function and track imports
+        # annotations = getattr(func, "__annotations__", {}).copy()
+
+        # if annotations:
+        #     new_params = []
+        #     for p in sig.parameters.values():
+        #         if p.name in annotations:
+        #             p = p.replace(annotation=annotations[p.name])
+        #         new_params.append(p)
+        #     sig = sig.replace(
+        #         return_annotation=annotations.pop("return", _empty),
+        #         parameters=new_params,
+        #     )
 
         with mock.patch("inspect.formatannotation", self._formatannotation):
             return str(sig)
@@ -249,11 +318,44 @@ class StubEmitter:
         return level * self._indentation
 
     def _get_function(self, func, name, indentation_level=0):
-        # return source code of function and track imports
-        for annotation in func.__annotations__.values():
-            self._register_imports(annotation)
-
         return self._get_func_stub_source(func, name, indentation_level)
+
+    def _map_type_annotation(self, type_annotation, synchronizer, interface: Interface):
+        # recursively map a nested type annotation to match the output interface
+        origin = getattr(type_annotation, "__origin__", None)
+        if origin is None:
+            # scalar - if type is synchronicity origin type, use the blocking/async version instead
+            if hasattr(type_annotation, synchronizer._wrapped_attr):
+                return getattr(type_annotation, synchronizer._wrapped_attr)[interface]
+            return type_annotation
+
+        args = getattr(type_annotation, "__args__", [])
+        mapped_args = tuple(self._map_type_annotation(arg, synchronizer, interface) for arg in args)
+        if interface == Interface.ASYNC:
+            # async interface should use same generic classes as original
+            return type_annotation.copy_with(mapped_args)
+
+        # blocking interface special generic translations:
+        if origin == collections.abc.AsyncGenerator:
+            return typing.Generator[mapped_args + (None,)]
+
+        if origin == contextlib.AbstractAsyncContextManager:
+            return typing.ContextManager[mapped_args]
+
+        if origin == collections.abc.AsyncIterable:
+            return typing.Iterable[mapped_args]
+
+        if origin == collections.abc.AsyncIterator:
+            return typing.Iterator[mapped_args]
+
+        if origin == collections.abc.Awaitable:
+            return mapped_args[0]
+
+        if origin == collections.abc.Coroutine:
+            return mapped_args[2]
+
+        return type_annotation.copy_with(mapped_args)
+
 
 
 def write_stub(module_path: str):

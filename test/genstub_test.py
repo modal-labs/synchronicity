@@ -99,7 +99,7 @@ def test_async_gen():
     )
 
 
-class Foo:
+class MixedClass:
     class_var: str
 
     def some_method(self) -> bool:
@@ -119,13 +119,13 @@ class Foo:
 
 
 def test_class_generation():
-    emitter = StubEmitter("mod")
-    emitter.add_class(Foo, "Foo")
+    emitter = StubEmitter(__name__)
+    emitter.add_class(MixedClass, "MixedClass")
     source = emitter.get_source()
 
     assert (
         source
-        == """class Foo:
+        == """class MixedClass:
     class_var: str
     def some_method(self) -> bool:
         ...
@@ -212,21 +212,21 @@ def test_string_annotation():
     assert 'some_foo: "Foo"' in src or "some_foo: 'Foo'" in src
 
 
-def test_forward_ref():
-    class Foo:
-        def foo(self) -> "Bar":
-            pass
-
-    class Bar:
+class Forwarder:
+    def foo(self) -> "Forwardee":
         pass
 
+class Forwardee:
+    pass
+
+def test_forward_ref():
     # add in the same order here:
     stub = StubEmitter(__name__)
-    stub.add_class(Foo, "Foo")
-    stub.add_class(Bar, "Bar")
+    stub.add_class(Forwarder, "Forwarder")
+    stub.add_class(Forwardee, "Forwardee")
     src = stub.get_source()
-    assert "class Bar:" in src
-    assert "def foo(self) -> 'Bar':" in src
+    assert "class Forwarder:" in src
+    assert "def foo(self) -> Forwardee:" in src  # should technically be 'Forwardee', but non-strings seem ok in pure type stubs
 
 
 def test_self_ref():
@@ -235,38 +235,32 @@ def test_self_ref():
             pass
 
     src = _class_source(Foo, strip_mod=True)
-    assert "def foo(self) -> 'Foo'" in src
+    assert "def foo(self) -> Foo" in src  # should technically be 'Foo' but non-strings seem ok in pure type stubs
 
 
 class _Foo:
-    pass
+    @staticmethod
+    async def clone(foo: "_Foo") -> "_Foo":
+        pass
 
+synchronizer = synchronicity.Synchronizer()
+Foo = synchronizer.create_blocking(_Foo, "Foo", __name__)
 
 def test_synchronicity_type_translation():
     async def _get_foo() -> _Foo:
         pass
 
-    synchronizer = synchronicity.Synchronizer()
-    Foo = synchronizer.create_blocking(_Foo, "Foo", __name__)
     get_foo = synchronizer.create_blocking(_get_foo, "get_foo", __name__)
     src = _function_source(get_foo, strip_mod=True)
     assert "def get_foo() -> Foo" in src
 
 
 def test_synchronicity_self_ref():
-    class _Foo:
-        @staticmethod
-        async def foo() -> "_Foo":
-            pass
-
-    synchronizer = synchronicity.Synchronizer()
-    Foo = synchronizer.create_blocking(_Foo, "Foo", __name__)
-
     src = _class_source(Foo, strip_mod=True)
     assert "@staticmethod" in src
     # There are a bunch of quirks with annotations to keep track of, esp. prior to Python 3.10:
     # https://docs.python.org/3/howto/annotations.html#annotations-howto
-    assert "    def foo() -> '_Foo'" in src  # TODO: this should be 'Foo'
+    assert "    def clone(foo: Foo) -> Foo" in src  # TODO: this should technically be the string 'Foo', but converting back to a string seems messy
 
 
 T = typing.TypeVar("T")

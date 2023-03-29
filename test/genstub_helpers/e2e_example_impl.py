@@ -14,3 +14,6 @@ class _Foo:
     @staticmethod
     def some_static(arg: str) -> float:
         pass
+
+    def clone(self, foo: "_Foo") -> "_Foo":  # self ref
+        pass
