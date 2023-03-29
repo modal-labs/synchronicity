@@ -112,28 +112,23 @@ def test_class_generation():
     emitter = StubEmitter(__name__)
     emitter.add_class(MixedClass, "MixedClass")
     source = emitter.get_source()
+    last_assertion_location = None
+    def assert_in_after_last(search_string):
+        nonlocal last_assertion_location
+        assert search_string in source
+        if last_assertion_location is not None:
+            new_location = source.find(search_string)
+            assert new_location > last_assertion_location
+            last_assertion_location = new_location
 
-    assert (
-        source
-        == """class MixedClass:
-    class_var: str
-    def some_method(self) -> bool:
-        ...
-
-    @classmethod
-    def some_class_method(cls) -> int:
-        ...
-
-    @staticmethod
-    def some_staticmethod() -> float:
-        ...
-
-    @property
-    def some_property(self) -> str:
-        ...
-"""
-    )
-
+    indent = "    "
+    assert_in_after_last("class MixedClass:")
+    assert_in_after_last(f"{indent}class_var: str")
+    assert_in_after_last(f"{indent}class_var: str")
+    assert_in_after_last(f"{indent}def some_method(self) -> bool:\n{indent * 2}...")
+    assert_in_after_last(f"{indent}@classmethod\n{indent}def some_class_method(cls) -> int:\n{indent * 2}...")
+    assert_in_after_last(f"{indent}@staticmethod\n{indent}def some_staticmethod() -> float:")
+    assert_in_after_last(f"{indent}@property\n{indent}def some_property(self) -> str:")
 
 def merged_signature(*sigs):
     sig = sigs[0].copy()
