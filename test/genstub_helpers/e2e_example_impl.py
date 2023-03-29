@@ -2,6 +2,7 @@ from typing import AsyncGenerator
 
 
 class _Foo:
+    singleton: "_Foo"
     def __init__(self, arg: str):
         self.arg = arg
 
@@ -15,5 +16,6 @@ class _Foo:
     def some_static(arg: str) -> float:
         pass
 
-    def clone(self, foo: "_Foo") -> "_Foo":  # self ref
+    @classmethod
+    def clone(cls, foo: "_Foo") -> "_Foo":  # self ref
         pass

@@ -53,7 +53,6 @@ class Synchronizer:
         multiwrap_warning=False,
         async_leakage_warning=True,
     ):
-        self._target_modules: Dict[str, Dict[Any]] = defaultdict(dict)
         self._multiwrap_warning = multiwrap_warning
         self._async_leakage_warning = async_leakage_warning
         self._loop = None
@@ -518,6 +517,8 @@ class Synchronizer:
         new_cls = type.__new__(type, name, bases, new_dict)
         new_cls.__module__ = cls.__module__ if target_module is None else target_module
         new_cls.__doc__ = cls.__doc__
+        if "__annotations__" in cls.__dict__:
+            new_cls.__annotations__ = cls.__annotations__  # transfer annotations
         setattr(new_cls, TARGET_INTERFACE_ATTR, interface)
         setattr(new_cls, SYNCHRONIZER_ATTR, self)
         return new_cls
@@ -583,16 +584,12 @@ class Synchronizer:
         self, obj, name: Optional[str] = None, target_module: Optional[str] = None
     ):
         wrapped = self._wrap(obj, Interface.BLOCKING, name, target_module=target_module)
-        if name and target_module:
-            self._target_modules[target_module][name] = wrapped
         return wrapped
 
     def create_async(
         self, obj, name: Optional[str] = None, target_module: Optional[str] = None
     ):
         wrapped = self._wrap(obj, Interface.ASYNC, name, target_module=target_module)
-        if name and target_module:
-            self._target_modules[target_module][name] = wrapped
         return wrapped
 
     def is_synchronized(self, obj):

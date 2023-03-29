@@ -6,16 +6,6 @@ from synchronicity import Synchronizer
 from synchronicity.genstub import StubEmitter
 
 
-def test_module_assignment():
-    s = Synchronizer()
-
-    class Foo:
-        pass
-
-    BFoo = s.create_blocking(Foo, "BFoo", "mymod")
-    assert s._target_modules == {"mymod": {"BFoo": BFoo}}
-
-
 def noop():
     pass
 
@@ -57,8 +47,8 @@ def _function_source(func, strip_mod=False):
     return stub_emitter.get_source()
 
 
-def _class_source(cls, strip_mod=False):
-    stub_emitter = StubEmitter("dummy" if not strip_mod else cls.__module__)
+def _class_source(cls, target_module=__name__):
+    stub_emitter = StubEmitter(target_module)
     stub_emitter.add_class(cls, cls.__name__)
     return stub_emitter.get_source()
 
@@ -174,23 +164,23 @@ def test_wrapped_function_with_new_annotations():
     )
 
 
+class Base:
+    def base_method(self) -> str:
+        pass
+
+Base.__module__ = "basemod"
+Base.__qualname__ = "Base"
+
+class Based(Base):
+    def sub(self) -> float:
+        pass
+
+
 def test_base_class_included_and_imported():
-    class Foo:
-        def base(self) -> str:
-            pass
-
-    Foo.__module__ = "foomod"
-    Foo.__qualname__ = "Foo"
-
-    class Bar(Foo):
-        def sub(self) -> float:
-            pass
-
-    src = _class_source(Bar, strip_mod=True)
-
-    assert "import foomod" in src
-    assert "class Bar(foomod.Foo):" in src
-    assert "base" not in src
+    src = _class_source(Based)
+    assert "import basemod" in src
+    assert "class Based(basemod.Base):" in src
+    assert "base_method" not in src  # base class method should not be in emitted stub
 
 
 def test_typevar():
@@ -229,13 +219,13 @@ def test_forward_ref():
     assert "def foo(self) -> Forwardee:" in src  # should technically be 'Forwardee', but non-strings seem ok in pure type stubs
 
 
-def test_self_ref():
-    class Foo:
-        def foo(self) -> "Foo":
-            pass
+class SelfRefFoo:
+    def foo(self) -> "SelfRefFoo":
+        pass
 
-    src = _class_source(Foo, strip_mod=True)
-    assert "def foo(self) -> Foo" in src  # should technically be 'Foo' but non-strings seem ok in pure type stubs
+def test_self_ref():
+    src = _class_source(SelfRefFoo)
+    assert "def foo(self) -> SelfRefFoo" in src  # should technically be 'Foo' but non-strings seem ok in pure type stubs
 
 
 class _Foo:
@@ -256,11 +246,24 @@ def test_synchronicity_type_translation():
 
 
 def test_synchronicity_self_ref():
-    src = _class_source(Foo, strip_mod=True)
+    src = _class_source(Foo)
     assert "@staticmethod" in src
-    # There are a bunch of quirks with annotations to keep track of, esp. prior to Python 3.10:
-    # https://docs.python.org/3/howto/annotations.html#annotations-howto
     assert "    def clone(foo: Foo) -> Foo" in src  # TODO: this should technically be the string 'Foo', but converting back to a string seems messy
+
+
+class _WithClassMethod:
+    @classmethod
+    def classy(cls):
+        pass
+
+WithClassMethod = synchronizer.create_blocking(_WithClassMethod, "WithClassMethod", __name__)
+
+def test_synchronicity_classmethod():
+    src = _class_source(WithClassMethod)
+    assert "@classmethod" in src
+    assert "    def classy(cls):" in src
+
+
 
 
 T = typing.TypeVar("T")
@@ -276,6 +279,6 @@ def test_custom_generic():
     class Specific(MyGeneric[str]):
         pass
 
-    src = _class_source(Specific, strip_mod=True)
+    src = _class_source(Specific)
 
     assert "class Specific(MyGeneric[str]):" in src

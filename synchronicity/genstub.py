@@ -85,19 +85,18 @@ class StubEmitter:
         var_annotations = []
         methods = []
 
-        # TODO(elias): translate class annotations, including postponed annotations
-        # new_cls.__annotations__ = {
-        #     k: self._map_type_annotation(t, interface)
-        #     for k, t in cls.__annotations__.items()
-        # }
+        annotations = cls.__dict__.get("__annotations__", {})
+        annotations = {k: self._finalize_annotation(annotation, cls) for k, annotation in annotations.items()}
 
         body_indent_level = 1
         body_indent = self._indent(body_indent_level)
 
-        for varname, annotation in cls.__dict__.get("__annotations__", {}).items():
+        for varname, annotation in annotations.items():
             var_annotations.append(
                 f"{body_indent}{self._get_var_annotation(varname, annotation)}"
             )
+        if var_annotations:
+            var_annotations.append("")  # formatting ocd
 
         for entity_name, entity in cls.__dict__.items():
             if inspect.isfunction(entity):
@@ -191,6 +190,30 @@ class StubEmitter:
             ]
         )
 
+    def _finalize_annotation(self, annotation, source_class_or_function):
+        # Evalutes string annotations and translates synchronicity types to the correct interface
+        # simple version of Python 3.10 inspect.get_annotations() functionality
+
+        # Translate signature annotations:
+        # translate type annotations on all synchronicity functions
+        # it's done here since there may be postponed evaluated annotations (forward/self refs) that
+        # can't be evaluated when the functions are wrapped by the synchronizer
+
+        synchronicity_target_interface = getattr(source_class_or_function, TARGET_INTERFACE_ATTR, None)
+        synchronizer = getattr(source_class_or_function, SYNCHRONIZER_ATTR, None)
+
+        if isinstance(annotation, str):
+            if synchronizer:
+                home_module = getattr(source_class_or_function, synchronizer._original_attr).__module__
+            else:
+                home_module = source_class_or_function.__module__
+            mod = importlib.import_module(home_module)
+            annotation = eval(annotation, mod.__dict__)
+
+        if synchronicity_target_interface is not None:
+            annotation = self._map_type_annotation(annotation, synchronizer=synchronizer, interface=synchronicity_target_interface)
+        return annotation
+
     def _custom_signature(self, func) -> str:
         """
         We use this instead o str(inspect.Signature()) due to a few issues:
@@ -201,49 +224,22 @@ class StubEmitter:
         * We intentionally do not use follow_wrapped, since it will override runtime-transformed annotations on a wrapper
         * TypeVars default repr is `~T` instead of `origin_module.T` etc.
         """
-
-        # haxx, please rewrite to avoid monkey patch... :'(
         sig = sigtools.specifiers.signature(func)
-
-        # Translate signature annotations:
-
-        # Return annotation:
-        synchronicity_target_interface = getattr(func, TARGET_INTERFACE_ATTR, None)
-        synchronizer = getattr(func, SYNCHRONIZER_ATTR, None)
-        # translate type annotations on all synchronicity functions
-        # it's done here since there may be postponed evaluated annotations (forward/self refs) that
-        # can't be evaluated when the functions are wrapped by the synchronizer
-        def ensure_live_annotation(annotation):
-            # simple version of Python 3.10 inspect.get_annotations() functionality
-            if isinstance(annotation, str):
-                if synchronicity_target_interface:
-                    home_module = getattr(func, synchronizer._original_attr).__module__
-                else:
-                    home_module = func.__module__
-                mod = importlib.import_module(home_module)
-                return eval(annotation, mod.__dict__)
-            return annotation
 
         if sig.upgraded_return_annotation is not EmptyAnnotation:
             return_annotation = sig.upgraded_return_annotation.source_value()
-            return_annotation = ensure_live_annotation(return_annotation)
-
-            if synchronicity_target_interface is not None:
-                return_annotation = self._map_type_annotation(return_annotation, synchronizer=synchronizer, interface=synchronicity_target_interface)
+            return_annotation = self._finalize_annotation(return_annotation, func)
+            self._register_imports(return_annotation)
             sig = sig.replace(
                 return_annotation=return_annotation,
                 upgraded_return_annotation=UpgradedAnnotation.upgrade(return_annotation, func, None)   # not sure if needed
             )
-            self._register_imports(return_annotation)
 
         new_parameters = []
         for param in sig.parameters.values():
             if param.upgraded_annotation is not EmptyAnnotation:
                 raw_annotation = param.upgraded_annotation.source_value()
-                raw_annotation = ensure_live_annotation(raw_annotation)
-                if synchronicity_target_interface is not None:
-                    raw_annotation = self._map_type_annotation(raw_annotation, synchronizer=synchronizer, interface=synchronicity_target_interface)
-
+                raw_annotation = self._finalize_annotation(raw_annotation, func)
                 self._register_imports(raw_annotation)
                 new_parameters.append(param.replace(
                     annotation=raw_annotation,
@@ -254,20 +250,7 @@ class StubEmitter:
 
         sig = sig.replace(parameters=new_parameters)
 
-        # return source code of function and track imports
-        # annotations = getattr(func, "__annotations__", {}).copy()
-
-        # if annotations:
-        #     new_params = []
-        #     for p in sig.parameters.values():
-        #         if p.name in annotations:
-        #             p = p.replace(annotation=annotations[p.name])
-        #         new_params.append(p)
-        #     sig = sig.replace(
-        #         return_annotation=annotations.pop("return", _empty),
-        #         parameters=new_params,
-        #     )
-
+        # kind of ugly, but this ensures valid formatting of Generics etc, see docstring above
         with mock.patch("inspect.formatannotation", self._formatannotation):
             return str(sig)
 
