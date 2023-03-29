@@ -465,7 +465,7 @@ class Synchronizer:
             for base in cls.__bases__
         )
         new_dict = {self._original_attr: cls}
-        if cls.__dict__.get("__init__") is not None:
+        if cls.__dict__.get("__init__"):
             new_dict["__init__"] = self._wrap_proxy_constructor(cls, interface)
         for k, v in cls.__dict__.items():
             if k in _BUILTIN_ASYNC_METHODS:
