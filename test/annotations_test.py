@@ -10,6 +10,7 @@ from synchronicity.genstub import StubEmitter
 class ImplType:
     attr: str
 
+
 synchronizer = Synchronizer()
 
 BlockingType = synchronizer.create_blocking(ImplType, "BlockingType", __name__)
@@ -48,7 +49,11 @@ def test_wrapped_class_keeps_class_annotations():
         (typing.Coroutine[None, None, str], Interface.BLOCKING, str),
         (typing.AsyncIterable[str], Interface.BLOCKING, typing.Iterable[str]),
         (typing.AsyncIterator[str], Interface.BLOCKING, typing.Iterator[str]),
-        (typing.Optional[ImplType], Interface.BLOCKING, typing.Union[BlockingType, None]),
+        (
+            typing.Optional[ImplType],
+            Interface.BLOCKING,
+            typing.Union[BlockingType, None],
+        ),
         (typing.Optional[ImplType], Interface.ASYNC, typing.Union[AsyncType, None]),
     ],
 )

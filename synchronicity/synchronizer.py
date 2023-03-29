@@ -39,6 +39,7 @@ _FUNCTION_PREFIXES = {
 TARGET_INTERFACE_ATTR = "_sync_target_interface"
 SYNCHRONIZER_ATTR = "_sync_synchronizer"
 
+
 def warn_old_modal_client():
     warnings.warn(
         "Using latest synchronicity with an old interface - please upgrade to latest modal-client!"
@@ -441,6 +442,7 @@ class Synchronizer:
         @self.wraps_by_interface(interface, method)
         def proxy_classmethod(cls, *args, **kwargs):
             return method(cls, *args, **kwargs)
+
         self._update_wrapper(proxy_classmethod, method, interface=interface)
         return classmethod(proxy_classmethod)
 

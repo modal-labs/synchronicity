@@ -86,7 +86,10 @@ class StubEmitter:
         methods = []
 
         annotations = cls.__dict__.get("__annotations__", {})
-        annotations = {k: self._finalize_annotation(annotation, cls) for k, annotation in annotations.items()}
+        annotations = {
+            k: self._finalize_annotation(annotation, cls)
+            for k, annotation in annotations.items()
+        }
 
         body_indent_level = 1
         body_indent = self._indent(body_indent_level)
@@ -129,11 +132,12 @@ class StubEmitter:
             )
         )
 
-
     def get_source(self):
         missing_types = self.referenced_global_types - self.global_types
         if missing_types:
-            print(f"WARNING: {self.target_module} missing the following referenced types, expected to be in module")
+            print(
+                f"WARNING: {self.target_module} missing the following referenced types, expected to be in module"
+            )
             for t in missing_types:
                 print(t)
         import_src = "\n".join(sorted(f"import {mod}" for mod in self.imports))
@@ -167,9 +171,7 @@ class StubEmitter:
                 self._ensure_import(type_annotation)
             return
 
-        self._ensure_import(
-            type_annotation
-        )  # import the generic itself's module
+        self._ensure_import(type_annotation)  # import the generic itself's module
         for arg in getattr(type_annotation, "__args__", ()):
             self._register_imports(arg)
 
@@ -199,19 +201,27 @@ class StubEmitter:
         # it's done here since there may be postponed evaluated annotations (forward/self refs) that
         # can't be evaluated when the functions are wrapped by the synchronizer
 
-        synchronicity_target_interface = getattr(source_class_or_function, TARGET_INTERFACE_ATTR, None)
+        synchronicity_target_interface = getattr(
+            source_class_or_function, TARGET_INTERFACE_ATTR, None
+        )
         synchronizer = getattr(source_class_or_function, SYNCHRONIZER_ATTR, None)
 
         if isinstance(annotation, str):
             if synchronizer:
-                home_module = getattr(source_class_or_function, synchronizer._original_attr).__module__
+                home_module = getattr(
+                    source_class_or_function, synchronizer._original_attr
+                ).__module__
             else:
                 home_module = source_class_or_function.__module__
             mod = importlib.import_module(home_module)
             annotation = eval(annotation, mod.__dict__)
 
         if synchronicity_target_interface is not None:
-            annotation = self._map_type_annotation(annotation, synchronizer=synchronizer, interface=synchronicity_target_interface)
+            annotation = self._map_type_annotation(
+                annotation,
+                synchronizer=synchronizer,
+                interface=synchronicity_target_interface,
+            )
         return annotation
 
     def _custom_signature(self, func) -> str:
@@ -232,7 +242,9 @@ class StubEmitter:
             self._register_imports(return_annotation)
             sig = sig.replace(
                 return_annotation=return_annotation,
-                upgraded_return_annotation=UpgradedAnnotation.upgrade(return_annotation, func, None)   # not sure if needed
+                upgraded_return_annotation=UpgradedAnnotation.upgrade(
+                    return_annotation, func, None
+                ),  # not sure if needed
             )
 
         new_parameters = []
@@ -241,10 +253,14 @@ class StubEmitter:
                 raw_annotation = param.upgraded_annotation.source_value()
                 raw_annotation = self._finalize_annotation(raw_annotation, func)
                 self._register_imports(raw_annotation)
-                new_parameters.append(param.replace(
-                    annotation=raw_annotation,
-                    upgraded_annotation=UpgradedAnnotation.upgrade(raw_annotation, func, param.name)  # not sure if needed...
-                ))
+                new_parameters.append(
+                    param.replace(
+                        annotation=raw_annotation,
+                        upgraded_annotation=UpgradedAnnotation.upgrade(
+                            raw_annotation, func, param.name
+                        ),  # not sure if needed...
+                    )
+                )
             else:
                 new_parameters.append(param)
 
@@ -313,7 +329,9 @@ class StubEmitter:
             return type_annotation
 
         args = getattr(type_annotation, "__args__", [])
-        mapped_args = tuple(self._map_type_annotation(arg, synchronizer, interface) for arg in args)
+        mapped_args = tuple(
+            self._map_type_annotation(arg, synchronizer, interface) for arg in args
+        )
         if interface == Interface.ASYNC:
             # async interface should use same generic classes as original
             return type_annotation.copy_with(mapped_args)
@@ -338,7 +356,6 @@ class StubEmitter:
             return mapped_args[2]
 
         return type_annotation.copy_with(mapped_args)
-
 
 
 def write_stub(module_path: str):

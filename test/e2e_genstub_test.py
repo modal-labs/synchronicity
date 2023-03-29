@@ -55,7 +55,6 @@ def test_mypy_assertions(interface_file):
     run_mypy(assertion_file)
 
 
-
 @pytest.mark.parametrize(
     "failing_assertion",
     [

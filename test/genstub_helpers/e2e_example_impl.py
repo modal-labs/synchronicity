@@ -3,6 +3,7 @@ from typing import AsyncGenerator
 
 class _Foo:
     singleton: "_Foo"
+
     def __init__(self, arg: str):
         self.arg = arg
 

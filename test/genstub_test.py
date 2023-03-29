@@ -113,6 +113,7 @@ def test_class_generation():
     emitter.add_class(MixedClass, "MixedClass")
     source = emitter.get_source()
     last_assertion_location = None
+
     def assert_in_after_last(search_string):
         nonlocal last_assertion_location
         assert search_string in source
@@ -126,9 +127,14 @@ def test_class_generation():
     assert_in_after_last(f"{indent}class_var: str")
     assert_in_after_last(f"{indent}class_var: str")
     assert_in_after_last(f"{indent}def some_method(self) -> bool:\n{indent * 2}...")
-    assert_in_after_last(f"{indent}@classmethod\n{indent}def some_class_method(cls) -> int:\n{indent * 2}...")
-    assert_in_after_last(f"{indent}@staticmethod\n{indent}def some_staticmethod() -> float:")
+    assert_in_after_last(
+        f"{indent}@classmethod\n{indent}def some_class_method(cls) -> int:\n{indent * 2}..."
+    )
+    assert_in_after_last(
+        f"{indent}@staticmethod\n{indent}def some_staticmethod() -> float:"
+    )
     assert_in_after_last(f"{indent}@property\n{indent}def some_property(self) -> str:")
+
 
 def merged_signature(*sigs):
     sig = sigs[0].copy()
@@ -163,8 +169,10 @@ class Base:
     def base_method(self) -> str:
         pass
 
+
 Base.__module__ = "basemod"
 Base.__qualname__ = "Base"
+
 
 class Based(Base):
     def sub(self) -> float:
@@ -201,8 +209,10 @@ class Forwarder:
     def foo(self) -> "Forwardee":
         pass
 
+
 class Forwardee:
     pass
+
 
 def test_forward_ref():
     # add in the same order here:
@@ -211,16 +221,21 @@ def test_forward_ref():
     stub.add_class(Forwardee, "Forwardee")
     src = stub.get_source()
     assert "class Forwarder:" in src
-    assert "def foo(self) -> Forwardee:" in src  # should technically be 'Forwardee', but non-strings seem ok in pure type stubs
+    assert (
+        "def foo(self) -> Forwardee:" in src
+    )  # should technically be 'Forwardee', but non-strings seem ok in pure type stubs
 
 
 class SelfRefFoo:
     def foo(self) -> "SelfRefFoo":
         pass
 
+
 def test_self_ref():
     src = _class_source(SelfRefFoo)
-    assert "def foo(self) -> SelfRefFoo" in src  # should technically be 'Foo' but non-strings seem ok in pure type stubs
+    assert (
+        "def foo(self) -> SelfRefFoo" in src
+    )  # should technically be 'Foo' but non-strings seem ok in pure type stubs
 
 
 class _Foo:
@@ -228,8 +243,10 @@ class _Foo:
     async def clone(foo: "_Foo") -> "_Foo":
         pass
 
+
 synchronizer = synchronicity.Synchronizer()
 Foo = synchronizer.create_blocking(_Foo, "Foo", __name__)
+
 
 def test_synchronicity_type_translation():
     async def _get_foo() -> _Foo:
@@ -243,7 +260,9 @@ def test_synchronicity_type_translation():
 def test_synchronicity_self_ref():
     src = _class_source(Foo)
     assert "@staticmethod" in src
-    assert "    def clone(foo: Foo) -> Foo" in src  # TODO: this should technically be the string 'Foo', but converting back to a string seems messy
+    assert (
+        "    def clone(foo: Foo) -> Foo" in src
+    )  # TODO: this should technically be the string 'Foo', but converting back to a string seems messy
 
 
 class _WithClassMethod:
@@ -251,7 +270,11 @@ class _WithClassMethod:
     def classy(cls):
         pass
 
-WithClassMethod = synchronizer.create_blocking(_WithClassMethod, "WithClassMethod", __name__)
+
+WithClassMethod = synchronizer.create_blocking(
+    _WithClassMethod, "WithClassMethod", __name__
+)
+
 
 def test_synchronicity_classmethod():
     src = _class_source(WithClassMethod)
@@ -259,13 +282,12 @@ def test_synchronicity_classmethod():
     assert "    def classy(cls):" in src
 
 
-
-
 T = typing.TypeVar("T")
 
 
 class MyGeneric(typing.Generic[T]):
     pass
+
 
 def test_custom_generic():
     s = synchronicity.Synchronizer()

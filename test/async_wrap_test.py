@@ -36,6 +36,7 @@ def test_wrap_asynccontextmanager_annotations():
 
     assert foo.__annotations__["return"] == typing.AsyncContextManager[int]
 
+
 def test_wrap_staticmethod():
     class Foo:
         @staticmethod
