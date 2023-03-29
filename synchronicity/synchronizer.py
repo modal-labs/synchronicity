@@ -32,8 +32,11 @@ _FUNCTION_PREFIXES = {
     Interface.ASYNC: "async_",
 }
 
+
 def warn_old_modal_client():
-    warnings.warn("Using latest synchronicity with an old interface - please upgrade to latest modal-client!")
+    warnings.warn(
+        "Using latest synchronicity with an old interface - please upgrade to latest modal-client!"
+    )
 
 
 class Synchronizer:
