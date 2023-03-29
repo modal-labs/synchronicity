@@ -3,7 +3,6 @@ import inspect
 import sys
 from inspect import _empty
 from pathlib import Path
-from types import GenericAlias
 from typing import TypeVar, Generic
 from unittest import mock
 
