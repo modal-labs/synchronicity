@@ -3,62 +3,22 @@ import typing
 import pytest
 
 import synchronicity
-from synchronicity import Interface
-from synchronicity import async_wrap
+from synchronicity import Interface, Synchronizer
+from synchronicity.genstub import StubEmitter
 
 
-class _Bar:
-    pass
+class ImplType:
+    attr: str
+
+synchronizer = Synchronizer()
+
+BlockingType = synchronizer.create_blocking(ImplType, "BlockingType", __name__)
+AsyncType = synchronizer.create_async(ImplType, "AsyncType", __name__)
 
 
-class _Foo:
-    baz: typing.Optional[_Bar]
-
-    async def bar(self, arg1: typing.AsyncIterator[str]):
-        pass
-
-    @async_wrap.asynccontextmanager  # tests the annotations-compatible context manager factory
-    async def ctx(self) -> typing.AsyncGenerator[int, None]:
-        yield 0
-
-    def return_awaitable(self) -> typing.Awaitable[str]:
-        pass
-
-    def return_coroutine(self) -> typing.Coroutine[None, None, str]:
-        pass
-
-    @classmethod
-    def some_classmethod(cls) -> typing.Awaitable[float]:
-        pass
-
-    @staticmethod
-    def some_staticmethod() -> typing.Awaitable[int]:
-        pass
-
-    async def some_async_gen(self) -> typing.AsyncGenerator[int, str]:
-        yield 1
-
-
-s = synchronicity.Synchronizer()
-BlockingBar = s.create_blocking(_Bar, "BlockingBar")
-AsyncBar = s.create_async(_Bar, "AsyncBar")
-BlockingFoo = s.create_blocking(_Foo, "BlockingFoo")
-AsyncFoo = s.create_async(_Foo, "AsyncFoo")
-
-
-def test_wrapped_function_replaces_annotation():
-    assert BlockingFoo.bar.__annotations__["arg1"] == typing.Iterator[str]
-    assert BlockingFoo.__annotations__["baz"] == typing.Union[BlockingBar, None]
-    assert AsyncFoo.ctx.__annotations__["return"] == typing.AsyncContextManager[int]
-    assert BlockingFoo.ctx.__annotations__["return"] == typing.ContextManager[int]
-    assert BlockingFoo.return_awaitable.__annotations__["return"] == str
-    assert BlockingFoo.return_coroutine.__annotations__["return"] == str
-    assert BlockingFoo.some_classmethod.__annotations__["return"] == float
-    assert BlockingFoo.some_staticmethod.__annotations__["return"] == int
-    assert (
-        BlockingFoo.some_async_gen.__annotations__["return"]
-        == typing.Generator[int, str, None]
-    )
+def test_wrapped_class_keeps_class_annotations():
+    assert BlockingType.__annotations__ == ImplType.__annotations__
+    assert AsyncType.__annotations__ == AsyncType.__annotations__
 
 
 @pytest.mark.parametrize(
@@ -70,14 +30,14 @@ def test_wrapped_function_replaces_annotation():
             typing.Generator[int, str, None],
         ),
         (
-            typing.AsyncContextManager[_Foo],
+            typing.AsyncContextManager[ImplType],
             Interface.BLOCKING,
-            typing.ContextManager[BlockingFoo],
+            typing.ContextManager[BlockingType],
         ),
         (
-            typing.AsyncContextManager[_Foo],
+            typing.AsyncContextManager[ImplType],
             Interface.ASYNC,
-            typing.AsyncContextManager[AsyncFoo],
+            typing.AsyncContextManager[AsyncType],
         ),
         (
             typing.Awaitable[typing.Awaitable[str]],
@@ -88,7 +48,10 @@ def test_wrapped_function_replaces_annotation():
         (typing.Coroutine[None, None, str], Interface.BLOCKING, str),
         (typing.AsyncIterable[str], Interface.BLOCKING, typing.Iterable[str]),
         (typing.AsyncIterator[str], Interface.BLOCKING, typing.Iterator[str]),
+        (typing.Optional[ImplType], Interface.BLOCKING, typing.Union[BlockingType, None]),
+        (typing.Optional[ImplType], Interface.ASYNC, typing.Union[AsyncType, None]),
     ],
 )
 def test_annotation_mapping(t, interface, expected):
-    assert s._map_type_annotation(t, interface) == expected
+    stub_emitter = StubEmitter(__name__)
+    assert stub_emitter._map_type_annotation(t, synchronizer, interface) == expected

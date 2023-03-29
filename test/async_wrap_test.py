@@ -2,7 +2,7 @@ import inspect
 import typing
 
 import synchronicity
-from synchronicity import Interface
+from synchronicity import Interface, async_wrap
 
 synchronizer = synchronicity.Synchronizer()
 
@@ -29,17 +29,12 @@ def test_wrap_corofunc_using_non_async():
     assert inspect.iscoroutinefunction(bar)
 
 
-def test_wrap_annotated_asyncgen_using_async():
-    async def foo() -> typing.AsyncGenerator[str, typing.Any]:
-        yield "bar"
-
-    @synchronizer.wraps_by_interface(Interface.ASYNC, foo)
-    async def bar():
+def test_wrap_asynccontextmanager_annotations():
+    @async_wrap.asynccontextmanager  # this would not work with contextlib.asynccontextmanager
+    async def foo() -> typing.AsyncGenerator[int, None]:
         pass
 
-    # note that we do no explicit
-    assert bar.__annotations__["return"] == typing.AsyncGenerator[str, typing.Any]
-
+    assert foo.__annotations__["return"] == typing.AsyncContextManager[int]
 
 def test_wrap_staticmethod():
     class Foo:
@@ -56,8 +51,6 @@ def test_wrap_staticmethod():
     assert isinstance(BlockingFoo.__dict__["a_static_method"], staticmethod)
     assert isinstance(AsyncFoo.__dict__["a_static_method"], staticmethod)
 
-    assert BlockingFoo.a_static_method.__annotations__["return"] == str
-    assert AsyncFoo.a_static_method.__annotations__["return"] == typing.Awaitable[str]
     assert inspect.iscoroutinefunction(AsyncFoo.__dict__["a_static_method"].__func__)
     assert not inspect.iscoroutinefunction(
         BlockingFoo.__dict__["a_static_method"].__func__
