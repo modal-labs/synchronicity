@@ -49,7 +49,11 @@ class StubEmitter:
         emitter = cls(module.__name__)
         explicit_members = module.__dict__.get("__all__", [])
         for entity_name, entity in module.__dict__.items():
-            if hasattr(entity, "__module__") and entity.__module__ != module.__name__ and entity_name not in explicit_members:
+            if (
+                hasattr(entity, "__module__")
+                and entity.__module__ != module.__name__
+                and entity_name not in explicit_members
+            ):
                 continue  # skip imported stuff, unless it's explicitly in __all__
 
             if inspect.isclass(entity):
@@ -58,7 +62,10 @@ class StubEmitter:
                 emitter.add_function(entity, entity_name, 0)
             elif isinstance(entity, typing.TypeVar):
                 emitter.add_type_var(entity, entity_name)
-            elif hasattr(entity, "__class__") and getattr(entity.__class__, "__module__", None) == module.__name__:
+            elif (
+                hasattr(entity, "__class__")
+                and getattr(entity.__class__, "__module__", None) == module.__name__
+            ):
                 # instances of stuff
                 emitter.add_variable(entity.__class__, entity_name)
 
@@ -220,9 +227,13 @@ class StubEmitter:
         else:
             home_module = source_class_or_function.__module__
 
-        return self._finalize_annotation_inner(annotation, synchronizer, synchronicity_target_interface, home_module)
+        return self._finalize_annotation_inner(
+            annotation, synchronizer, synchronicity_target_interface, home_module
+        )
 
-    def _finalize_annotation_inner(self, annotation, synchronizer, synchronicity_target_interface, home_module):
+    def _finalize_annotation_inner(
+        self, annotation, synchronizer, synchronicity_target_interface, home_module
+    ):
         if isinstance(
             annotation, typing.ForwardRef
         ):  # TypeVars wrap their arguments as ForwardRefs (sometimes?)
@@ -310,7 +321,9 @@ class StubEmitter:
         )  # inspect.Signature isn't generally using the base_module arg afaik
 
         origin = getattr(annotation, "__origin__", None)
-        assert not isinstance(annotation, typing.ForwardRef)  # Forward refs should already have been evaluated!
+        assert not isinstance(
+            annotation, typing.ForwardRef
+        )  # Forward refs should already have been evaluated!
 
         if origin is None:
             if annotation == Ellipsis:
@@ -333,7 +346,12 @@ class StubEmitter:
         formatted_annotation = str(
             annotation.copy_with(
                 # ellipsis (...) needs to be passed as is, or it will be reformatted
-                tuple(ReprObj(self._formatannotation(arg)) if arg != Ellipsis else Ellipsis for arg in args)
+                tuple(
+                    ReprObj(self._formatannotation(arg))
+                    if arg != Ellipsis
+                    else Ellipsis
+                    for arg in args
+                )
             )
         )
         # this is a bit ugly, but gets rid of incorrect module qualification of Generic subclasses:
@@ -362,7 +380,9 @@ class StubEmitter:
             ]
         )
 
-    def _map_type_annotation(self, type_annotation, synchronizer, interface: Interface, home_module=None):
+    def _map_type_annotation(
+        self, type_annotation, synchronizer, interface: Interface, home_module=None
+    ):
         # recursively map a nested type annotation to match the output interface
         origin = getattr(type_annotation, "__origin__", None)
         if origin is None:
@@ -373,12 +393,8 @@ class StubEmitter:
 
         args = getattr(type_annotation, "__args__", [])
         mapped_args = tuple(
-            self._finalize_annotation_inner(
-                arg,
-                synchronizer,
-                interface,
-                home_module
-            ) for arg in args
+            self._finalize_annotation_inner(arg, synchronizer, interface, home_module)
+            for arg in args
         )
         if interface == Interface.BLOCKING:
             # blocking interface special generic translations:

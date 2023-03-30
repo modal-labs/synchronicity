@@ -326,5 +326,6 @@ def test_translated_bound_type_vars():
 def test_ellipsis():
     def foo() -> typing.Callable[..., typing.Any]:
         pass
+
     src = _function_source(foo)
-    assert '-> typing.Callable[..., typing.Any]' in src
+    assert "-> typing.Callable[..., typing.Any]" in src
