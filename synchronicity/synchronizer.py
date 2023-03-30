@@ -9,7 +9,7 @@ import typing
 import warnings
 from typing import Optional
 
-from .async_wrap import type_compat_wraps
+from .async_wrap import wraps_by_interface
 from .callback import Callback
 from .exceptions import UserCodeException, unwrap_coro_exception, wrap_coro_exception
 from .interface import Interface
@@ -347,7 +347,7 @@ class Synchronizer:
 
         is_coroutinefunction = inspect.iscoroutinefunction(f)
 
-        @self.wraps_by_interface(interface, f)
+        @wraps_by_interface(interface, f)
         def f_wrapped(*args, **kwargs):
             return_future = kwargs.pop(_RETURN_FUTURE_KWARG, False)
 
@@ -405,7 +405,7 @@ class Synchronizer:
                 ):  # TODO: HACKY HACK
                     # TODO: this is needed for decorator wrappers that returns functions
                     # Maybe a bit of a hacky special case that deserves its own decorator
-                    @self.wraps_by_interface(interface, res)
+                    @wraps_by_interface(interface, res)
                     def f_wrapped(*args, **kwargs):
                         args = self._translate_in(args)
                         kwargs = self._translate_in(kwargs)
@@ -429,7 +429,7 @@ class Synchronizer:
             method, interface, allow_futures=allow_futures, unwrap_user_excs=False
         )
 
-        @synchronizer_self.wraps_by_interface(interface, method)
+        @wraps_by_interface(interface, method)
         def proxy_method(self, *args, **kwargs):
             instance = self.__dict__[synchronizer_self._original_attr]
             try:
@@ -442,14 +442,14 @@ class Synchronizer:
     def _wrap_proxy_staticmethod(self, method, interface):
         orig_function = method.__func__
         method = self._wrap_callable(orig_function, interface)
-        wrapper = self.wraps_by_interface(interface, orig_function)(method)
+        wrapper = wraps_by_interface(interface, orig_function)(method)
         self._update_wrapper(wrapper, orig_function, interface=interface)
         return staticmethod(wrapper)
 
     def _wrap_proxy_classmethod(self, method, interface):
         method = self._wrap_callable(method.__func__, interface)
 
-        @self.wraps_by_interface(interface, method)
+        @wraps_by_interface(interface, method)
         def proxy_classmethod(cls, *args, **kwargs):
             return method(cls, *args, **kwargs)
 
@@ -632,9 +632,6 @@ class Synchronizer:
             return hasattr(obj, self._original_attr)
         else:
             return hasattr(obj.__class__, self._original_attr)
-
-    def wraps_by_interface(self, interface, func):
-        return type_compat_wraps(func, interface)
 
     ### DEPRECATED
     # Only needed because old modal clients don't pin the synchronicity version,

@@ -9,7 +9,7 @@ from .interface import Interface
 from contextlib import asynccontextmanager as _asynccontextmanager
 
 
-def type_compat_wraps(func, interface: Interface):
+def wraps_by_interface(interface: Interface, func):
     """Like functools.wraps but maintains `inspect.iscoroutinefunction` and allows custom type annotations overrides
 
     Use this when the wrapper function is non-async but returns the coroutine resulting
@@ -32,12 +32,7 @@ def type_compat_wraps(func, interface: Interface):
 
         return asyncfunc_deco
     else:
-
-        def blockingfunc_deco(user_wrapper):
-            wrapped = functools.wraps(func)(user_wrapper)
-            return wrapped
-
-        return blockingfunc_deco
+        return functools.wraps(func)
 
 
 YIELD_TYPE = typing.TypeVar("YIELD_TYPE")

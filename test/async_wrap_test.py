@@ -3,15 +3,14 @@ import typing
 
 import synchronicity
 from synchronicity import Interface, async_wrap
-
-synchronizer = synchronicity.Synchronizer()
+from synchronicity.async_wrap import wraps_by_interface
 
 
 def test_wrap_corofunc_using_async():
     async def foo():
         pass
 
-    @synchronizer.wraps_by_interface(Interface.ASYNC, foo)
+    @wraps_by_interface(Interface.ASYNC, foo)
     async def bar():
         pass
 
@@ -22,7 +21,7 @@ def test_wrap_corofunc_using_non_async():
     async def foo():
         pass
 
-    @synchronizer.wraps_by_interface(Interface.ASYNC, foo)
+    @wraps_by_interface(Interface.ASYNC, foo)
     def bar():
         pass
 
@@ -46,6 +45,7 @@ def test_wrap_staticmethod():
 
             return wrapped()
 
+    synchronizer = synchronicity.Synchronizer()
     BlockingFoo = synchronizer.create_blocking(Foo)
     AsyncFoo = synchronizer.create_async(Foo)
 
