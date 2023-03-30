@@ -41,8 +41,8 @@ def weird_async_gen() -> typing.AsyncGenerator[int, None]:
     return gen()
 
 
-def _function_source(func, strip_mod=False):
-    stub_emitter = StubEmitter("dummy" if not strip_mod else func.__module__)
+def _function_source(func, target_module=__name__):
+    stub_emitter = StubEmitter(target_module)
     stub_emitter.add_function(func, func.__name__)
     return stub_emitter.get_source()
 
@@ -64,7 +64,7 @@ def test_function_basics():
 
 def test_function_with_imports():
     assert (
-        _function_source(generic_other_module_arg)
+        _function_source(generic_other_module_arg, target_module="dummy")
         == """import test.genstub_helpers.some_mod
 import typing
 
@@ -253,7 +253,7 @@ def test_synchronicity_type_translation():
         pass
 
     get_foo = synchronizer.create_blocking(_get_foo, "get_foo", __name__)
-    src = _function_source(get_foo, strip_mod=True)
+    src = _function_source(get_foo)
     assert "def get_foo() -> Foo" in src
 
 
@@ -262,7 +262,7 @@ def test_synchronicity_self_ref():
     assert "@staticmethod" in src
     assert (
         "    def clone(foo: Foo) -> Foo" in src
-    )  # TODO: this should technically be the string 'Foo', but converting back to a string seems messy
+    )
 
 
 class _WithClassMethod:
@@ -288,14 +288,30 @@ T = typing.TypeVar("T")
 class MyGeneric(typing.Generic[T]):
     pass
 
+BlockingGeneric = synchronizer.create_blocking(typing.Generic, "BlockingGeneric", __name__)
 
 def test_custom_generic():
-    s = synchronicity.Synchronizer()
-    s.create_blocking(typing.Generic)
-
+    # TODO: build out this test a bit, as it currently creates an invalid stub (missing base types)
     class Specific(MyGeneric[str]):
         pass
 
     src = _class_source(Specific)
-
     assert "class Specific(MyGeneric[str]):" in src
+
+
+_B = typing.TypeVar("_B", bound="str")
+
+B = synchronizer.create_blocking(_B, "B", __name__)  # only strictly needed if the bound is a synchronicity implementation type
+
+def _ident(b: _B) -> _B:
+    return b
+
+ident = synchronizer.create_blocking(_ident, "ident", __name__)
+
+def test_translated_bound_type_vars():
+    emitter = StubEmitter(__name__)
+    emitter.add_type_var(B, "B")
+    emitter.add_function(ident, "ident")
+    src = emitter.get_source()
+    assert 'B = typing.TypeVar("B", bound="str")' in src
+    assert "def ident(b: B) -> B" in src

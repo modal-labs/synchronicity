@@ -56,18 +56,19 @@ def test_mypy_assertions(interface_file):
 
 
 @pytest.mark.parametrize(
-    "failing_assertion",
+    "failing_assertion,error_matches",
     [
-        "e2e_example_export.BlockingFoo(1)",  # int instead of str
-        "blocking_foo.some_static()",  # missing argument
-        "blocking_foo.some_static(True)",  # bool instead of str
+        ("e2e_example_export.BlockingFoo(1)", 'incompatible type "int"; expected "str"'),
+        ("blocking_foo.some_static()",  'Missing positional argument "arg" in call to "some_static"'), # missing argument
+        ("blocking_foo.some_static(True)", 'Argument 1 to "some_static" of "BlockingFoo" has incompatible type "bool"'), # bool instead of str
+        ("e2e_example_export.listify(123)", 'Value of type variable "_T_Blocking" of "listify" cannot be "int"')  #  int does not satisfy the type bound of the typevar (!)
     ],
 )
-def test_failing_assertion(interface_file, failing_assertion):
+def test_failing_assertion(interface_file, failing_assertion, error_matches):
     # since there appears to be no good way of asserting failing type checks (and skipping to the next assertion)
     # we use the assertion file as a template to insert statements that should fail type checking
     with temp_assertion_file(
         failing_assertion
     ) as custom_file:  # we pass int instead of str
-        with pytest.raises(FailedMyPyCheck):
+        with pytest.raises(FailedMyPyCheck, match=error_matches):
             run_mypy(custom_file)

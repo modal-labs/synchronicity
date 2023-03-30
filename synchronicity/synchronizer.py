@@ -179,6 +179,8 @@ class Synchronizer:
         new_obj = interface_cls.__new__(interface_cls)
         # Store a reference to the original object
         new_obj.__dict__[self._original_attr] = obj
+        new_obj.__dict__[SYNCHRONIZER_ATTR] = self
+        new_obj.__dict__[TARGET_INTERFACE_ATTR] = interface
         return new_obj
 
     def _translate_scalar_in(self, obj):
@@ -308,17 +310,19 @@ class Synchronizer:
     def create_callback(self, f, interface):
         return Callback(self, f, interface)
 
-    def _update_wrapper(self, f_wrapped, f, name=None, interface=None):
+    def _update_wrapper(self, f_wrapped, f, name=None, interface=None, target_module=None):
         """Very similar to functools.update_wrapper"""
         functools.update_wrapper(f_wrapped, f)
         if name is not None:
             f_wrapped.__name__ = name
             f_wrapped.__qualname__ = name
+        if target_module is not None:
+            f_wrapped.__module__ = target_module
         setattr(f_wrapped, SYNCHRONIZER_ATTR, self)
         setattr(f_wrapped, TARGET_INTERFACE_ATTR, interface)
 
     def _wrap_callable(
-        self, f, interface, name=None, allow_futures=True, unwrap_user_excs=True
+        self, f, interface, name=None, allow_futures=True, unwrap_user_excs=True, target_module=None
     ):
         if hasattr(f, self._original_attr):
             if self._multiwrap_warning:
@@ -406,7 +410,7 @@ class Synchronizer:
 
                 return self._translate_out(res, interface)
 
-        self._update_wrapper(f_wrapped, f, name, interface)
+        self._update_wrapper(f_wrapped, f, name, interface, target_module=target_module)
         setattr(f_wrapped, self._original_attr, f)
         return f_wrapped
 
@@ -566,7 +570,18 @@ class Synchronizer:
                 obj, interface, name, target_module=target_module
             )
         elif inspect.isfunction(obj):
-            new_obj = self._wrap_callable(obj, interface, name)
+            new_obj = self._wrap_callable(obj, interface, name, target_module=target_module)
+        elif isinstance(obj, typing.TypeVar):
+            # TypeVar translation is needed only for type stub generation, in case the
+            # "bound" attribute refers to a translatable type
+            # TODO: Refactor - can this use _wrap_instance?
+            new_obj = typing.TypeVar(name, bound=obj.__bound__)  # noqa
+            new_obj.__dict__[self._original_attr] = obj
+            new_obj.__dict__[SYNCHRONIZER_ATTR] = self
+            new_obj.__dict__[TARGET_INTERFACE_ATTR] = interface
+            new_obj.__module__ = target_module
+            obj.__dict__.setdefault(self._wrapped_attr, {})
+            obj.__dict__[self._wrapped_attr][interface] = new_obj
         elif self._wrapped_attr in obj.__class__.__dict__:
             new_obj = self._wrap_instance(obj, interface)
         else:

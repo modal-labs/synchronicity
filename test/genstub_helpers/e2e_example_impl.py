@@ -1,4 +1,4 @@
-from typing import AsyncGenerator
+from typing import AsyncGenerator, TypeVar, List
 
 
 class _Foo:
@@ -20,3 +20,10 @@ class _Foo:
     @classmethod
     def clone(cls, foo: "_Foo") -> "_Foo":  # self ref
         pass
+
+
+
+_T = TypeVar("_T", bound=_Foo)
+
+def _listify(t: _T) -> List[_T]:
+    return t

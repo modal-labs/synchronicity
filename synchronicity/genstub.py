@@ -57,6 +57,8 @@ class StubEmitter:
                 emitter.add_class(entity, entity_name)
             elif inspect.isfunction(entity):
                 emitter.add_function(entity, entity_name, 0)
+            elif isinstance(entity, typing.TypeVar):
+                emitter.add_type_var(entity, entity_name)
 
         for varname, annotation in getattr(module, "__annotations__", {}).items():
             emitter.add_variable(annotation, varname)
@@ -64,11 +66,12 @@ class StubEmitter:
         return emitter
 
     def add_variable(self, annotation, name):
+        # TODO: evaluate string annotations
         self.parts.append(self._get_var_annotation(name, annotation))
 
     def add_function(self, func, name, indentation_level=0):
         # adds function source code to module
-        self.parts.append(self._get_function(func, name, indentation_level))
+        self.parts.append(self._get_function_source(func, name, indentation_level))
 
     def add_class(self, cls, name):
         self.global_types.add(name)
@@ -78,6 +81,8 @@ class StubEmitter:
         )  # fix for generic base types
         for b in orig_bases:
             if b is not object:
+                # Note: Translation of base types are handled by synchronicity
+                # TODO: handle "translation" of Generic type arguments in base classes?
                 self._register_imports(b)
                 bases.append(self._formatannotation(b))
         bases_str = "" if not bases else "(" + ", ".join(bases) + ")"
@@ -99,27 +104,27 @@ class StubEmitter:
                 f"{body_indent}{self._get_var_annotation(varname, annotation)}"
             )
         if var_annotations:
-            var_annotations.append("")  # formatting ocd
+            var_annotations.append("")  # formatting ocd - add an extra newline after var annotations
 
         for entity_name, entity in cls.__dict__.items():
             if inspect.isfunction(entity):
                 methods.append(
-                    self._get_function(entity, entity_name, body_indent_level)
+                    self._get_function_source(entity, entity_name, body_indent_level)
                 )
 
             elif isinstance(entity, classmethod):
                 methods.append(
-                    f"{body_indent}@classmethod\n{self._get_function(entity.__func__, entity_name, body_indent_level)}"
+                    f"{body_indent}@classmethod\n{self._get_function_source(entity.__func__, entity_name, body_indent_level)}"
                 )
 
             elif isinstance(entity, staticmethod):
                 methods.append(
-                    f"{body_indent}@staticmethod\n{self._get_function(entity.__func__, entity_name, body_indent_level)}"
+                    f"{body_indent}@staticmethod\n{self._get_function_source(entity.__func__, entity_name, body_indent_level)}"
                 )
 
             elif isinstance(entity, property):
                 methods.append(
-                    f"{body_indent}@property\n{self._get_function(entity.fget, entity_name, body_indent_level)}"
+                    f"{body_indent}@property\n{self._get_function_source(entity.fget, entity_name, body_indent_level)}"
                 )
 
         self.parts.append(
@@ -131,6 +136,16 @@ class StubEmitter:
                 ]
             )
         )
+
+    def add_type_var(self, type_var, name):
+        self.imports.add("typing")
+        args = [f'"{name}"']
+        if type_var.__bound__:
+            translated_bound = self._finalize_annotation(type_var.__bound__, type_var)
+            str_annotation = self._formatannotation(translated_bound)
+            args.append(f'bound="{str_annotation}"')
+        self.global_types.add(name)
+        self.parts.append(f'{name} = typing.TypeVar({", ".join(args)})')
 
     def get_source(self):
         missing_types = self.referenced_global_types - self.global_types
@@ -175,23 +190,6 @@ class StubEmitter:
         for arg in getattr(type_annotation, "__args__", ()):
             self._register_imports(arg)
 
-    def _get_func_stub_source(self, func, name, indentation_level):
-        async_prefix = ""
-        if inspect.iscoroutinefunction(func) or inspect.isasyncgenfunction(func):
-            async_prefix = "async "
-
-        signature_indent = self._indent(indentation_level)
-        body_indent = self._indent(indentation_level + 1)
-        signature = self._custom_signature(func)
-
-        return "\n".join(
-            [
-                f"{signature_indent}{async_prefix}def {name}{signature}:",
-                f"{body_indent}...",
-                "",
-            ]
-        )
-
     def _finalize_annotation(self, annotation, source_class_or_function):
         # Evalutes string annotations and translates synchronicity types to the correct interface
         # simple version of Python 3.10 inspect.get_annotations() functionality
@@ -205,6 +203,8 @@ class StubEmitter:
             source_class_or_function, TARGET_INTERFACE_ATTR, None
         )
         synchronizer = getattr(source_class_or_function, SYNCHRONIZER_ATTR, None)
+        if isinstance(annotation, typing.ForwardRef):  # TypeVars wrap their arguments as ForwardRefs (sometimes?)
+            annotation = annotation.__forward_arg__
 
         if isinstance(annotation, str):
             if synchronizer:
@@ -222,6 +222,8 @@ class StubEmitter:
                 synchronizer=synchronizer,
                 interface=synchronicity_target_interface,
             )
+
+        self._register_imports(annotation)
         return annotation
 
     def _custom_signature(self, func) -> str:
@@ -239,7 +241,6 @@ class StubEmitter:
         if sig.upgraded_return_annotation is not EmptyAnnotation:
             return_annotation = sig.upgraded_return_annotation.source_value()
             return_annotation = self._finalize_annotation(return_annotation, func)
-            self._register_imports(return_annotation)
             sig = sig.replace(
                 return_annotation=return_annotation,
                 upgraded_return_annotation=UpgradedAnnotation.upgrade(
@@ -252,7 +253,6 @@ class StubEmitter:
             if param.upgraded_annotation is not EmptyAnnotation:
                 raw_annotation = param.upgraded_annotation.source_value()
                 raw_annotation = self._finalize_annotation(raw_annotation, func)
-                self._register_imports(raw_annotation)
                 new_parameters.append(
                     param.replace(
                         annotation=raw_annotation,
@@ -271,6 +271,7 @@ class StubEmitter:
             return str(sig)
 
     def _get_var_annotation(self, name, annotation):
+        # TODO: how to translate annotation here - we don't know the
         self._register_imports(annotation)
         return f"{name}: {self._formatannotation(annotation, None)}"
 
@@ -316,8 +317,22 @@ class StubEmitter:
     def _indent(self, level):
         return level * self._indentation
 
-    def _get_function(self, func, name, indentation_level=0):
-        return self._get_func_stub_source(func, name, indentation_level)
+    def _get_function_source(self, func, name, indentation_level=0) -> str:
+        async_prefix = ""
+        if inspect.iscoroutinefunction(func) or inspect.isasyncgenfunction(func):
+            async_prefix = "async "
+
+        signature_indent = self._indent(indentation_level)
+        body_indent = self._indent(indentation_level + 1)
+        signature = self._custom_signature(func)
+
+        return "\n".join(
+            [
+                f"{signature_indent}{async_prefix}def {name}{signature}:",
+                f"{body_indent}...",
+                "",
+            ]
+        )
 
     def _map_type_annotation(self, type_annotation, synchronizer, interface: Interface):
         # recursively map a nested type annotation to match the output interface

@@ -23,3 +23,6 @@ assert_type(
 )
 
 assert_type(blocking_foo.singleton, e2e_example_export.BlockingFoo)
+
+
+assert_type(e2e_example_export.listify(blocking_foo), typing.List[e2e_example_export.BlockingFoo])
