@@ -3,12 +3,14 @@ import atexit
 import contextlib
 import functools
 import inspect
-import threading
 import platform
+import threading
+import typing
 import warnings
+from typing import Optional
 
-from .callback import Callback
 from .async_wrap import wraps_by_interface
+from .callback import Callback
 from .exceptions import UserCodeException, unwrap_coro_exception, wrap_coro_exception
 from .interface import Interface
 
@@ -31,6 +33,9 @@ _FUNCTION_PREFIXES = {
     Interface.BLOCKING: "blocking_",
     Interface.ASYNC: "async_",
 }
+
+TARGET_INTERFACE_ATTR = "_sync_target_interface"
+SYNCHRONIZER_ATTR = "_sync_synchronizer"
 
 
 def warn_old_modal_client():
@@ -67,7 +72,7 @@ class Synchronizer:
         # Special attribute to mark something as non-wrappable
         self._nowrap_attr = "_sync_nonwrap_%d" % id(self)
 
-        # Prep a synchronized context manager
+        # Prep a synchronized context manager in case one is returned and needs translation
         self._ctx_mgr_cls = contextlib._AsyncGeneratorContextManager
         self.create_async(self._ctx_mgr_cls)
         self.create_blocking(self._ctx_mgr_cls)
@@ -172,6 +177,8 @@ class Synchronizer:
         new_obj = interface_cls.__new__(interface_cls)
         # Store a reference to the original object
         new_obj.__dict__[self._original_attr] = obj
+        new_obj.__dict__[SYNCHRONIZER_ATTR] = self
+        new_obj.__dict__[TARGET_INTERFACE_ATTR] = interface
         return new_obj
 
     def _translate_scalar_in(self, obj):
@@ -301,15 +308,27 @@ class Synchronizer:
     def create_callback(self, f, interface):
         return Callback(self, f, interface)
 
-    def _update_wrapper(self, f_wrapped, f, name=None):
+    def _update_wrapper(
+        self, f_wrapped, f, name=None, interface=None, target_module=None
+    ):
         """Very similar to functools.update_wrapper"""
         functools.update_wrapper(f_wrapped, f)
         if name is not None:
             f_wrapped.__name__ = name
             f_wrapped.__qualname__ = name
+        if target_module is not None:
+            f_wrapped.__module__ = target_module
+        setattr(f_wrapped, SYNCHRONIZER_ATTR, self)
+        setattr(f_wrapped, TARGET_INTERFACE_ATTR, interface)
 
     def _wrap_callable(
-        self, f, interface, name=None, allow_futures=True, unwrap_user_excs=True
+        self,
+        f,
+        interface,
+        name=None,
+        allow_futures=True,
+        unwrap_user_excs=True,
+        target_module=None,
     ):
         if hasattr(f, self._original_attr):
             if self._multiwrap_warning:
@@ -397,22 +416,22 @@ class Synchronizer:
 
                 return self._translate_out(res, interface)
 
-        self._update_wrapper(f_wrapped, f, name)
+        self._update_wrapper(f_wrapped, f, name, interface, target_module=target_module)
         setattr(f_wrapped, self._original_attr, f)
         return f_wrapped
 
-    def _wrap_proxy_method(self, method, interface, allow_futures=True):
-        if getattr(method, self._nowrap_attr, None):
+    def _wrap_proxy_method(synchronizer_self, method, interface, allow_futures=True):
+        if getattr(method, synchronizer_self._nowrap_attr, None):
             # This method is marked as non-wrappable
             return method
 
-        method = self._wrap_callable(
+        method = synchronizer_self._wrap_callable(
             method, interface, allow_futures=allow_futures, unwrap_user_excs=False
         )
 
         @wraps_by_interface(interface, method)
-        def proxy_method(wrapped_self, *args, **kwargs):
-            instance = wrapped_self.__dict__[self._original_attr]
+        def proxy_method(self, *args, **kwargs):
+            instance = self.__dict__[synchronizer_self._original_attr]
             try:
                 return method(instance, *args, **kwargs)
             except UserCodeException as uc_exc:
@@ -421,16 +440,19 @@ class Synchronizer:
         return proxy_method
 
     def _wrap_proxy_staticmethod(self, method, interface):
-        method = self._wrap_callable(method.__func__, interface)
+        orig_function = method.__func__
+        method = self._wrap_callable(orig_function, interface)
+        self._update_wrapper(method, orig_function, interface=interface)
         return staticmethod(method)
 
     def _wrap_proxy_classmethod(self, method, interface):
         method = self._wrap_callable(method.__func__, interface)
 
         @wraps_by_interface(interface, method)
-        def proxy_classmethod(wrapped_cls, *args, **kwargs):
-            return method(wrapped_cls, *args, **kwargs)
+        def proxy_classmethod(cls, *args, **kwargs):
+            return method(cls, *args, **kwargs)
 
+        self._update_wrapper(proxy_classmethod, method, interface=interface)
         return classmethod(proxy_classmethod)
 
     def _wrap_proxy_property(self, prop, interface):
@@ -441,26 +463,27 @@ class Synchronizer:
                 kwargs[attr] = self._wrap_proxy_method(func, interface, False)
         return property(**kwargs)
 
-    def _wrap_proxy_constructor(self, cls, interface):
+    def _wrap_proxy_constructor(synchronizer_self, cls, interface):
         """Returns a custom __init__ for the subclass."""
 
-        def my_init(wrapped_self, *args, **kwargs):
+        def my_init(self, *args, **kwargs):
             # Create base instance
-            args = self._translate_in(args)
-            kwargs = self._translate_in(kwargs)
+            args = synchronizer_self._translate_in(args)
+            kwargs = synchronizer_self._translate_in(kwargs)
             instance = cls(*args, **kwargs)
 
             # Register self as the wrapped one
-            interface_instances = {interface: wrapped_self}
-            instance.__dict__[self._wrapped_attr] = interface_instances
+            interface_instances = {interface: self}
+            instance.__dict__[synchronizer_self._wrapped_attr] = interface_instances
 
             # Store a reference to the original object
-            wrapped_self.__dict__[self._original_attr] = instance
+            self.__dict__[synchronizer_self._original_attr] = instance
 
-        self._update_wrapper(my_init, cls.__init__)
+        synchronizer_self._update_wrapper(my_init, cls.__init__, interface=interface)
+        setattr(my_init, synchronizer_self._original_attr, cls.__init__)
         return my_init
 
-    def _wrap_class(self, cls, interface, name):
+    def _wrap_class(self, cls, interface, name, target_module=None):
         bases = tuple(
             self._wrap(base, interface, require_already_wrapped=(name is not None))
             if base != object
@@ -504,11 +527,22 @@ class Synchronizer:
                 name = _CLASS_PREFIXES[interface] + cls.__name__
 
         new_cls = type.__new__(type, name, bases, new_dict)
-        new_cls.__module__ = cls.__module__
+        new_cls.__module__ = cls.__module__ if target_module is None else target_module
         new_cls.__doc__ = cls.__doc__
+        if "__annotations__" in cls.__dict__:
+            new_cls.__annotations__ = cls.__annotations__  # transfer annotations
+        setattr(new_cls, TARGET_INTERFACE_ATTR, interface)
+        setattr(new_cls, SYNCHRONIZER_ATTR, self)
         return new_cls
 
-    def _wrap(self, obj, interface, name=None, require_already_wrapped=False):
+    def _wrap(
+        self,
+        obj,
+        interface,
+        name=None,
+        require_already_wrapped=False,
+        target_module=None,
+    ):
         # This method works for classes, functions, and instances
         # It wraps the object, and caches the wrapped object
 
@@ -538,9 +572,15 @@ class Synchronizer:
 
         # Wrap object (different cases based on the type)
         if inspect.isclass(obj):
-            new_obj = self._wrap_class(obj, interface, name)
+            new_obj = self._wrap_class(
+                obj, interface, name, target_module=target_module
+            )
         elif inspect.isfunction(obj):
-            new_obj = self._wrap_callable(obj, interface, name)
+            new_obj = self._wrap_callable(
+                obj, interface, name, target_module=target_module
+            )
+        elif isinstance(obj, typing.TypeVar):
+            new_obj = self._wrap_type_var(obj, interface, name, target_module)
         elif self._wrapped_attr in obj.__class__.__dict__:
             new_obj = self._wrap_instance(obj, interface)
         else:
@@ -550,17 +590,41 @@ class Synchronizer:
         interfaces[interface] = new_obj
         return new_obj
 
+    def _wrap_type_var(self, obj, interface, name, target_module):
+        # TypeVar translation is needed only for type stub generation, in case the
+        # "bound" attribute refers to a translatable type.
+
+        # Creates a new identical TypeVar, marked with synchronicity's special attributes
+        # This lets type stubs "translate" the `bounds` attribute on emitted type vars
+        # if picked up from module scope and in generics using the base implementation type
+
+        # TODO(elias): Refactor - since this isn't used for live apps, move type stub generation into genstub
+        new_obj = typing.TypeVar(name, bound=obj.__bound__)  # noqa
+        new_obj.__dict__[self._original_attr] = obj
+        new_obj.__dict__[SYNCHRONIZER_ATTR] = self
+        new_obj.__dict__[TARGET_INTERFACE_ATTR] = interface
+        new_obj.__module__ = target_module
+        obj.__dict__.setdefault(self._wrapped_attr, {})
+        obj.__dict__[self._wrapped_attr][interface] = new_obj
+        return new_obj
+
     def nowrap(self, obj):
         setattr(obj, self._nowrap_attr, True)
         return obj
 
     # New interface that (almost) doesn't mutate objects
 
-    def create_blocking(self, obj, name=None):
-        return self._wrap(obj, Interface.BLOCKING, name)
+    def create_blocking(
+        self, obj, name: Optional[str] = None, target_module: Optional[str] = None
+    ):
+        wrapped = self._wrap(obj, Interface.BLOCKING, name, target_module=target_module)
+        return wrapped
 
-    def create_async(self, obj, name=None):
-        return self._wrap(obj, Interface.ASYNC, name)
+    def create_async(
+        self, obj, name: Optional[str] = None, target_module: Optional[str] = None
+    ):
+        wrapped = self._wrap(obj, Interface.ASYNC, name, target_module=target_module)
+        return wrapped
 
     def is_synchronized(self, obj):
         if inspect.isclass(obj) or inspect.isfunction(obj):
