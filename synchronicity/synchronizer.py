@@ -481,6 +481,7 @@ class Synchronizer:
             self.__dict__[synchronizer_self._original_attr] = instance
 
         synchronizer_self._update_wrapper(my_init, cls.__init__, interface=interface)
+        setattr(my_init, synchronizer_self._original_attr, cls.__init__)
         return my_init
 
     def _wrap_class(self, cls, interface, name, target_module=None):

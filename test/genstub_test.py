@@ -205,7 +205,7 @@ def test_string_annotation():
 
 
 class Forwarder:
-    def foo(self) -> "Forwardee":
+    def foo(self) -> typing.Optional["Forwardee"]:
         pass
 
 
@@ -221,7 +221,7 @@ def test_forward_ref():
     src = stub.get_source()
     assert "class Forwarder:" in src
     assert (
-        "def foo(self) -> Forwardee:" in src
+        "def foo(self) -> typing.Union[Forwardee, None]:" in src
     )  # should technically be 'Forwardee', but non-strings seem ok in pure type stubs
 
 
@@ -321,3 +321,10 @@ def test_translated_bound_type_vars():
     src = emitter.get_source()
     assert 'B = typing.TypeVar("B", bound="str")' in src
     assert "def ident(b: B) -> B" in src
+
+
+def test_ellipsis():
+    def foo() -> typing.Callable[..., typing.Any]:
+        pass
+    src = _function_source(foo)
+    assert '-> typing.Callable[..., typing.Any]' in src

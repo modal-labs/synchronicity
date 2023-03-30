@@ -47,10 +47,10 @@ class StubEmitter:
     @classmethod
     def from_module(cls, module):
         emitter = cls(module.__name__)
+        explicit_members = module.__dict__.get("__all__", [])
         for entity_name, entity in module.__dict__.items():
-            if hasattr(entity, "__module__"):
-                if entity.__module__ != module.__name__:
-                    continue  # skip imported stuff
+            if hasattr(entity, "__module__") and entity.__module__ != module.__name__ and entity_name not in explicit_members:
+                continue  # skip imported stuff, unless it's explicitly in __all__
 
             if inspect.isclass(entity):
                 emitter.add_class(entity, entity_name)
@@ -58,6 +58,9 @@ class StubEmitter:
                 emitter.add_function(entity, entity_name, 0)
             elif isinstance(entity, typing.TypeVar):
                 emitter.add_type_var(entity, entity_name)
+            elif hasattr(entity, "__class__") and getattr(entity.__class__, "__module__", None) == module.__name__:
+                # instances of stuff
+                emitter.add_variable(entity.__class__, entity_name)
 
         for varname, annotation in getattr(module, "__annotations__", {}).items():
             emitter.add_variable(annotation, varname)
@@ -80,7 +83,7 @@ class StubEmitter:
         )  # fix for generic base types
         for b in orig_bases:
             if b is not object:
-                # Note: Translation of base types are handled by synchronicity
+                # Note: Translation of base types themselves are handled by synchronicity's class wrapping
                 # TODO: handle "translation" of Generic type arguments in base classes?
                 self._register_imports(b)
                 bases.append(self._formatannotation(b))
@@ -128,12 +131,14 @@ class StubEmitter:
                     f"{body_indent}@property\n{self._get_function_source(entity.fget, entity_name, body_indent_level)}"
                 )
 
+        padding = [] if var_annotations or methods else [f"{body_indent}..."]
         self.parts.append(
             "\n".join(
                 [
                     decl,
                     *var_annotations,
                     *methods,
+                    *padding,
                 ]
             )
         )
@@ -157,7 +162,7 @@ class StubEmitter:
             for t in missing_types:
                 print(t)
         import_src = "\n".join(sorted(f"import {mod}" for mod in self.imports))
-        stubs = "\n".join(self.parts)
+        stubs = "\n\n".join(self.parts)
         return f"{import_src}\n\n{stubs}".lstrip()
 
     def _ensure_import(self, typ):
@@ -172,7 +177,7 @@ class StubEmitter:
             if not hasattr(typ, "__name__"):
                 # weird special case with Generic subclasses in the target module...
                 generic_origin = typ.__origin__
-                assert issubclass(generic_origin, Generic)
+                assert issubclass(generic_origin, Generic)  # noqa
                 name = generic_origin.__name__
             else:
                 name = typ.__name__
@@ -204,27 +209,41 @@ class StubEmitter:
             source_class_or_function, TARGET_INTERFACE_ATTR, None
         )
         synchronizer = getattr(source_class_or_function, SYNCHRONIZER_ATTR, None)
+        if synchronizer:
+            try:
+                home_module = getattr(
+                    source_class_or_function, synchronizer._original_attr
+                ).__module__
+            except:
+                print(source_class_or_function)
+                raise
+        else:
+            home_module = source_class_or_function.__module__
+
+        return self._finalize_annotation_inner(annotation, synchronizer, synchronicity_target_interface, home_module)
+
+    def _finalize_annotation_inner(self, annotation, synchronizer, synchronicity_target_interface, home_module):
         if isinstance(
             annotation, typing.ForwardRef
         ):  # TypeVars wrap their arguments as ForwardRefs (sometimes?)
             annotation = annotation.__forward_arg__
 
         if isinstance(annotation, str):
-            if synchronizer:
-                home_module = getattr(
-                    source_class_or_function, synchronizer._original_attr
-                ).__module__
-            else:
-                home_module = source_class_or_function.__module__
             mod = importlib.import_module(home_module)
-            annotation = eval(annotation, mod.__dict__)
+            try:
+                annotation = eval(annotation, mod.__dict__)
+            except NameError:
+                # attempt to import
+                guessed_module, name = annotation.rsplit(".", 1)
+                exec(f"import {guessed_module}", mod.__dict__)  # import first
+                annotation = eval(annotation, mod.__dict__)
 
-        if synchronicity_target_interface is not None:
-            annotation = self._map_type_annotation(
-                annotation,
-                synchronizer=synchronizer,
-                interface=synchronicity_target_interface,
-            )
+        annotation = self._map_type_annotation(
+            annotation,
+            synchronizer=synchronizer,
+            interface=synchronicity_target_interface,
+            home_module=home_module,
+        )
 
         self._register_imports(annotation)
         return annotation
@@ -291,7 +310,11 @@ class StubEmitter:
         )  # inspect.Signature isn't generally using the base_module arg afaik
 
         origin = getattr(annotation, "__origin__", None)
+        assert not isinstance(annotation, typing.ForwardRef)  # Forward refs should already have been evaluated!
+
         if origin is None:
+            if annotation == Ellipsis:
+                return "..."
             if isinstance(annotation, type) or isinstance(annotation, TypeVar):
                 if annotation == None.__class__:  # check for "NoneType"
                     return "None"
@@ -309,10 +332,12 @@ class StubEmitter:
 
         formatted_annotation = str(
             annotation.copy_with(
-                tuple(ReprObj(self._formatannotation(arg)) for arg in args)
+                # ellipsis (...) needs to be passed as is, or it will be reformatted
+                tuple(ReprObj(self._formatannotation(arg)) if arg != Ellipsis else Ellipsis for arg in args)
             )
         )
         # this is a bit ugly, but gets rid of incorrect module qualification of Generic subclasses:
+        # TODO: find a better way...
         if formatted_annotation.startswith(self.target_module + "."):
             return formatted_annotation.split(self.target_module + ".", 1)[1]
         return formatted_annotation
@@ -337,41 +362,43 @@ class StubEmitter:
             ]
         )
 
-    def _map_type_annotation(self, type_annotation, synchronizer, interface: Interface):
+    def _map_type_annotation(self, type_annotation, synchronizer, interface: Interface, home_module=None):
         # recursively map a nested type annotation to match the output interface
         origin = getattr(type_annotation, "__origin__", None)
         if origin is None:
             # scalar - if type is synchronicity origin type, use the blocking/async version instead
-            if hasattr(type_annotation, synchronizer._wrapped_attr):
+            if synchronizer and hasattr(type_annotation, synchronizer._wrapped_attr):
                 return getattr(type_annotation, synchronizer._wrapped_attr)[interface]
             return type_annotation
 
         args = getattr(type_annotation, "__args__", [])
         mapped_args = tuple(
-            self._map_type_annotation(arg, synchronizer, interface) for arg in args
+            self._finalize_annotation_inner(
+                arg,
+                synchronizer,
+                interface,
+                home_module
+            ) for arg in args
         )
-        if interface == Interface.ASYNC:
-            # async interface should use same generic classes as original
-            return type_annotation.copy_with(mapped_args)
+        if interface == Interface.BLOCKING:
+            # blocking interface special generic translations:
+            if origin == collections.abc.AsyncGenerator:
+                return typing.Generator[mapped_args + (None,)]
 
-        # blocking interface special generic translations:
-        if origin == collections.abc.AsyncGenerator:
-            return typing.Generator[mapped_args + (None,)]
+            if origin == contextlib.AbstractAsyncContextManager:
+                return typing.ContextManager[mapped_args]
 
-        if origin == contextlib.AbstractAsyncContextManager:
-            return typing.ContextManager[mapped_args]
+            if origin == collections.abc.AsyncIterable:
+                return typing.Iterable[mapped_args]
 
-        if origin == collections.abc.AsyncIterable:
-            return typing.Iterable[mapped_args]
+            if origin == collections.abc.AsyncIterator:
+                return typing.Iterator[mapped_args]
 
-        if origin == collections.abc.AsyncIterator:
-            return typing.Iterator[mapped_args]
+            if origin == collections.abc.Awaitable:
+                return mapped_args[0]
 
-        if origin == collections.abc.Awaitable:
-            return mapped_args[0]
-
-        if origin == collections.abc.Coroutine:
-            return mapped_args[2]
+            if origin == collections.abc.Coroutine:
+                return mapped_args[2]
 
         return type_annotation.copy_with(mapped_args)
 
