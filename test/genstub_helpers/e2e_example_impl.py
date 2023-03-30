@@ -22,8 +22,8 @@ class _Foo:
         pass
 
 
-
 _T = TypeVar("_T", bound=_Foo)
+
 
 def _listify(t: _T) -> List[_T]:
     return t

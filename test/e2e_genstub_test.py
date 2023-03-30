@@ -58,10 +58,22 @@ def test_mypy_assertions(interface_file):
 @pytest.mark.parametrize(
     "failing_assertion,error_matches",
     [
-        ("e2e_example_export.BlockingFoo(1)", 'incompatible type "int"; expected "str"'),
-        ("blocking_foo.some_static()",  'Missing positional argument "arg" in call to "some_static"'), # missing argument
-        ("blocking_foo.some_static(True)", 'Argument 1 to "some_static" of "BlockingFoo" has incompatible type "bool"'), # bool instead of str
-        ("e2e_example_export.listify(123)", 'Value of type variable "_T_Blocking" of "listify" cannot be "int"')  #  int does not satisfy the type bound of the typevar (!)
+        (
+            "e2e_example_export.BlockingFoo(1)",
+            'incompatible type "int"; expected "str"',
+        ),
+        (
+            "blocking_foo.some_static()",
+            'Missing positional argument "arg" in call to "some_static"',
+        ),  # missing argument
+        (
+            "blocking_foo.some_static(True)",
+            'Argument 1 to "some_static" of "BlockingFoo" has incompatible type "bool"',
+        ),  # bool instead of str
+        (
+            "e2e_example_export.listify(123)",
+            'Value of type variable "_T_Blocking" of "listify" cannot be "int"',
+        ),  #  int does not satisfy the type bound of the typevar (!)
     ],
 )
 def test_failing_assertion(interface_file, failing_assertion, error_matches):

@@ -260,9 +260,7 @@ def test_synchronicity_type_translation():
 def test_synchronicity_self_ref():
     src = _class_source(Foo)
     assert "@staticmethod" in src
-    assert (
-        "    def clone(foo: Foo) -> Foo" in src
-    )
+    assert "    def clone(foo: Foo) -> Foo" in src
 
 
 class _WithClassMethod:
@@ -288,7 +286,11 @@ T = typing.TypeVar("T")
 class MyGeneric(typing.Generic[T]):
     pass
 
-BlockingGeneric = synchronizer.create_blocking(typing.Generic, "BlockingGeneric", __name__)
+
+BlockingGeneric = synchronizer.create_blocking(
+    typing.Generic, "BlockingGeneric", __name__
+)
+
 
 def test_custom_generic():
     # TODO: build out this test a bit, as it currently creates an invalid stub (missing base types)
@@ -301,12 +303,17 @@ def test_custom_generic():
 
 _B = typing.TypeVar("_B", bound="str")
 
-B = synchronizer.create_blocking(_B, "B", __name__)  # only strictly needed if the bound is a synchronicity implementation type
+B = synchronizer.create_blocking(
+    _B, "B", __name__
+)  # only strictly needed if the bound is a synchronicity implementation type
+
 
 def _ident(b: _B) -> _B:
     return b
 
+
 ident = synchronizer.create_blocking(_ident, "ident", __name__)
+
 
 def test_translated_bound_type_vars():
     emitter = StubEmitter(__name__)

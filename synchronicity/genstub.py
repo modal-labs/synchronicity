@@ -104,7 +104,9 @@ class StubEmitter:
                 f"{body_indent}{self._get_var_annotation(varname, annotation)}"
             )
         if var_annotations:
-            var_annotations.append("")  # formatting ocd - add an extra newline after var annotations
+            var_annotations.append(
+                ""
+            )  # formatting ocd - add an extra newline after var annotations
 
         for entity_name, entity in cls.__dict__.items():
             if inspect.isfunction(entity):
@@ -203,7 +205,9 @@ class StubEmitter:
             source_class_or_function, TARGET_INTERFACE_ATTR, None
         )
         synchronizer = getattr(source_class_or_function, SYNCHRONIZER_ATTR, None)
-        if isinstance(annotation, typing.ForwardRef):  # TypeVars wrap their arguments as ForwardRefs (sometimes?)
+        if isinstance(
+            annotation, typing.ForwardRef
+        ):  # TypeVars wrap their arguments as ForwardRefs (sometimes?)
             annotation = annotation.__forward_arg__
 
         if isinstance(annotation, str):
