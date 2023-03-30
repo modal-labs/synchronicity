@@ -5,7 +5,6 @@ import importlib
 import inspect
 import sys
 import typing
-from inspect import _empty
 from pathlib import Path
 from typing import TypeVar, Generic
 from unittest import mock

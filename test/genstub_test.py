@@ -2,7 +2,6 @@ import functools
 import typing
 
 import synchronicity
-from synchronicity import Synchronizer
 from synchronicity.genstub import StubEmitter
 
 

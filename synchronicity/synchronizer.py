@@ -1,18 +1,16 @@
 import asyncio
 import atexit
-import collections.abc
 import contextlib
 import functools
 import inspect
-import threading
 import platform
+import threading
 import typing
 import warnings
-from collections import defaultdict
+from typing import Optional
 
-from typing import Optional, Dict, Any
-from .callback import Callback
 from .async_wrap import type_compat_wraps
+from .callback import Callback
 from .exceptions import UserCodeException, unwrap_coro_exception, wrap_coro_exception
 from .interface import Interface
 
