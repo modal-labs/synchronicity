@@ -184,10 +184,7 @@ class Synchronizer:
     def _translate_scalar_in(self, obj):
         # If it's an external object, translate it to the internal type
         if hasattr(obj, "__dict__"):
-            if inspect.isclass(obj):  # TODO: functions?
-                return obj.__dict__.get(self._original_attr, obj)
-            else:
-                return obj.__dict__.get(self._original_attr, obj)
+            return obj.__dict__.get(self._original_attr, obj)
         else:
             return obj
 
@@ -431,9 +428,9 @@ class Synchronizer:
 
         @wraps_by_interface(interface, method)
         def proxy_method(self, *args, **kwargs):
-            instance = self.__dict__[synchronizer_self._original_attr]
+            orig_instance = self.__dict__.get(synchronizer_self._original_attr, self)
             try:
-                return method(instance, *args, **kwargs)
+                return method(orig_instance, *args, **kwargs)
             except UserCodeException as uc_exc:
                 raise uc_exc.exc from None
 
@@ -466,6 +463,7 @@ class Synchronizer:
     def _wrap_proxy_constructor(synchronizer_self, cls, interface):
         """Returns a custom __init__ for the subclass."""
 
+        @functools.wraps(cls.__init__)
         def my_init(self, *args, **kwargs):
             # Create base instance
             args = synchronizer_self._translate_in(args)
@@ -491,8 +489,7 @@ class Synchronizer:
             for base in cls.__bases__
         )
         new_dict = {self._original_attr: cls}
-        if cls.__dict__.get("__init__"):
-            new_dict["__init__"] = self._wrap_proxy_constructor(cls, interface)
+        new_dict["__init__"] = self._wrap_proxy_constructor(cls, interface)
         for k, v in cls.__dict__.items():
             if k in _BUILTIN_ASYNC_METHODS:
                 k_sync = _BUILTIN_ASYNC_METHODS[k]
