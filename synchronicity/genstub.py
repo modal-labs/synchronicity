@@ -48,7 +48,7 @@ class StubEmitter:
     def from_module(cls, module):
         emitter = cls(module.__name__)
         explicit_members = module.__dict__.get("__all__", [])
-        for entity_name, entity in module.__dict__.items():
+        for entity_name, entity in module.__dict__.copy().items():
             if (
                 hasattr(entity, "__module__")
                 and entity.__module__ != module.__name__
@@ -180,7 +180,7 @@ class StubEmitter:
         if module not in (self.target_module, "builtins"):
             self.imports.add(module)
 
-        if module in self.target_module:
+        if module == self.target_module:
             if not hasattr(typ, "__name__"):
                 # weird special case with Generic subclasses in the target module...
                 generic_origin = typ.__origin__
@@ -308,7 +308,7 @@ class StubEmitter:
         self._register_imports(annotation)
         return f"{name}: {self._formatannotation(annotation, None)}"
 
-    def _formatannotation(self, annotation, base_module=None):
+    def _formatannotation(self, annotation, base_module=None) -> str:
         """modified version of `inspect.formatannotations`
         * Uses verbatim `None` instead of `NoneType` for None-arguments in generic types
         * Doesn't omit `typing.`-module from qualified imports in type names
