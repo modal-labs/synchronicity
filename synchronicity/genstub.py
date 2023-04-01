@@ -82,18 +82,79 @@ class StubEmitter:
         # adds function source code to module
         self.parts.append(self._get_function_source(func, name, indentation_level))
 
+    def _get_finalized_class_bases(self, cls):
+        # accounting for potential generics with __orig_bases__
+        # note that this has to unwrap the class first in case of synchronicity wrappers,
+        # since synchronicity classes don't preserve/translate __orig_bases__ due to
+        # __init_subclass__ triggering in odd ways for wrapper classes (not sure if bug or feature)
+
+        if TARGET_INTERFACE_ATTR in cls.__dict__:
+            # get base classes from origin class instead, to preserve potential Generic base classes which are otherwise stripped by synchronicitys wrappers
+            synchronizer = cls.__dict__[SYNCHRONIZER_ATTR]
+            impl_cls = cls.__dict__[synchronizer._original_attr]
+            target_interface = cls.__dict__[TARGET_INTERFACE_ATTR]
+            impl_bases = self._get_finalized_class_bases(impl_cls)
+
+            retranslated_bases = []
+            for impl_base in impl_bases:
+                # retranslated_bases.append(self._finalize_annotation_inner(impl_base, synchronizer, target_interface, cls.__module__))
+                generic_origin = impl_base.__dict__.get("__origin__")
+                if generic_origin:
+                    impl_args = impl_base.__dict__.get("__args__", ())
+                    translated_origin = synchronizer._translate_out(
+                        generic_origin, target_interface
+                    )
+                    finalized_args = [
+                        self._finalize_annotation_inner(
+                            arg, synchronizer, target_interface, impl_cls.__module__
+                        )
+                        for arg in impl_args
+                    ]
+                    str_args = ", ".join(
+                        self._formatannotation(arg) for arg in finalized_args
+                    )
+                    retranslated_bases.append(
+                        ReprObj(
+                            f"{self._formatannotation(translated_origin)}[{str_args}]"
+                        )
+                    )
+                else:
+                    # non generic base class, just translate it back out
+                    retranslated_bases.append(self._finalize_annotation(impl_base, cls))
+
+            return tuple(retranslated_bases)
+
+        # if "__orig_bases__" in impl_cls.__dict__:
+        #     # use base class generics
+        #     for impl_orig_base, real_base in zip(impl_cls.__dict__["__orig_bases__"], cls.__bases__):
+        #         # translate base class orig_bases to out interface
+        #         generic_origin = impl_orig_base.__dict__.get("__origin__")
+        #         if generic_origin:
+        #             translated_origin = synchronizer._translate_out(generic_origin, target_interface)
+        #             translated_args = tuple(synchronizer._translate_out(arg, target_interface) for arg in impl_orig_base.__dict__["__args__"])
+        #             translated_generic = translated_origin[translated_args]
+        #             finalized_generic = self._finalize_annotation_inner(translated_generic, synchronizer, target_interface, impl_cls.__module__)
+        #             yield finalized_generic
+        #         else:
+        #             # non generic base class, use the base class synchronicity already provided in its translation
+        #             if real_base is not object:
+        #                 self._register_imports(real_base)
+        #                 yield real_base
+        #     return
+
+        # the case that the annotation is a Generic base class, but *not* a synchronicity wrapped one
+        bases = []
+        for b in cls.__dict__.get("__orig_bases__", cls.__bases__):
+            bases.append(self._finalize_annotation(b, cls))
+        return bases
+
     def add_class(self, cls, name):
         self.global_types.add(name)
         bases = []
-        orig_bases = (
-            cls.__orig_bases__ if hasattr(cls, "__orig_bases__") else cls.__bases__
-        )  # fix for generic base types
-        for b in orig_bases:
+        for b in self._get_finalized_class_bases(cls):
             if b is not object:
-                # Note: Translation of base types themselves are handled by synchronicity's class wrapping
-                # TODO: handle "translation" of Generic type arguments in base classes?
-                self._register_imports(b)
                 bases.append(self._formatannotation(b))
+
         bases_str = "" if not bases else "(" + ", ".join(bases) + ")"
         decl = f"class {name}{bases_str}:"
         var_annotations = []

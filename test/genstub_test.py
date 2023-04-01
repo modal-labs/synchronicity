@@ -289,6 +289,11 @@ class MyGeneric(typing.Generic[T]):
 BlockingGeneric = synchronizer.create_blocking(
     typing.Generic, "BlockingGeneric", __name__
 )
+BlockingMyGeneric = synchronizer.create_blocking(
+    MyGeneric,
+    "BlockingMyGeneric",
+    __name__,
+)
 
 
 def test_custom_generic():
@@ -298,6 +303,27 @@ def test_custom_generic():
 
     src = _class_source(Specific)
     assert "class Specific(MyGeneric[str]):" in src
+
+
+def test_synchronicity_generic_subclass():
+    class Specific(MyGeneric[str]):
+        pass
+
+    assert Specific.__bases__ == (MyGeneric,)
+    assert Specific.__orig_bases__ == (MyGeneric[str],)
+
+    BlockingSpecific = synchronizer.create_blocking(
+        Specific, "BlockingSpecific", __name__
+    )
+    src = _class_source(BlockingSpecific)
+    assert "class BlockingSpecific(BlockingMyGeneric[str]):" in src
+
+    async def foo_impl(bar: MyGeneric[str]):
+        pass
+
+    foo = synchronizer.create_blocking(foo_impl, "foo")
+    src = _function_source(foo)
+    assert "def foo(bar: MyGeneric[str]):" in src
 
 
 _B = typing.TypeVar("_B", bound="str")

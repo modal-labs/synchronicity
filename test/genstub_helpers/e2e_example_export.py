@@ -1,3 +1,5 @@
+# This file creates wrapped entities for async implementation in e2e_example_impl.py
+# This file is then used as input for generating type stubs
 from typing import Optional
 
 import synchronicity
