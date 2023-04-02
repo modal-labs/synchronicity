@@ -193,7 +193,7 @@ class Synchronizer:
 
     def _translate_scalar_out(self, obj, interface):
         # If it's an internal object, translate it to the external interface
-        if inspect.isclass(obj):  # TODO: functions?
+        if inspect.isclass(obj) or isinstance(obj, typing.TypeVar):  # TODO: functions?
             cls_dct = obj.__dict__
             if self._wrapped_attr in cls_dct:
                 return cls_dct[self._wrapped_attr][interface]

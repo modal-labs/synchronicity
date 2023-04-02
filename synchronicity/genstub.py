@@ -12,6 +12,7 @@ from unittest import mock
 import sigtools.specifiers
 from sigtools._signatures import EmptyAnnotation, UpgradedAnnotation
 
+import synchronicity
 from synchronicity import Interface
 from synchronicity.synchronizer import TARGET_INTERFACE_ATTR, SYNCHRONIZER_ATTR
 
@@ -105,7 +106,7 @@ class StubEmitter:
                         generic_origin, target_interface
                     )
                     finalized_args = [
-                        self._finalize_annotation_inner(
+                        self._finalize_annotation(
                             arg, synchronizer, target_interface, impl_cls.__module__
                         )
                         for arg in impl_args
@@ -120,7 +121,7 @@ class StubEmitter:
                     )
                 else:
                     # non generic base class, just translate it back out
-                    retranslated_bases.append(self._finalize_annotation(impl_base, cls))
+                    retranslated_bases.append(self._finalize_annotation_for_global(impl_base, cls))
 
             return tuple(retranslated_bases)
 
@@ -145,7 +146,7 @@ class StubEmitter:
         # the case that the annotation is a Generic base class, but *not* a synchronicity wrapped one
         bases = []
         for b in cls.__dict__.get("__orig_bases__", cls.__bases__):
-            bases.append(self._finalize_annotation(b, cls))
+            bases.append(self._finalize_annotation_for_global(b, cls))
         return bases
 
     def add_class(self, cls, name):
@@ -162,7 +163,7 @@ class StubEmitter:
 
         annotations = cls.__dict__.get("__annotations__", {})
         annotations = {
-            k: self._finalize_annotation(annotation, cls)
+            k: self._finalize_annotation_for_global(annotation, cls)
             for k, annotation in annotations.items()
         }
 
@@ -215,7 +216,7 @@ class StubEmitter:
         self.imports.add("typing")
         args = [f'"{name}"']
         if type_var.__bound__:
-            translated_bound = self._finalize_annotation(type_var.__bound__, type_var)
+            translated_bound = self._finalize_annotation_for_global(type_var.__bound__, type_var)
             str_annotation = self._formatannotation(translated_bound)
             args.append(f'bound="{str_annotation}"')
         self.global_types.add(name)
@@ -264,15 +265,9 @@ class StubEmitter:
         for arg in getattr(type_annotation, "__args__", ()):
             self._register_imports(arg)
 
-    def _finalize_annotation(self, annotation, source_class_or_function):
-        # Evalutes string annotations and translates synchronicity types to the correct interface
-        # simple version of Python 3.10 inspect.get_annotations() functionality
-
-        # Translate signature annotations:
-        # translate type annotations on all synchronicity functions
-        # it's done here since there may be postponed evaluated annotations (forward/self refs) that
-        # can't be evaluated when the functions are wrapped by the synchronizer
-
+    def _finalize_annotation_for_global(self, annotation, source_class_or_function):
+        # convenience wrapper for _finalize_annotation_inner
+        # infers synchronizer, target and home_module from a top level entity (class, function) containing the annotation
         synchronicity_target_interface = getattr(
             source_class_or_function, TARGET_INTERFACE_ATTR, None
         )
@@ -288,13 +283,19 @@ class StubEmitter:
         else:
             home_module = source_class_or_function.__module__
 
-        return self._finalize_annotation_inner(
+        return self._finalize_annotation(
             annotation, synchronizer, synchronicity_target_interface, home_module
         )
 
-    def _finalize_annotation_inner(
-        self, annotation, synchronizer, synchronicity_target_interface, home_module
+    def _finalize_annotation(
+        self, annotation, synchronizer: typing.Optional[synchronicity.Synchronizer], synchronicity_target_interface: typing.Optional[Interface], home_module: str
     ):
+        """
+        Takes an annotation (type, generic, typevar, forward ref) and applies recursively (in case of generics):
+        * eval for string annotations (importing `home_module` to be used as namespace)
+        * re-mapping of the annotation to the correct synchronicity target (using synchronizer and synchronicity_target_interface)
+        * registers imports for all referenced modules
+        """
         if isinstance(
             annotation, typing.ForwardRef
         ):  # TypeVars wrap their arguments as ForwardRefs (sometimes?)
@@ -320,6 +321,45 @@ class StubEmitter:
         self._register_imports(annotation)
         return annotation
 
+    def _map_type_annotation(
+        self, type_annotation, synchronizer, interface: Interface, home_module=None
+    ):
+        # recursively map a nested type annotation to match the output interface
+        origin = getattr(type_annotation, "__origin__", None)
+        if origin is None:
+            # scalar - if type is synchronicity origin type, use the blocking/async version instead
+            if synchronizer:
+                return synchronizer._translate_out(type_annotation, interface)
+            return type_annotation
+
+        args = getattr(type_annotation, "__args__", [])
+        mapped_args = tuple(
+            self._finalize_annotation(arg, synchronizer, interface, home_module)
+            for arg in args
+        )
+        if interface == Interface.BLOCKING:
+            # blocking interface special generic translations:
+            if origin == collections.abc.AsyncGenerator:
+                return typing.Generator[mapped_args + (None,)]
+
+            if origin == contextlib.AbstractAsyncContextManager:
+                return typing.ContextManager[mapped_args]
+
+            if origin == collections.abc.AsyncIterable:
+                return typing.Iterable[mapped_args]
+
+            if origin == collections.abc.AsyncIterator:
+                return typing.Iterator[mapped_args]
+
+            if origin == collections.abc.Awaitable:
+                return mapped_args[0]
+
+            if origin == collections.abc.Coroutine:
+                return mapped_args[2]
+
+        return type_annotation.copy_with(mapped_args)
+
+
     def _custom_signature(self, func) -> str:
         """
         We use this instead o str(inspect.Signature()) due to a few issues:
@@ -334,7 +374,7 @@ class StubEmitter:
 
         if sig.upgraded_return_annotation is not EmptyAnnotation:
             return_annotation = sig.upgraded_return_annotation.source_value()
-            return_annotation = self._finalize_annotation(return_annotation, func)
+            return_annotation = self._finalize_annotation_for_global(return_annotation, func)
             sig = sig.replace(
                 return_annotation=return_annotation,
                 upgraded_return_annotation=UpgradedAnnotation.upgrade(
@@ -346,7 +386,7 @@ class StubEmitter:
         for param in sig.parameters.values():
             if param.upgraded_annotation is not EmptyAnnotation:
                 raw_annotation = param.upgraded_annotation.source_value()
-                raw_annotation = self._finalize_annotation(raw_annotation, func)
+                raw_annotation = self._finalize_annotation_for_global(raw_annotation, func)
                 new_parameters.append(
                     param.replace(
                         annotation=raw_annotation,
@@ -442,44 +482,6 @@ class StubEmitter:
                 "",
             ]
         )
-
-    def _map_type_annotation(
-        self, type_annotation, synchronizer, interface: Interface, home_module=None
-    ):
-        # recursively map a nested type annotation to match the output interface
-        origin = getattr(type_annotation, "__origin__", None)
-        if origin is None:
-            # scalar - if type is synchronicity origin type, use the blocking/async version instead
-            if synchronizer and hasattr(type_annotation, synchronizer._wrapped_attr):
-                return getattr(type_annotation, synchronizer._wrapped_attr)[interface]
-            return type_annotation
-
-        args = getattr(type_annotation, "__args__", [])
-        mapped_args = tuple(
-            self._finalize_annotation_inner(arg, synchronizer, interface, home_module)
-            for arg in args
-        )
-        if interface == Interface.BLOCKING:
-            # blocking interface special generic translations:
-            if origin == collections.abc.AsyncGenerator:
-                return typing.Generator[mapped_args + (None,)]
-
-            if origin == contextlib.AbstractAsyncContextManager:
-                return typing.ContextManager[mapped_args]
-
-            if origin == collections.abc.AsyncIterable:
-                return typing.Iterable[mapped_args]
-
-            if origin == collections.abc.AsyncIterator:
-                return typing.Iterator[mapped_args]
-
-            if origin == collections.abc.Awaitable:
-                return mapped_args[0]
-
-            if origin == collections.abc.Coroutine:
-                return mapped_args[2]
-
-        return type_annotation.copy_with(mapped_args)
 
 
 def write_stub(module_path: str):
