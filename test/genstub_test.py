@@ -28,17 +28,6 @@ async def async_func() -> str:
     return "hello"
 
 
-async def async_gen() -> typing.AsyncGenerator[int, None]:
-    yield 0
-
-
-def weird_async_gen() -> typing.AsyncGenerator[int, None]:
-    # non-async function that returns an async generator
-    async def gen():
-        yield 0
-
-    return gen()
-
 
 def _function_source(func, target_module=__name__):
     stub_emitter = StubEmitter(target_module)
@@ -78,14 +67,33 @@ def test_async_func():
 
 
 def test_async_gen():
+    async def async_gen() -> typing.AsyncGenerator[int, None]:
+        yield 0
+
     assert (
         _function_source(async_gen)
-        == "import typing\n\nasync def async_gen() -> typing.AsyncGenerator[int, None]:\n    ...\n"
+        == "import typing\n\ndef async_gen() -> typing.AsyncGenerator[int, None]:\n    ...\n"
     )
+
+    def weird_async_gen() -> typing.AsyncGenerator[int, None]:
+        # non-async function that returns an async generator
+        async def gen():
+            yield 0
+
+        return gen()
+
     assert (
         _function_source(weird_async_gen)
         == "import typing\n\ndef weird_async_gen() -> typing.AsyncGenerator[int, None]:\n    ...\n"
     )
+
+    async def it() -> typing.AsyncIterator[str]:  # this is the/a correct annotation
+        yield "hello"
+
+    src = _function_source(it)
+    assert "yield" not in src
+    assert "async" not in src  # since the yield keyword is removed, the async prefix needs to be removed as well (while keeping the remaining annotation)
+    assert "def it() -> typing.AsyncIterator[str]:" in src
 
 
 class MixedClass:
@@ -323,7 +331,7 @@ def test_synchronicity_generic_subclass():
 
     foo = synchronizer.create_blocking(foo_impl, "foo")
     src = _function_source(foo)
-    assert "def foo(bar: MyGeneric[str]):" in src
+    assert "def foo(bar: BlockingMyGeneric[str]):" in src
 
 
 _B = typing.TypeVar("_B", bound="str")

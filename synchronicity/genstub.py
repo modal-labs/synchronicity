@@ -426,7 +426,9 @@ class StubEmitter:
 
     def _get_function_source(self, func, name, indentation_level=0) -> str:
         async_prefix = ""
-        if inspect.iscoroutinefunction(func) or inspect.isasyncgenfunction(func):
+        if inspect.iscoroutinefunction(func):
+            # note: async prefix should not be used for annotated abstract/stub *async generators*
+            # since they contain no yield keyword, and would otherwise indicate an awaitable that returns an async generator to static type checkers
             async_prefix = "async "
 
         signature_indent = self._indent(indentation_level)
