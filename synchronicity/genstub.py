@@ -83,7 +83,7 @@ class StubEmitter:
         # adds function source code to module
         self.parts.append(self._get_function_source(func, name, indentation_level))
 
-    def _get_finalized_class_bases(self, cls):
+    def _get_translated_class_bases(self, cls):
         # accounting for potential generics with __orig_bases__
         # note that this has to unwrap the class first in case of synchronicity wrappers,
         # since synchronicity classes don't preserve/translate __orig_bases__ due to
@@ -94,7 +94,7 @@ class StubEmitter:
             synchronizer = cls.__dict__[SYNCHRONIZER_ATTR]
             impl_cls = cls.__dict__[synchronizer._original_attr]
             target_interface = cls.__dict__[TARGET_INTERFACE_ATTR]
-            impl_bases = self._get_finalized_class_bases(impl_cls)
+            impl_bases = self._get_translated_class_bases(impl_cls)
 
             retranslated_bases = []
             for impl_base in impl_bases:
@@ -106,7 +106,7 @@ class StubEmitter:
                         generic_origin, target_interface
                     )
                     finalized_args = [
-                        self._finalize_annotation(
+                        self._translate_annotation(
                             arg, synchronizer, target_interface, impl_cls.__module__
                         )
                         for arg in impl_args
@@ -152,7 +152,7 @@ class StubEmitter:
     def add_class(self, cls, name):
         self.global_types.add(name)
         bases = []
-        for b in self._get_finalized_class_bases(cls):
+        for b in self._get_translated_class_bases(cls):
             if b is not object:
                 bases.append(self._formatannotation(b))
 
@@ -283,11 +283,11 @@ class StubEmitter:
         else:
             home_module = source_class_or_function.__module__
 
-        return self._finalize_annotation(
+        return self._translate_annotation(
             annotation, synchronizer, synchronicity_target_interface, home_module
         )
 
-    def _finalize_annotation(
+    def _translate_annotation(
         self, annotation, synchronizer: typing.Optional[synchronicity.Synchronizer], synchronicity_target_interface: typing.Optional[Interface], home_module: str
     ):
         """
@@ -311,7 +311,7 @@ class StubEmitter:
                 exec(f"import {guessed_module}", mod.__dict__)  # import first
                 annotation = eval(annotation, mod.__dict__)
 
-        annotation = self._map_type_annotation(
+        annotation = self._translate_annotation_map_types(
             annotation,
             synchronizer=synchronizer,
             interface=synchronicity_target_interface,
@@ -321,7 +321,7 @@ class StubEmitter:
         self._register_imports(annotation)
         return annotation
 
-    def _map_type_annotation(
+    def _translate_annotation_map_types(
         self, type_annotation, synchronizer, interface: Interface, home_module=None
     ):
         # recursively map a nested type annotation to match the output interface
@@ -334,7 +334,7 @@ class StubEmitter:
 
         args = getattr(type_annotation, "__args__", [])
         mapped_args = tuple(
-            self._finalize_annotation(arg, synchronizer, interface, home_module)
+            self._translate_annotation(arg, synchronizer, interface, home_module)
             for arg in args
         )
         if interface == Interface.BLOCKING:
@@ -356,6 +356,17 @@ class StubEmitter:
 
             if origin == collections.abc.Coroutine:
                 return mapped_args[2]
+
+        translated_origin = self._translate_annotation(origin, synchronizer, interface, home_module)
+        if translated_origin is not origin:
+            # special case for synchronicity-translated generics, due to synchronicitys wrappers not being valid generics
+            # kind of ugly as it returns a string representation rather than a type...
+            str_args = ", ".join(
+                self._formatannotation(arg) for arg in mapped_args
+            )
+            return ReprObj(
+                f"{self._formatannotation(translated_origin)}[{str_args}]"
+            )
 
         return type_annotation.copy_with(mapped_args)
 
