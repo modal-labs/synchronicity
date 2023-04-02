@@ -320,11 +320,11 @@ def test_synchronicity_generic_subclass():
     assert Specific.__bases__ == (MyGeneric,)
     assert Specific.__orig_bases__ == (MyGeneric[str],)
 
-    # BlockingSpecific = synchronizer.create_blocking(
-    #     Specific, "BlockingSpecific", __name__
-    # )
-    # src = _class_source(BlockingSpecific)
-    # assert "class BlockingSpecific(BlockingMyGeneric[str]):" in src
+    BlockingSpecific = synchronizer.create_blocking(
+        Specific, "BlockingSpecific", __name__
+    )
+    src = _class_source(BlockingSpecific)
+    assert "class BlockingSpecific(BlockingMyGeneric[str]):" in src
 
     async def foo_impl(bar: MyGeneric[str]):
         pass

@@ -84,10 +84,10 @@ class StubEmitter:
         self.parts.append(self._get_function_source(func, name, indentation_level))
 
     def _get_translated_class_bases(self, cls):
-        # accounting for potential generics with __orig_bases__
+        # get __orig_bases__ (__bases__ with potential generic args) for any class
         # note that this has to unwrap the class first in case of synchronicity wrappers,
-        # since synchronicity classes don't preserve/translate __orig_bases__ due to
-        # __init_subclass__ triggering in odd ways for wrapper classes (not sure if bug or feature)
+        # since synchronicity classes don't preserve/translate __orig_bases__.
+        # (This is due to __init_subclass__ triggering in odd ways for wrapper classes)
 
         if TARGET_INTERFACE_ATTR in cls.__dict__:
             # get base classes from origin class instead, to preserve potential Generic base classes which are otherwise stripped by synchronicitys wrappers
@@ -98,55 +98,14 @@ class StubEmitter:
 
             retranslated_bases = []
             for impl_base in impl_bases:
-                # retranslated_bases.append(self._finalize_annotation_inner(impl_base, synchronizer, target_interface, cls.__module__))
-                generic_origin = impl_base.__dict__.get("__origin__")
-                if generic_origin:
-                    impl_args = impl_base.__dict__.get("__args__", ())
-                    translated_origin = synchronizer._translate_out(
-                        generic_origin, target_interface
-                    )
-                    finalized_args = [
-                        self._translate_annotation(
-                            arg, synchronizer, target_interface, impl_cls.__module__
-                        )
-                        for arg in impl_args
-                    ]
-                    str_args = ", ".join(
-                        self._formatannotation(arg) for arg in finalized_args
-                    )
-                    retranslated_bases.append(
-                        ReprObj(
-                            f"{self._formatannotation(translated_origin)}[{str_args}]"
-                        )
-                    )
-                else:
-                    # non generic base class, just translate it back out
-                    retranslated_bases.append(self._finalize_annotation_for_global(impl_base, cls))
+                retranslated_bases.append(self._translate_annotation(impl_base, synchronizer, target_interface, cls.__module__))
 
             return tuple(retranslated_bases)
-
-        # if "__orig_bases__" in impl_cls.__dict__:
-        #     # use base class generics
-        #     for impl_orig_base, real_base in zip(impl_cls.__dict__["__orig_bases__"], cls.__bases__):
-        #         # translate base class orig_bases to out interface
-        #         generic_origin = impl_orig_base.__dict__.get("__origin__")
-        #         if generic_origin:
-        #             translated_origin = synchronizer._translate_out(generic_origin, target_interface)
-        #             translated_args = tuple(synchronizer._translate_out(arg, target_interface) for arg in impl_orig_base.__dict__["__args__"])
-        #             translated_generic = translated_origin[translated_args]
-        #             finalized_generic = self._finalize_annotation_inner(translated_generic, synchronizer, target_interface, impl_cls.__module__)
-        #             yield finalized_generic
-        #         else:
-        #             # non generic base class, use the base class synchronicity already provided in its translation
-        #             if real_base is not object:
-        #                 self._register_imports(real_base)
-        #                 yield real_base
-        #     return
 
         # the case that the annotation is a Generic base class, but *not* a synchronicity wrapped one
         bases = []
         for b in cls.__dict__.get("__orig_bases__", cls.__bases__):
-            bases.append(self._finalize_annotation_for_global(b, cls))
+            bases.append(self._translate_global_annotation(b, cls))
         return bases
 
     def add_class(self, cls, name):
@@ -163,7 +122,7 @@ class StubEmitter:
 
         annotations = cls.__dict__.get("__annotations__", {})
         annotations = {
-            k: self._finalize_annotation_for_global(annotation, cls)
+            k: self._translate_global_annotation(annotation, cls)
             for k, annotation in annotations.items()
         }
 
@@ -216,7 +175,7 @@ class StubEmitter:
         self.imports.add("typing")
         args = [f'"{name}"']
         if type_var.__bound__:
-            translated_bound = self._finalize_annotation_for_global(type_var.__bound__, type_var)
+            translated_bound = self._translate_global_annotation(type_var.__bound__, type_var)
             str_annotation = self._formatannotation(translated_bound)
             args.append(f'bound="{str_annotation}"')
         self.global_types.add(name)
@@ -265,21 +224,19 @@ class StubEmitter:
         for arg in getattr(type_annotation, "__args__", ()):
             self._register_imports(arg)
 
-    def _finalize_annotation_for_global(self, annotation, source_class_or_function):
-        # convenience wrapper for _finalize_annotation_inner
-        # infers synchronizer, target and home_module from a top level entity (class, function) containing the annotation
+    def _translate_global_annotation(self, annotation, source_class_or_function):
+        # convenience wrapper for _translate_annotation when the translated entity itself
+        # determines eval scope and synchronizer target
+
+        # infers synchronizer, target and home_module from an entity (class, function) containing the annotation
         synchronicity_target_interface = getattr(
             source_class_or_function, TARGET_INTERFACE_ATTR, None
         )
         synchronizer = getattr(source_class_or_function, SYNCHRONIZER_ATTR, None)
         if synchronizer:
-            try:
-                home_module = getattr(
-                    source_class_or_function, synchronizer._original_attr
-                ).__module__
-            except:
-                print(source_class_or_function)
-                raise
+            home_module = getattr(
+                source_class_or_function, synchronizer._original_attr
+            ).__module__
         else:
             home_module = source_class_or_function.__module__
 
@@ -385,7 +342,7 @@ class StubEmitter:
 
         if sig.upgraded_return_annotation is not EmptyAnnotation:
             return_annotation = sig.upgraded_return_annotation.source_value()
-            return_annotation = self._finalize_annotation_for_global(return_annotation, func)
+            return_annotation = self._translate_global_annotation(return_annotation, func)
             sig = sig.replace(
                 return_annotation=return_annotation,
                 upgraded_return_annotation=UpgradedAnnotation.upgrade(
@@ -397,7 +354,7 @@ class StubEmitter:
         for param in sig.parameters.values():
             if param.upgraded_annotation is not EmptyAnnotation:
                 raw_annotation = param.upgraded_annotation.source_value()
-                raw_annotation = self._finalize_annotation_for_global(raw_annotation, func)
+                raw_annotation = self._translate_global_annotation(raw_annotation, func)
                 new_parameters.append(
                     param.replace(
                         annotation=raw_annotation,
