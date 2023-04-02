@@ -28,7 +28,6 @@ async def async_func() -> str:
     return "hello"
 
 
-
 def _function_source(func, target_module=__name__):
     stub_emitter = StubEmitter(target_module)
     stub_emitter.add_function(func, func.__name__)
@@ -92,7 +91,9 @@ def test_async_gen():
 
     src = _function_source(it)
     assert "yield" not in src
-    assert "async" not in src  # since the yield keyword is removed, the async prefix needs to be removed as well (while keeping the remaining annotation)
+    assert (
+        "async" not in src
+    )  # since the yield keyword is removed, the async prefix needs to be removed as well (while keeping the remaining annotation)
     assert "def it() -> typing.AsyncIterator[str]:" in src
 
 

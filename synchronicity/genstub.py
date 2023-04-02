@@ -98,7 +98,11 @@ class StubEmitter:
 
             retranslated_bases = []
             for impl_base in impl_bases:
-                retranslated_bases.append(self._translate_annotation(impl_base, synchronizer, target_interface, cls.__module__))
+                retranslated_bases.append(
+                    self._translate_annotation(
+                        impl_base, synchronizer, target_interface, cls.__module__
+                    )
+                )
 
             return tuple(retranslated_bases)
 
@@ -175,7 +179,9 @@ class StubEmitter:
         self.imports.add("typing")
         args = [f'"{name}"']
         if type_var.__bound__:
-            translated_bound = self._translate_global_annotation(type_var.__bound__, type_var)
+            translated_bound = self._translate_global_annotation(
+                type_var.__bound__, type_var
+            )
             str_annotation = self._formatannotation(translated_bound)
             args.append(f'bound="{str_annotation}"')
         self.global_types.add(name)
@@ -245,7 +251,11 @@ class StubEmitter:
         )
 
     def _translate_annotation(
-        self, annotation, synchronizer: typing.Optional[synchronicity.Synchronizer], synchronicity_target_interface: typing.Optional[Interface], home_module: str
+        self,
+        annotation,
+        synchronizer: typing.Optional[synchronicity.Synchronizer],
+        synchronicity_target_interface: typing.Optional[Interface],
+        home_module: str,
     ):
         """
         Takes an annotation (type, generic, typevar, forward ref) and applies recursively (in case of generics):
@@ -314,19 +324,16 @@ class StubEmitter:
             if origin == collections.abc.Coroutine:
                 return mapped_args[2]
 
-        translated_origin = self._translate_annotation(origin, synchronizer, interface, home_module)
+        translated_origin = self._translate_annotation(
+            origin, synchronizer, interface, home_module
+        )
         if translated_origin is not origin:
             # special case for synchronicity-translated generics, due to synchronicitys wrappers not being valid generics
             # kind of ugly as it returns a string representation rather than a type...
-            str_args = ", ".join(
-                self._formatannotation(arg) for arg in mapped_args
-            )
-            return ReprObj(
-                f"{self._formatannotation(translated_origin)}[{str_args}]"
-            )
+            str_args = ", ".join(self._formatannotation(arg) for arg in mapped_args)
+            return ReprObj(f"{self._formatannotation(translated_origin)}[{str_args}]")
 
         return type_annotation.copy_with(mapped_args)
-
 
     def _custom_signature(self, func) -> str:
         """
@@ -342,7 +349,9 @@ class StubEmitter:
 
         if sig.upgraded_return_annotation is not EmptyAnnotation:
             return_annotation = sig.upgraded_return_annotation.source_value()
-            return_annotation = self._translate_global_annotation(return_annotation, func)
+            return_annotation = self._translate_global_annotation(
+                return_annotation, func
+            )
             sig = sig.replace(
                 return_annotation=return_annotation,
                 upgraded_return_annotation=UpgradedAnnotation.upgrade(
