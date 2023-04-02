@@ -324,14 +324,22 @@ class StubEmitter:
             if origin == collections.abc.Coroutine:
                 return mapped_args[2]
 
-        translated_origin = self._translate_annotation(
-            origin, synchronizer, interface, home_module
-        )
-        if translated_origin is not origin:
-            # special case for synchronicity-translated generics, due to synchronicitys wrappers not being valid generics
-            # kind of ugly as it returns a string representation rather than a type...
-            str_args = ", ".join(self._formatannotation(arg) for arg in mapped_args)
-            return ReprObj(f"{self._formatannotation(translated_origin)}[{str_args}]")
+        if origin.__module__ not in (
+            "typing",
+            "collections.abc",
+            "contextlib",
+        ):  # don't translate built in generics in type annotations, even if they have been synchronicity wrapped
+            # for other hierarchy reasons...
+            translated_origin = self._translate_annotation(
+                origin, synchronizer, interface, home_module
+            )
+            if translated_origin is not origin:
+                # special case for synchronicity-translated generics, due to synchronicitys wrappers not being valid generics
+                # kind of ugly as it returns a string representation rather than a type...
+                str_args = ", ".join(self._formatannotation(arg) for arg in mapped_args)
+                return ReprObj(
+                    f"{self._formatannotation(translated_origin)}[{str_args}]"
+                )
 
         return type_annotation.copy_with(mapped_args)
 

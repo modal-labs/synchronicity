@@ -91,9 +91,8 @@ def test_async_gen():
 
     src = _function_source(it)
     assert "yield" not in src
-    assert (
-        "async" not in src
-    )  # since the yield keyword is removed, the async prefix needs to be removed as well (while keeping the remaining annotation)
+    # since the yield keyword is removed in a type stub, the async prefix needs to be removed as well to avoid "double asyncness" (while keeping the remaining annotation)
+    assert "async" not in src
     assert "def it() -> typing.AsyncIterator[str]:" in src
 
 
