@@ -19,7 +19,7 @@ import sigtools.specifiers
 from sigtools._signatures import EmptyAnnotation, UpgradedAnnotation
 
 import synchronicity
-from synchronicity import Interface, tracking_overload
+from synchronicity import Interface, overload_tracking
 from synchronicity.synchronizer import TARGET_INTERFACE_ATTR, SYNCHRONIZER_ATTR
 
 
@@ -466,7 +466,7 @@ class StubEmitter:
         else:
             root_func = func
 
-        for overload_func in tracking_overload.get_overloads(root_func):
+        for overload_func in overload_tracking.get_overloads(root_func):
             self._ensure_import(typing.overload)
             parts.append(f"{signature_indent}@typing.overload")
             if interface:
@@ -505,7 +505,7 @@ def write_stub(module_path: str):
 
 
 if __name__ == "__main__":
-    with tracking_overload.patched_overload():
+    with overload_tracking.patched_overload():
         for module_path in sys.argv[1:]:
             out_path = write_stub(module_path)
             print(f"Wrote {out_path}")

@@ -24,16 +24,25 @@ from unittest import mock
 overloads = {}
 original_overload = typing.overload
 
+class Untrackable(Exception):
+    pass
 
 def _function_locator(f):
-    return (f.__module__, f.__qualname__)
+    try:
+        return (f.__module__, f.__qualname__)
+    except AttributeError:
+        raise Untrackable()  # TODO(elias): handle descriptors like classmethod
 
 
 def _tracking_overload(f):
     # hacky thing to track all typing.overload declarations
     global overloads, original_overload
-    locator = _function_locator(f)
-    overloads.setdefault(locator, []).append(f)
+    try:
+        locator = _function_locator(f)
+        overloads.setdefault(locator, []).append(f)
+    except Untrackable:
+        print(f"WARNING: can't track overloads for {f}")
+
     return original_overload(f)
 
 
@@ -43,5 +52,8 @@ def patched_overload():
         yield
 
 
-def get_overloads(f):
-    return overloads.get(_function_locator(f), [])
+def get_overloads(f) -> list:
+    try:
+        return overloads.get(_function_locator(f), [])
+    except Untrackable:
+        return []
