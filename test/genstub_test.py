@@ -2,6 +2,7 @@ import functools
 import typing
 
 import synchronicity
+from synchronicity import tracking_overload
 from synchronicity.genstub import StubEmitter
 
 
@@ -363,3 +364,26 @@ def test_ellipsis():
 
     src = _function_source(foo)
     assert "-> typing.Callable[..., typing.Any]" in src
+
+
+def test_overloads_unwrapped_functions():
+    with tracking_overload.patched_overload():
+        @typing.overload
+        def foo(a: int) -> float:
+            ...
+
+        def foo(a: typing.Union[bool, int]) -> typing.Union[bool, float]:
+            if isinstance(a, bool):
+                return a
+            return float(a)
+
+        blocking_foo = synchronizer.create_blocking(foo, "blocking_foo")
+
+        src = _function_source(foo)
+        assert "@typing.overload\ndef foo(a: int) -> float:" in src
+        assert "def foo(a: typing.Union[bool, int]) -> typing.Union[bool, float]:" in src
+
+
+        src = _function_source(blocking_foo)
+        assert "@typing.overload\ndef blocking_foo(a: int) -> float:" in src
+        assert "def blocking_foo(a: typing.Union[bool, int]) -> typing.Union[bool, float]:" in src

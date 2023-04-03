@@ -1,3 +1,9 @@
+"""
+Improvement Ideas:
+* Extract this into its own package, not linked to synchronicity, but with good extension plugs?
+* Don't use the wrapped synchronicity types directly, and instead emit stubs based on the root implementation types directly (but translated to blocking).
+* Let synchronicity emit actual function bodies, to avoid runtime wrapping altogether
+"""
 import collections
 import collections.abc
 import contextlib
@@ -13,7 +19,7 @@ import sigtools.specifiers
 from sigtools._signatures import EmptyAnnotation, UpgradedAnnotation
 
 import synchronicity
-from synchronicity import Interface
+from synchronicity import Interface, tracking_overload
 from synchronicity.synchronizer import TARGET_INTERFACE_ATTR, SYNCHRONIZER_ATTR
 
 
@@ -56,7 +62,6 @@ class StubEmitter:
                 and entity_name not in explicit_members
             ):
                 continue  # skip imported stuff, unless it's explicitly in __all__
-
             if inspect.isclass(entity):
                 emitter.add_class(entity, entity_name)
             elif inspect.isfunction(entity):
@@ -81,7 +86,7 @@ class StubEmitter:
 
     def add_function(self, func, name, indentation_level=0):
         # adds function source code to module
-        self.parts.append(self._get_function_source(func, name, indentation_level))
+        self.parts.append(self._get_function_source_with_overloads(func, name, indentation_level))
 
     def _get_translated_class_bases(self, cls):
         # get __orig_bases__ (__bases__ with potential generic args) for any class
@@ -145,22 +150,22 @@ class StubEmitter:
         for entity_name, entity in cls.__dict__.items():
             if inspect.isfunction(entity):
                 methods.append(
-                    self._get_function_source(entity, entity_name, body_indent_level)
+                    self._get_function_source_with_overloads(entity, entity_name, body_indent_level)
                 )
 
             elif isinstance(entity, classmethod):
                 methods.append(
-                    f"{body_indent}@classmethod\n{self._get_function_source(entity.__func__, entity_name, body_indent_level)}"
+                    f"{body_indent}@classmethod\n{self._get_function_source_with_overloads(entity.__func__, entity_name, body_indent_level)}"
                 )
 
             elif isinstance(entity, staticmethod):
                 methods.append(
-                    f"{body_indent}@staticmethod\n{self._get_function_source(entity.__func__, entity_name, body_indent_level)}"
+                    f"{body_indent}@staticmethod\n{self._get_function_source_with_overloads(entity.__func__, entity_name, body_indent_level)}"
                 )
 
             elif isinstance(entity, property):
                 methods.append(
-                    f"{body_indent}@property\n{self._get_function_source(entity.fget, entity_name, body_indent_level)}"
+                    f"{body_indent}@property\n{self._get_function_source_with_overloads(entity.fget, entity_name, body_indent_level)}"
                 )
 
         padding = [] if var_annotations or methods else [f"{body_indent}..."]
@@ -449,15 +454,36 @@ class StubEmitter:
     def _indent(self, level):
         return level * self._indentation
 
-    def _get_function_source(self, func, name, indentation_level=0) -> str:
+    def _get_function_source_with_overloads(self, func, name, indentation_level=0) -> str:
+        signature_indent = self._indent(indentation_level)
+        body_indent = self._indent(indentation_level + 1)
+        parts = []
+
+        interface = func.__dict__.get(TARGET_INTERFACE_ATTR)
+        synchronizer = func.__dict__.get(SYNCHRONIZER_ATTR)
+        if interface:
+            root_func = func.__dict__[SYNCHRONIZER_ATTR]._translate_in(func)
+        else:
+            root_func = func
+
+        for overload_func in tracking_overload.get_overloads(root_func):
+            self._ensure_import(typing.overload)
+            parts.append(f"{signature_indent}@typing.overload")
+            if interface:
+                overload_func = synchronizer._wrap(overload_func, interface, name=name)
+
+            parts.append(self._get_function_source(overload_func, name, signature_indent, body_indent))
+
+        parts.append(self._get_function_source(func, name, signature_indent, body_indent))
+        return "\n".join(parts)
+
+    def _get_function_source(self, func, name, signature_indent: str, body_indent: str) -> str:
         async_prefix = ""
         if inspect.iscoroutinefunction(func):
-            # note: async prefix should not be used for annotated abstract/stub *async generators*
+            # note: async prefix should not be used for annotated abstract/stub *async generators*, so we don't check for inspect.isasyncgenfunction
             # since they contain no yield keyword, and would otherwise indicate an awaitable that returns an async generator to static type checkers
             async_prefix = "async "
 
-        signature_indent = self._indent(indentation_level)
-        body_indent = self._indent(indentation_level + 1)
         signature = self._custom_signature(func)
 
         return "\n".join(
@@ -479,6 +505,7 @@ def write_stub(module_path: str):
 
 
 if __name__ == "__main__":
-    for module_path in sys.argv[1:]:
-        out_path = write_stub(module_path)
-        print(f"Wrote {out_path}")
+    with tracking_overload.patched_overload():
+        for module_path in sys.argv[1:]:
+            out_path = write_stub(module_path)
+            print(f"Wrote {out_path}")
