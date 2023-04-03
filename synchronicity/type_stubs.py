@@ -86,7 +86,9 @@ class StubEmitter:
 
     def add_function(self, func, name, indentation_level=0):
         # adds function source code to module
-        self.parts.append(self._get_function_source_with_overloads(func, name, indentation_level))
+        self.parts.append(
+            self._get_function_source_with_overloads(func, name, indentation_level)
+        )
 
     def _get_translated_class_bases(self, cls):
         # get __orig_bases__ (__bases__ with potential generic args) for any class
@@ -150,7 +152,9 @@ class StubEmitter:
         for entity_name, entity in cls.__dict__.items():
             if inspect.isfunction(entity):
                 methods.append(
-                    self._get_function_source_with_overloads(entity, entity_name, body_indent_level)
+                    self._get_function_source_with_overloads(
+                        entity, entity_name, body_indent_level
+                    )
                 )
 
             elif isinstance(entity, classmethod):
@@ -454,7 +458,9 @@ class StubEmitter:
     def _indent(self, level):
         return level * self._indentation
 
-    def _get_function_source_with_overloads(self, func, name, indentation_level=0) -> str:
+    def _get_function_source_with_overloads(
+        self, func, name, indentation_level=0
+    ) -> str:
         signature_indent = self._indent(indentation_level)
         body_indent = self._indent(indentation_level + 1)
         parts = []
@@ -472,12 +478,20 @@ class StubEmitter:
             if interface:
                 overload_func = synchronizer._wrap(overload_func, interface, name=name)
 
-            parts.append(self._get_function_source(overload_func, name, signature_indent, body_indent))
+            parts.append(
+                self._get_function_source(
+                    overload_func, name, signature_indent, body_indent
+                )
+            )
 
-        parts.append(self._get_function_source(func, name, signature_indent, body_indent))
+        parts.append(
+            self._get_function_source(func, name, signature_indent, body_indent)
+        )
         return "\n".join(parts)
 
-    def _get_function_source(self, func, name, signature_indent: str, body_indent: str) -> str:
+    def _get_function_source(
+        self, func, name, signature_indent: str, body_indent: str
+    ) -> str:
         async_prefix = ""
         if inspect.iscoroutinefunction(func):
             # note: async prefix should not be used for annotated abstract/stub *async generators*, so we don't check for inspect.isasyncgenfunction

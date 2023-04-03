@@ -24,8 +24,10 @@ from unittest import mock
 overloads = {}
 original_overload = typing.overload
 
+
 class Untrackable(Exception):
     pass
+
 
 def _function_locator(f):
     try:

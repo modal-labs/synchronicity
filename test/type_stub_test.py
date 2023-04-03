@@ -368,6 +368,7 @@ def test_ellipsis():
 
 def test_overloads_unwrapped_functions():
     with overload_tracking.patched_overload():
+
         @typing.overload
         def foo(a: int) -> float:
             ...
@@ -381,9 +382,13 @@ def test_overloads_unwrapped_functions():
 
         src = _function_source(foo)
         assert "@typing.overload\ndef foo(a: int) -> float:" in src
-        assert "def foo(a: typing.Union[bool, int]) -> typing.Union[bool, float]:" in src
-
+        assert (
+            "def foo(a: typing.Union[bool, int]) -> typing.Union[bool, float]:" in src
+        )
 
         src = _function_source(blocking_foo)
         assert "@typing.overload\ndef blocking_foo(a: int) -> float:" in src
-        assert "def blocking_foo(a: typing.Union[bool, int]) -> typing.Union[bool, float]:" in src
+        assert (
+            "def blocking_foo(a: typing.Union[bool, int]) -> typing.Union[bool, float]:"
+            in src
+        )
