@@ -370,25 +370,22 @@ def test_overloads_unwrapped_functions():
     with overload_tracking.patched_overload():
 
         @typing.overload
-        def foo(a: int) -> float:
-            ...
+        def _overloaded(arg: str) -> float:
+            pass
 
-        def foo(a: typing.Union[bool, int]) -> typing.Union[bool, float]:
-            if isinstance(a, bool):
-                return a
-            return float(a)
+        @typing.overload
+        def _overloaded(arg: int) -> int:
+            pass
 
-        blocking_foo = synchronizer.create_blocking(foo, "blocking_foo")
+        def _overloaded(arg: typing.Union[str, int]):
+            if isinstance(arg, str):
+                return float(arg)
+            return arg
 
-        src = _function_source(foo)
-        assert "@typing.overload\ndef foo(a: int) -> float:" in src
-        assert (
-            "def foo(a: typing.Union[bool, int]) -> typing.Union[bool, float]:" in src
-        )
+    overloaded = synchronizer.create_blocking(_overloaded, "overloaded")
 
-        src = _function_source(blocking_foo)
-        assert "@typing.overload\ndef blocking_foo(a: int) -> float:" in src
-        assert (
-            "def blocking_foo(a: typing.Union[bool, int]) -> typing.Union[bool, float]:"
-            in src
-        )
+    src = _function_source(overloaded)
+    assert src.count("@typing.overload") == 2
+    assert src.count("def overloaded") == 2  # original should be omitted
+    assert "def overloaded(arg: str) -> float" in src
+    assert "def overloaded(arg: int) -> int:" in src
