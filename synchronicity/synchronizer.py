@@ -486,12 +486,13 @@ class Synchronizer:
     def _wrap_class(self, cls, interface, name, target_module=None):
         bases = tuple(
             self._wrap(base, interface, require_already_wrapped=(name is not None))
-            if base != object and not base.__dict__.get(self._nowrap_attr, False)
-            else base
+            if base != object
+            else object
             for base in cls.__bases__
         )
         new_dict = {self._original_attr: cls}
-        new_dict["__init__"] = self._wrap_proxy_constructor(cls, interface)
+        if cls is not None:
+            new_dict["__init__"] = self._wrap_proxy_constructor(cls, interface)
 
         for k, v in cls.__dict__.items():
             if k in _BUILTIN_ASYNC_METHODS:
@@ -531,20 +532,6 @@ class Synchronizer:
         new_cls.__doc__ = cls.__doc__
         if "__annotations__" in cls.__dict__:
             new_cls.__annotations__ = cls.__annotations__  # transfer annotations
-        # if "__orig_bases__" in cls.__dict__:
-        #     orig_bases = []
-        #     for ob in cls.__dict__["__orig_bases__"]:
-        #         orig = ob.__dict__.get("__origin__", None)
-        #         if orig:
-        #             new_orig = self._wrap(orig, interface, require_already_wrapped=True)
-        #             new_args = ob.__dict__["__args__"]  # tuple(self._wrap(arg, interface) for arg in ob.__dict__["__args__"]))
-        #             new_tup = new_orig[new_args]
-        #             print(new_tup, new_orig, new_args)
-        #             orig_bases.append(new_orig[new_args])
-        #         else:
-        #             orig_bases.append(self._wrap(ob, interface, require_already_wrapped=True))
-        #     print("Overriding new orig bases", orig_bases)
-        #     new_cls.__orig_bases__ = tuple(orig_bases)
 
         setattr(new_cls, TARGET_INTERFACE_ATTR, interface)
         setattr(new_cls, SYNCHRONIZER_ATTR, self)
