@@ -29,3 +29,8 @@ assert_type(
     e2e_example_export.listify(blocking_foo),
     typing.List[e2e_example_export.BlockingFoo],
 )
+
+
+assert_type(e2e_example_export.overloaded("12"), float)
+
+assert_type(e2e_example_export.overloaded(12), int)
