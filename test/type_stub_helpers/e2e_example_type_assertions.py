@@ -1,7 +1,7 @@
 # this code is only meant to be "running" through mypy and not an actual python interpreter!
 import typing
 
-from test.genstub_helpers import e2e_example_export
+from test.type_stub_helpers import e2e_example_export
 from typing_extensions import assert_type
 
 blocking_foo = e2e_example_export.BlockingFoo("hello")

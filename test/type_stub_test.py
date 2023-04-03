@@ -2,7 +2,8 @@ import functools
 import typing
 
 import synchronicity
-from synchronicity.genstub import StubEmitter
+from synchronicity import overload_tracking
+from synchronicity.type_stubs import StubEmitter
 
 
 def noop():
@@ -17,7 +18,7 @@ def scalar_args(arg1: str, arg2: int) -> float:
     pass
 
 
-from .genstub_helpers import some_mod
+from .type_stub_helpers import some_mod
 
 
 def generic_other_module_arg(arg: typing.List[some_mod.Foo]):
@@ -52,10 +53,10 @@ def test_function_basics():
 def test_function_with_imports():
     assert (
         _function_source(generic_other_module_arg, target_module="dummy")
-        == """import test.genstub_helpers.some_mod
+        == """import test.type_stub_helpers.some_mod
 import typing
 
-def generic_other_module_arg(arg: typing.List[test.genstub_helpers.some_mod.Foo]):
+def generic_other_module_arg(arg: typing.List[test.type_stub_helpers.some_mod.Foo]):
     ...
 """
     )
@@ -363,3 +364,31 @@ def test_ellipsis():
 
     src = _function_source(foo)
     assert "-> typing.Callable[..., typing.Any]" in src
+
+
+def test_overloads_unwrapped_functions():
+    with overload_tracking.patched_overload():
+
+        @typing.overload
+        def foo(a: int) -> float:
+            ...
+
+        def foo(a: typing.Union[bool, int]) -> typing.Union[bool, float]:
+            if isinstance(a, bool):
+                return a
+            return float(a)
+
+        blocking_foo = synchronizer.create_blocking(foo, "blocking_foo")
+
+        src = _function_source(foo)
+        assert "@typing.overload\ndef foo(a: int) -> float:" in src
+        assert (
+            "def foo(a: typing.Union[bool, int]) -> typing.Union[bool, float]:" in src
+        )
+
+        src = _function_source(blocking_foo)
+        assert "@typing.overload\ndef blocking_foo(a: int) -> float:" in src
+        assert (
+            "def blocking_foo(a: typing.Union[bool, int]) -> typing.Union[bool, float]:"
+            in src
+        )

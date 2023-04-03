@@ -1,5 +1,4 @@
 import subprocess
-import sys
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
@@ -7,9 +6,9 @@ from traceback import print_exc
 
 import pytest
 
-from synchronicity.genstub import StubEmitter, write_stub
+from synchronicity.type_stubs import write_stub
 
-helpers_dir = Path(__file__).parent / "genstub_helpers"
+helpers_dir = Path(__file__).parent / "type_stub_helpers"
 assertion_file = helpers_dir / "e2e_example_type_assertions.py"
 
 
@@ -47,7 +46,7 @@ def temp_assertion_file(new_assertion):
 
 @pytest.fixture(scope="session")
 def interface_file():
-    write_stub("test.genstub_helpers.e2e_example_export")
+    write_stub("test.type_stub_helpers.e2e_example_export")
     yield
 
 

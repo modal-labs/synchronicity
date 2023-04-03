@@ -4,7 +4,7 @@ import pytest
 
 import synchronicity
 from synchronicity import Interface, Synchronizer
-from synchronicity.genstub import StubEmitter
+from synchronicity.type_stubs import StubEmitter
 
 
 class ImplType:
