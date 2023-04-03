@@ -21,7 +21,7 @@ import contextlib
 import typing
 from unittest import mock
 
-overloads = {}
+overloads: typing.Dict[typing.Tuple[str, str], typing.List] = {}
 original_overload = typing.overload
 
 
@@ -54,7 +54,7 @@ def patched_overload():
         yield
 
 
-def get_overloads(f) -> list:
+def get_overloads(f) -> typing.List:
     try:
         return overloads.get(_function_locator(f), [])
     except Untrackable:

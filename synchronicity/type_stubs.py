@@ -15,8 +15,8 @@ from pathlib import Path
 from typing import TypeVar, Generic
 from unittest import mock
 
-import sigtools.specifiers
-from sigtools._signatures import EmptyAnnotation, UpgradedAnnotation
+import sigtools.specifiers  # type: ignore
+from sigtools._signatures import EmptyAnnotation, UpgradedAnnotation  # type: ignore
 
 import synchronicity
 from synchronicity import Interface, overload_tracking
@@ -264,7 +264,7 @@ class StubEmitter:
         annotation,
         synchronizer: typing.Optional[synchronicity.Synchronizer],
         synchronicity_target_interface: typing.Optional[Interface],
-        home_module: str,
+        home_module: typing.Optional[str],
     ):
         """
         Takes an annotation (type, generic, typevar, forward ref) and applies recursively (in case of generics):
@@ -278,6 +278,7 @@ class StubEmitter:
             annotation = annotation.__forward_arg__
 
         if isinstance(annotation, str):
+            assert home_module is not None
             mod = importlib.import_module(home_module)
             try:
                 annotation = eval(annotation, mod.__dict__)
@@ -298,7 +299,11 @@ class StubEmitter:
         return annotation
 
     def _translate_annotation_map_types(
-        self, type_annotation, synchronizer, interface: Interface, home_module=None
+        self,
+        type_annotation,
+        synchronizer: typing.Optional[synchronicity.Synchronizer],
+        interface: typing.Optional[Interface],
+        home_module: typing.Optional[str] = None,
     ):
         # recursively map a nested type annotation to match the output interface
         origin = getattr(type_annotation, "__origin__", None)
@@ -316,16 +321,16 @@ class StubEmitter:
         if interface == Interface.BLOCKING:
             # blocking interface special generic translations:
             if origin == collections.abc.AsyncGenerator:
-                return typing.Generator[mapped_args + (None,)]
+                return typing.Generator[mapped_args + (None,)]  # type: ignore
 
             if origin == contextlib.AbstractAsyncContextManager:
-                return typing.ContextManager[mapped_args]
+                return typing.ContextManager[mapped_args]  # type: ignore
 
             if origin == collections.abc.AsyncIterable:
-                return typing.Iterable[mapped_args]
+                return typing.Iterable[mapped_args]  # type: ignore
 
             if origin == collections.abc.AsyncIterator:
-                return typing.Iterator[mapped_args]
+                return typing.Iterator[mapped_args]  # type: ignore
 
             if origin == collections.abc.Awaitable:
                 return mapped_args[0]
@@ -427,7 +432,7 @@ class StubEmitter:
                 if annotation == None.__class__:  # check for "NoneType"
                     return "None"
                 name = (
-                    annotation.__qualname__
+                    annotation.__qualname__  # type: ignore
                     if hasattr(annotation, "__qualname__")
                     else annotation.__name__
                 )
@@ -511,6 +516,7 @@ class StubEmitter:
 
 def write_stub(module_path: str):
     mod = importlib.import_module(module_path)
+    assert mod.__file__ is not None
     emitter = StubEmitter.from_module(mod)
     source = emitter.get_source()
     stub_path = Path(mod.__file__).with_suffix(".pyi")

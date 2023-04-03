@@ -40,13 +40,15 @@ SEND_TYPE = typing.TypeVar("SEND_TYPE")
 
 
 def asynccontextmanager(
-    f: typing.AsyncGenerator[YIELD_TYPE, SEND_TYPE]
+    f: typing.Callable[..., typing.AsyncGenerator[YIELD_TYPE, SEND_TYPE]]
 ) -> typing.Callable[[], typing.AsyncContextManager[YIELD_TYPE]]:
     """Wrapper around contextlib.asynccontextmanager that sets correct type annotations
 
     The standard library one doesn't
     """
-    acm_factory = _asynccontextmanager(f)
+    acm_factory: typing.Callable[
+        ..., typing.AsyncContextManager[YIELD_TYPE]
+    ] = _asynccontextmanager(f)
 
     old_ret = acm_factory.__annotations__.pop("return", None)
     if old_ret is not None:
@@ -56,7 +58,7 @@ def asynccontextmanager(
             collections.abc.AsyncIterator,
         ]:
             acm_factory.__annotations__["return"] = typing.AsyncContextManager[
-                old_ret.__args__[0]
+                old_ret.__args__[0]  # type: ignore
             ]
         elif old_ret.__origin__ == contextlib.AbstractAsyncContextManager:
             # if the standard lib fixes the annotations in the future, lets not break it...
