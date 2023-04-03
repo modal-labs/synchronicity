@@ -59,4 +59,7 @@ def test_wrapped_class_keeps_class_annotations():
 )
 def test_annotation_mapping(t, interface, expected):
     stub_emitter = StubEmitter(__name__)
-    assert stub_emitter._map_type_annotation(t, synchronizer, interface) == expected
+    assert (
+        stub_emitter._translate_annotation(t, synchronizer, interface, __name__)
+        == expected
+    )

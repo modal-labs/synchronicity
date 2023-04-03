@@ -193,7 +193,7 @@ class Synchronizer:
 
     def _translate_scalar_out(self, obj, interface):
         # If it's an internal object, translate it to the external interface
-        if inspect.isclass(obj):  # TODO: functions?
+        if inspect.isclass(obj) or isinstance(obj, typing.TypeVar):  # TODO: functions?
             cls_dct = obj.__dict__
             if self._wrapped_attr in cls_dct:
                 return cls_dct[self._wrapped_attr][interface]
@@ -493,6 +493,7 @@ class Synchronizer:
         new_dict = {self._original_attr: cls}
         if cls is not None:
             new_dict["__init__"] = self._wrap_proxy_constructor(cls, interface)
+
         for k, v in cls.__dict__.items():
             if k in _BUILTIN_ASYNC_METHODS:
                 k_sync = _BUILTIN_ASYNC_METHODS[k]
@@ -531,6 +532,7 @@ class Synchronizer:
         new_cls.__doc__ = cls.__doc__
         if "__annotations__" in cls.__dict__:
             new_cls.__annotations__ = cls.__annotations__  # transfer annotations
+
         setattr(new_cls, TARGET_INTERFACE_ATTR, interface)
         setattr(new_cls, SYNCHRONIZER_ATTR, self)
         return new_cls
