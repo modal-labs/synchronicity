@@ -477,7 +477,8 @@ class StubEmitter:
         else:
             root_func = func
 
-        for overload_func in overload_tracking.get_overloads(root_func):
+        overloaded_signatures = overload_tracking.get_overloads(root_func)
+        for overload_func in overloaded_signatures:
             self._ensure_import(typing.overload)
             parts.append(f"{signature_indent}@typing.overload")
             if interface:
@@ -489,9 +490,11 @@ class StubEmitter:
                 )
             )
 
-        parts.append(
-            self._get_function_source(func, name, signature_indent, body_indent)
-        )
+        if not overloaded_signatures:
+            # only add the functions complete signatures if there are no stubs
+            parts.append(
+                self._get_function_source(func, name, signature_indent, body_indent)
+            )
         return "\n".join(parts)
 
     def _get_function_source(
@@ -515,17 +518,17 @@ class StubEmitter:
 
 
 def write_stub(module_path: str):
-    mod = importlib.import_module(module_path)
-    assert mod.__file__ is not None
-    emitter = StubEmitter.from_module(mod)
-    source = emitter.get_source()
-    stub_path = Path(mod.__file__).with_suffix(".pyi")
-    stub_path.write_text(source)
-    return stub_path
+    with overload_tracking.patched_overload():
+        mod = importlib.import_module(module_path)
+        assert mod.__file__ is not None
+        emitter = StubEmitter.from_module(mod)
+        source = emitter.get_source()
+        stub_path = Path(mod.__file__).with_suffix(".pyi")
+        stub_path.write_text(source)
+        return stub_path
 
 
 if __name__ == "__main__":
-    with overload_tracking.patched_overload():
-        for module_path in sys.argv[1:]:
-            out_path = write_stub(module_path)
-            print(f"Wrote {out_path}")
+    for module_path in sys.argv[1:]:
+        out_path = write_stub(module_path)
+        print(f"Wrote {out_path}")

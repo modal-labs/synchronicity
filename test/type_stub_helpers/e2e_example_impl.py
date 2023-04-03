@@ -1,4 +1,4 @@
-from typing import AsyncGenerator, TypeVar, List
+from typing import AsyncGenerator, TypeVar, List, Union, overload
 
 
 class _Foo:
@@ -27,3 +27,19 @@ _T = TypeVar("_T", bound=_Foo)
 
 def _listify(t: _T) -> List[_T]:
     return t
+
+
+@overload
+def _overloaded(arg: str) -> float:
+    pass
+
+
+@overload
+def _overloaded(arg: int) -> int:
+    pass
+
+
+def _overloaded(arg: Union[str, int]):
+    if isinstance(arg, str):
+        return float(arg)
+    return arg
