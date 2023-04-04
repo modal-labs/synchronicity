@@ -307,13 +307,14 @@ class StubEmitter:
     ):
         # recursively map a nested type annotation to match the output interface
         origin = getattr(type_annotation, "__origin__", None)
-        if origin is None:
+        args = getattr(type_annotation, "__args__", None)
+
+        if origin is None or args is None:
             # scalar - if type is synchronicity origin type, use the blocking/async version instead
             if synchronizer:
                 return synchronizer._translate_out(type_annotation, interface)
             return type_annotation
 
-        args = getattr(type_annotation, "__args__", [])
         mapped_args = tuple(
             self._translate_annotation(arg, synchronizer, interface, home_module)
             for arg in args
@@ -424,8 +425,9 @@ class StubEmitter:
         assert not isinstance(
             annotation, typing.ForwardRef
         )  # Forward refs should already have been evaluated!
+        args = getattr(annotation, "__args__", None)
 
-        if origin is None:
+        if origin is None or not args:
             if annotation == Ellipsis:
                 return "..."
             if isinstance(annotation, type) or isinstance(annotation, TypeVar):
@@ -441,19 +443,23 @@ class StubEmitter:
                 return annotation.__module__ + "." + name
             return repr(annotation)
         # generic:
-        args = getattr(annotation, "__args__", ())
-
-        formatted_annotation = str(
-            annotation.copy_with(
-                # ellipsis (...) needs to be passed as is, or it will be reformatted
-                tuple(
-                    ReprObj(self._formatannotation(arg))
-                    if arg != Ellipsis
-                    else Ellipsis
-                    for arg in args
+        try:
+            formatted_annotation = str(
+                annotation.copy_with(
+                    # ellipsis (...) needs to be passed as is, or it will be reformatted
+                    tuple(
+                        ReprObj(self._formatannotation(arg))
+                        if arg != Ellipsis
+                        else Ellipsis
+                        for arg in args
+                    )
                 )
             )
-        )
+        except Exception:
+            raise Exception(
+                f"Could not reformat generic {annotation.__origin__} with arguments {args}"
+            )
+
         # this is a bit ugly, but gets rid of incorrect module qualification of Generic subclasses:
         # TODO: find a better way...
         if formatted_annotation.startswith(self.target_module + "."):
