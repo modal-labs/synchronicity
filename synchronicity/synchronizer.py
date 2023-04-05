@@ -18,6 +18,7 @@ _BUILTIN_ASYNC_METHODS = {
     "__aiter__": "__iter__",
     "__aenter__": "__enter__",
     "__aexit__": "__exit__",
+    "__anext__": "__next__",
 }
 
 _RETURN_FUTURE_KWARG = "_future"
