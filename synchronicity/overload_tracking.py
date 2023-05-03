@@ -30,7 +30,7 @@ class Untrackable(Exception):
 
 
 def _function_locator(f):
-    if isinstance(f, staticmethod):
+    if isinstance(f, (staticmethod, classmethod)):
         return _function_locator(f.__func__)
 
     try:
