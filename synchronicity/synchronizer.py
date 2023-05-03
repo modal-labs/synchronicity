@@ -21,6 +21,10 @@ _BUILTIN_ASYNC_METHODS = {
     "__anext__": "__next__",
 }
 
+IGNORED_ATTRIBUTES = (
+    "__provides__",  # the "zope" lib monkey patches in some non-introspectable stuff on stdlib abc.ABC. Ignoring __provides__ fixes an incompatibility with `channels[daphne]`, where Synchronizer creation fails when wrapping contextlib._AsyncGeneratorContextManager
+)
+
 _RETURN_FUTURE_KWARG = "_future"
 
 # Default names for classes
@@ -509,6 +513,8 @@ class Synchronizer:
             elif k in ("__new__", "__init__"):
                 # Skip custom constructor in the wrapped class
                 # Instead, delegate to the base class constructor and wrap it
+                pass
+            elif k in IGNORED_ATTRIBUTES:
                 pass
             elif isinstance(v, staticmethod):
                 # TODO(erikbern): this feels pretty hacky
