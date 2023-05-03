@@ -30,6 +30,9 @@ class Untrackable(Exception):
 
 
 def _function_locator(f):
+    if isinstance(f, staticmethod):
+        return _function_locator(f.__func__)
+
     try:
         return (f.__module__, f.__qualname__)
     except AttributeError:
