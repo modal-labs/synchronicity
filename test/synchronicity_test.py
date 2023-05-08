@@ -41,7 +41,7 @@ def test_function_sync_future():
 
 
 @pytest.mark.asyncio
-async def test_function_async():
+async def test_function_async_deprecated():
     s = Synchronizer()
     t0 = time.time()
     f_s = s.create_async(f)
@@ -64,6 +64,33 @@ async def test_function_async():
     assert f2_s2.__name__ == "async_f2"
     coro = f2_s2(f_s, 42)
     assert await coro == 1764
+
+
+@pytest.mark.asyncio
+async def test_function_async_as_function_attribute():
+    s = Synchronizer()
+    t0 = time.time()
+    f_s = s.create_blocking(f).aio
+    assert f_s.__name__ == "async_f"
+    coro = f_s(42)
+    assert inspect.iscoroutine(coro)
+    assert time.time() - t0 < SLEEP_DELAY
+    assert await coro == 1764
+    assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
+
+    # Make sure the same-loop calls work
+    f2_s = s.create_blocking(f2).aio
+    assert f2_s.__name__ == "async_f2"
+    coro = f2_s(f_s, 42)
+    assert await coro == 1764
+
+    # Make sure cross-loop calls work
+    s2 = Synchronizer()
+    f2_s2 = s2.create_blocking(f2).aio
+    assert f2_s2.__name__ == "async_f2"
+    coro = f2_s2(f_s, 42)
+    assert await coro == 1764
+
 
 
 @pytest.mark.asyncio
@@ -141,7 +168,7 @@ def test_generator_sync():
 async def test_generator_async():
     s = Synchronizer()
     t0 = time.time()
-    gen_s = s.create_async(gen)
+    gen_s = s.create_blocking(gen).aio
     asyncgen = gen_s(3)
     assert inspect.isasyncgen(asyncgen)
     assert time.time() - t0 < SLEEP_DELAY
@@ -150,14 +177,14 @@ async def test_generator_async():
     assert time.time() - t0 > len(lst) * SLEEP_DELAY
 
     # Make sure same-loop calls work
-    gen2_s = s.create_async(gen2)
+    gen2_s = s.create_blocking(gen2).aio
     asyncgen = gen2_s(gen_s, 3)
     lst = [z async for z in asyncgen]
     assert lst == [0, 1, 2]
 
     # Make sure cross-loop calls work
     s2 = Synchronizer()
-    gen2_s2 = s2.create_async(gen2)
+    gen2_s2 = s2.create_blocking(gen2).aio
     asyncgen = gen2_s2(gen_s, 3)
     lst = [z async for z in asyncgen]
     assert lst == [0, 1, 2]
@@ -289,7 +316,7 @@ def test_class_sync_futures():
 
 
 @pytest.mark.asyncio
-async def test_class_async():
+async def test_class_async_deprecated():
     s = Synchronizer()
     AsyncMyClass = s.create_async(MyClass)
     AsyncBase = s.create_async(Base)
@@ -311,6 +338,33 @@ async def test_class_async():
 
     lst = []
     async for z in obj:
+        lst.append(z)
+    assert lst == list(range(42))
+
+
+@pytest.mark.asyncio
+async def test_class_async_as_method_attribute():
+    s = Synchronizer()
+    BlockingMyClass = s.create_blocking(MyClass)
+    BlockingBase = s.create_blocking(Base)
+    assert BlockingMyClass.__name__ == "BlockingMyClass"
+    obj = BlockingMyClass(x=42)
+    assert isinstance(obj, BlockingMyClass)
+    assert isinstance(obj, BlockingBase)
+    await obj.start.aio()
+    coro = obj.get_result.aio()
+    assert inspect.iscoroutine(coro)
+    assert await coro == 1764
+
+    t0 = time.time()
+    async with obj as z:
+        assert z == 42
+        assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
+
+    assert time.time() - t0 > 2 * SLEEP_DELAY
+
+    lst = []
+    async for z in obj:   # TODO (elias): This doesn't have to use .aio since the objects are now both async and sync and have both traits
         lst.append(z)
     assert lst == list(range(42))
 
@@ -396,3 +450,20 @@ def test_set_class_name():
     assert BlockingBase.__name__ == "XYZBase"
     BlockingMyClass = s.create_blocking(MyClass, "XYZMyClass")
     assert BlockingMyClass.__name__ == "XYZMyClass"
+
+
+@pytest.mark.asyncio
+async def test_blocking_nested_aio_returns_blocking_obj():
+    s = Synchronizer()
+    class Foo:
+        async def get_self(self):
+            return self
+
+    BlockingFoo = s.create_blocking(Foo)
+
+    original = BlockingFoo()
+    assert original.get_self() == original
+
+    self_from_aio_interface = await original.get_self.aio()
+    assert self_from_aio_interface == original
+    assert isinstance(self_from_aio_interface, BlockingFoo)

@@ -34,3 +34,6 @@ assert_type(
 assert_type(e2e_example_export.overloaded("12"), float)
 
 assert_type(e2e_example_export.overloaded(12), int)
+
+
+assert_type(e2e_example_export.listify.aio(blocking_foo), typing.Coroutine[typing.List[e2e_example_export.BlockingFoo]])

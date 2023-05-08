@@ -32,7 +32,8 @@ _CLASS_PREFIXES = {
 # Default names for functions
 _FUNCTION_PREFIXES = {
     Interface.BLOCKING: "blocking_",
-    Interface.ASYNC: "async_",
+    Interface.ASYNC: "async_",  # deprecated, will be removed soon!
+    Interface._ASYNC_WITH_BLOCKING_TYPES: "aio_"
 }
 
 TARGET_INTERFACE_ATTR = "_sync_target_interface"
@@ -45,19 +46,34 @@ def warn_old_modal_client():
     )
 
 
-class MethodWithBoundChildren:
-    def __init__(self, func, children):
-        self._callable = func
-        self.children = children
+class FunctionWithAio:
+    def __init__(self, func, aio_func, synchronizer):
+        self._func = func
+        self._aio_func = aio_func
+        self._synchronizer = synchronizer
+
+    def __call__(self, *args, **kwargs):
+        return self._func(*args, **kwargs)
+
+    def aio(self, *args, **kwargs):
+        return self._aio_func(*args, **kwargs)
+
+
+class MethodWithAio:
+    """Creates a bound method that can have callable child-properties on the method itself that are also bound to the parent instance"""
+    def __init__(self, func, aio_func, synchronizer):
+        self._func = func
+        self._aio_func = aio_func
+        self._synchronizer = synchronizer
 
     def __get__(self, instance, owner=None):
         if instance:
-            method = functools.partial(self._callable, instance)
-            for child_name, child in self.children.items():
-                setattr(method, child_name, functools.partial(child, instance))
-            return method
+            bound_func = functools.wraps(self._func)(functools.partial(self._func, instance))  # bound blocking function
+            bound_aio_func = functools.wraps(self._aio_func)(functools.partial(self._aio_func, instance))  # bound async function
+            bound_func.aio = bound_aio_func
+            return bound_func
 
-        return self._callable
+        return self._func  # when accessed like a class attribute, just return the unbound blocking function...
 
 
 class Synchronizer:
@@ -208,6 +224,9 @@ class Synchronizer:
             return obj
 
     def _translate_scalar_out(self, obj, interface):
+        if interface == Interface._ASYNC_WITH_BLOCKING_TYPES:
+            interface = Interface.BLOCKING
+
         # If it's an internal object, translate it to the external interface
         if inspect.isclass(obj) or isinstance(obj, typing.TypeVar):  # TODO: functions?
             cls_dct = obj.__dict__
@@ -391,7 +410,7 @@ class Synchronizer:
                 else:
                     return res
             elif is_coroutine:
-                if interface == Interface.ASYNC:
+                if interface in (Interface.ASYNC, Interface._ASYNC_WITH_BLOCKING_TYPES):
                     coro = self._run_function_async(res, interface)
                     if not is_coroutinefunction:
                         # If this is a non-async function that returns a coroutine,
@@ -434,20 +453,21 @@ class Synchronizer:
 
                 return self._translate_out(res, interface)
         if interface == Interface.BLOCKING:
-            async_interface = self._wrap_callable(f, interface=Interface.ASYNC, name=name, allow_futures=allow_futures, unwrap_user_excs=unwrap_user_excs, target_module=target_module)
-            f_wrapped.aio = async_interface
+            # special async interface - this async interface returns *blocking* instances of wrapped objects, not async ones:
+            async_interface = self._wrap_callable(f, interface=Interface._ASYNC_WITH_BLOCKING_TYPES, name=name, allow_futures=allow_futures, unwrap_user_excs=unwrap_user_excs, target_module=target_module)
+            f_wrapped = functools.wraps(f_wrapped)(FunctionWithAio(f_wrapped, async_interface, self))
 
         self._update_wrapper(f_wrapped, f, _name, interface, target_module=target_module)
         setattr(f_wrapped, self._original_attr, f)
         return f_wrapped
 
-    def _wrap_proxy_method(synchronizer_self, method, interface, allow_futures=True):
+    def _wrap_proxy_method(synchronizer_self, method, interface, allow_futures=True, include_aio_interface=True):
         if getattr(method, synchronizer_self._nowrap_attr, None):
             # This method is marked as non-wrappable
             return method
 
         wrapped_method = synchronizer_self._wrap_callable(
-            method, interface, allow_futures=allow_futures, unwrap_user_excs=False
+            method, interface, allow_futures=allow_futures, unwrap_user_excs=False,
         )
 
         @wraps_by_interface(interface, wrapped_method)
@@ -458,16 +478,16 @@ class Synchronizer:
             except UserCodeException as uc_exc:
                 raise uc_exc.exc from None
 
-        if interface == Interface.BLOCKING:
-            async_proxy_method = synchronizer_self._wrap_proxy_method(method, Interface.ASYNC, allow_futures)
-            return MethodWithBoundChildren(proxy_method, {"aio": async_proxy_method})
+        if interface == Interface.BLOCKING and include_aio_interface:
+            async_proxy_method = synchronizer_self._wrap_proxy_method(method, Interface._ASYNC_WITH_BLOCKING_TYPES, allow_futures)
+            return MethodWithAio(proxy_method, async_proxy_method, synchronizer_self)
 
         return proxy_method
 
 
     def _wrap_proxy_staticmethod(self, method, interface):
         orig_function = method.__func__
-        method = self._wrap_callable(orig_function, interface)
+        method = self._wrap_callable(orig_function, interface,)
         self._update_wrapper(method, orig_function, interface=interface)
         return staticmethod(method)
 
@@ -486,7 +506,7 @@ class Synchronizer:
         for attr in ["fget", "fset", "fdel"]:
             if getattr(prop, attr):
                 func = getattr(prop, attr)
-                kwargs[attr] = self._wrap_proxy_method(func, interface, False)
+                kwargs[attr] = self._wrap_proxy_method(func, interface, allow_futures=False, include_aio_interface=False)
         return property(**kwargs)
 
     def _wrap_proxy_constructor(synchronizer_self, cls, interface):
@@ -525,9 +545,12 @@ class Synchronizer:
                 k_sync = _BUILTIN_ASYNC_METHODS[k]
                 if interface == Interface.BLOCKING:
                     new_dict[k_sync] = self._wrap_proxy_method(
-                        v, interface, allow_futures=False
+                        v, interface, allow_futures=False, include_aio_interface=False,
                     )
-                if interface == Interface.ASYNC:
+                    new_dict[k] = self._wrap_proxy_method(
+                        v, Interface._ASYNC_WITH_BLOCKING_TYPES, allow_futures=False,
+                    )
+                elif interface == Interface.ASYNC:
                     new_dict[k] = self._wrap_proxy_method(
                         v, interface, allow_futures=False
                     )
@@ -601,7 +624,7 @@ class Synchronizer:
         # Wrap object (different cases based on the type)
         if inspect.isclass(obj):
             new_obj = self._wrap_class(
-                obj, interface, name, target_module=target_module
+                obj, interface, name, target_module=target_module,
             )
         elif inspect.isfunction(obj):
             new_obj = self._wrap_callable(

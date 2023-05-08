@@ -20,7 +20,7 @@ from sigtools._signatures import EmptyAnnotation, UpgradedAnnotation  # type: ig
 
 import synchronicity
 from synchronicity import Interface, overload_tracking
-from synchronicity.synchronizer import TARGET_INTERFACE_ATTR, SYNCHRONIZER_ATTR
+from synchronicity.synchronizer import TARGET_INTERFACE_ATTR, SYNCHRONIZER_ATTR, MethodWithAio, FunctionWithAio
 
 
 class ReprObj:
@@ -64,7 +64,7 @@ class StubEmitter:
                 continue  # skip imported stuff, unless it's explicitly in __all__
             if inspect.isclass(entity):
                 emitter.add_class(entity, entity_name)
-            elif inspect.isfunction(entity):
+            elif inspect.isfunction(entity) or isinstance(entity, FunctionWithAio):
                 emitter.add_function(entity, entity_name, 0)
             elif isinstance(entity, typing.TypeVar):
                 emitter.add_type_var(entity, entity_name)
@@ -86,9 +86,14 @@ class StubEmitter:
 
     def add_function(self, func, name, indentation_level=0):
         # adds function source code to module
-        self.parts.append(
-            self._get_function_source_with_overloads(func, name, indentation_level)
-        )
+        if isinstance(func, FunctionWithAio):
+            self.parts.append(
+                self._get_aio_function_source(func, name, indentation_level)
+            )
+        else:
+            self.parts.append(
+                self._get_function_source_with_overloads(func, name, indentation_level)
+            )
 
     def _get_translated_class_bases(self, cls):
         # get __orig_bases__ (__bases__ with potential generic args) for any class
@@ -172,6 +177,10 @@ class StubEmitter:
                     f"{body_indent}@property\n{self._get_function_source_with_overloads(entity.fget, entity_name, body_indent_level)}"
                 )
 
+            elif isinstance(entity, MethodWithAio):
+                methods.append(self._get_aio_function_source(entity, entity_name, body_indent_level))
+
+
         padding = [] if var_annotations or methods else [f"{body_indent}..."]
         self.parts.append(
             "\n".join(
@@ -183,6 +192,20 @@ class StubEmitter:
                 ]
             )
         )
+
+    def _get_aio_function_source(self, entity, entity_name, body_indent_level):
+        # Synchronicity specific blocking + async method
+        body_indent = self._indent(body_indent_level)
+        # create an inline protocol type, inlining both the blocking and async interfaces:
+        blocking_func_source = self._get_function_source_with_overloads(entity._func, "__call__", body_indent_level + 1)
+        aio_func_source = self._get_function_source_with_overloads(entity._aio_func, "aio", body_indent_level + 1)
+        protocol_attr = f"""\
+{body_indent}class __{entity_name}_spec(typing.Protocol):
+{blocking_func_source}
+{aio_func_source}
+{body_indent}{entity_name}: __{entity_name}_spec
+"""
+        return protocol_attr
 
     def add_type_var(self, type_var, name):
         self.imports.add("typing")

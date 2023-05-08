@@ -1,4 +1,5 @@
 import functools
+import textwrap
 import typing
 
 import synchronicity
@@ -257,12 +258,16 @@ Foo = synchronizer.create_blocking(_Foo, "Foo", __name__)
 
 
 def test_synchronicity_type_translation():
-    async def _get_foo() -> _Foo:
+    async def _get_foo(foo: _Foo) -> _Foo:
         pass
 
     get_foo = synchronizer.create_blocking(_get_foo, "get_foo", __name__)
     src = _function_source(get_foo)
-    assert "def get_foo() -> Foo" in src
+
+    assert "class __get_foo_spec(typing.Protocol):" in src
+    assert "    def __call__(foo: Foo) -> Foo" in src
+    assert "    async def aio(foo: Foo) -> Foo" in src
+    assert "get_foo: __get_foo_spec"
 
 
 def test_synchronicity_self_ref():
@@ -276,16 +281,33 @@ class _WithClassMethod:
     def classy(cls):
         pass
 
+    async def meth(self, arg: bool) -> int:
+        return 0
+
 
 WithClassMethod = synchronizer.create_blocking(
     _WithClassMethod, "WithClassMethod", __name__
 )
 
 
-def test_synchronicity_classmethod():
+def test_synchronicity_class():
     src = _class_source(WithClassMethod)
-    assert "@classmethod" in src
+    assert "    @classmethod" in src
     assert "    def classy(cls):" in src
+
+    assert "__meth_spec" in src
+
+    assert f"""
+    class __meth_spec(typing.Protocol):
+        def __call__(self, arg: bool) -> int:
+            ...
+
+        async def aio(self, *args, **kwargs) -> int:
+            ...
+
+    meth: __meth_spec
+""" in src
+
 
 
 T = typing.TypeVar("T")
