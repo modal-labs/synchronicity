@@ -4,8 +4,6 @@ import functools
 import inspect
 import typing
 
-import sigtools
-
 from .exceptions import UserCodeException
 from .interface import Interface
 from contextlib import asynccontextmanager as _asynccontextmanager

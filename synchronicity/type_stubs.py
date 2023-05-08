@@ -16,7 +16,6 @@ from typing import TypeVar, Generic
 from unittest import mock
 
 import sigtools.specifiers  # type: ignore
-import typing_extensions
 from sigtools._signatures import EmptyAnnotation, UpgradedAnnotation  # type: ignore
 
 import synchronicity
