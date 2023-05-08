@@ -35,5 +35,7 @@ assert_type(e2e_example_export.overloaded("12"), float)
 
 assert_type(e2e_example_export.overloaded(12), int)
 
+async def async_block() -> None:
+    res = await e2e_example_export.returns_foo.aio(blocking_foo)
+    assert_type(res, e2e_example_export.BlockingFoo)
 
-assert_type(e2e_example_export.listify.aio(blocking_foo), typing.Coroutine[typing.List[e2e_example_export.BlockingFoo]])

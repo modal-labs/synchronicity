@@ -16,6 +16,7 @@ from typing import TypeVar, Generic
 from unittest import mock
 
 import sigtools.specifiers  # type: ignore
+import typing_extensions
 from sigtools._signatures import EmptyAnnotation, UpgradedAnnotation  # type: ignore
 
 import synchronicity
@@ -87,8 +88,13 @@ class StubEmitter:
     def add_function(self, func, name, indentation_level=0):
         # adds function source code to module
         if isinstance(func, FunctionWithAio):
+            # since the original function signature lacks the "self" argument of the "synthetic" Protocol, we inject it
+            def inject_self(sig: inspect.Signature):
+                parameters = sig.parameters.values()
+                return sig.replace(parameters=[inspect.Parameter("self", inspect.Parameter.POSITIONAL_OR_KEYWORD), *parameters])
+
             self.parts.append(
-                self._get_aio_function_source(func, name, indentation_level)
+                self._get_dual_function_source(func, name, indentation_level, transform_signature=inject_self)
             )
         else:
             self.parts.append(
@@ -178,7 +184,7 @@ class StubEmitter:
                 )
 
             elif isinstance(entity, MethodWithAio):
-                methods.append(self._get_aio_function_source(entity, entity_name, body_indent_level))
+                methods.append(self._get_dual_function_source(entity, entity_name, body_indent_level))
 
 
         padding = [] if var_annotations or methods else [f"{body_indent}..."]
@@ -193,14 +199,17 @@ class StubEmitter:
             )
         )
 
-    def _get_aio_function_source(self, entity, entity_name, body_indent_level):
+    def _get_dual_function_source(self, entity, entity_name, body_indent_level, transform_signature=None):
+        # Emits type stub for a "dual" function that is both callable and has an .aio callable with an async version
+        # Currently this is emitted as a typing.Protocol declaration + instance with a __call__ and aio method
+        self.imports.add("typing_extensions")
         # Synchronicity specific blocking + async method
         body_indent = self._indent(body_indent_level)
         # create an inline protocol type, inlining both the blocking and async interfaces:
-        blocking_func_source = self._get_function_source_with_overloads(entity._func, "__call__", body_indent_level + 1)
-        aio_func_source = self._get_function_source_with_overloads(entity._aio_func, "aio", body_indent_level + 1)
+        blocking_func_source = self._get_function_source_with_overloads(entity._func, "__call__", body_indent_level + 1, transform_signature=transform_signature)
+        aio_func_source = self._get_function_source_with_overloads(entity._aio_func, "aio", body_indent_level + 1, transform_signature=transform_signature)
         protocol_attr = f"""\
-{body_indent}class __{entity_name}_spec(typing.Protocol):
+{body_indent}class __{entity_name}_spec(typing_extensions.Protocol):
 {blocking_func_source}
 {aio_func_source}
 {body_indent}{entity_name}: __{entity_name}_spec
@@ -381,7 +390,7 @@ class StubEmitter:
 
         return type_annotation.copy_with(mapped_args)
 
-    def _custom_signature(self, func) -> str:
+    def _custom_signature(self, func, transform_signature=None) -> str:
         """
         We use this instead o str(inspect.Signature()) due to a few issues:
         * Generics with None args are incorrectly encoded as NoneType in str(signature)
@@ -392,6 +401,7 @@ class StubEmitter:
         * TypeVars default repr is `~T` instead of `origin_module.T` etc.
         """
         sig = sigtools.specifiers.signature(func)
+
 
         if sig.upgraded_return_annotation is not EmptyAnnotation:
             return_annotation = sig.upgraded_return_annotation.source_value()
@@ -422,6 +432,8 @@ class StubEmitter:
                 new_parameters.append(param)
 
         sig = sig.replace(parameters=new_parameters)
+        if transform_signature:
+            sig = transform_signature(sig)
 
         # kind of ugly, but this ensures valid formatting of Generics etc, see docstring above
         with mock.patch("inspect.formatannotation", self._formatannotation):
@@ -493,7 +505,7 @@ class StubEmitter:
         return level * self._indentation
 
     def _get_function_source_with_overloads(
-        self, func, name, indentation_level=0
+        self, func, name, indentation_level=0, transform_signature=None
     ) -> str:
         signature_indent = self._indent(indentation_level)
         body_indent = self._indent(indentation_level + 1)
@@ -508,26 +520,26 @@ class StubEmitter:
 
         overloaded_signatures = overload_tracking.get_overloads(root_func)
         for overload_func in overloaded_signatures:
-            self._ensure_import(typing.overload)
+            self.imports.add("typing")
             parts.append(f"{signature_indent}@typing.overload")
             if interface:
                 overload_func = synchronizer._wrap(overload_func, interface, name=name)
 
             parts.append(
                 self._get_function_source(
-                    overload_func, name, signature_indent, body_indent
+                    overload_func, name, signature_indent, body_indent, transform_signature=transform_signature
                 )
             )
 
         if not overloaded_signatures:
             # only add the functions complete signatures if there are no stubs
             parts.append(
-                self._get_function_source(func, name, signature_indent, body_indent)
+                self._get_function_source(func, name, signature_indent, body_indent, transform_signature=transform_signature)
             )
         return "\n".join(parts)
 
     def _get_function_source(
-        self, func, name, signature_indent: str, body_indent: str
+        self, func, name, signature_indent: str, body_indent: str, transform_signature=None
     ) -> str:
         async_prefix = ""
         if inspect.iscoroutinefunction(func):
@@ -535,7 +547,7 @@ class StubEmitter:
             # since they contain no yield keyword, and would otherwise indicate an awaitable that returns an async generator to static type checkers
             async_prefix = "async "
 
-        signature = self._custom_signature(func)
+        signature = self._custom_signature(func, transform_signature)
 
         return "\n".join(
             [

@@ -264,14 +264,15 @@ def test_synchronicity_type_translation():
     get_foo = synchronizer.create_blocking(_get_foo, "get_foo", __name__)
     src = _function_source(get_foo)
 
-    assert "class __get_foo_spec(typing.Protocol):" in src
-    assert "    def __call__(foo: Foo) -> Foo" in src
-    assert "    async def aio(foo: Foo) -> Foo" in src
+    assert "class __get_foo_spec(typing_extensions.Protocol):" in src
+    assert "    def __call__(self, foo: Foo) -> Foo" in src
+    assert "    async def aio(self, *args, **kwargs) -> Foo" in src
     assert "get_foo: __get_foo_spec"
 
 
 def test_synchronicity_self_ref():
     src = _class_source(Foo)
+    print(src)
     assert "@staticmethod" in src
     assert "    def clone(foo: Foo) -> Foo" in src
 
@@ -298,7 +299,7 @@ def test_synchronicity_class():
     assert "__meth_spec" in src
 
     assert f"""
-    class __meth_spec(typing.Protocol):
+    class __meth_spec(typing_extensions.Protocol):
         def __call__(self, arg: bool) -> int:
             ...
 
@@ -354,7 +355,9 @@ def test_synchronicity_generic_subclass():
 
     foo = synchronizer.create_blocking(foo_impl, "foo")
     src = _function_source(foo)
-    assert "def foo(bar: BlockingMyGeneric[str]):" in src
+    assert "def __call__(self, bar: BlockingMyGeneric[str]):" in src
+    assert "async def aio(self, *args, **kwargs):" in src
+
 
 
 _B = typing.TypeVar("_B", bound="str")

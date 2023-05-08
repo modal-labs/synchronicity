@@ -20,3 +20,7 @@ listify = synchronizer.create_blocking(e2e_example_impl._listify, "listify", __n
 overloaded = synchronizer.create_blocking(
     e2e_example_impl._overloaded, "overloaded", __name__
 )
+
+returns_foo = synchronizer.create_blocking(
+    e2e_example_impl._returns_foo, "returns_foo", __name__
+)

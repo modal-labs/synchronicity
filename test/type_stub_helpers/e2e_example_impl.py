@@ -43,3 +43,7 @@ def _overloaded(arg: Union[str, int]):
     if isinstance(arg, str):
         return float(arg)
     return arg
+
+
+async def _returns_foo() -> _Foo:
+    return _Foo("hello")

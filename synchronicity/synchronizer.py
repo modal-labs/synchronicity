@@ -46,6 +46,15 @@ def warn_old_modal_client():
     )
 
 
+def needs_to_run_as_async(func):
+    # determine before running a function if it needs to run in async mode
+    # This is not 100% accurate until we start enforcing exact annotations on all arguments/return values
+    # since inputs/outputs might need async translation even if the function isn't declared as async in itself
+    if inspect.iscoroutinefunction(func) or inspect.isasyncgenfunction(func):
+        return True
+    # TODO: check annotations if they contain any async entities that would need an event loop to be translated
+
+
 class FunctionWithAio:
     def __init__(self, func, aio_func, synchronizer):
         self._func = func
@@ -69,7 +78,7 @@ class MethodWithAio:
     def __get__(self, instance, owner=None):
         if instance:
             bound_func = functools.wraps(self._func)(functools.partial(self._func, instance))  # bound blocking function
-            bound_aio_func = functools.wraps(self._aio_func)(functools.partial(self._aio_func, instance))  # bound async function
+            bound_aio_func = wraps_by_interface(Interface._ASYNC_WITH_BLOCKING_TYPES, self._aio_func)(functools.partial(self._aio_func, instance))  # bound async function
             bound_func.aio = bound_aio_func
             return bound_func
 
@@ -364,6 +373,7 @@ class Synchronizer:
         allow_futures=True,
         unwrap_user_excs=True,
         target_module=None,
+        include_aio_interface=True,
     ):
         if hasattr(f, self._original_attr):
             if self._multiwrap_warning:
@@ -452,13 +462,17 @@ class Synchronizer:
                     return f_wrapped
 
                 return self._translate_out(res, interface)
-        if interface == Interface.BLOCKING:
-            # special async interface - this async interface returns *blocking* instances of wrapped objects, not async ones:
-            async_interface = self._wrap_callable(f, interface=Interface._ASYNC_WITH_BLOCKING_TYPES, name=name, allow_futures=allow_futures, unwrap_user_excs=unwrap_user_excs, target_module=target_module)
-            f_wrapped = functools.wraps(f_wrapped)(FunctionWithAio(f_wrapped, async_interface, self))
 
         self._update_wrapper(f_wrapped, f, _name, interface, target_module=target_module)
         setattr(f_wrapped, self._original_attr, f)
+
+        if interface == Interface.BLOCKING and include_aio_interface and needs_to_run_as_async(f):
+            # special async interface - this async interface returns *blocking* instances of wrapped objects, not async ones:
+            async_interface = self._wrap_callable(f, interface=Interface._ASYNC_WITH_BLOCKING_TYPES, name=name, allow_futures=allow_futures, unwrap_user_excs=unwrap_user_excs, target_module=target_module)
+            f_wrapped = FunctionWithAio(f_wrapped, async_interface, self)
+            self._update_wrapper(f_wrapped, f, _name, interface, target_module=target_module)
+            setattr(f_wrapped, self._original_attr, f)
+
         return f_wrapped
 
     def _wrap_proxy_method(synchronizer_self, method, interface, allow_futures=True, include_aio_interface=True):
@@ -478,7 +492,7 @@ class Synchronizer:
             except UserCodeException as uc_exc:
                 raise uc_exc.exc from None
 
-        if interface == Interface.BLOCKING and include_aio_interface:
+        if interface == Interface.BLOCKING and include_aio_interface and needs_to_run_as_async(method):
             async_proxy_method = synchronizer_self._wrap_proxy_method(method, Interface._ASYNC_WITH_BLOCKING_TYPES, allow_futures)
             return MethodWithAio(proxy_method, async_proxy_method, synchronizer_self)
 
@@ -486,14 +500,15 @@ class Synchronizer:
 
 
     def _wrap_proxy_staticmethod(self, method, interface):
+        # TODO(elias): Fix .aio
         orig_function = method.__func__
-        method = self._wrap_callable(orig_function, interface,)
+        method = self._wrap_callable(orig_function, interface, include_aio_interface=False)
         self._update_wrapper(method, orig_function, interface=interface)
         return staticmethod(method)
 
     def _wrap_proxy_classmethod(self, method, interface):
-        method = self._wrap_callable(method.__func__, interface)
-
+        # TODO(elias): Fix .aio
+        method = self._wrap_callable(method.__func__, interface, include_aio_interface=False)
         @wraps_by_interface(interface, method)
         def proxy_classmethod(cls, *args, **kwargs):
             return method(cls, *args, **kwargs)

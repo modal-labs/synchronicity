@@ -4,6 +4,8 @@ import functools
 import inspect
 import typing
 
+import sigtools
+
 from .exceptions import UserCodeException
 from .interface import Interface
 from contextlib import asynccontextmanager as _asynccontextmanager
@@ -18,7 +20,7 @@ def wraps_by_interface(interface: Interface, func):
 
     Note: Does not forward async generator information other than explicit annotations
     """
-    if inspect.iscoroutinefunction(func) and interface == Interface.ASYNC:
+    if inspect.iscoroutinefunction(func) and interface in (Interface.ASYNC, Interface._ASYNC_WITH_BLOCKING_TYPES):
 
         def asyncfunc_deco(user_wrapper):
             @functools.wraps(func)
