@@ -92,7 +92,6 @@ async def test_function_async_as_function_attribute():
     assert await coro == 1764
 
 
-
 @pytest.mark.asyncio
 async def test_function_async_block_event_loop():
     s = Synchronizer()
@@ -364,7 +363,7 @@ async def test_class_async_as_method_attribute():
     assert time.time() - t0 > 2 * SLEEP_DELAY
 
     lst = []
-    async for z in obj:   # TODO (elias): This doesn't have to use .aio since the objects are now both async and sync and have both traits
+    async for z in obj:  # TODO (elias): This doesn't have to use .aio since the objects are now both async and sync and have both traits
         lst.append(z)
     assert lst == list(range(42))
 
@@ -455,6 +454,7 @@ def test_set_class_name():
 @pytest.mark.asyncio
 async def test_blocking_nested_aio_returns_blocking_obj():
     s = Synchronizer()
+
     class Foo:
         async def get_self(self):
             return self

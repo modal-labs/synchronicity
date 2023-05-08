@@ -20,7 +20,10 @@ def wraps_by_interface(interface: Interface, func):
 
     Note: Does not forward async generator information other than explicit annotations
     """
-    if inspect.iscoroutinefunction(func) and interface in (Interface.ASYNC, Interface._ASYNC_WITH_BLOCKING_TYPES):
+    if inspect.iscoroutinefunction(func) and interface in (
+        Interface.ASYNC,
+        Interface._ASYNC_WITH_BLOCKING_TYPES,
+    ):
 
         def asyncfunc_deco(user_wrapper):
             @functools.wraps(func)

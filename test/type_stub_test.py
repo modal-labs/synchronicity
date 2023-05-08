@@ -298,7 +298,8 @@ def test_synchronicity_class():
 
     assert "__meth_spec" in src
 
-    assert f"""
+    assert (
+        f"""
     class __meth_spec(typing_extensions.Protocol):
         def __call__(self, arg: bool) -> int:
             ...
@@ -307,8 +308,9 @@ def test_synchronicity_class():
             ...
 
     meth: __meth_spec
-""" in src
-
+"""
+        in src
+    )
 
 
 T = typing.TypeVar("T")
@@ -357,7 +359,6 @@ def test_synchronicity_generic_subclass():
     src = _function_source(foo)
     assert "def __call__(self, bar: BlockingMyGeneric[str]):" in src
     assert "async def aio(self, *args, **kwargs):" in src
-
 
 
 _B = typing.TypeVar("_B", bound="str")
