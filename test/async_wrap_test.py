@@ -54,7 +54,7 @@ def test_wrap_staticmethod():
     assert not inspect.iscoroutinefunction(
         BlockingFoo.__dict__["a_static_method"]._func
     )
-    assert inspect.iscoroutinefunction(BlockingFoo.__dict__["a_static_method"]._aio_func)
+    assert inspect.iscoroutinefunction(BlockingFoo.__dict__["a_static_method"].aio)
 
 
     # deprecated interface

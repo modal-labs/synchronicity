@@ -231,7 +231,7 @@ class StubEmitter:
             transform_signature=transform_signature,
         )
         aio_func_source = self._get_function_source_with_overloads(
-            entity._aio_func,
+            entity.aio,
             "aio",
             body_indent_level + 1,
             transform_signature=transform_signature,
