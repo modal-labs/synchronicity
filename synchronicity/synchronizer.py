@@ -58,7 +58,7 @@ def needs_to_run_as_async(func):
 class FunctionWithAio:
     def __init__(self, func, aio_func, synchronizer):
         self._func = func
-        self.aio = aio_func
+        self._aio_func = self.aio = aio_func
         self._synchronizer = synchronizer
 
     def __call__(self, *args, **kwargs):

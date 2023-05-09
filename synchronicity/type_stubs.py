@@ -216,7 +216,7 @@ class StubEmitter:
         )
 
     def _get_dual_function_source(
-        self, entity, entity_name, body_indent_level, transform_signature=None
+        self, entity: typing.Union[MethodWithAio, FunctionWithAio], entity_name, body_indent_level, transform_signature=None
     ):
         # Emits type stub for a "dual" function that is both callable and has an .aio callable with an async version
         # Currently this is emitted as a typing.Protocol declaration + instance with a __call__ and aio method
@@ -231,7 +231,7 @@ class StubEmitter:
             transform_signature=transform_signature,
         )
         aio_func_source = self._get_function_source_with_overloads(
-            entity.aio,
+            entity._aio_func,
             "aio",
             body_indent_level + 1,
             transform_signature=transform_signature,
