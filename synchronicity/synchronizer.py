@@ -1,9 +1,12 @@
 import asyncio
 import atexit
+import collections.abc
 import contextlib
 import functools
+import importlib
 import inspect
 import platform
+import sys
 import threading
 import typing
 import warnings
@@ -46,13 +49,51 @@ def warn_old_modal_client():
     )
 
 
-def needs_to_run_as_async(func):
-    # determine before running a function if it needs to run in async mode
-    # This is not 100% accurate until we start enforcing exact annotations on all arguments/return values
-    # since inputs/outputs might need async translation even if the function isn't declared as async in itself
+ASYNC_GENERIC_ORIGINS = (
+    collections.abc.Awaitable,
+    collections.abc.Coroutine,
+    collections.abc.AsyncIterator,
+    collections.abc.AsyncIterable,
+    collections.abc.AsyncGenerator,
+    contextlib.AbstractAsyncContextManager,
+)
+
+def _type_requires_aio_usage(annotation, home_module):
+    if isinstance(annotation, str):
+        # evaluate string annotations...
+        # mod = importlib.import_module(home_module)
+        if home_module in sys.modules:
+            mod = sys.modules[home_module]
+            try:
+                annotation = eval(annotation, mod.__dict__)
+            except NameError:
+                # this could happen with forward annotations, or imports that aren't available in the namespace when synchronicity wrapping occurs
+                # TODO: support eval of non-imported modules?
+                return False
+        else:
+            return False
+
+    if hasattr(annotation, "__origin__"):
+        if annotation.__origin__ in ASYNC_GENERIC_ORIGINS:
+            return True
+        # recurse
+        for a in getattr(annotation, "__args__", ()):
+            if _type_requires_aio_usage(a, home_module):
+                return True
+    return False
+
+def should_have_aio_interface(func):
+    # determines if a blocking function gets an .aio attribute with an async interface to the function or not
     if inspect.iscoroutinefunction(func) or inspect.isasyncgenfunction(func):
         return True
-    # TODO: check annotations if they contain any async entities that would need an event loop to be translated
+    # check annotations if they contain any async entities that would need an event loop to be translated:
+    # This catches things like vanilla functions returning Coroutines
+    annos = getattr(func, "__annotations__", {})
+    for anno in annos.values():
+        if _type_requires_aio_usage(anno, func.__module__):
+            return True
+    return False
+
 
 
 class FunctionWithAio:
@@ -483,7 +524,7 @@ class Synchronizer:
         if (
             interface == Interface.BLOCKING
             and include_aio_interface
-            and needs_to_run_as_async(f)
+            and should_have_aio_interface(f)
         ):
             # special async interface - this async interface returns *blocking* instances of wrapped objects, not async ones:
             async_interface = self._wrap_callable(
@@ -531,7 +572,7 @@ class Synchronizer:
         if (
             interface == Interface.BLOCKING
             and include_aio_interface
-            and needs_to_run_as_async(method)
+            and should_have_aio_interface(method)
         ):
             async_proxy_method = synchronizer_self._wrap_proxy_method(
                 method, Interface._ASYNC_WITH_BLOCKING_TYPES, allow_futures
@@ -557,7 +598,7 @@ class Synchronizer:
 
         if (
             interface == Interface.BLOCKING
-            and needs_to_run_as_async(orig_func)
+            and should_have_aio_interface(orig_func)
         ):
             async_method = self._wrap_callable(
                 orig_func, Interface._ASYNC_WITH_BLOCKING_TYPES

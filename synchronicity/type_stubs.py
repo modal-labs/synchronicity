@@ -245,7 +245,8 @@ class StubEmitter:
         return protocol_attr
 
     def add_type_var(self, type_var, name):
-        self.imports.add("typing")
+        type_module = type(type_var).__module__
+        self.imports.add(type_module)
         args = [f'"{name}"']
         if type_var.__bound__:
             translated_bound = self._translate_global_annotation(
@@ -254,7 +255,8 @@ class StubEmitter:
             str_annotation = self._formatannotation(translated_bound)
             args.append(f'bound="{str_annotation}"')
         self.global_types.add(name)
-        self.parts.append(f'{name} = typing.TypeVar({", ".join(args)})')
+        type_name = type(type_var).__name__  # could be both ParamSpec and TypeVar
+        self.parts.append(f'{name} = {type_module}.{type_name}({", ".join(args)})')
 
     def get_source(self):
         missing_types = self.referenced_global_types - self.global_types

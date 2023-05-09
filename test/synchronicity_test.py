@@ -1,6 +1,8 @@
 import asyncio
 import concurrent.futures
 import inspect
+from typing import Awaitable, Coroutine
+
 import pytest
 import time
 
@@ -188,6 +190,23 @@ async def test_generator_async():
     asyncgen = gen2_s2(gen_s, 3)
     lst = [z async for z in asyncgen]
     assert lst == [0, 1, 2]
+
+
+
+@pytest.mark.asyncio
+async def test_function_returning_coroutine():
+    s = Synchronizer()
+    def func() -> Coroutine:
+        async def inner():
+            return 10
+
+        return inner()
+
+    blocking_func = s.create_blocking(func)
+    assert blocking_func() == 10
+    coro = blocking_func.aio()
+    assert inspect.iscoroutine(coro)
+    assert await coro == 10
 
 
 def test_sync_lambda_returning_coroutine_sync():
