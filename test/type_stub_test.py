@@ -272,9 +272,12 @@ def test_synchronicity_type_translation():
 
 def test_synchronicity_self_ref():
     src = _class_source(Foo)
-    print(src)
-    assert "@staticmethod" in src
-    assert "    def clone(foo: Foo) -> Foo" in src
+    assert "class __clone_spec(typing_extensions.Protocol):" in src
+    assert "    def __call__(self, foo: Foo) -> Foo" in src
+    assert "    async def aio(self, *args, **kwargs) -> Foo" in src
+    assert "clone: __clone_spec" in src
+    # assert "@staticmethod" in src
+    # assert "    def clone(foo: Foo) -> Foo" in src
 
 
 class _WithClassMethod:

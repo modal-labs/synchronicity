@@ -47,6 +47,17 @@ class ReprObj:
         pass
 
 
+def inject_self(sig: inspect.Signature):
+    parameters = sig.parameters.values()
+    return sig.replace(
+        parameters=[
+            inspect.Parameter(
+                "self", inspect.Parameter.POSITIONAL_OR_KEYWORD
+            ),
+            *parameters,
+        ]
+    )
+
 class StubEmitter:
     def __init__(self, target_module):
         self.target_module = target_module
@@ -93,17 +104,6 @@ class StubEmitter:
         # adds function source code to module
         if isinstance(func, FunctionWithAio):
             # since the original function signature lacks the "self" argument of the "synthetic" Protocol, we inject it
-            def inject_self(sig: inspect.Signature):
-                parameters = sig.parameters.values()
-                return sig.replace(
-                    parameters=[
-                        inspect.Parameter(
-                            "self", inspect.Parameter.POSITIONAL_OR_KEYWORD
-                        ),
-                        *parameters,
-                    ]
-                )
-
             self.parts.append(
                 self._get_dual_function_source(
                     func, name, indentation_level, transform_signature=inject_self
@@ -196,10 +196,10 @@ class StubEmitter:
                     f"{body_indent}@property\n{self._get_function_source_with_overloads(entity.fget, entity_name, body_indent_level)}"
                 )
 
-            elif isinstance(entity, MethodWithAio):
+            elif isinstance(entity, (FunctionWithAio, MethodWithAio)):
                 methods.append(
                     self._get_dual_function_source(
-                        entity, entity_name, body_indent_level
+                        entity, entity_name, body_indent_level, transform_signature=inject_self if isinstance(entity, FunctionWithAio) else None
                     )
                 )
 

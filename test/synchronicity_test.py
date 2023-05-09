@@ -365,9 +365,13 @@ async def test_class_async_as_method_attribute():
 
     lst = []
 
-    async for z in obj:  # TODO (elias): This doesn't have to use .aio since the objects are now both async and sync and have both traits
+    async for z in obj:
         lst.append(z)
+
     assert lst == list(range(42))
+
+    assert await obj.my_static_method.aio() == 43
+    assert await obj.my_class_method.aio() == 44
 
 
 @pytest.mark.asyncio

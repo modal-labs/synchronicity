@@ -32,6 +32,7 @@ def check_traceback(exc):
     if n_outside > 1:
         for frame in traceback.extract_tb(tb):
             print(frame.filename, frame.lineno, frame.line)
+        traceback.print_tb(tb)
         raise Exception(f"Got {n_outside} frames outside user code, expected 1")
 
 

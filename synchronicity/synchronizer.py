@@ -57,41 +57,44 @@ def needs_to_run_as_async(func):
 
 class FunctionWithAio:
     def __init__(self, func, aio_func, synchronizer):
-        #self._func = func
-        #self._aio_func = aio_func
-        self._func = self.__call__ = func
-        self._aio_func = self.aio = aio_func
+        self._func = func
+        self.aio = aio_func
         self._synchronizer = synchronizer
 
     def __call__(self, *args, **kwargs):
-        return self._func(*args, **kwargs)
+        # .__call__ is special - it's being looked up on the class instead of the instance when calling something, so setting
+        # the magic method from the constructor is not possible (https://stackoverflow.com/questions/22390532/object-is-not-callable-after-adding-call-method-to-instance)
+        # so we need to use an explicit wrapper function here
+        try:
+            return self._func(*args, **kwargs)
+        except UserCodeException as uc_exc:
+            raise uc_exc.exc from None
 
 class MethodWithAio:
     """Creates a bound method that can have callable child-properties on the method itself that are also bound to the parent instance"""
 
-    def __init__(self, func, aio_func, synchronizer: "Synchronizer"):
+    def __init__(self, func, aio_func, synchronizer: "Synchronizer", is_classmethod=False):
         self._func = func
         self._aio_func = aio_func
         self._synchronizer = synchronizer
+        self._is_classmethod = is_classmethod
 
     def __get__(self, instance, owner=None):
-        if instance:
-            bound_func = functools.wraps(self._func)(
-                functools.partial(self._func, instance)
-            )  # bound blocking function
-            self._synchronizer._update_wrapper(bound_func, self._func, interface=Interface.BLOCKING)
+        bind_var = instance if instance and not self._is_classmethod else owner
 
-            bound_aio_func = wraps_by_interface(
-                Interface._ASYNC_WITH_BLOCKING_TYPES, self._aio_func
-            )(
-                functools.partial(self._aio_func, instance)
-            )  # bound async function
-            self._synchronizer._update_wrapper(bound_func, self._func, interface=Interface._ASYNC_WITH_BLOCKING_TYPES)
-            bound_func.aio = bound_aio_func
-            return bound_func
+        bound_func = functools.wraps(self._func)(
+            functools.partial(self._func, bind_var)
+        )  # bound blocking function
+        self._synchronizer._update_wrapper(bound_func, self._func, interface=Interface.BLOCKING)
 
-        # when accessed like a class attribute, just return the unbound blocking function...
-        return self._func
+        bound_aio_func = wraps_by_interface(
+            Interface._ASYNC_WITH_BLOCKING_TYPES, self._aio_func
+        )(
+            functools.partial(self._aio_func, bind_var)
+        )  # bound async function
+        self._synchronizer._update_wrapper(bound_func, self._func, interface=Interface._ASYNC_WITH_BLOCKING_TYPES)
+        bound_func.aio = bound_aio_func
+        return bound_func
 
 
 class Synchronizer:
@@ -444,7 +447,7 @@ class Synchronizer:
                         return self._run_function_sync(res, interface)
                     except UserCodeException as uc_exc:
                         # Used to skip a frame when called from `proxy_method`.
-                        if unwrap_user_excs:
+                        if unwrap_user_excs and not (Interface.BLOCKING and include_aio_interface):
                             raise uc_exc.exc from None
                         else:
                             raise uc_exc
@@ -538,26 +541,30 @@ class Synchronizer:
         return proxy_method
 
     def _wrap_proxy_staticmethod(self, method, interface):
-        # TODO(elias): Fix .aio
         orig_function = method.__func__
         method = self._wrap_callable(
-            orig_function, interface, include_aio_interface=False
+            orig_function, interface
         )
-        self._update_wrapper(method, orig_function, interface=interface)
+        if isinstance(method, FunctionWithAio):
+            return method  # no need to wrap a FunctionWithAio in a staticmethod, as it won't get bound anyways
         return staticmethod(method)
 
-    def _wrap_proxy_classmethod(self, method, interface):
-        # TODO(elias): Fix .aio
+    def _wrap_proxy_classmethod(self, orig_classmethod, interface):
+        orig_func = orig_classmethod.__func__
         method = self._wrap_callable(
-            method.__func__, interface, include_aio_interface=False
+            orig_func, interface, include_aio_interface=False
         )
 
-        @wraps_by_interface(interface, method)
-        def proxy_classmethod(cls, *args, **kwargs):
-            return method(cls, *args, **kwargs)
+        if (
+            interface == Interface.BLOCKING
+            and needs_to_run_as_async(orig_func)
+        ):
+            async_method = self._wrap_callable(
+                orig_func, Interface._ASYNC_WITH_BLOCKING_TYPES
+            )
+            return MethodWithAio(method, async_method, self, is_classmethod=True)
 
-        self._update_wrapper(proxy_classmethod, method, interface=interface)
-        return classmethod(proxy_classmethod)
+        return classmethod(method)
 
     def _wrap_proxy_property(self, prop, interface):
         kwargs = {}

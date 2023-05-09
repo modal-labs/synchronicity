@@ -4,6 +4,7 @@ import typing
 import synchronicity
 from synchronicity import Interface, async_wrap
 from synchronicity.async_wrap import wraps_by_interface
+from synchronicity.synchronizer import FunctionWithAio
 
 
 def test_wrap_corofunc_using_async():
@@ -49,10 +50,14 @@ def test_wrap_staticmethod():
     BlockingFoo = synchronizer.create_blocking(Foo)
     AsyncFoo = synchronizer.create_async(Foo)
 
-    assert isinstance(BlockingFoo.__dict__["a_static_method"], staticmethod)
-    assert isinstance(AsyncFoo.__dict__["a_static_method"], staticmethod)
-
-    assert inspect.iscoroutinefunction(AsyncFoo.__dict__["a_static_method"].__func__)
+    assert isinstance(BlockingFoo.__dict__["a_static_method"], FunctionWithAio)
     assert not inspect.iscoroutinefunction(
-        BlockingFoo.__dict__["a_static_method"].__func__
+        BlockingFoo.__dict__["a_static_method"]._func
     )
+    assert inspect.iscoroutinefunction(BlockingFoo.__dict__["a_static_method"]._aio_func)
+
+
+    # deprecated interface
+    assert isinstance(AsyncFoo.__dict__["a_static_method"], staticmethod)
+    assert inspect.iscoroutinefunction(AsyncFoo.__dict__["a_static_method"].__func__)
+
