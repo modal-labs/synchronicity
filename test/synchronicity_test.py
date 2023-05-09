@@ -71,7 +71,7 @@ async def test_function_async_as_function_attribute():
     s = Synchronizer()
     t0 = time.time()
     f_s = s.create_blocking(f).aio
-    assert f_s.__name__ == "async_f"
+    assert f_s.__name__ == "aio_f"
     coro = f_s(42)
     assert inspect.iscoroutine(coro)
     assert time.time() - t0 < SLEEP_DELAY
@@ -80,14 +80,14 @@ async def test_function_async_as_function_attribute():
 
     # Make sure the same-loop calls work
     f2_s = s.create_blocking(f2).aio
-    assert f2_s.__name__ == "async_f2"
+    assert f2_s.__name__ == "aio_f2"
     coro = f2_s(f_s, 42)
     assert await coro == 1764
 
     # Make sure cross-loop calls work
     s2 = Synchronizer()
     f2_s2 = s2.create_blocking(f2).aio
-    assert f2_s2.__name__ == "async_f2"
+    assert f2_s2.__name__ == "aio_f2"
     coro = f2_s2(f_s, 42)
     assert await coro == 1764
 
@@ -168,6 +168,7 @@ async def test_generator_async():
     s = Synchronizer()
     t0 = time.time()
     gen_s = s.create_blocking(gen).aio
+
     asyncgen = gen_s(3)
     assert inspect.isasyncgen(asyncgen)
     assert time.time() - t0 < SLEEP_DELAY
@@ -363,6 +364,7 @@ async def test_class_async_as_method_attribute():
     assert time.time() - t0 > 2 * SLEEP_DELAY
 
     lst = []
+
     async for z in obj:  # TODO (elias): This doesn't have to use .aio since the objects are now both async and sync and have both traits
         lst.append(z)
     assert lst == list(range(42))

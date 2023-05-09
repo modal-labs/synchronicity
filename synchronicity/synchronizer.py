@@ -57,21 +57,19 @@ def needs_to_run_as_async(func):
 
 class FunctionWithAio:
     def __init__(self, func, aio_func, synchronizer):
-        self._func = func
-        self._aio_func = aio_func
+        #self._func = func
+        #self._aio_func = aio_func
+        self._func = self.__call__ = func
+        self._aio_func = self.aio = aio_func
         self._synchronizer = synchronizer
 
     def __call__(self, *args, **kwargs):
         return self._func(*args, **kwargs)
 
-    def aio(self, *args, **kwargs):
-        return self._aio_func(*args, **kwargs)
-
-
 class MethodWithAio:
     """Creates a bound method that can have callable child-properties on the method itself that are also bound to the parent instance"""
 
-    def __init__(self, func, aio_func, synchronizer):
+    def __init__(self, func, aio_func, synchronizer: "Synchronizer"):
         self._func = func
         self._aio_func = aio_func
         self._synchronizer = synchronizer
@@ -81,17 +79,19 @@ class MethodWithAio:
             bound_func = functools.wraps(self._func)(
                 functools.partial(self._func, instance)
             )  # bound blocking function
+            self._synchronizer._update_wrapper(bound_func, self._func, interface=Interface.BLOCKING)
+
             bound_aio_func = wraps_by_interface(
                 Interface._ASYNC_WITH_BLOCKING_TYPES, self._aio_func
             )(
                 functools.partial(self._aio_func, instance)
             )  # bound async function
+            self._synchronizer._update_wrapper(bound_func, self._func, interface=Interface._ASYNC_WITH_BLOCKING_TYPES)
             bound_func.aio = bound_aio_func
             return bound_func
 
-        return (
-            self._func
-        )  # when accessed like a class attribute, just return the unbound blocking function...
+        # when accessed like a class attribute, just return the unbound blocking function...
+        return self._func
 
 
 class Synchronizer:
@@ -451,7 +451,7 @@ class Synchronizer:
             elif is_asyncgen:
                 # Note that the _run_generator_* functions handle their own
                 # unwrapping of exceptions (this happens during yielding)
-                if interface == Interface.ASYNC:
+                if interface in (Interface.ASYNC, Interface._ASYNC_WITH_BLOCKING_TYPES):
                     return self._run_generator_async(res, interface)
                 elif interface == Interface.BLOCKING:
                     return self._run_generator_sync(res, interface)
@@ -732,7 +732,6 @@ class Synchronizer:
         return obj
 
     # New interface that (almost) doesn't mutate objects
-
     def create_blocking(
         self, obj, name: Optional[str] = None, target_module: Optional[str] = None
     ):
