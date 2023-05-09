@@ -1,4 +1,5 @@
 import functools
+import textwrap
 import typing
 
 import synchronicity
@@ -257,18 +258,24 @@ Foo = synchronizer.create_blocking(_Foo, "Foo", __name__)
 
 
 def test_synchronicity_type_translation():
-    async def _get_foo() -> _Foo:
+    async def _get_foo(foo: _Foo) -> _Foo:
         pass
 
     get_foo = synchronizer.create_blocking(_get_foo, "get_foo", __name__)
     src = _function_source(get_foo)
-    assert "def get_foo() -> Foo" in src
+
+    assert "class __get_foo_spec(typing_extensions.Protocol):" in src
+    assert "    def __call__(self, foo: Foo) -> Foo" in src
+    assert "    async def aio(self, *args, **kwargs) -> Foo" in src
+    assert "get_foo: __get_foo_spec"
 
 
 def test_synchronicity_self_ref():
     src = _class_source(Foo)
-    assert "@staticmethod" in src
-    assert "    def clone(foo: Foo) -> Foo" in src
+    assert "class __clone_spec(typing_extensions.Protocol):" in src
+    assert "    def __call__(self, foo: Foo) -> Foo" in src
+    assert "    async def aio(self, *args, **kwargs) -> Foo" in src
+    assert "clone: __clone_spec" in src
 
 
 class _WithClassMethod:
@@ -276,16 +283,35 @@ class _WithClassMethod:
     def classy(cls):
         pass
 
+    async def meth(self, arg: bool) -> int:
+        return 0
+
 
 WithClassMethod = synchronizer.create_blocking(
     _WithClassMethod, "WithClassMethod", __name__
 )
 
 
-def test_synchronicity_classmethod():
+def test_synchronicity_class():
     src = _class_source(WithClassMethod)
-    assert "@classmethod" in src
+    assert "    @classmethod" in src
     assert "    def classy(cls):" in src
+
+    assert "__meth_spec" in src
+
+    assert (
+        f"""
+    class __meth_spec(typing_extensions.Protocol):
+        def __call__(self, arg: bool) -> int:
+            ...
+
+        async def aio(self, *args, **kwargs) -> int:
+            ...
+
+    meth: __meth_spec
+"""
+        in src
+    )
 
 
 T = typing.TypeVar("T")
@@ -332,7 +358,8 @@ def test_synchronicity_generic_subclass():
 
     foo = synchronizer.create_blocking(foo_impl, "foo")
     src = _function_source(foo)
-    assert "def foo(bar: BlockingMyGeneric[str]):" in src
+    assert "def __call__(self, bar: BlockingMyGeneric[str]):" in src
+    assert "async def aio(self, *args, **kwargs):" in src
 
 
 _B = typing.TypeVar("_B", bound="str")

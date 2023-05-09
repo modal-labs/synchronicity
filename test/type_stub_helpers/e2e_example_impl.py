@@ -25,7 +25,7 @@ class _Foo:
 _T = TypeVar("_T", bound=_Foo)
 
 
-def _listify(t: _T) -> List[_T]:
+async def _listify(t: _T) -> List[_T]:
     return t
 
 
@@ -43,3 +43,7 @@ def _overloaded(arg: Union[str, int]):
     if isinstance(arg, str):
         return float(arg)
     return arg
+
+
+async def _returns_foo() -> _Foo:
+    return _Foo("hello")

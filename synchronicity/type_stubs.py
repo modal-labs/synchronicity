@@ -16,11 +16,16 @@ from typing import TypeVar, Generic
 from unittest import mock
 
 import sigtools.specifiers  # type: ignore
-from sigtools._signatures import EmptyAnnotation, UpgradedAnnotation  # type: ignore
+from sigtools._signatures import EmptyAnnotation, UpgradedAnnotation, UpgradedParameter  # type: ignore
 
 import synchronicity
 from synchronicity import Interface, overload_tracking
-from synchronicity.synchronizer import TARGET_INTERFACE_ATTR, SYNCHRONIZER_ATTR
+from synchronicity.synchronizer import (
+    TARGET_INTERFACE_ATTR,
+    SYNCHRONIZER_ATTR,
+    MethodWithAio,
+    FunctionWithAio,
+)
 
 
 class ReprObj:
@@ -41,6 +46,17 @@ class ReprObj:
         # otherwise we get errors like `provided argument is not a type`
         pass
 
+
+def inject_self(sig: inspect.Signature):
+    parameters = sig.parameters.values()
+    return sig.replace(
+        parameters=[
+            UpgradedParameter(
+                "self", inspect.Parameter.POSITIONAL_OR_KEYWORD
+            ),
+            *parameters,
+        ]
+    )
 
 class StubEmitter:
     def __init__(self, target_module):
@@ -64,7 +80,7 @@ class StubEmitter:
                 continue  # skip imported stuff, unless it's explicitly in __all__
             if inspect.isclass(entity):
                 emitter.add_class(entity, entity_name)
-            elif inspect.isfunction(entity):
+            elif inspect.isfunction(entity) or isinstance(entity, FunctionWithAio):
                 emitter.add_function(entity, entity_name, 0)
             elif isinstance(entity, typing.TypeVar):
                 emitter.add_type_var(entity, entity_name)
@@ -86,9 +102,17 @@ class StubEmitter:
 
     def add_function(self, func, name, indentation_level=0):
         # adds function source code to module
-        self.parts.append(
-            self._get_function_source_with_overloads(func, name, indentation_level)
-        )
+        if isinstance(func, FunctionWithAio):
+            # since the original function signature lacks the "self" argument of the "synthetic" Protocol, we inject it
+            self.parts.append(
+                self._get_dual_function_source(
+                    func, name, indentation_level, transform_signature=inject_self
+                )
+            )
+        else:
+            self.parts.append(
+                self._get_function_source_with_overloads(func, name, indentation_level)
+            )
 
     def _get_translated_class_bases(self, cls):
         # get __orig_bases__ (__bases__ with potential generic args) for any class
@@ -172,6 +196,13 @@ class StubEmitter:
                     f"{body_indent}@property\n{self._get_function_source_with_overloads(entity.fget, entity_name, body_indent_level)}"
                 )
 
+            elif isinstance(entity, (FunctionWithAio, MethodWithAio)):
+                methods.append(
+                    self._get_dual_function_source(
+                        entity, entity_name, body_indent_level, transform_signature=inject_self if isinstance(entity, FunctionWithAio) else None
+                    )
+                )
+
         padding = [] if var_annotations or methods else [f"{body_indent}..."]
         self.parts.append(
             "\n".join(
@@ -184,8 +215,38 @@ class StubEmitter:
             )
         )
 
+    def _get_dual_function_source(
+        self, entity: typing.Union[MethodWithAio, FunctionWithAio], entity_name, body_indent_level, transform_signature=None
+    ):
+        # Emits type stub for a "dual" function that is both callable and has an .aio callable with an async version
+        # Currently this is emitted as a typing.Protocol declaration + instance with a __call__ and aio method
+        self.imports.add("typing_extensions")
+        # Synchronicity specific blocking + async method
+        body_indent = self._indent(body_indent_level)
+        # create an inline protocol type, inlining both the blocking and async interfaces:
+        blocking_func_source = self._get_function_source_with_overloads(
+            entity._func,
+            "__call__",
+            body_indent_level + 1,
+            transform_signature=transform_signature,
+        )
+        aio_func_source = self._get_function_source_with_overloads(
+            entity._aio_func,
+            "aio",
+            body_indent_level + 1,
+            transform_signature=transform_signature,
+        )
+        protocol_attr = f"""\
+{body_indent}class __{entity_name}_spec(typing_extensions.Protocol):
+{blocking_func_source}
+{aio_func_source}
+{body_indent}{entity_name}: __{entity_name}_spec
+"""
+        return protocol_attr
+
     def add_type_var(self, type_var, name):
-        self.imports.add("typing")
+        type_module = type(type_var).__module__
+        self.imports.add(type_module)
         args = [f'"{name}"']
         if type_var.__bound__:
             translated_bound = self._translate_global_annotation(
@@ -194,7 +255,8 @@ class StubEmitter:
             str_annotation = self._formatannotation(translated_bound)
             args.append(f'bound="{str_annotation}"')
         self.global_types.add(name)
-        self.parts.append(f'{name} = typing.TypeVar({", ".join(args)})')
+        type_name = type(type_var).__name__  # could be both ParamSpec and TypeVar
+        self.parts.append(f'{name} = {type_module}.{type_name}({", ".join(args)})')
 
     def get_source(self):
         missing_types = self.referenced_global_types - self.global_types
@@ -358,7 +420,7 @@ class StubEmitter:
 
         return type_annotation.copy_with(mapped_args)
 
-    def _custom_signature(self, func) -> str:
+    def _custom_signature(self, func, transform_signature=None) -> str:
         """
         We use this instead o str(inspect.Signature()) due to a few issues:
         * Generics with None args are incorrectly encoded as NoneType in str(signature)
@@ -399,6 +461,8 @@ class StubEmitter:
                 new_parameters.append(param)
 
         sig = sig.replace(parameters=new_parameters)
+        if transform_signature:
+            sig = transform_signature(sig)
 
         # kind of ugly, but this ensures valid formatting of Generics etc, see docstring above
         with mock.patch("inspect.formatannotation", self._formatannotation):
@@ -470,7 +534,7 @@ class StubEmitter:
         return level * self._indentation
 
     def _get_function_source_with_overloads(
-        self, func, name, indentation_level=0
+        self, func, name, indentation_level=0, transform_signature=None
     ) -> str:
         signature_indent = self._indent(indentation_level)
         body_indent = self._indent(indentation_level + 1)
@@ -485,26 +549,41 @@ class StubEmitter:
 
         overloaded_signatures = overload_tracking.get_overloads(root_func)
         for overload_func in overloaded_signatures:
-            self._ensure_import(typing.overload)
+            self.imports.add("typing")
             parts.append(f"{signature_indent}@typing.overload")
             if interface:
                 overload_func = synchronizer._wrap(overload_func, interface, name=name)
 
             parts.append(
                 self._get_function_source(
-                    overload_func, name, signature_indent, body_indent
+                    overload_func,
+                    name,
+                    signature_indent,
+                    body_indent,
+                    transform_signature=transform_signature,
                 )
             )
 
         if not overloaded_signatures:
             # only add the functions complete signatures if there are no stubs
             parts.append(
-                self._get_function_source(func, name, signature_indent, body_indent)
+                self._get_function_source(
+                    func,
+                    name,
+                    signature_indent,
+                    body_indent,
+                    transform_signature=transform_signature,
+                )
             )
         return "\n".join(parts)
 
     def _get_function_source(
-        self, func, name, signature_indent: str, body_indent: str
+        self,
+        func,
+        name,
+        signature_indent: str,
+        body_indent: str,
+        transform_signature=None,
     ) -> str:
         async_prefix = ""
         if inspect.iscoroutinefunction(func):
@@ -512,7 +591,7 @@ class StubEmitter:
             # since they contain no yield keyword, and would otherwise indicate an awaitable that returns an async generator to static type checkers
             async_prefix = "async "
 
-        signature = self._custom_signature(func)
+        signature = self._custom_signature(func, transform_signature)
 
         return "\n".join(
             [

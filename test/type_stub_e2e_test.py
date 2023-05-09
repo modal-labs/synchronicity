@@ -71,7 +71,7 @@ def test_mypy_assertions(interface_file):
         ),  # bool instead of str
         (
             "e2e_example_export.listify(123)",
-            'Value of type variable "_T_Blocking" of "listify" cannot be "int"',
+            'Value of type variable "_T_Blocking" of "__call__" of "__listify_spec" cannot be "int"',
         ),  #  int does not satisfy the type bound of the typevar (!)
     ],
 )
