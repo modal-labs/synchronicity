@@ -16,7 +16,7 @@ from typing import TypeVar, Generic
 from unittest import mock
 
 import sigtools.specifiers  # type: ignore
-from sigtools._signatures import EmptyAnnotation, UpgradedAnnotation  # type: ignore
+from sigtools._signatures import EmptyAnnotation, UpgradedAnnotation, UpgradedParameter  # type: ignore
 
 import synchronicity
 from synchronicity import Interface, overload_tracking
@@ -51,7 +51,7 @@ def inject_self(sig: inspect.Signature):
     parameters = sig.parameters.values()
     return sig.replace(
         parameters=[
-            inspect.Parameter(
+            UpgradedParameter(
                 "self", inspect.Parameter.POSITIONAL_OR_KEYWORD
             ),
             *parameters,
