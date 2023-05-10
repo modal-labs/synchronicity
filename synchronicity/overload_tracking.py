@@ -15,7 +15,9 @@ with patched_overload():
             return a
         return float(a)
 
-foo_overloads = get_overloads(foo)  # returns reference to the overloads of foo (the int -> float one in this case) in the order they are declared
+# returns reference to the overloads of foo (the int -> float one in this case)
+# in the order they are declared
+foo_overloads = get_overloads(foo)
 """
 import contextlib
 import typing

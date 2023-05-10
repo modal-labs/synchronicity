@@ -1,10 +1,11 @@
 import functools
-import textwrap
 import typing
 
 import synchronicity
 from synchronicity import overload_tracking
 from synchronicity.type_stubs import StubEmitter
+
+from .type_stub_helpers import some_mod
 
 
 def noop():
@@ -17,9 +18,6 @@ def arg_no_anno(arg1):
 
 def scalar_args(arg1: str, arg2: int) -> float:
     pass
-
-
-from .type_stub_helpers import some_mod
 
 
 def generic_other_module_arg(arg: typing.List[some_mod.Foo]):
@@ -45,10 +43,7 @@ def _class_source(cls, target_module=__name__):
 def test_function_basics():
     assert _function_source(noop) == "def noop():\n    ...\n"
     assert _function_source(arg_no_anno) == "def arg_no_anno(arg1):\n    ...\n"
-    assert (
-        _function_source(scalar_args)
-        == "def scalar_args(arg1: str, arg2: int) -> float:\n    ...\n"
-    )
+    assert _function_source(scalar_args) == "def scalar_args(arg1: str, arg2: int) -> float:\n    ...\n"
 
 
 def test_function_with_imports():
@@ -93,7 +88,8 @@ def test_async_gen():
 
     src = _function_source(it)
     assert "yield" not in src
-    # since the yield keyword is removed in a type stub, the async prefix needs to be removed as well to avoid "double asyncness" (while keeping the remaining annotation)
+    # since the yield keyword is removed in a type stub, the async prefix needs to be removed as well
+    # to avoid "double asyncness" (while keeping the remaining annotation)
     assert "async" not in src
     assert "def it() -> typing.AsyncIterator[str]:" in src
 
@@ -136,12 +132,8 @@ def test_class_generation():
     assert_in_after_last(f"{indent}class_var: str")
     assert_in_after_last(f"{indent}class_var: str")
     assert_in_after_last(f"{indent}def some_method(self) -> bool:\n{indent * 2}...")
-    assert_in_after_last(
-        f"{indent}@classmethod\n{indent}def some_class_method(cls) -> int:\n{indent * 2}..."
-    )
-    assert_in_after_last(
-        f"{indent}@staticmethod\n{indent}def some_staticmethod() -> float:"
-    )
+    assert_in_after_last(f"{indent}@classmethod\n{indent}def some_class_method(cls) -> int:\n{indent * 2}...")
+    assert_in_after_last(f"{indent}@staticmethod\n{indent}def some_staticmethod() -> float:")
     assert_in_after_last(f"{indent}@property\n{indent}def some_property(self) -> str:")
 
 
@@ -169,9 +161,7 @@ def test_wrapped_function_with_new_annotations():
         orig(*args, **kwargs)
 
     wrapper.__annotations__.update({"extra_arg": int, "arg": float})
-    assert (
-        _function_source(wrapper) == "def orig(extra_arg: int, arg: float):\n    ...\n"
-    )
+    assert _function_source(wrapper) == "def orig(extra_arg: int, arg: float):\n    ...\n"
 
 
 class Base:
@@ -287,9 +277,7 @@ class _WithClassMethod:
         return 0
 
 
-WithClassMethod = synchronizer.create_blocking(
-    _WithClassMethod, "WithClassMethod", __name__
-)
+WithClassMethod = synchronizer.create_blocking(_WithClassMethod, "WithClassMethod", __name__)
 
 
 def test_synchronicity_class():
@@ -300,7 +288,7 @@ def test_synchronicity_class():
     assert "__meth_spec" in src
 
     assert (
-        f"""
+        """
     class __meth_spec(typing_extensions.Protocol):
         def __call__(self, arg: bool) -> int:
             ...
@@ -321,9 +309,7 @@ class MyGeneric(typing.Generic[T]):
     pass
 
 
-BlockingGeneric = synchronizer.create_blocking(
-    typing.Generic, "BlockingGeneric", __name__
-)
+BlockingGeneric = synchronizer.create_blocking(typing.Generic, "BlockingGeneric", __name__)
 BlockingMyGeneric = synchronizer.create_blocking(
     MyGeneric,
     "BlockingMyGeneric",
@@ -347,9 +333,7 @@ def test_synchronicity_generic_subclass():
     assert Specific.__bases__ == (MyGeneric,)
     assert Specific.__orig_bases__ == (MyGeneric[str],)
 
-    BlockingSpecific = synchronizer.create_blocking(
-        Specific, "BlockingSpecific", __name__
-    )
+    BlockingSpecific = synchronizer.create_blocking(Specific, "BlockingSpecific", __name__)
     src = _class_source(BlockingSpecific)
     assert "class BlockingSpecific(BlockingMyGeneric[str]):" in src
 

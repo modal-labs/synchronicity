@@ -49,9 +49,7 @@ def asynccontextmanager(
 
     The standard library one doesn't
     """
-    acm_factory: typing.Callable[
-        ..., typing.AsyncContextManager[YIELD_TYPE]
-    ] = _asynccontextmanager(f)
+    acm_factory: typing.Callable[..., typing.AsyncContextManager[YIELD_TYPE]] = _asynccontextmanager(f)
 
     old_ret = acm_factory.__annotations__.pop("return", None)
     if old_ret is not None:
@@ -60,15 +58,14 @@ def asynccontextmanager(
             collections.abc.AsyncIterator,
             collections.abc.AsyncIterator,
         ]:
-            acm_factory.__annotations__["return"] = typing.AsyncContextManager[
-                old_ret.__args__[0]  # type: ignore
-            ]
+            acm_factory.__annotations__["return"] = typing.AsyncContextManager[old_ret.__args__[0]]  # type: ignore
         elif old_ret.__origin__ == contextlib.AbstractAsyncContextManager:
             # if the standard lib fixes the annotations in the future, lets not break it...
             return acm_factory
     else:
         raise ValueError(
-            "To use the fixed @asynccontextmanager, make sure to properly annotate your wrapped function as an AsyncGenerator"
+            "To use the fixed @asynccontextmanager, make sure to properly"
+            " annotate your wrapped function as an AsyncGenerator"
         )
 
     return acm_factory
