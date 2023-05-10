@@ -192,10 +192,10 @@ async def test_generator_async():
     assert lst == [0, 1, 2]
 
 
-
 @pytest.mark.asyncio
 async def test_function_returning_coroutine():
     s = Synchronizer()
+
     def func() -> Coroutine:
         async def inner():
             return 10

@@ -51,12 +51,11 @@ def inject_self(sig: inspect.Signature):
     parameters = sig.parameters.values()
     return sig.replace(
         parameters=[
-            UpgradedParameter(
-                "self", inspect.Parameter.POSITIONAL_OR_KEYWORD
-            ),
+            UpgradedParameter("self", inspect.Parameter.POSITIONAL_OR_KEYWORD),
             *parameters,
         ]
     )
+
 
 class StubEmitter:
     def __init__(self, target_module):
@@ -199,7 +198,12 @@ class StubEmitter:
             elif isinstance(entity, (FunctionWithAio, MethodWithAio)):
                 methods.append(
                     self._get_dual_function_source(
-                        entity, entity_name, body_indent_level, transform_signature=inject_self if isinstance(entity, FunctionWithAio) else None
+                        entity,
+                        entity_name,
+                        body_indent_level,
+                        transform_signature=inject_self
+                        if isinstance(entity, FunctionWithAio)
+                        else None,
                     )
                 )
 
@@ -216,7 +220,11 @@ class StubEmitter:
         )
 
     def _get_dual_function_source(
-        self, entity: typing.Union[MethodWithAio, FunctionWithAio], entity_name, body_indent_level, transform_signature=None
+        self,
+        entity: typing.Union[MethodWithAio, FunctionWithAio],
+        entity_name,
+        body_indent_level,
+        transform_signature=None,
     ):
         # Emits type stub for a "dual" function that is both callable and has an .aio callable with an async version
         # Currently this is emitted as a typing.Protocol declaration + instance with a __call__ and aio method
