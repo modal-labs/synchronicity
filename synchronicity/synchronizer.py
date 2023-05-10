@@ -47,12 +47,6 @@ TARGET_INTERFACE_ATTR = "_sync_target_interface"
 SYNCHRONIZER_ATTR = "_sync_synchronizer"
 
 
-def warn_old_modal_client():
-    warnings.warn(
-        "Using latest synchronicity with an old interface - please upgrade to latest modal-client!"
-    )
-
-
 ASYNC_GENERIC_ORIGINS = (
     collections.abc.Awaitable,
     collections.abc.Coroutine,
@@ -61,6 +55,7 @@ ASYNC_GENERIC_ORIGINS = (
     collections.abc.AsyncGenerator,
     contextlib.AbstractAsyncContextManager,
 )
+
 
 def _type_requires_aio_usage(annotation, home_module):
     if isinstance(annotation, str):
@@ -86,6 +81,7 @@ def _type_requires_aio_usage(annotation, home_module):
                 return True
     return False
 
+
 def should_have_aio_interface(func):
     # determines if a blocking function gets an .aio attribute with an async interface to the function or not
     if inspect.iscoroutinefunction(func) or inspect.isasyncgenfunction(func):
@@ -97,7 +93,6 @@ def should_have_aio_interface(func):
         if _type_requires_aio_usage(anno, func.__module__):
             return True
     return False
-
 
 
 class FunctionWithAio:
@@ -115,10 +110,13 @@ class FunctionWithAio:
         except UserCodeException as uc_exc:
             raise uc_exc.exc from None
 
+
 class MethodWithAio:
     """Creates a bound method that can have callable child-properties on the method itself that are also bound to the parent instance"""
 
-    def __init__(self, func, aio_func, synchronizer: "Synchronizer", is_classmethod=False):
+    def __init__(
+        self, func, aio_func, synchronizer: "Synchronizer", is_classmethod=False
+    ):
         self._func = func
         self._aio_func = aio_func
         self._synchronizer = synchronizer
@@ -130,14 +128,18 @@ class MethodWithAio:
         bound_func = functools.wraps(self._func)(
             functools.partial(self._func, bind_var)
         )  # bound blocking function
-        self._synchronizer._update_wrapper(bound_func, self._func, interface=Interface.BLOCKING)
+        self._synchronizer._update_wrapper(
+            bound_func, self._func, interface=Interface.BLOCKING
+        )
 
         bound_aio_func = wraps_by_interface(
             Interface._ASYNC_WITH_BLOCKING_TYPES, self._aio_func
         )(
             functools.partial(self._aio_func, bind_var)
         )  # bound async function
-        self._synchronizer._update_wrapper(bound_func, self._func, interface=Interface._ASYNC_WITH_BLOCKING_TYPES)
+        self._synchronizer._update_wrapper(
+            bound_func, self._func, interface=Interface._ASYNC_WITH_BLOCKING_TYPES
+        )
         bound_func.aio = bound_aio_func
         return bound_func
 
@@ -440,12 +442,7 @@ class Synchronizer:
             return f
 
         if name is None:
-            if hasattr(self, "get_name"):
-                # super dumb backwards compatibility fix
-                warn_old_modal_client()
-                _name = self.get_name(f, interface)
-            else:
-                _name = _FUNCTION_PREFIXES[interface] + f.__name__
+            _name = _FUNCTION_PREFIXES[interface] + f.__name__
         else:
             _name = name
 
@@ -492,7 +489,9 @@ class Synchronizer:
                         return self._run_function_sync(res, interface)
                     except UserCodeException as uc_exc:
                         # Used to skip a frame when called from `proxy_method`.
-                        if unwrap_user_excs and not (Interface.BLOCKING and include_aio_interface):
+                        if unwrap_user_excs and not (
+                            Interface.BLOCKING and include_aio_interface
+                        ):
                             raise uc_exc.exc from None
                         else:
                             raise uc_exc
@@ -587,23 +586,16 @@ class Synchronizer:
 
     def _wrap_proxy_staticmethod(self, method, interface):
         orig_function = method.__func__
-        method = self._wrap_callable(
-            orig_function, interface
-        )
+        method = self._wrap_callable(orig_function, interface)
         if isinstance(method, FunctionWithAio):
             return method  # no need to wrap a FunctionWithAio in a staticmethod, as it won't get bound anyways
         return staticmethod(method)
 
     def _wrap_proxy_classmethod(self, orig_classmethod, interface):
         orig_func = orig_classmethod.__func__
-        method = self._wrap_callable(
-            orig_func, interface, include_aio_interface=False
-        )
+        method = self._wrap_callable(orig_func, interface, include_aio_interface=False)
 
-        if (
-            interface == Interface.BLOCKING
-            and should_have_aio_interface(orig_func)
-        ):
+        if interface == Interface.BLOCKING and should_have_aio_interface(orig_func):
             async_method = self._wrap_callable(
                 orig_func, Interface._ASYNC_WITH_BLOCKING_TYPES
             )
@@ -688,12 +680,7 @@ class Synchronizer:
                 new_dict[k] = self._wrap_proxy_method(v, interface)
 
         if name is None:
-            if hasattr(self, "get_name"):
-                # super dumb backwards compatibility fix
-                warn_old_modal_client()
-                name = self.get_name(cls, interface)
-            else:
-                name = _CLASS_PREFIXES[interface] + cls.__name__
+            name = _CLASS_PREFIXES[interface] + cls.__name__
 
         new_cls = type.__new__(type, name, bases, new_dict)
         new_cls.__module__ = cls.__module__ if target_module is None else target_module
@@ -803,18 +790,3 @@ class Synchronizer:
             return hasattr(obj, self._original_attr)
         else:
             return hasattr(obj.__class__, self._original_attr)
-
-    ### DEPRECATED
-    # Only needed because old modal clients don't pin the synchronicity version,
-    # so we need this for backwards compatibility for a short while
-
-    def create(self, obj):
-        warn_old_modal_client()
-        return {
-            Interface.ASYNC: self.create_async(obj),
-            Interface.BLOCKING: self.create_blocking(obj),
-        }
-
-    def __call__(self, obj):
-        warn_old_modal_client()
-        return self.create_blocking(obj)
