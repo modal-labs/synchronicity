@@ -51,13 +51,9 @@ def test_wrap_staticmethod():
     AsyncFoo = synchronizer.create_async(Foo)
 
     assert isinstance(BlockingFoo.__dict__["a_static_method"], FunctionWithAio)
-    assert not inspect.iscoroutinefunction(
-        BlockingFoo.__dict__["a_static_method"]._func
-    )
+    assert not inspect.iscoroutinefunction(BlockingFoo.__dict__["a_static_method"]._func)
     assert inspect.iscoroutinefunction(BlockingFoo.__dict__["a_static_method"].aio)
-
 
     # deprecated interface
     assert isinstance(AsyncFoo.__dict__["a_static_method"], staticmethod)
     assert inspect.iscoroutinefunction(AsyncFoo.__dict__["a_static_method"].__func__)
-

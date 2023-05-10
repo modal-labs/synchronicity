@@ -2,9 +2,9 @@ from gevent import monkey
 
 monkey.patch_all()
 
-import asyncio
+import asyncio  # noqa: E402
 
-from synchronicity import Synchronizer
+from synchronicity import Synchronizer  # noqa: E402
 
 
 async def f(x):

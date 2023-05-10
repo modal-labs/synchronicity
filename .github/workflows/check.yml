@@ -1,0 +1,69 @@
+name: Check
+on: push
+
+jobs:
+  black:
+    name: Black
+    runs-on: ubuntu-20.04
+
+    steps:
+      - uses: actions/checkout@v3
+      
+      - uses: actions/setup-python@v4
+        with:
+          python-version: "3.9"
+
+      - name: Install black
+        run: pip install black
+
+      - name: Black
+        run: black --check .
+
+  ruff:
+    name: Ruff
+    runs-on: ubuntu-20.04
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: "3.9"
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Check lint with Ruff
+        run: ruff check .
+
+  isort:
+    name: Isort
+    runs-on: ubuntu-20.04
+
+    steps:
+      - uses: actions/setup-python@v4
+        with:
+          python-version: "3.9"
+
+      - name: Install isort
+        run: pip install isort
+
+      - name: Check isort
+        run: isort . --check-only --verbose
+
+  mypy:
+    name: MyPy
+    runs-on: ubuntu-20.04
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: "3.9"
+
+      - name: Install mypy
+        run: pip install mypy==0.950
+
+      - name: Run
+        run: mypy synchronicity

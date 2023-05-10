@@ -1,7 +1,7 @@
 import asyncio
 import concurrent.futures
 import inspect
-from typing import Awaitable, Coroutine
+from typing import Coroutine
 
 import pytest
 import time
@@ -192,10 +192,10 @@ async def test_generator_async():
     assert lst == [0, 1, 2]
 
 
-
 @pytest.mark.asyncio
 async def test_function_returning_coroutine():
     s = Synchronizer()
+
     def func() -> Coroutine:
         async def inner():
             return 10
@@ -420,9 +420,7 @@ async def test_class_async_back_and_forth():
     # The problem here is that f is already synchronized by another synchronizer, which shouldn't be allowed
 
 
-@pytest.mark.skip(
-    reason="Skip this until we've made it impossible to re-synchronize objects"
-)
+@pytest.mark.skip(reason="Skip this until we've made it impossible to re-synchronize objects")
 def test_event_loop():
     s = Synchronizer()
     t0 = time.time()

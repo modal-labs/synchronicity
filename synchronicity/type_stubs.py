@@ -1,7 +1,8 @@
 """
 Improvement Ideas:
 * Extract this into its own package, not linked to synchronicity, but with good extension plugs?
-* Don't use the wrapped synchronicity types directly, and instead emit stubs based on the root implementation types directly (but translated to blocking).
+* Don't use the wrapped synchronicity types directly, and instead emit stubs based on the root
+  implementation types directly (but translated to blocking).
 * Let synchronicity emit actual function bodies, to avoid runtime wrapping altogether
 """
 import collections
@@ -51,12 +52,11 @@ def inject_self(sig: inspect.Signature):
     parameters = sig.parameters.values()
     return sig.replace(
         parameters=[
-            UpgradedParameter(
-                "self", inspect.Parameter.POSITIONAL_OR_KEYWORD
-            ),
+            UpgradedParameter("self", inspect.Parameter.POSITIONAL_OR_KEYWORD),
             *parameters,
         ]
     )
+
 
 class StubEmitter:
     def __init__(self, target_module):
@@ -84,10 +84,7 @@ class StubEmitter:
                 emitter.add_function(entity, entity_name, 0)
             elif isinstance(entity, typing.TypeVar):
                 emitter.add_type_var(entity, entity_name)
-            elif (
-                hasattr(entity, "__class__")
-                and getattr(entity.__class__, "__module__", None) == module.__name__
-            ):
+            elif hasattr(entity, "__class__") and getattr(entity.__class__, "__module__", None) == module.__name__:
                 # instances of stuff
                 emitter.add_variable(entity.__class__, entity_name)
 
@@ -105,14 +102,10 @@ class StubEmitter:
         if isinstance(func, FunctionWithAio):
             # since the original function signature lacks the "self" argument of the "synthetic" Protocol, we inject it
             self.parts.append(
-                self._get_dual_function_source(
-                    func, name, indentation_level, transform_signature=inject_self
-                )
+                self._get_dual_function_source(func, name, indentation_level, transform_signature=inject_self)
             )
         else:
-            self.parts.append(
-                self._get_function_source_with_overloads(func, name, indentation_level)
-            )
+            self.parts.append(self._get_function_source_with_overloads(func, name, indentation_level))
 
     def _get_translated_class_bases(self, cls):
         # get __orig_bases__ (__bases__ with potential generic args) for any class
@@ -121,7 +114,8 @@ class StubEmitter:
         # (This is due to __init_subclass__ triggering in odd ways for wrapper classes)
 
         if TARGET_INTERFACE_ATTR in cls.__dict__:
-            # get base classes from origin class instead, to preserve potential Generic base classes which are otherwise stripped by synchronicitys wrappers
+            # get base classes from origin class instead, to preserve potential Generic base classes
+            # which are otherwise stripped by synchronicitys wrappers
             synchronizer = cls.__dict__[SYNCHRONIZER_ATTR]
             impl_cls = cls.__dict__[synchronizer._original_attr]
             target_interface = cls.__dict__[TARGET_INTERFACE_ATTR]
@@ -130,9 +124,7 @@ class StubEmitter:
             retranslated_bases = []
             for impl_base in impl_bases:
                 retranslated_bases.append(
-                    self._translate_annotation(
-                        impl_base, synchronizer, target_interface, cls.__module__
-                    )
+                    self._translate_annotation(impl_base, synchronizer, target_interface, cls.__module__)
                 )
 
             return tuple(retranslated_bases)
@@ -156,50 +148,39 @@ class StubEmitter:
         methods = []
 
         annotations = cls.__dict__.get("__annotations__", {})
-        annotations = {
-            k: self._translate_global_annotation(annotation, cls)
-            for k, annotation in annotations.items()
-        }
+        annotations = {k: self._translate_global_annotation(annotation, cls) for k, annotation in annotations.items()}
 
         body_indent_level = 1
         body_indent = self._indent(body_indent_level)
 
         for varname, annotation in annotations.items():
-            var_annotations.append(
-                f"{body_indent}{self._get_var_annotation(varname, annotation)}"
-            )
+            var_annotations.append(f"{body_indent}{self._get_var_annotation(varname, annotation)}")
         if var_annotations:
-            var_annotations.append(
-                ""
-            )  # formatting ocd - add an extra newline after var annotations
+            var_annotations.append("")  # formatting ocd - add an extra newline after var annotations
 
         for entity_name, entity in cls.__dict__.items():
             if inspect.isfunction(entity):
-                methods.append(
-                    self._get_function_source_with_overloads(
-                        entity, entity_name, body_indent_level
-                    )
-                )
+                methods.append(self._get_function_source_with_overloads(entity, entity_name, body_indent_level))
 
             elif isinstance(entity, classmethod):
-                methods.append(
-                    f"{body_indent}@classmethod\n{self._get_function_source_with_overloads(entity.__func__, entity_name, body_indent_level)}"
-                )
+                fn_source = self._get_function_source_with_overloads(entity.__func__, entity_name, body_indent_level)
+                methods.append(f"{body_indent}@classmethod\n{fn_source}")
 
             elif isinstance(entity, staticmethod):
-                methods.append(
-                    f"{body_indent}@staticmethod\n{self._get_function_source_with_overloads(entity.__func__, entity_name, body_indent_level)}"
-                )
+                fn_source = self._get_function_source_with_overloads(entity.__func__, entity_name, body_indent_level)
+                methods.append(f"{body_indent}@staticmethod\n{fn_source}")
 
             elif isinstance(entity, property):
-                methods.append(
-                    f"{body_indent}@property\n{self._get_function_source_with_overloads(entity.fget, entity_name, body_indent_level)}"
-                )
+                fn_source = self._get_function_source_with_overloads(entity.fget, entity_name, body_indent_level)
+                methods.append(f"{body_indent}@property\n{fn_source}")
 
             elif isinstance(entity, (FunctionWithAio, MethodWithAio)):
                 methods.append(
                     self._get_dual_function_source(
-                        entity, entity_name, body_indent_level, transform_signature=inject_self if isinstance(entity, FunctionWithAio) else None
+                        entity,
+                        entity_name,
+                        body_indent_level,
+                        transform_signature=inject_self if isinstance(entity, FunctionWithAio) else None,
                     )
                 )
 
@@ -216,7 +197,11 @@ class StubEmitter:
         )
 
     def _get_dual_function_source(
-        self, entity: typing.Union[MethodWithAio, FunctionWithAio], entity_name, body_indent_level, transform_signature=None
+        self,
+        entity: typing.Union[MethodWithAio, FunctionWithAio],
+        entity_name,
+        body_indent_level,
+        transform_signature=None,
     ):
         # Emits type stub for a "dual" function that is both callable and has an .aio callable with an async version
         # Currently this is emitted as a typing.Protocol declaration + instance with a __call__ and aio method
@@ -249,9 +234,7 @@ class StubEmitter:
         self.imports.add(type_module)
         args = [f'"{name}"']
         if type_var.__bound__:
-            translated_bound = self._translate_global_annotation(
-                type_var.__bound__, type_var
-            )
+            translated_bound = self._translate_global_annotation(type_var.__bound__, type_var)
             str_annotation = self._formatannotation(translated_bound)
             args.append(f'bound="{str_annotation}"')
         self.global_types.add(name)
@@ -261,9 +244,7 @@ class StubEmitter:
     def get_source(self):
         missing_types = self.referenced_global_types - self.global_types
         if missing_types:
-            print(
-                f"WARNING: {self.target_module} missing the following referenced types, expected to be in module"
-            )
+            print(f"WARNING: {self.target_module} missing the following referenced types, expected to be in module")
             for t in missing_types:
                 print(t)
         import_src = "\n".join(sorted(f"import {mod}" for mod in self.imports))
@@ -306,20 +287,14 @@ class StubEmitter:
         # determines eval scope and synchronizer target
 
         # infers synchronizer, target and home_module from an entity (class, function) containing the annotation
-        synchronicity_target_interface = getattr(
-            source_class_or_function, TARGET_INTERFACE_ATTR, None
-        )
+        synchronicity_target_interface = getattr(source_class_or_function, TARGET_INTERFACE_ATTR, None)
         synchronizer = getattr(source_class_or_function, SYNCHRONIZER_ATTR, None)
         if synchronizer:
-            home_module = getattr(
-                source_class_or_function, synchronizer._original_attr
-            ).__module__
+            home_module = getattr(source_class_or_function, synchronizer._original_attr).__module__
         else:
             home_module = source_class_or_function.__module__
 
-        return self._translate_annotation(
-            annotation, synchronizer, synchronicity_target_interface, home_module
-        )
+        return self._translate_annotation(annotation, synchronizer, synchronicity_target_interface, home_module)
 
     def _translate_annotation(
         self,
@@ -331,12 +306,11 @@ class StubEmitter:
         """
         Takes an annotation (type, generic, typevar, forward ref) and applies recursively (in case of generics):
         * eval for string annotations (importing `home_module` to be used as namespace)
-        * re-mapping of the annotation to the correct synchronicity target (using synchronizer and synchronicity_target_interface)
+        * re-mapping of the annotation to the correct synchronicity target
+          (using synchronizer and synchronicity_target_interface)
         * registers imports for all referenced modules
         """
-        if isinstance(
-            annotation, typing.ForwardRef
-        ):  # TypeVars wrap their arguments as ForwardRefs (sometimes?)
+        if isinstance(annotation, typing.ForwardRef):  # TypeVars wrap their arguments as ForwardRefs (sometimes?)
             annotation = annotation.__forward_arg__
 
         if isinstance(annotation, str):
@@ -377,10 +351,7 @@ class StubEmitter:
                 return synchronizer._translate_out(type_annotation, interface)
             return type_annotation
 
-        mapped_args = tuple(
-            self._translate_annotation(arg, synchronizer, interface, home_module)
-            for arg in args
-        )
+        mapped_args = tuple(self._translate_annotation(arg, synchronizer, interface, home_module) for arg in args)
         if interface == Interface.BLOCKING:
             # blocking interface special generic translations:
             if origin == collections.abc.AsyncGenerator:
@@ -407,16 +378,13 @@ class StubEmitter:
             "contextlib",
         ):  # don't translate built in generics in type annotations, even if they have been synchronicity wrapped
             # for other hierarchy reasons...
-            translated_origin = self._translate_annotation(
-                origin, synchronizer, interface, home_module
-            )
+            translated_origin = self._translate_annotation(origin, synchronizer, interface, home_module)
             if translated_origin is not origin:
-                # special case for synchronicity-translated generics, due to synchronicitys wrappers not being valid generics
+                # special case for synchronicity-translated generics,
+                # due to synchronicitys wrappers not being valid generics
                 # kind of ugly as it returns a string representation rather than a type...
                 str_args = ", ".join(self._formatannotation(arg) for arg in mapped_args)
-                return ReprObj(
-                    f"{self._formatannotation(translated_origin)}[{str_args}]"
-                )
+                return ReprObj(f"{self._formatannotation(translated_origin)}[{str_args}]")
 
         return type_annotation.copy_with(mapped_args)
 
@@ -427,16 +395,15 @@ class StubEmitter:
         * Some names for stdlib module object types omit the module qualification (notably typing)
         * We might have to stringify annotations to support forward/self references
         * General flexibility like not being able to maintain *comments* in the arg declarations if we want to
-        * We intentionally do not use follow_wrapped, since it will override runtime-transformed annotations on a wrapper
+        * We intentionally do not use follow_wrapped,
+          since it will override runtime-transformed annotations on a wrapper
         * TypeVars default repr is `~T` instead of `origin_module.T` etc.
         """
         sig = sigtools.specifiers.signature(func)
 
         if sig.upgraded_return_annotation is not EmptyAnnotation:
             return_annotation = sig.upgraded_return_annotation.source_value()
-            return_annotation = self._translate_global_annotation(
-                return_annotation, func
-            )
+            return_annotation = self._translate_global_annotation(return_annotation, func)
             sig = sig.replace(
                 return_annotation=return_annotation,
                 upgraded_return_annotation=UpgradedAnnotation.upgrade(
@@ -481,14 +448,10 @@ class StubEmitter:
         * ignores base_module (uses self.target_module instead)
         """
 
-        assert (
-            base_module is None
-        )  # inspect.Signature isn't generally using the base_module arg afaik
+        assert base_module is None  # inspect.Signature isn't generally using the base_module arg afaik
 
         origin = getattr(annotation, "__origin__", None)
-        assert not isinstance(
-            annotation, typing.ForwardRef
-        )  # Forward refs should already have been evaluated!
+        assert not isinstance(annotation, typing.ForwardRef)  # Forward refs should already have been evaluated!
         args = getattr(annotation, "__args__", None)
 
         if origin is None or not args:
@@ -511,18 +474,11 @@ class StubEmitter:
             formatted_annotation = str(
                 annotation.copy_with(
                     # ellipsis (...) needs to be passed as is, or it will be reformatted
-                    tuple(
-                        ReprObj(self._formatannotation(arg))
-                        if arg != Ellipsis
-                        else Ellipsis
-                        for arg in args
-                    )
+                    tuple(ReprObj(self._formatannotation(arg)) if arg != Ellipsis else Ellipsis for arg in args)
                 )
             )
         except Exception:
-            raise Exception(
-                f"Could not reformat generic {annotation.__origin__} with arguments {args}"
-            )
+            raise Exception(f"Could not reformat generic {annotation.__origin__} with arguments {args}")
 
         # this is a bit ugly, but gets rid of incorrect module qualification of Generic subclasses:
         # TODO: find a better way...
@@ -533,9 +489,7 @@ class StubEmitter:
     def _indent(self, level):
         return level * self._indentation
 
-    def _get_function_source_with_overloads(
-        self, func, name, indentation_level=0, transform_signature=None
-    ) -> str:
+    def _get_function_source_with_overloads(self, func, name, indentation_level=0, transform_signature=None) -> str:
         signature_indent = self._indent(indentation_level)
         body_indent = self._indent(indentation_level + 1)
         parts = []
@@ -587,8 +541,9 @@ class StubEmitter:
     ) -> str:
         async_prefix = ""
         if inspect.iscoroutinefunction(func):
-            # note: async prefix should not be used for annotated abstract/stub *async generators*, so we don't check for inspect.isasyncgenfunction
-            # since they contain no yield keyword, and would otherwise indicate an awaitable that returns an async generator to static type checkers
+            # note: async prefix should not be used for annotated abstract/stub *async generators*,
+            # so we don't check for inspect.isasyncgenfunction since they contain no yield keyword,
+            # and would otherwise indicate an awaitable that returns an async generator to static type checkers
             async_prefix = "async "
 
         signature = self._custom_signature(func, transform_signature)

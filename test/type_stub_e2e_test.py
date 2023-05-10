@@ -18,9 +18,7 @@ class FailedMyPyCheck(Exception):
 
 
 def run_mypy(input_file):
-    p = subprocess.Popen(
-        ["mypy", input_file], stderr=subprocess.STDOUT, stdout=subprocess.PIPE
-    )
+    p = subprocess.Popen(["mypy", input_file], stderr=subprocess.STDOUT, stdout=subprocess.PIPE)
     result_code = p.wait()
     if result_code != 0:
         raise FailedMyPyCheck(p.stdout.read())
@@ -31,9 +29,7 @@ def temp_assertion_file(new_assertion):
     template = assertion_file.read_text()
     setup_code, default_assertions = template.split("# assert start")
     assertion_code = setup_code + new_assertion
-    with tempfile.NamedTemporaryFile(
-        dir=assertion_file.parent, suffix=".py"
-    ) as new_file:
+    with tempfile.NamedTemporaryFile(dir=assertion_file.parent, suffix=".py") as new_file:
         new_file.write(assertion_code.encode("utf8"))
         new_file.flush()
         try:
@@ -78,8 +74,6 @@ def test_mypy_assertions(interface_file):
 def test_failing_assertion(interface_file, failing_assertion, error_matches):
     # since there appears to be no good way of asserting failing type checks (and skipping to the next assertion)
     # we use the assertion file as a template to insert statements that should fail type checking
-    with temp_assertion_file(
-        failing_assertion
-    ) as custom_file:  # we pass int instead of str
+    with temp_assertion_file(failing_assertion) as custom_file:  # we pass int instead of str
         with pytest.raises(FailedMyPyCheck, match=error_matches):
             run_mypy(custom_file)
