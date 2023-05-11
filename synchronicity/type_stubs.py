@@ -10,6 +10,7 @@ import collections.abc
 import contextlib
 import importlib
 import inspect
+from logging import getLogger
 import sys
 import typing
 from pathlib import Path
@@ -21,6 +22,7 @@ from sigtools._signatures import EmptyAnnotation, UpgradedAnnotation, UpgradedPa
 
 import synchronicity
 from synchronicity import Interface, overload_tracking
+from synchronicity.compat import evaluated_annotation
 from synchronicity.synchronizer import (
     TARGET_INTERFACE_ATTR,
     SYNCHRONIZER_ATTR,
@@ -28,6 +30,7 @@ from synchronicity.synchronizer import (
     FunctionWithAio,
 )
 
+logger = getLogger(__name__)
 
 class ReprObj:
     # Hacky repr passthrough object so we can pass verbatim type annotations as partial arguments
@@ -312,17 +315,12 @@ class StubEmitter:
         """
         if isinstance(annotation, typing.ForwardRef):  # TypeVars wrap their arguments as ForwardRefs (sometimes?)
             annotation = annotation.__forward_arg__
-
         if isinstance(annotation, str):
-            assert home_module is not None
-            mod = importlib.import_module(home_module)
             try:
-                annotation = eval(annotation, mod.__dict__)
-            except NameError:
-                # attempt to import
-                guessed_module, name = annotation.rsplit(".", 1)
-                exec(f"import {guessed_module}", mod.__dict__)  # import first
-                annotation = eval(annotation, mod.__dict__)
+                annotation = evaluated_annotation(annotation, declaration_module=home_module)
+            except:
+                logger.exception(f"Error when evaluating {annotation} in {home_module}. Falling back to string annotation")
+                return annotation
 
         annotation = self._translate_annotation_map_types(
             annotation,
