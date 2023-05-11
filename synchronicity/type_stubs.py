@@ -22,7 +22,7 @@ from sigtools._signatures import EmptyAnnotation, UpgradedAnnotation, UpgradedPa
 
 import synchronicity
 from synchronicity import Interface, overload_tracking
-from synchronicity.compat import evaluated_annotation
+from synchronicity.annotations import evaluated_annotation
 from synchronicity.synchronizer import (
     TARGET_INTERFACE_ATTR,
     SYNCHRONIZER_ATTR,

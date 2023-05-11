@@ -10,7 +10,7 @@ import typing
 import warnings
 from typing import ForwardRef, Optional
 
-from synchronicity.compat import evaluated_annotation
+from synchronicity.annotations import evaluated_annotation
 
 from .async_wrap import wraps_by_interface
 from .callback import Callback
