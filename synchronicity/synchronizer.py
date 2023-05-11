@@ -5,7 +5,6 @@ import contextlib
 import functools
 import inspect
 import platform
-import sys
 import threading
 import typing
 import warnings
@@ -67,8 +66,10 @@ def _type_requires_aio_usage(annotation, declaration_module):
     if isinstance(annotation, str):
         try:
             annotation = evaluated_annotation(annotation, declaration_module=declaration_module)
-        except:
-            return False  # TODO: this will be incorrect in special case of `arg: "Awaitable[some_forward_ref_type]"`, but its a hard problem to solve without passing around globals everywhere
+        except Exception:
+            # TODO: this will be incorrect in special case of `arg: "Awaitable[some_forward_ref_type]"`,
+            #       but its a hard problem to solve without passing around globals everywhere
+            return False
 
     if hasattr(annotation, "__origin__"):
         if annotation.__origin__ in ASYNC_GENERIC_ORIGINS:  # type: ignore

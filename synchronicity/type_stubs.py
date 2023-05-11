@@ -32,6 +32,7 @@ from synchronicity.synchronizer import (
 
 logger = getLogger(__name__)
 
+
 class ReprObj:
     # Hacky repr passthrough object so we can pass verbatim type annotations as partial arguments
     # to generic and have them render correctly through `repr()`, used by inspect.Signature etc.
@@ -318,8 +319,10 @@ class StubEmitter:
         if isinstance(annotation, str):
             try:
                 annotation = evaluated_annotation(annotation, declaration_module=home_module)
-            except:
-                logger.exception(f"Error when evaluating {annotation} in {home_module}. Falling back to string annotation")
+            except Exception:
+                logger.exception(
+                    f"Error when evaluating {annotation} in {home_module}. Falling back to string annotation"
+                )
                 return annotation
 
         annotation = self._translate_annotation_map_types(
