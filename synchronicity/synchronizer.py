@@ -5,11 +5,12 @@ import contextlib
 import functools
 import inspect
 import platform
-import sys
 import threading
 import typing
 import warnings
-from typing import Optional
+from typing import ForwardRef, Optional
+
+from synchronicity.annotations import evaluated_annotation
 
 from .async_wrap import wraps_by_interface
 from .callback import Callback
@@ -59,28 +60,23 @@ ASYNC_GENERIC_ORIGINS = (
 )
 
 
-def _type_requires_aio_usage(annotation, home_module):
+def _type_requires_aio_usage(annotation, declaration_module):
+    if isinstance(annotation, ForwardRef):
+        annotation = annotation.__forward_arg__
     if isinstance(annotation, str):
-        # evaluate string annotations...
-        # mod = importlib.import_module(home_module)
-        if home_module in sys.modules:
-            mod = sys.modules[home_module]
-            try:
-                annotation = eval(annotation, mod.__dict__)
-            except NameError:
-                # this could happen with forward annotations,
-                # or imports that aren't available in the namespace when synchronicity wrapping occurs
-                # TODO: support eval of non-imported modules?
-                return False
-        else:
+        try:
+            annotation = evaluated_annotation(annotation, declaration_module=declaration_module)
+        except Exception:
+            # TODO: this will be incorrect in special case of `arg: "Awaitable[some_forward_ref_type]"`,
+            #       but its a hard problem to solve without passing around globals everywhere
             return False
 
     if hasattr(annotation, "__origin__"):
-        if annotation.__origin__ in ASYNC_GENERIC_ORIGINS:
+        if annotation.__origin__ in ASYNC_GENERIC_ORIGINS:  # type: ignore
             return True
-        # recurse
+        # recurse for generic subtypes
         for a in getattr(annotation, "__args__", ()):
-            if _type_requires_aio_usage(a, home_module):
+            if _type_requires_aio_usage(a, declaration_module):
                 return True
     return False
 
