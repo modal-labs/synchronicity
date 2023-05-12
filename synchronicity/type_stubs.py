@@ -52,14 +52,17 @@ class ReprObj:
         pass
 
 
-def inject_self(sig: inspect.Signature):
-    parameters = sig.parameters.values()
-    return sig.replace(
-        parameters=[
-            UpgradedParameter("self", inspect.Parameter.POSITIONAL_OR_KEYWORD),
-            *parameters,
-        ]
-    )
+def add_prefix_arg(arg_name, remove_args=0):
+    def inject_arg_func(sig: inspect.Signature):
+        parameters = list(sig.parameters.values())
+        return sig.replace(
+            parameters=[
+                UpgradedParameter(arg_name, inspect.Parameter.POSITIONAL_OR_KEYWORD),
+                *parameters[remove_args:],
+            ]
+        )
+
+    return inject_arg_func
 
 
 class StubEmitter:
@@ -105,9 +108,7 @@ class StubEmitter:
         # adds function source code to module
         if isinstance(func, FunctionWithAio):
             # since the original function signature lacks the "self" argument of the "synthetic" Protocol, we inject it
-            self.parts.append(
-                self._get_dual_function_source(func, name, indentation_level, transform_signature=inject_self)
-            )
+            self.parts.append(self._get_dual_function_source(func, name, indentation_level))
         else:
             self.parts.append(self._get_function_source_with_overloads(func, name, indentation_level))
 
@@ -178,15 +179,29 @@ class StubEmitter:
                 fn_source = self._get_function_source_with_overloads(entity.fget, entity_name, body_indent_level)
                 methods.append(f"{body_indent}@property\n{fn_source}")
 
-            elif isinstance(entity, (FunctionWithAio, MethodWithAio)):
+            elif isinstance(entity, FunctionWithAio):
+                # Note: FunctionWithAio is used for staticmethods
                 methods.append(
                     self._get_dual_function_source(
                         entity,
                         entity_name,
                         body_indent_level,
-                        transform_signature=inject_self if isinstance(entity, FunctionWithAio) else None,
                     )
                 )
+            elif isinstance(entity, MethodWithAio):
+                if entity._is_classmethod:
+                    # Classmethods with type vars on the cls variable don't work with "dual interface functions"
+                    # at the moment, so we only output a stub for the blocking interface
+                    # TODO(elias): allow dual type stubs as long as no type vars are being used in the class var
+                    fn_source = self._get_function_source_with_overloads(entity._func, entity_name, body_indent_level)
+                    src = f"{body_indent}@classmethod\n{fn_source}"
+                else:
+                    src = self._get_dual_function_source(
+                        entity,
+                        entity_name,
+                        body_indent_level,
+                    )
+                methods.append(src)
 
         padding = [] if var_annotations or methods else [f"{body_indent}..."]
         self.parts.append(
@@ -205,8 +220,16 @@ class StubEmitter:
         entity: typing.Union[MethodWithAio, FunctionWithAio],
         entity_name,
         body_indent_level,
-        transform_signature=None,
-    ):
+    ) -> str:
+        if isinstance(entity, FunctionWithAio):
+            transform_signature = add_prefix_arg(
+                "self"
+            )  # signature is moved into a protocol class, so we need a self where there previously was none
+        elif entity._is_classmethod:
+            # TODO: dual protocol for classmethods having annotated cls attributes
+            raise Exception("Not supported")
+        else:
+            transform_signature = add_prefix_arg("self", 1)
         # Emits type stub for a "dual" function that is both callable and has an .aio callable with an async version
         # Currently this is emitted as a typing.Protocol declaration + instance with a __call__ and aio method
         self.imports.add("typing_extensions")
@@ -325,15 +348,15 @@ class StubEmitter:
                 )
                 return annotation
 
-        annotation = self._translate_annotation_map_types(
+        translated_annotation = self._translate_annotation_map_types(
             annotation,
             synchronizer=synchronizer,
             interface=synchronicity_target_interface,
             home_module=home_module,
         )
 
-        self._register_imports(annotation)
-        return annotation
+        self._register_imports(translated_annotation)
+        return translated_annotation
 
     def _translate_annotation_map_types(
         self,
@@ -347,6 +370,7 @@ class StubEmitter:
         args = getattr(type_annotation, "__args__", None)
 
         if origin is None or args is None:
+            # TODO(elias): handle translation of un-parameterized async entities, like `Awaitable`
             # scalar - if type is synchronicity origin type, use the blocking/async version instead
             if synchronizer:
                 return synchronizer._translate_out(type_annotation, interface)
@@ -403,8 +427,8 @@ class StubEmitter:
         sig = sigtools.specifiers.signature(func)
 
         if sig.upgraded_return_annotation is not EmptyAnnotation:
-            return_annotation = sig.upgraded_return_annotation.source_value()
-            return_annotation = self._translate_global_annotation(return_annotation, func)
+            raw_return_annotation = sig.upgraded_return_annotation.source_value()
+            return_annotation = self._translate_global_annotation(raw_return_annotation, func)
             sig = sig.replace(
                 return_annotation=return_annotation,
                 upgraded_return_annotation=UpgradedAnnotation.upgrade(
@@ -416,17 +440,21 @@ class StubEmitter:
         for param in sig.parameters.values():
             if param.upgraded_annotation is not EmptyAnnotation:
                 raw_annotation = param.upgraded_annotation.source_value()
-                raw_annotation = self._translate_global_annotation(raw_annotation, func)
-                new_parameters.append(
-                    param.replace(
-                        annotation=raw_annotation,
-                        upgraded_annotation=UpgradedAnnotation.upgrade(
-                            raw_annotation, func, param.name
-                        ),  # not sure if needed...
-                    )
-                )
+                translated_annotation = self._translate_global_annotation(raw_annotation, func)
+            elif param.annotation != inspect._empty:
+                raw_annotation = param.annotation
+                translated_annotation = self._translate_global_annotation(raw_annotation, func)
             else:
-                new_parameters.append(param)
+                translated_annotation = param.annotation
+
+            new_parameters.append(
+                param.replace(
+                    annotation=translated_annotation,
+                    upgraded_annotation=UpgradedAnnotation.upgrade(
+                        translated_annotation, func, param.name
+                    ),  # not sure if needed...
+                )
+            )
 
         sig = sig.replace(parameters=new_parameters)
         if transform_signature:
@@ -496,6 +524,7 @@ class StubEmitter:
         parts = []
 
         interface = func.__dict__.get(TARGET_INTERFACE_ATTR)
+
         synchronizer = func.__dict__.get(SYNCHRONIZER_ATTR)
         if interface:
             root_func = func.__dict__[SYNCHRONIZER_ATTR]._translate_in(func)
