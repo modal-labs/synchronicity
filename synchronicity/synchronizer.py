@@ -137,7 +137,6 @@ class MethodWithAio:
         return bound_func
 
 
-
 class Synchronizer:
     """Helps you offer a blocking (synchronous) interface to asynchronous code."""
 

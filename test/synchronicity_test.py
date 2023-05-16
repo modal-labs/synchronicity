@@ -499,6 +499,7 @@ async def test_callable_object_returning_awaitable():
         def __call__(self, i) -> Awaitable:
             async def foo():
                 return 10 * i
+
             return foo()
 
     s = synchronicity.Synchronizer()
@@ -507,5 +508,3 @@ async def test_callable_object_returning_awaitable():
 
     assert f(2) == 20
     assert await f.aio(3) == 30
-
-
