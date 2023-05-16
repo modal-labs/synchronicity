@@ -137,6 +137,7 @@ class MethodWithAio:
         return bound_func
 
 
+
 class Synchronizer:
     """Helps you offer a blocking (synchronous) interface to asynchronous code."""
 
@@ -619,6 +620,7 @@ class Synchronizer:
                         Interface._ASYNC_WITH_BLOCKING_TYPES,
                         allow_futures=False,
                     )
+
                 elif interface == Interface.ASYNC:
                     new_dict[k] = self._wrap_proxy_method(v, interface, allow_futures=False)
             elif k in ("__new__", "__init__"):
@@ -635,7 +637,13 @@ class Synchronizer:
             elif isinstance(v, property):
                 new_dict[k] = self._wrap_proxy_property(v, interface)
             elif callable(v):
-                new_dict[k] = self._wrap_proxy_method(v, interface)
+                if k == "__call__":
+                    # special case for callables - adds a new "aio" attribute which is the async callable
+                    new_dict[k] = self._wrap_proxy_method(v, interface, include_aio_interface=False)
+                    assert "aio" not in cls.__dict__  # would be bad if there is already an aio attribute
+                    new_dict["aio"] = self._wrap_proxy_method(v, interface=Interface._ASYNC_WITH_BLOCKING_TYPES)
+                else:
+                    new_dict[k] = self._wrap_proxy_method(v, interface)
 
         if name is None:
             name = _CLASS_PREFIXES[interface] + cls.__name__

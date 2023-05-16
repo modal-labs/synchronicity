@@ -1,11 +1,12 @@
 import asyncio
 import concurrent.futures
 import inspect
-from typing import Coroutine
+from typing import Coroutine, Awaitable
 
 import pytest
 import time
 
+import synchronicity
 from synchronicity import Synchronizer, Interface
 
 SLEEP_DELAY = 0.1
@@ -490,3 +491,21 @@ async def test_blocking_nested_aio_returns_blocking_obj():
     self_from_aio_interface = await original.get_self.aio()
     assert self_from_aio_interface == original
     assert isinstance(self_from_aio_interface, BlockingFoo)
+
+
+@pytest.mark.asyncio
+async def test_callable_object_returning_awaitable():
+    class _Foo:
+        def __call__(self, i) -> Awaitable:
+            async def foo():
+                return 10 * i
+            return foo()
+
+    s = synchronicity.Synchronizer()
+    Foo = s.create_blocking(_Foo)
+    f = Foo()
+
+    assert f(2) == 20
+    assert await f.aio(3) == 30
+
+
