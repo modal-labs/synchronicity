@@ -2,7 +2,7 @@ import typing
 
 import pytest
 
-from synchronicity import Interface, Synchronizer
+from synchronicity import Interface, Synchronizer, combined_types
 from synchronicity.type_stubs import StubEmitter
 
 
@@ -32,7 +32,7 @@ def test_wrapped_class_keeps_class_annotations():
         (
             typing.AsyncContextManager[ImplType],
             Interface.BLOCKING,
-            typing.ContextManager[BlockingType],
+            combined_types.AsyncAndBlockingContextManager[BlockingType],
         ),
         (
             typing.AsyncContextManager[ImplType],

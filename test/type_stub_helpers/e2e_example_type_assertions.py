@@ -32,6 +32,17 @@ assert_type(e2e_example_export.overloaded("12"), float)
 assert_type(e2e_example_export.overloaded(12), int)
 
 
+with e2e_example_export.wrapped_make_context(10.0) as c:
+    assert_type(c, str)
+
+
 async def async_block() -> None:
     res = await e2e_example_export.returns_foo.aio(blocking_foo)
     assert_type(res, e2e_example_export.BlockingFoo)
+
+    async with e2e_example_export.wrapped_make_context(10.0) as c:
+        assert_type(c, str)
+
+    # not sure if this should actually be supported, but it is, for completeness:
+    async with e2e_example_export.wrapped_make_context.aio(10.0) as c:
+        assert_type(c, str)

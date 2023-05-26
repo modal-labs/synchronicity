@@ -22,6 +22,7 @@ from sigtools._signatures import EmptyAnnotation, UpgradedAnnotation, UpgradedPa
 
 import synchronicity
 from synchronicity import Interface, overload_tracking
+from synchronicity import combined_types
 from synchronicity.annotations import evaluated_annotation
 from synchronicity.synchronizer import (
     TARGET_INTERFACE_ATTR,
@@ -383,7 +384,7 @@ class StubEmitter:
                 return typing.Generator[mapped_args + (None,)]  # type: ignore
 
             if origin == contextlib.AbstractAsyncContextManager:
-                return typing.ContextManager[mapped_args]  # type: ignore
+                return combined_types.AsyncAndBlockingContextManager[mapped_args]  # type: ignore
 
             if origin == collections.abc.AsyncIterable:
                 return typing.Iterable[mapped_args]  # type: ignore
@@ -509,8 +510,12 @@ class StubEmitter:
         except Exception:
             raise Exception(f"Could not reformat generic {annotation.__origin__} with arguments {args}")
 
+        formatted_annotation = formatted_annotation.replace(
+            "typing.Abstract", "typing."
+        )  # fix for Python 3.7 formatting typing.AsyncContextManager as 'typing.AbstractContextManager' etc.
         # this is a bit ugly, but gets rid of incorrect module qualification of Generic subclasses:
         # TODO: find a better way...
+
         if formatted_annotation.startswith(self.target_module + "."):
             return formatted_annotation.split(self.target_module + ".", 1)[1]
         return formatted_annotation
