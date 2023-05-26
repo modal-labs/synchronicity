@@ -510,8 +510,12 @@ class StubEmitter:
         except Exception:
             raise Exception(f"Could not reformat generic {annotation.__origin__} with arguments {args}")
 
+        formatted_annotation = formatted_annotation.replace(
+            "typing.Abstract", "typing."
+        )  # fix for Python 3.7 formatting typing.AsyncContextManager as 'typing.AbstractContextManager' etc.
         # this is a bit ugly, but gets rid of incorrect module qualification of Generic subclasses:
         # TODO: find a better way...
+
         if formatted_annotation.startswith(self.target_module + "."):
             return formatted_annotation.split(self.target_module + ".", 1)[1]
         return formatted_annotation

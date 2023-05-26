@@ -416,3 +416,4 @@ def test_wrapped_context_manager_is_both_blocking_and_async():
         "def __call__(self, arg: int) -> synchronicity.combined_types.AsyncAndBlockingContextManager[str]:"
         in wrapped_foo_src
     )
+    assert "AbstractAsyncContextManager" not in wrapped_foo_src
