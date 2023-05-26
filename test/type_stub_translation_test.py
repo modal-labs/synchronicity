@@ -3,7 +3,6 @@ import typing
 import pytest
 
 from synchronicity import Interface, Synchronizer, combined_types
-import synchronicity
 from synchronicity.type_stubs import StubEmitter
 
 

@@ -1,5 +1,4 @@
 import functools
-from os import sync
 import typing
 
 import synchronicity
@@ -412,5 +411,8 @@ def test_wrapped_context_manager_is_both_blocking_and_async():
     wrapped_foo = synchronizer.create_blocking(foo, name="wrapped_foo")
     assert wrapped_foo.__annotations__["return"] == typing.AsyncContextManager[str]
     wrapped_foo_src = _function_source(wrapped_foo)
-    
-    assert "def __call__(self, arg: int) -> synchronicity.combined_types.AsyncAndBlockingContextManager[str]:" in wrapped_foo_src
+
+    assert (
+        "def __call__(self, arg: int) -> synchronicity.combined_types.AsyncAndBlockingContextManager[str]:"
+        in wrapped_foo_src
+    )

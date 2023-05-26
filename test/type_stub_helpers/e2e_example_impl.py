@@ -55,4 +55,3 @@ async def _returns_foo() -> _Foo:
 @asynccontextmanager
 def make_context(a: float) -> typing.AsyncGenerator[str, None]:
     yield "hello"
-

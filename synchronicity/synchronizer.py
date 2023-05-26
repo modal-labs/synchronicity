@@ -95,9 +95,6 @@ def should_have_aio_interface(func):
     return False
 
 
-
-
-
 class Synchronizer:
     """Helps you offer a blocking (synchronous) interface to asynchronous code."""
 
