@@ -1,4 +1,7 @@
 from typing import AsyncGenerator, TypeVar, List, Union, overload
+import typing
+
+from synchronicity.async_wrap import asynccontextmanager
 
 
 class _Foo:
@@ -47,3 +50,9 @@ def _overloaded(arg: Union[str, int]):
 
 async def _returns_foo() -> _Foo:
     return _Foo("hello")
+
+
+@asynccontextmanager
+def make_context(a: float) -> typing.AsyncGenerator[str, None]:
+    yield "hello"
+

@@ -1,8 +1,10 @@
 import functools
+from os import sync
 import typing
 
 import synchronicity
 from synchronicity import overload_tracking
+from synchronicity.async_wrap import asynccontextmanager
 from synchronicity.type_stubs import StubEmitter
 
 from .type_stub_helpers import some_mod
@@ -400,3 +402,15 @@ def test_overloads_unwrapped_functions():
     assert src.count("def overloaded") == 2  # original should be omitted
     assert "def overloaded(arg: str) -> float" in src
     assert "def overloaded(arg: int) -> int:" in src
+
+
+def test_wrapped_context_manager_is_both_blocking_and_async():
+    @asynccontextmanager
+    async def foo(arg: int) -> typing.AsyncGenerator[str, None]:
+        yield "hello"
+
+    wrapped_foo = synchronizer.create_blocking(foo, name="wrapped_foo")
+    assert wrapped_foo.__annotations__["return"] == typing.AsyncContextManager[str]
+    wrapped_foo_src = _function_source(wrapped_foo)
+    
+    assert "def __call__(self, arg: int) -> synchronicity.combined_types.AsyncAndBlockingContextManager[str]:" in wrapped_foo_src

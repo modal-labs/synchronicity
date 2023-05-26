@@ -11,6 +11,7 @@ import warnings
 from typing import ForwardRef, Optional
 
 from synchronicity.annotations import evaluated_annotation
+from synchronicity.combined_types import MethodWithAio, FunctionWithAio
 
 from .async_wrap import wraps_by_interface
 from .callback import Callback
@@ -94,47 +95,7 @@ def should_have_aio_interface(func):
     return False
 
 
-class FunctionWithAio:
-    def __init__(self, func, aio_func, synchronizer):
-        self._func = func
-        self._aio_func = self.aio = aio_func
-        self._synchronizer = synchronizer
 
-    def __call__(self, *args, **kwargs):
-        # .__call__ is special - it's being looked up on the class instead of the instance when calling something,
-        # so setting the magic method from the constructor is not possible
-        # https://stackoverflow.com/questions/22390532/object-is-not-callable-after-adding-call-method-to-instance
-        # so we need to use an explicit wrapper function here
-        try:
-            return self._func(*args, **kwargs)
-        except UserCodeException as uc_exc:
-            raise uc_exc.exc from None
-
-
-class MethodWithAio:
-    """Creates a bound method that can have callable child-properties on the method itself.
-
-    Child-properties are also bound to the parent instance.
-    """
-
-    def __init__(self, func, aio_func, synchronizer: "Synchronizer", is_classmethod=False):
-        self._func = func
-        self._aio_func = aio_func
-        self._synchronizer = synchronizer
-        self._is_classmethod = is_classmethod
-
-    def __get__(self, instance, owner=None):
-        bind_var = instance if instance and not self._is_classmethod else owner
-
-        bound_func = functools.wraps(self._func)(functools.partial(self._func, bind_var))  # bound blocking function
-        self._synchronizer._update_wrapper(bound_func, self._func, interface=Interface.BLOCKING)
-
-        bound_aio_func = wraps_by_interface(Interface._ASYNC_WITH_BLOCKING_TYPES, self._aio_func)(
-            functools.partial(self._aio_func, bind_var)
-        )  # bound async function
-        self._synchronizer._update_wrapper(bound_func, self._func, interface=Interface._ASYNC_WITH_BLOCKING_TYPES)
-        bound_func.aio = bound_aio_func
-        return bound_func
 
 
 class Synchronizer:

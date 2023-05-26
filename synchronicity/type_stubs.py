@@ -22,6 +22,7 @@ from sigtools._signatures import EmptyAnnotation, UpgradedAnnotation, UpgradedPa
 
 import synchronicity
 from synchronicity import Interface, overload_tracking
+from synchronicity import combined_types
 from synchronicity.annotations import evaluated_annotation
 from synchronicity.synchronizer import (
     TARGET_INTERFACE_ATTR,
@@ -383,7 +384,7 @@ class StubEmitter:
                 return typing.Generator[mapped_args + (None,)]  # type: ignore
 
             if origin == contextlib.AbstractAsyncContextManager:
-                return typing.ContextManager[mapped_args]  # type: ignore
+                return combined_types.AsyncAndBlockingContextManager[mapped_args]  # type: ignore
 
             if origin == collections.abc.AsyncIterable:
                 return typing.Iterable[mapped_args]  # type: ignore
