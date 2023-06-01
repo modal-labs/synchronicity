@@ -1,10 +1,13 @@
 import asyncio
 import atexit
 import collections.abc
+import concurrent.futures
 import contextlib
 import functools
 import inspect
 import platform
+import signal
+import sys
 import threading
 import typing
 import warnings
@@ -103,6 +106,8 @@ class Synchronizer:
         multiwrap_warning=False,
         async_leakage_warning=True,
     ):
+        self._keepalive_task = None
+        self._is_sigint_shutdown = False
         self._multiwrap_warning = multiwrap_warning
         self._async_leakage_warning = async_leakage_warning
         self._loop = None
@@ -152,6 +157,7 @@ class Synchronizer:
             def thread_inner():
                 async def loop_inner():
                     self._loop = asyncio.get_running_loop()
+                    self._keepalive_task = asyncio.current_task()
                     self._stopping = asyncio.Event()
                     is_ready.set()
                     await self._stopping.wait()  # wait until told to stop
@@ -161,7 +167,20 @@ class Synchronizer:
             self._thread = threading.Thread(target=thread_inner, daemon=True)
             self._thread.start()
             is_ready.wait()  # TODO: this might block for a very short time
+            self._install_sigint_handler(self._loop)
             return self._loop
+
+    def _install_sigint_handler(self, loop):
+        default_sigint_handler = signal.getsignal(signal.SIGINT)
+
+        def callback(signum, tb):
+            self._is_sigint_shutdown = True
+            # make sure to close the loop BEFORE interpreter is finalizing
+            # to allow threaded execution in cancellation handling (otherwise dns lookups etc. won't be possible)
+            self._close_loop()
+            default_sigint_handler()  # raise keyboard interrupt in main thread etc.
+
+        signal.signal(signal.SIGINT, callback)
 
     def _close_loop(self):
         if self._thread is not None:
@@ -287,7 +306,13 @@ class Synchronizer:
         coro = self._wrap_check_async_leakage(coro)
         loop = self._get_loop(start=True)
         fut = asyncio.run_coroutine_threadsafe(coro, loop)
-        value = fut.result()
+        try:
+            value = fut.result()
+        except concurrent.futures.CancelledError:
+            if self._is_sigint_shutdown:
+                raise KeyboardInterrupt()
+            raise
+
         return self._translate_out(value, interface)
 
     def _run_function_sync_future(self, coro, interface):

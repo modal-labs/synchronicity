@@ -17,7 +17,8 @@ def test_shutdown():
         assert p.stdout.readline() == b"running\n"
     p.send_signal(signal.SIGINT)
     assert p.stdout.readline() == b"cancelled\n"
+    assert p.stdout.readline() == b"ran shutdown handler\n"
     assert p.stdout.readline() == b"stopping\n"
     assert p.stdout.readline() == b"exiting\n"
     stderr_content = p.stderr.read()
-    assert b"Traceback" not in stderr_content
+    assert stderr_content == b""
