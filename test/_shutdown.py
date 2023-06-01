@@ -33,4 +33,4 @@ s = Synchronizer()
 try:
     s.create_blocking(run)()
 except KeyboardInterrupt:
-    pass
+    print("got interrupt")

@@ -174,12 +174,12 @@ class Synchronizer:
     def _install_sigint_handler(self, loop):
         default_sigint_handler = signal.getsignal(signal.SIGINT)
 
-        def callback(signum, tb):
+        def callback(signum, frames):
             self._is_sigint_shutdown = True
             # make sure to close the loop BEFORE interpreter is finalizing
             # to allow threaded execution in cancellation handling (otherwise dns lookups etc. won't be possible)
             self._close_loop()
-            default_sigint_handler()  # raise keyboard interrupt in main thread etc.
+            default_sigint_handler(signum, frames)  # raise keyboard interrupt in main thread etc.
 
         signal.signal(signal.SIGINT, callback)
 

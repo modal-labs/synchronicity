@@ -20,5 +20,6 @@ def test_shutdown():
     assert p.stdout.readline() == b"ran shutdown handler\n"
     assert p.stdout.readline() == b"stopping\n"
     assert p.stdout.readline() == b"exiting\n"
+    assert p.stdout.readline() == b"got interrupt\n"
     stderr_content = p.stderr.read()
     assert stderr_content == b""
