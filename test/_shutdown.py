@@ -20,7 +20,7 @@ async def run():
             await asyncio.sleep(0.3)
     except asyncio.CancelledError:
         print("cancelled")
-        await asyncio.to_thread(sync_shutdown_handler)
+        await asyncio.get_running_loop().run_in_executor(None, sync_shutdown_handler)
         raise
     finally:
         print("stopping")
