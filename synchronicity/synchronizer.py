@@ -7,7 +7,6 @@ import functools
 import inspect
 import platform
 import signal
-import sys
 import threading
 import typing
 import warnings

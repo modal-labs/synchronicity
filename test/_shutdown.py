@@ -1,7 +1,5 @@
 import asyncio
-import sys
 import time
-import traceback
 
 from synchronicity import Synchronizer
 
