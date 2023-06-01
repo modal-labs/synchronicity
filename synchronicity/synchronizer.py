@@ -166,7 +166,9 @@ class Synchronizer:
             self._thread = threading.Thread(target=thread_inner, daemon=True)
             self._thread.start()
             is_ready.wait()  # TODO: this might block for a very short time
-            self._install_sigint_handler(self._loop)
+            if threading.current_thread() == threading.main_thread():
+                self._install_sigint_handler(self._loop)
+
             return self._loop
 
     def _install_sigint_handler(self, loop):
