@@ -39,7 +39,7 @@ class MethodWithAio:
         self._is_classmethod = is_classmethod
 
     def __get__(self, instance, owner=None):
-        bind_var = instance if instance and not self._is_classmethod else owner
+        bind_var = instance if instance is not None and not self._is_classmethod else owner
 
         bound_func = functools.wraps(self._func)(functools.partial(self._func, bind_var))  # bound blocking function
         self._synchronizer._update_wrapper(bound_func, self._func, interface=Interface.BLOCKING)
