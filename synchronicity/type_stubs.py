@@ -508,7 +508,7 @@ class StubEmitter:
                 )
             )
         except Exception:
-            raise Exception(f"Could not reformat generic {annotation.__origin__} with arguments {args}")
+            formatted_annotation = str(annotation)
 
         formatted_annotation = formatted_annotation.replace(
             "typing.Abstract", "typing."
