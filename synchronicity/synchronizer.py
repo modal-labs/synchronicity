@@ -263,11 +263,11 @@ class Synchronizer:
                 return obj
 
     def _recurse_map(self, mapper, obj):
-        if type(obj) == list:
+        if type(obj) == list:  # noqa: E721
             return list(self._recurse_map(mapper, item) for item in obj)
-        elif type(obj) == tuple:
+        elif type(obj) == tuple:  # noqa: E721
             return tuple(self._recurse_map(mapper, item) for item in obj)
-        elif type(obj) == dict:
+        elif type(obj) == dict:  # noqa: E721
             return dict((key, self._recurse_map(mapper, item)) for key, item in obj.items())
         else:
             return mapper(obj)
