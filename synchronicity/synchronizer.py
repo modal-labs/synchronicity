@@ -243,10 +243,15 @@ class Synchronizer:
             interface = Interface.BLOCKING
 
         # If it's an internal object, translate it to the external interface
-        if inspect.isclass(obj) or isinstance(obj, typing.TypeVar):  # TODO: functions?
+        if inspect.isclass(obj):  # TODO: functions?
             cls_dct = obj.__dict__
             if self._wrapped_attr in cls_dct:
                 return cls_dct[self._wrapped_attr][interface]
+            else:
+                return obj
+        elif isinstance(obj, typing.TypeVar):
+            if hasattr(obj, self._wrapped_attr):
+                return getattr(obj, self._wrapped_attr)[interface]
             else:
                 return obj
         else:
@@ -620,16 +625,22 @@ class Synchronizer:
         # It wraps the object, and caches the wrapped object
 
         # Get the list of existing interfaces
-        if self._wrapped_attr not in obj.__dict__:
-            if isinstance(obj.__dict__, dict):
-                # This works for instances
-                obj.__dict__.setdefault(self._wrapped_attr, {})
-            else:
-                # This works for classes & functions
+        if hasattr(obj, "__dict__"):
+            if self._wrapped_attr not in obj.__dict__:
+                if isinstance(obj.__dict__, dict):
+                    # This works for instances
+                    obj.__dict__.setdefault(self._wrapped_attr, {})
+                else:
+                    # This works for classes & functions
+                    setattr(obj, self._wrapped_attr, {})
+            interfaces = obj.__dict__[self._wrapped_attr]
+        else:
+            # e.g., TypeVar in Python>=3.12
+            if not hasattr(obj, self._wrapped_attr):
                 setattr(obj, self._wrapped_attr, {})
+            interfaces = getattr(obj, self._wrapped_attr)
 
         # If this is already wrapped, return the existing interface
-        interfaces = obj.__dict__[self._wrapped_attr]
         if interface in interfaces:
             if self._multiwrap_warning:
                 warnings.warn(f"Object {obj} is already wrapped, but getting wrapped again")
@@ -670,12 +681,13 @@ class Synchronizer:
 
         # TODO(elias): Refactor - since this isn't used for live apps, move type stub generation into genstub
         new_obj = typing.TypeVar(name, bound=obj.__bound__)  # noqa
-        new_obj.__dict__[self._original_attr] = obj
-        new_obj.__dict__[SYNCHRONIZER_ATTR] = self
-        new_obj.__dict__[TARGET_INTERFACE_ATTR] = interface
+        setattr(new_obj, self._original_attr, obj)
+        setattr(new_obj, SYNCHRONIZER_ATTR, self)
+        setattr(new_obj, TARGET_INTERFACE_ATTR, interface)
         new_obj.__module__ = target_module
-        obj.__dict__.setdefault(self._wrapped_attr, {})
-        obj.__dict__[self._wrapped_attr][interface] = new_obj
+        if not hasattr(obj, self._wrapped_attr):
+            setattr(obj, self._wrapped_attr, {})
+        getattr(obj, self._wrapped_attr)[interface] = new_obj
         return new_obj
 
     def nowrap(self, obj):
