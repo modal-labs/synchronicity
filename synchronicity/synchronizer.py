@@ -156,7 +156,14 @@ class Synchronizer:
                     is_ready.set()
                     await self._stopping.wait()  # wait until told to stop
 
-                asyncio.run(loop_inner())
+                try:
+                    asyncio.run(loop_inner())
+                except RuntimeError as exc:
+                    # Python 3.12 raises a RuntimeError when new threads are created at shutdown.
+                    # Swallowing it here is innocuous, but ideally we will revisit this after
+                    # refactoring the shutdown handlers that modal uses to avoid triggering it.
+                    if "can't create new thread at interpreter shutdown" not in str(exc):
+                        raise exc
 
             self._thread = threading.Thread(target=thread_inner, daemon=True)
             self._thread.start()
