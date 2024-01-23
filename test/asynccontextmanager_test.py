@@ -1,3 +1,4 @@
+import sys
 from contextlib import asynccontextmanager
 import pytest
 
@@ -117,6 +118,7 @@ async def test_asynccontextmanager_nested():
 @pytest.mark.asyncio
 async def test_asynccontextmanager_with_in_async():
     r = s.create_async(Resource)()
-    with pytest.raises(AttributeError):
+    err_cls = AttributeError if sys.version_info < (3, 11) else TypeError
+    with pytest.raises(err_cls):
         with r.wrap():
             pass
