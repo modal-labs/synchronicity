@@ -10,19 +10,19 @@ from .type_stub_helpers import some_mod
 
 
 def noop():
-    pass
+    ...
 
 
 def arg_no_anno(arg1):
-    pass
+    ...
 
 
 def scalar_args(arg1: str, arg2: int) -> float:
-    pass
+    ...
 
 
 def generic_other_module_arg(arg: typing.List[some_mod.Foo]):
-    pass
+    ...
 
 
 async def async_func() -> str:
@@ -155,7 +155,7 @@ def test_wrapped_function_with_new_annotations():
     """
 
     def orig(arg: str):
-        pass
+        ...
 
     @functools.wraps(orig)
     def wrapper(extra_arg: int, *args, **kwargs):
@@ -167,7 +167,7 @@ def test_wrapped_function_with_new_annotations():
 
 class Base:
     def base_method(self) -> str:
-        pass
+        ...
 
 
 Base.__module__ = "basemod"
@@ -176,7 +176,7 @@ Base.__qualname__ = "Base"
 
 class Based(Base):
     def sub(self) -> float:
-        pass
+        ...
 
 
 def test_base_class_included_and_imported():
@@ -191,7 +191,7 @@ def test_typevar():
     T.__module__ = "source_mod"
 
     def foo(arg: T) -> T:
-        pass
+        ...
 
     src = _function_source(foo)
     assert "import source_mod" in src
@@ -207,11 +207,11 @@ def test_string_annotation():
 
 class Forwarder:
     def foo(self) -> typing.Optional["Forwardee"]:
-        pass
+        ...
 
 
 class Forwardee:
-    pass
+    ...
 
 
 def test_forward_ref():
@@ -228,7 +228,7 @@ def test_forward_ref():
 
 class SelfRefFoo:
     def foo(self) -> "SelfRefFoo":
-        pass
+        ...
 
 
 def test_self_ref():
@@ -241,7 +241,7 @@ def test_self_ref():
 class _Foo:
     @staticmethod
     async def clone(foo: "_Foo") -> "_Foo":
-        pass
+        ...
 
 
 synchronizer = synchronicity.Synchronizer()
@@ -250,7 +250,7 @@ Foo = synchronizer.create_blocking(_Foo, "Foo", __name__)
 
 def test_synchronicity_type_translation():
     async def _get_foo(foo: _Foo) -> _Foo:
-        pass
+        ...
 
     get_foo = synchronizer.create_blocking(_get_foo, "get_foo", __name__)
     src = _function_source(get_foo)
@@ -272,7 +272,7 @@ def test_synchronicity_self_ref():
 class _WithClassMethod:
     @classmethod
     def classy(cls):
-        pass
+        ...
 
     async def meth(self, arg: bool) -> int:
         return 0
@@ -307,7 +307,7 @@ T = typing.TypeVar("T")
 
 
 class MyGeneric(typing.Generic[T]):
-    pass
+    ...
 
 
 BlockingGeneric = synchronizer.create_blocking(typing.Generic, "BlockingGeneric", __name__)
@@ -321,7 +321,7 @@ BlockingMyGeneric = synchronizer.create_blocking(
 def test_custom_generic():
     # TODO: build out this test a bit, as it currently creates an invalid stub (missing base types)
     class Specific(MyGeneric[str]):
-        pass
+        ...
 
     src = _class_source(Specific)
     assert "class Specific(MyGeneric[str]):" in src
@@ -329,7 +329,7 @@ def test_custom_generic():
 
 def test_synchronicity_generic_subclass():
     class Specific(MyGeneric[str]):
-        pass
+        ...
 
     assert Specific.__bases__ == (MyGeneric,)
     assert Specific.__orig_bases__ == (MyGeneric[str],)
@@ -339,7 +339,7 @@ def test_synchronicity_generic_subclass():
     assert "class BlockingSpecific(BlockingMyGeneric[str]):" in src
 
     async def foo_impl(bar: MyGeneric[str]):
-        pass
+        ...
 
     foo = synchronizer.create_blocking(foo_impl, "foo")
     src = _function_source(foo)
@@ -372,7 +372,7 @@ def test_translated_bound_type_vars():
 
 def test_ellipsis():
     def foo() -> typing.Callable[..., typing.Any]:
-        pass
+        ...
 
     src = _function_source(foo)
     assert "-> typing.Callable[..., typing.Any]" in src
@@ -391,11 +391,11 @@ def test_overloads_unwrapped_functions():
 
         @typing.overload
         def _overloaded(arg: str) -> float:
-            pass
+            ...
 
         @typing.overload
         def _overloaded(arg: int) -> int:
-            pass
+            ...
 
         def _overloaded(arg: typing.Union[str, int]):
             if isinstance(arg, str):
