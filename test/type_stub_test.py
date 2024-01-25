@@ -377,12 +377,14 @@ def test_ellipsis():
     src = _function_source(foo)
     assert "-> typing.Callable[..., typing.Any]" in src
 
+
 def test_typing_literal():
     def foo() -> typing.Literal["three", "str"]:
         ...
 
     src = _function_source(foo)
     assert "-> typing.Literal['three', 'str']" in src  # "str" should not be eval:ed in a Literal!
+
 
 def test_overloads_unwrapped_functions():
     with overload_tracking.patched_overload():
