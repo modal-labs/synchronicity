@@ -379,8 +379,7 @@ def test_ellipsis():
 
 
 def test_typing_literal():
-    def foo() -> typing.Literal["three", "str"]:
-        ...
+    def foo() -> typing.Literal["three", "str"]: ...
 
     src = _function_source(foo)
     assert "-> typing.Literal['three', 'str']" in src  # "str" should not be eval:ed in a Literal!
