@@ -9,20 +9,17 @@ from synchronicity.type_stubs import StubEmitter
 from .type_stub_helpers import some_mod
 
 
-def noop():
-    pass
+def noop(): ...
 
 
-def arg_no_anno(arg1):
-    pass
+def arg_no_anno(arg1): ...
 
 
 def scalar_args(arg1: str, arg2: int) -> float:
-    pass
+    return 0
 
 
-def generic_other_module_arg(arg: typing.List[some_mod.Foo]):
-    pass
+def generic_other_module_arg(arg: typing.List[some_mod.Foo]): ...
 
 
 async def async_func() -> str:
@@ -154,8 +151,7 @@ def test_wrapped_function_with_new_annotations():
     This test makes sure we do just that.
     """
 
-    def orig(arg: str):
-        pass
+    def orig(arg: str): ...
 
     @functools.wraps(orig)
     def wrapper(extra_arg: int, *args, **kwargs):
@@ -167,7 +163,7 @@ def test_wrapped_function_with_new_annotations():
 
 class Base:
     def base_method(self) -> str:
-        pass
+        return ""
 
 
 Base.__module__ = "basemod"
@@ -176,7 +172,7 @@ Base.__qualname__ = "Base"
 
 class Based(Base):
     def sub(self) -> float:
-        pass
+        return 0
 
 
 def test_base_class_included_and_imported():
@@ -191,7 +187,7 @@ def test_typevar():
     T.__module__ = "source_mod"
 
     def foo(arg: T) -> T:
-        pass
+        return arg
 
     src = _function_source(foo)
     assert "import source_mod" in src
@@ -206,12 +202,10 @@ def test_string_annotation():
 
 
 class Forwarder:
-    def foo(self) -> typing.Optional["Forwardee"]:
-        pass
+    def foo(self) -> typing.Optional["Forwardee"]: ...
 
 
-class Forwardee:
-    pass
+class Forwardee: ...
 
 
 def test_forward_ref():
@@ -228,7 +222,7 @@ def test_forward_ref():
 
 class SelfRefFoo:
     def foo(self) -> "SelfRefFoo":
-        pass
+        return self
 
 
 def test_self_ref():
@@ -241,7 +235,7 @@ def test_self_ref():
 class _Foo:
     @staticmethod
     async def clone(foo: "_Foo") -> "_Foo":
-        pass
+        return foo
 
 
 synchronizer = synchronicity.Synchronizer()
@@ -250,7 +244,7 @@ Foo = synchronizer.create_blocking(_Foo, "Foo", __name__)
 
 def test_synchronicity_type_translation():
     async def _get_foo(foo: _Foo) -> _Foo:
-        pass
+        return foo
 
     get_foo = synchronizer.create_blocking(_get_foo, "get_foo", __name__)
     src = _function_source(get_foo)
@@ -271,8 +265,7 @@ def test_synchronicity_self_ref():
 
 class _WithClassMethod:
     @classmethod
-    def classy(cls):
-        pass
+    def classy(cls): ...
 
     async def meth(self, arg: bool) -> int:
         return 0
@@ -306,8 +299,7 @@ def test_synchronicity_class():
 T = typing.TypeVar("T")
 
 
-class MyGeneric(typing.Generic[T]):
-    pass
+class MyGeneric(typing.Generic[T]): ...
 
 
 BlockingGeneric = synchronizer.create_blocking(typing.Generic, "BlockingGeneric", __name__)
@@ -320,16 +312,14 @@ BlockingMyGeneric = synchronizer.create_blocking(
 
 def test_custom_generic():
     # TODO: build out this test a bit, as it currently creates an invalid stub (missing base types)
-    class Specific(MyGeneric[str]):
-        pass
+    class Specific(MyGeneric[str]): ...
 
     src = _class_source(Specific)
     assert "class Specific(MyGeneric[str]):" in src
 
 
 def test_synchronicity_generic_subclass():
-    class Specific(MyGeneric[str]):
-        pass
+    class Specific(MyGeneric[str]): ...
 
     assert Specific.__bases__ == (MyGeneric,)
     assert Specific.__orig_bases__ == (MyGeneric[str],)
@@ -338,8 +328,7 @@ def test_synchronicity_generic_subclass():
     src = _class_source(BlockingSpecific)
     assert "class BlockingSpecific(BlockingMyGeneric[str]):" in src
 
-    async def foo_impl(bar: MyGeneric[str]):
-        pass
+    async def foo_impl(bar: MyGeneric[str]): ...
 
     foo = synchronizer.create_blocking(foo_impl, "foo")
     src = _function_source(foo)
@@ -372,14 +361,15 @@ def test_translated_bound_type_vars():
 
 def test_ellipsis():
     def foo() -> typing.Callable[..., typing.Any]:
-        pass
+        return lambda x: 0
 
     src = _function_source(foo)
     assert "-> typing.Callable[..., typing.Any]" in src
 
 
 def test_typing_literal():
-    def foo() -> typing.Literal["three", "str"]: ...
+    def foo() -> typing.Literal["three", "str"]:
+        return "str"
 
     src = _function_source(foo)
     assert "-> typing.Literal['three', 'str']" in src  # "str" should not be eval:ed in a Literal!
@@ -389,12 +379,10 @@ def test_overloads_unwrapped_functions():
     with overload_tracking.patched_overload():
 
         @typing.overload
-        def _overloaded(arg: str) -> float:
-            pass
+        def _overloaded(arg: str) -> float: ...
 
         @typing.overload
-        def _overloaded(arg: int) -> int:
-            pass
+        def _overloaded(arg: int) -> int: ...
 
         def _overloaded(arg: typing.Union[str, int]):
             if isinstance(arg, str):
