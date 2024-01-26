@@ -377,7 +377,11 @@ class StubEmitter:
                 return synchronizer._translate_out(type_annotation, interface)
             return type_annotation
 
-        mapped_args = tuple(self._translate_annotation(arg, synchronizer, interface, home_module) for arg in args)
+        if origin == typing.Literal:
+            mapped_args = args
+        else:
+            mapped_args = tuple(self._translate_annotation(arg, synchronizer, interface, home_module) for arg in args)
+
         if interface == Interface.BLOCKING:
             # blocking interface special generic translations:
             if origin == collections.abc.AsyncGenerator:
