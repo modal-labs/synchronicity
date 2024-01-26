@@ -18,18 +18,18 @@ class _Foo:
 
     @staticmethod
     def some_static(arg: str) -> float:
-        pass
+        ...
 
     @classmethod
     def clone(cls, foo: "_Foo") -> "_Foo":  # self ref
-        pass
+        ...
 
 
 _T = TypeVar("_T", bound=_Foo)
 
 
 async def _listify(t: _T) -> List[_T]:
-    return t
+    return [t]
 
 
 @overload
@@ -53,5 +53,5 @@ async def _returns_foo() -> _Foo:
 
 
 @asynccontextmanager
-def make_context(a: float) -> typing.AsyncGenerator[str, None]:
+async def make_context(a: float) -> typing.AsyncGenerator[str, None]:
     yield "hello"
