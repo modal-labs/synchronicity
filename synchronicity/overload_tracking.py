@@ -19,6 +19,7 @@ with patched_overload():
 # in the order they are declared
 foo_overloads = get_overloads(foo)
 """
+
 import contextlib
 import typing
 from unittest import mock
