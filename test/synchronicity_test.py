@@ -511,7 +511,7 @@ def test_no_input_translation(monkeypatch):
     in_translate_spy.assert_called_once_with(3.14)
 
     in_translate_spy.reset_mock()
-    without_input_translation(3.14)  # test without decorator, this *should* do input translation
+    without_input_translation(3.14)
     in_translate_spy.assert_not_called()
 
 
