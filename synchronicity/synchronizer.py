@@ -315,7 +315,7 @@ class Synchronizer:
         loop = self._get_loop(start=True)
         # For futures, we unwrap the result at this point, not in f_wrapped
         coro = unwrap_coro_exception(coro)
-        coro = self._translate_coro_out(coro, interface)
+        coro = self._translate_coro_out(coro, interface, original_func)
         return asyncio.run_coroutine_threadsafe(coro, loop)
 
     async def _run_function_async(self, coro, interface, original_func):
