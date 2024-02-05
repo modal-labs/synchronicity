@@ -2,7 +2,7 @@ import asyncio
 import concurrent.futures
 import inspect
 from typing import Coroutine
-from unittest.mock import MagicMock, ANY
+from unittest.mock import MagicMock
 
 import pytest
 import time
@@ -493,9 +493,9 @@ async def test_blocking_nested_aio_returns_blocking_obj():
     assert isinstance(self_from_aio_interface, BlockingFoo)
 
 
-
 def test_no_input_translation(monkeypatch):
     s = Synchronizer()
+
     @s.create_blocking
     def does_input_translation(arg: float) -> str:
         return str(arg)
@@ -517,6 +517,7 @@ def test_no_input_translation(monkeypatch):
 
 def test_no_output_translation(monkeypatch):
     s = Synchronizer()
+
     @s.create_blocking
     def does_input_translation(arg: float) -> str:
         return str(arg)
