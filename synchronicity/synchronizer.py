@@ -122,8 +122,8 @@ class Synchronizer:
 
         # Special attribute to mark something as non-wrappable
         self._nowrap_attr = "_sync_nonwrap_%d" % id(self)
-        self._no_input_translation_attr = "_sync_no_input_translation_%d" % id(self)
-        self._no_output_unwrapping_attr = "_sync_no_output_translation_%d" % id(self)
+        self._input_translation_attr = "_sync_input_translation_%d" % id(self)
+        self._output_translation_attr = "_sync_output_translation_%d" % id(self)
 
         # Prep a synchronized context manager in case one is returned and needs translation
         self._ctx_mgr_cls = contextlib._AsyncGeneratorContextManager
@@ -290,7 +290,7 @@ class Synchronizer:
     def _translate_coro_out(self, coro, interface, original_func):
         async def unwrap_coro():
             res = await coro
-            if not getattr(original_func, self._no_output_unwrapping_attr, False):
+            if getattr(original_func, self._output_translation_attr, True):
                 return self._translate_out(res, interface)
             return res
 
@@ -305,7 +305,7 @@ class Synchronizer:
         loop = self._get_loop(start=True)
         fut = asyncio.run_coroutine_threadsafe(coro, loop)
         value = fut.result()
-        if not getattr(original_func, self._no_output_unwrapping_attr, False):
+        if getattr(original_func, self._output_translation_attr, True):
             return self._translate_out(value, interface)
         return value
 
@@ -329,7 +329,7 @@ class Synchronizer:
             a_fut = asyncio.wrap_future(c_fut)
             value = await a_fut
 
-        if not getattr(original_func, self._no_output_unwrapping_attr, False):
+        if getattr(original_func, self._output_translation_attr, True):
             return self._translate_out(value, interface)
         return value
 
@@ -413,7 +413,7 @@ class Synchronizer:
 
             # If this gets called with an argument that represents an external type,
             # translate it into an internal type
-            if not getattr(f, self._no_input_translation_attr, False):
+            if getattr(f, self._input_translation_attr, True):
                 args = self._translate_in(args)
                 kwargs = self._translate_in(kwargs)
 
@@ -469,14 +469,14 @@ class Synchronizer:
                         args = self._translate_in(args)
                         kwargs = self._translate_in(kwargs)
                         f_res = res(*args, **kwargs)
-                        if not getattr(f, self._no_output_unwrapping_attr, False):
+                        if getattr(f, self._output_translation_attr, True):
                             return self._translate_out(f_res, interface)
                         else:
                             return f_res
 
                     return f_wrapped
 
-                if not getattr(f, self._no_output_unwrapping_attr, False):
+                if getattr(f, self._output_translation_attr, True):
                     return self._translate_out(res, interface)
                 else:
                     return res
@@ -719,11 +719,11 @@ class Synchronizer:
         return obj
 
     def no_input_translation(self, obj):
-        setattr(obj, self._no_input_translation_attr, True)
+        setattr(obj, self._input_translation_attr, False)
         return obj
 
     def no_output_translation(self, obj):
-        setattr(obj, self._no_output_unwrapping_attr, True)
+        setattr(obj, self._output_translation_attr, False)
         return obj
 
     def no_io_translation(self, obj):

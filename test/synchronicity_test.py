@@ -519,7 +519,7 @@ def test_no_output_translation(monkeypatch):
     s = Synchronizer()
 
     @s.create_blocking
-    def does_input_translation(arg: float) -> str:
+    def does_output_translation(arg: float) -> str:
         return str(arg)
 
     @s.create_blocking
@@ -529,9 +529,9 @@ def test_no_output_translation(monkeypatch):
 
     out_translate_spy = MagicMock(wraps=s._translate_scalar_out)
     monkeypatch.setattr(s, "_translate_scalar_out", out_translate_spy)
-    does_input_translation(3.14)  # test without decorator, this *should* do input translation
+    does_output_translation(3.14)  # test without decorator, this *should* do input translation
     out_translate_spy.assert_called_once_with("3.14", Interface.BLOCKING)
 
     out_translate_spy.reset_mock()
-    without_output_translation(3.14)  # test without decorator, this *should* do input translation
+    without_output_translation(3.14)
     out_translate_spy.assert_not_called()
