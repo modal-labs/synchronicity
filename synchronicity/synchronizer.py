@@ -122,6 +122,8 @@ class Synchronizer:
 
         # Special attribute to mark something as non-wrappable
         self._nowrap_attr = "_sync_nonwrap_%d" % id(self)
+        self._no_input_translation_attr = "_sync_no_input_translation_%d" % id(self)
+        self._no_output_unwrapping_attr = "_sync_no_output_translation_%d" % id(self)
 
         # Prep a synchronized context manager in case one is returned and needs translation
         self._ctx_mgr_cls = contextlib._AsyncGeneratorContextManager
@@ -285,13 +287,16 @@ class Synchronizer:
     def _translate_out(self, obj, interface):
         return self._recurse_map(lambda scalar: self._translate_scalar_out(scalar, interface), obj)
 
-    def _translate_coro_out(self, coro, interface):
+    def _translate_coro_out(self, coro, interface, original_func):
         async def unwrap_coro():
-            return self._translate_out(await coro, interface)
+            res = await coro
+            if not getattr(original_func, self._no_output_unwrapping_attr, False):
+                return self._translate_out(res, interface)
+            return res
 
         return unwrap_coro()
 
-    def _run_function_sync(self, coro, interface):
+    def _run_function_sync(self, coro, interface, original_func):
         if self._is_inside_loop():
             raise Exception("Deadlock detected: calling a sync function from the synchronizer loop")
 
@@ -300,9 +305,11 @@ class Synchronizer:
         loop = self._get_loop(start=True)
         fut = asyncio.run_coroutine_threadsafe(coro, loop)
         value = fut.result()
-        return self._translate_out(value, interface)
+        if not getattr(original_func, self._no_output_unwrapping_attr, False):
+            return self._translate_out(value, interface)
+        return value
 
-    def _run_function_sync_future(self, coro, interface):
+    def _run_function_sync_future(self, coro, interface, original_func):
         coro = wrap_coro_exception(coro)
         coro = self._wrap_check_async_leakage(coro)
         loop = self._get_loop(start=True)
@@ -311,7 +318,7 @@ class Synchronizer:
         coro = self._translate_coro_out(coro, interface)
         return asyncio.run_coroutine_threadsafe(coro, loop)
 
-    async def _run_function_async(self, coro, interface):
+    async def _run_function_async(self, coro, interface, original_func):
         coro = wrap_coro_exception(coro)
         coro = self._wrap_check_async_leakage(coro)
         loop = self._get_loop(start=True)
@@ -321,16 +328,19 @@ class Synchronizer:
             c_fut = asyncio.run_coroutine_threadsafe(coro, loop)
             a_fut = asyncio.wrap_future(c_fut)
             value = await a_fut
-        return self._translate_out(value, interface)
 
-    def _run_generator_sync(self, gen, interface):
+        if not getattr(original_func, self._no_output_unwrapping_attr, False):
+            return self._translate_out(value, interface)
+        return value
+
+    def _run_generator_sync(self, gen, interface, original_func):
         value, is_exc = None, False
         while True:
             try:
                 if is_exc:
-                    value = self._run_function_sync(gen.athrow(value), interface)
+                    value = self._run_function_sync(gen.athrow(value), interface, original_func)
                 else:
-                    value = self._run_function_sync(gen.asend(value), interface)
+                    value = self._run_function_sync(gen.asend(value), interface, original_func)
             except UserCodeException as uc_exc:
                 raise uc_exc.exc from None
             except StopAsyncIteration:
@@ -342,14 +352,14 @@ class Synchronizer:
                 value = exc
                 is_exc = True
 
-    async def _run_generator_async(self, gen, interface):
+    async def _run_generator_async(self, gen, interface, original_func):
         value, is_exc = None, False
         while True:
             try:
                 if is_exc:
-                    value = await self._run_function_async(gen.athrow(value), interface)
+                    value = await self._run_function_async(gen.athrow(value), interface, original_func)
                 else:
-                    value = await self._run_function_async(gen.asend(value), interface)
+                    value = await self._run_function_async(gen.asend(value), interface, original_func)
             except UserCodeException as uc_exc:
                 raise uc_exc.exc from None
             except StopAsyncIteration:
@@ -403,8 +413,9 @@ class Synchronizer:
 
             # If this gets called with an argument that represents an external type,
             # translate it into an internal type
-            args = self._translate_in(args)
-            kwargs = self._translate_in(kwargs)
+            if not getattr(f, self._no_input_translation_attr, False):
+                args = self._translate_in(args)
+                kwargs = self._translate_in(kwargs)
 
             # Call the function
             res = f(*args, **kwargs)
@@ -417,14 +428,14 @@ class Synchronizer:
                 if not allow_futures:
                     raise Exception("Can not return future for this function")
                 elif is_coroutine:
-                    return self._run_function_sync_future(res, interface)
+                    return self._run_function_sync_future(res, interface, f)
                 elif is_asyncgen:
                     raise Exception("Can not return futures for generators")
                 else:
                     return res
             elif is_coroutine:
                 if interface in (Interface.ASYNC, Interface._ASYNC_WITH_BLOCKING_TYPES):
-                    coro = self._run_function_async(res, interface)
+                    coro = self._run_function_async(res, interface, f)
                     if not is_coroutinefunction:
                         # If this is a non-async function that returns a coroutine,
                         # then this is the exit point, and we need to unwrap any
@@ -435,7 +446,7 @@ class Synchronizer:
                 elif interface == Interface.BLOCKING:
                     # This is the exit point, so we need to unwrap the exception here
                     try:
-                        return self._run_function_sync(res, interface)
+                        return self._run_function_sync(res, interface, f)
                     except UserCodeException as uc_exc:
                         # Used to skip a frame when called from `proxy_method`.
                         if unwrap_user_excs and not (Interface.BLOCKING and include_aio_interface):
@@ -446,9 +457,9 @@ class Synchronizer:
                 # Note that the _run_generator_* functions handle their own
                 # unwrapping of exceptions (this happens during yielding)
                 if interface in (Interface.ASYNC, Interface._ASYNC_WITH_BLOCKING_TYPES):
-                    return self._run_generator_async(res, interface)
+                    return self._run_generator_async(res, interface, f)
                 elif interface == Interface.BLOCKING:
-                    return self._run_generator_sync(res, interface)
+                    return self._run_generator_sync(res, interface, f)
             else:
                 if inspect.isfunction(res) or isinstance(res, functools.partial):  # TODO: HACKY HACK
                     # TODO: this is needed for decorator wrappers that returns functions
@@ -458,11 +469,17 @@ class Synchronizer:
                         args = self._translate_in(args)
                         kwargs = self._translate_in(kwargs)
                         f_res = res(*args, **kwargs)
-                        return self._translate_out(f_res, interface)
+                        if not getattr(f, self._no_output_unwrapping_attr, False):
+                            return self._translate_out(f_res, interface)
+                        else:
+                            return f_res
 
                     return f_wrapped
 
-                return self._translate_out(res, interface)
+                if not getattr(f, self._no_output_unwrapping_attr, False):
+                    return self._translate_out(res, interface)
+                else:
+                    return res
 
         self._update_wrapper(f_wrapped, f, _name, interface, target_module=target_module)
         setattr(f_wrapped, self._original_attr, f)
@@ -700,6 +717,17 @@ class Synchronizer:
     def nowrap(self, obj):
         setattr(obj, self._nowrap_attr, True)
         return obj
+
+    def no_input_translation(self, obj):
+        setattr(obj, self._no_input_translation_attr, True)
+        return obj
+
+    def no_output_translation(self, obj):
+        setattr(obj, self._no_output_unwrapping_attr, True)
+        return obj
+
+    def no_io_translation(self, obj):
+        return self.no_input_translation(self.no_output_translation(obj))
 
     # New interface that (almost) doesn't mutate objects
     def create_blocking(self, obj, name: Optional[str] = None, target_module: Optional[str] = None):
