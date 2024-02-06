@@ -17,8 +17,16 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 include = ["synchronicity*"]
 
-[tool.black]
-line-length = 120
-
 [tool.ruff]
 line-length = 120
+exclude = ['.venv', '.git', '__pycache__', 'build', 'dist']
+
+[tool.ruff.lint]
+select = ['E', 'F', 'W', 'I']
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+known-first-party = [
+    "synchronicity",
+]
+extra-standard-library = ["pytest"]

@@ -11,7 +11,7 @@ import warnings
 from typing import ForwardRef, Optional
 
 from synchronicity.annotations import evaluated_annotation
-from synchronicity.combined_types import MethodWithAio, FunctionWithAio
+from synchronicity.combined_types import FunctionWithAio, MethodWithAio
 
 from .async_wrap import wraps_by_interface
 from .callback import Callback

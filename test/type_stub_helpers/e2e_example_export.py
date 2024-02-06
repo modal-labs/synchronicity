@@ -3,6 +3,7 @@
 from typing import Optional
 
 import synchronicity
+
 from . import e2e_example_impl
 
 synchronizer = synchronicity.Synchronizer()

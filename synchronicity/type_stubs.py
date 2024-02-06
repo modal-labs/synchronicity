@@ -11,25 +11,24 @@ import collections.abc
 import contextlib
 import importlib
 import inspect
-from logging import getLogger
 import sys
 import typing
+from logging import getLogger
 from pathlib import Path
-from typing import TypeVar, Generic
+from typing import Generic, TypeVar
 from unittest import mock
 
 import sigtools.specifiers  # type: ignore
 from sigtools._signatures import EmptyAnnotation, UpgradedAnnotation, UpgradedParameter  # type: ignore
 
 import synchronicity
-from synchronicity import Interface, overload_tracking
-from synchronicity import combined_types
+from synchronicity import Interface, combined_types, overload_tracking
 from synchronicity.annotations import evaluated_annotation
 from synchronicity.synchronizer import (
-    TARGET_INTERFACE_ATTR,
     SYNCHRONIZER_ATTR,
-    MethodWithAio,
+    TARGET_INTERFACE_ATTR,
     FunctionWithAio,
+    MethodWithAio,
 )
 
 logger = getLogger(__name__)

@@ -3,10 +3,10 @@ import contextlib
 import functools
 import inspect
 import typing
+from contextlib import asynccontextmanager as _asynccontextmanager
 
 from .exceptions import UserCodeException
 from .interface import Interface
-from contextlib import asynccontextmanager as _asynccontextmanager
 
 
 def wraps_by_interface(interface: Interface, func):
@@ -43,7 +43,7 @@ SEND_TYPE = typing.TypeVar("SEND_TYPE")
 
 
 def asynccontextmanager(
-    f: typing.Callable[..., typing.AsyncGenerator[YIELD_TYPE, SEND_TYPE]]
+    f: typing.Callable[..., typing.AsyncGenerator[YIELD_TYPE, SEND_TYPE]],
 ) -> typing.Callable[[], typing.AsyncContextManager[YIELD_TYPE]]:
     """Wrapper around contextlib.asynccontextmanager that sets correct type annotations
 

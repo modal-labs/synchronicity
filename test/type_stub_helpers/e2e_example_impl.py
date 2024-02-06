@@ -1,5 +1,5 @@
-from typing import AsyncGenerator, TypeVar, List, Union, overload
 import typing
+from typing import AsyncGenerator, List, TypeVar, Union, overload
 
 from synchronicity.async_wrap import asynccontextmanager
 
@@ -17,7 +17,8 @@ class _Foo:
         yield 1
 
     @staticmethod
-    def some_static(arg: str) -> float: ...
+    def some_static(arg: str) -> float:
+        ...
 
     @classmethod
     def clone(cls, foo: "_Foo") -> "_Foo":  # self ref

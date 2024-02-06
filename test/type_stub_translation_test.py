@@ -1,6 +1,5 @@
-import typing
-
 import pytest
+import typing
 
 from synchronicity import Interface, Synchronizer, combined_types
 from synchronicity.type_stubs import StubEmitter

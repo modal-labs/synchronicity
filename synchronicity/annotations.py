@@ -1,7 +1,7 @@
 # compatibility utilities/polyfills for supporting older python versions
 import importlib
-import sys
 import logging
+import sys
 
 logger = logging.getLogger("synchronicity")
 
