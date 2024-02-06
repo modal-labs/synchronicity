@@ -1,10 +1,9 @@
+import pytest
 import subprocess
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 from traceback import print_exc
-
-import pytest
 
 from synchronicity.type_stubs import write_stub
 

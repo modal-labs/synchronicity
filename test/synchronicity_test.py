@@ -1,13 +1,12 @@
 import asyncio
 import concurrent.futures
 import inspect
+import pytest
+import time
 from typing import Coroutine
 from unittest.mock import MagicMock
 
-import pytest
-import time
-
-from synchronicity import Synchronizer, Interface
+from synchronicity import Interface, Synchronizer
 
 SLEEP_DELAY = 0.1
 

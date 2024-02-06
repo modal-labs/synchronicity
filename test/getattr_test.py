@@ -1,6 +1,6 @@
 import asyncio
 import pytest
-from typing import Dict, Any
+from typing import Any, Dict
 
 from synchronicity import Synchronizer
 

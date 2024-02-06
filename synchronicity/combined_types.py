@@ -1,9 +1,11 @@
 import functools
+import typing
+
 import typing_extensions
+
 from synchronicity.async_wrap import wraps_by_interface
 from synchronicity.exceptions import UserCodeException
 from synchronicity.interface import Interface
-import typing
 
 if typing.TYPE_CHECKING:
     from synchronicity.synchronizer import Synchronizer
@@ -56,10 +58,14 @@ CTX = typing.TypeVar("CTX", covariant=True)
 
 
 class AsyncAndBlockingContextManager(typing_extensions.Protocol[CTX]):
-    def __enter__(self) -> CTX: ...
+    def __enter__(self) -> CTX:
+        ...
 
-    async def __aenter__(self) -> CTX: ...
+    async def __aenter__(self) -> CTX:
+        ...
 
-    def __exit__(self, typ, value, tb): ...
+    def __exit__(self, typ, value, tb):
+        ...
 
-    async def __aexit__(self, typ, value, tb): ...
+    async def __aexit__(self, typ, value, tb):
+        ...

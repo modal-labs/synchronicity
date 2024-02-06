@@ -1,6 +1,6 @@
+import pytest
 import sys
 from contextlib import asynccontextmanager
-import pytest
 
 from synchronicity import Synchronizer
 
