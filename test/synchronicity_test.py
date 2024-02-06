@@ -2,6 +2,7 @@ import asyncio
 import concurrent.futures
 import inspect
 from typing import Coroutine
+from unittest.mock import MagicMock
 
 import pytest
 import time
@@ -490,3 +491,47 @@ async def test_blocking_nested_aio_returns_blocking_obj():
     self_from_aio_interface = await original.get_self.aio()
     assert self_from_aio_interface == original
     assert isinstance(self_from_aio_interface, BlockingFoo)
+
+
+def test_no_input_translation(monkeypatch):
+    s = Synchronizer()
+
+    @s.create_blocking
+    def does_input_translation(arg: float) -> str:
+        return str(arg)
+
+    @s.create_blocking
+    @s.no_input_translation
+    async def without_input_translation(arg: float) -> str:
+        return str(arg)
+
+    in_translate_spy = MagicMock(wraps=s._translate_scalar_in)
+    monkeypatch.setattr(s, "_translate_scalar_in", in_translate_spy)
+    does_input_translation(3.14)  # test without decorator, this *should* do input translation
+    in_translate_spy.assert_called_once_with(3.14)
+
+    in_translate_spy.reset_mock()
+    without_input_translation(3.14)
+    in_translate_spy.assert_not_called()
+
+
+def test_no_output_translation(monkeypatch):
+    s = Synchronizer()
+
+    @s.create_blocking
+    def does_output_translation(arg: float) -> str:
+        return str(arg)
+
+    @s.create_blocking
+    @s.no_output_translation
+    async def without_output_translation(arg: float) -> str:
+        return str(arg)
+
+    out_translate_spy = MagicMock(wraps=s._translate_scalar_out)
+    monkeypatch.setattr(s, "_translate_scalar_out", out_translate_spy)
+    does_output_translation(3.14)  # test without decorator, this *should* do input translation
+    out_translate_spy.assert_called_once_with("3.14", Interface.BLOCKING)
+
+    out_translate_spy.reset_mock()
+    without_output_translation(3.14)
+    out_translate_spy.assert_not_called()
