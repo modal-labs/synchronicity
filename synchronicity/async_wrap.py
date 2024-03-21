@@ -56,7 +56,7 @@ def asynccontextmanager(
         if old_ret.__origin__ in [
             collections.abc.AsyncGenerator,
             collections.abc.AsyncIterator,
-            collections.abc.AsyncIterator,
+            collections.abc.AsyncIterable,
         ]:
             acm_factory.__annotations__["return"] = typing.AsyncContextManager[old_ret.__args__[0]]  # type: ignore
         elif old_ret.__origin__ == contextlib.AbstractAsyncContextManager:
