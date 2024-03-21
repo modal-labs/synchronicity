@@ -534,3 +534,35 @@ def test_no_output_translation(monkeypatch):
     out_translate_spy.reset_mock()
     without_output_translation(3.14)
     out_translate_spy.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_non_async_aiter():
+    async def some_async_gen():
+        yield "foo"
+        yield "bar"
+
+    class It:
+        def __aiter__(self):
+            self._gen = some_async_gen()
+            return self
+
+        async def __anext__(self):
+            value = await self._gen.__anext__()
+            return value
+
+    s = Synchronizer()
+    WrappedIt = s.create_blocking(It, name="WrappedIt")
+
+    # just a sanity check of the original iterable:
+    orig_async_it = It()
+    assert [v async for v in orig_async_it] == ["foo", "bar"]
+
+    # check async iteration on the wrapped iterator
+    it = WrappedIt()
+    assert [v async for v in it] == ["foo", "bar"]
+
+    # check sync iteration on the wrapped iterator
+    it = WrappedIt()
+    assert list(it) == ["foo", "bar"]
+
