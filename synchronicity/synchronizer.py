@@ -449,7 +449,8 @@ class Synchronizer:
                     try:
                         return self._run_function_sync(res, interface, f)
                     except StopAsyncIteration:
-                        # this is a special case for handling __next__ wrappers around __anext__ that raises StopAsyncIteration
+                        # this is a special case for handling __next__ wrappers around
+                        # __anext__ that raises StopAsyncIteration
                         raise StopIteration()
                     except UserCodeException as uc_exc:
                         # Used to skip a frame when called from `proxy_method`.
