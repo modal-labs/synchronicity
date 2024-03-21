@@ -305,6 +305,7 @@ class Synchronizer:
         loop = self._get_loop(start=True)
         fut = asyncio.run_coroutine_threadsafe(coro, loop)
         value = fut.result()
+
         if getattr(original_func, self._output_translation_attr, True):
             return self._translate_out(value, interface)
         return value
@@ -447,6 +448,9 @@ class Synchronizer:
                     # This is the exit point, so we need to unwrap the exception here
                     try:
                         return self._run_function_sync(res, interface, f)
+                    except StopAsyncIteration:
+                        # this is a special case for handling __next__ wrappers around __anext__ that raises StopAsyncIteration
+                        raise StopIteration()
                     except UserCodeException as uc_exc:
                         # Used to skip a frame when called from `proxy_method`.
                         if unwrap_user_excs and not (Interface.BLOCKING and include_aio_interface):
