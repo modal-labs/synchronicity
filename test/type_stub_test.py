@@ -1,9 +1,8 @@
 import collections
 import functools
+import pytest
 import sys
 import typing
-
-import pytest
 
 import synchronicity
 from synchronicity import overload_tracking
