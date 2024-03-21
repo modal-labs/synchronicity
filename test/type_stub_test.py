@@ -1,3 +1,4 @@
+import collections
 import functools
 import typing
 
@@ -425,3 +426,18 @@ def test_wrapped_context_manager_is_both_blocking_and_async():
         in wrapped_foo_src
     )
     assert "AbstractAsyncContextManager" not in wrapped_foo_src
+
+
+def test_collections_iterator():
+    def foo() -> collections.abc.Iterator[int]:
+        class MyIterator(collections.abc.Iterator):
+            def __iter__(self) -> collections.abc.Iterator[int]:
+                return self
+
+            def __next__(self) -> int:
+                return 1
+
+        return MyIterator()
+
+    src = _function_source(foo)
+    assert "-> collections.abc.Iterator[int]" in src
