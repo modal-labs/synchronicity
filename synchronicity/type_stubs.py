@@ -33,6 +33,14 @@ from synchronicity.synchronizer import (
 
 logger = getLogger(__name__)
 
+def generic_copy_with_args(specific_type, new_args):
+    if hasattr(specific_type, "copy_with"):
+        # not strictly necessary, but this makes the type stubs
+        # preserve generic alias names when possible, e.g. using `typing.Iterator`
+        # instead of changing it into `collections.abc.Iterator`
+        return specific_type.copy_with(new_args)
+    return typing.get_origin(specific_type)[new_args]
+
 
 class ReprObj:
     # Hacky repr passthrough object so we can pass verbatim type annotations as partial arguments
@@ -416,7 +424,7 @@ class StubEmitter:
                 str_args = ", ".join(self._formatannotation(arg) for arg in mapped_args)
                 return ReprObj(f"{self._formatannotation(translated_origin)}[{str_args}]")
 
-        return type_annotation.copy_with(mapped_args)
+        return generic_copy_with_args(type_annotation, mapped_args)
 
     def _custom_signature(self, func, transform_signature=None) -> str:
         """
@@ -506,7 +514,8 @@ class StubEmitter:
         # generic:
         try:
             formatted_annotation = str(
-                annotation.copy_with(
+                generic_copy_with_args(
+                    annotation,
                     # ellipsis (...) needs to be passed as is, or it will be reformatted
                     tuple(ReprObj(self._formatannotation(arg)) if arg != Ellipsis else Ellipsis for arg in args)
                 )

@@ -1,4 +1,7 @@
+import collections
 import functools
+import pytest
+import sys
 import typing
 
 import synchronicity
@@ -425,3 +428,19 @@ def test_wrapped_context_manager_is_both_blocking_and_async():
         in wrapped_foo_src
     )
     assert "AbstractAsyncContextManager" not in wrapped_foo_src
+
+
+@pytest.mark.skipif(sys.version_info < (3, 9), reason="collections.abc.Iterator isn't a generic type before Python 3.9")
+def test_collections_iterator():
+    def foo() -> collections.abc.Iterator[int]:
+        class MyIterator(collections.abc.Iterator):
+            def __iter__(self) -> collections.abc.Iterator[int]:
+                return self
+
+            def __next__(self) -> int:
+                return 1
+
+        return MyIterator()
+
+    src = _function_source(foo)
+    assert "-> collections.abc.Iterator[int]" in src
