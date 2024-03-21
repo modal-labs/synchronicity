@@ -1,8 +1,6 @@
 import asyncio
 import concurrent.futures
 import inspect
-import typing
-
 import pytest
 import time
 from typing import Coroutine
