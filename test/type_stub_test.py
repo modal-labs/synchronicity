@@ -116,6 +116,14 @@ class MixedClass:
     def some_property(self) -> str:
         return ""
 
+    @some_property.setter
+    def some_property(self, val):
+        print(val)
+
+    @some_property.deleter
+    def some_property(self, val):
+        print(val)
+
 
 def test_class_generation():
     emitter = StubEmitter(__name__)
@@ -139,6 +147,8 @@ def test_class_generation():
     assert_in_after_last(f"{indent}@classmethod\n{indent}def some_class_method(cls) -> int:\n{indent * 2}...")
     assert_in_after_last(f"{indent}@staticmethod\n{indent}def some_staticmethod() -> float:")
     assert_in_after_last(f"{indent}@property\n{indent}def some_property(self) -> str:")
+    assert_in_after_last(f"{indent}@some_property.setter\n{indent}def some_property(self, val):")
+    assert_in_after_last(f"{indent}@some_property.deleter\n{indent}def some_property(self, val):")
 
 
 def merged_signature(*sigs):
