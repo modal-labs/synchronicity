@@ -188,6 +188,14 @@ class StubEmitter:
                 fn_source = self._get_function_source_with_overloads(entity.fget, entity_name, body_indent_level)
                 methods.append(f"{body_indent}@property\n{fn_source}")
 
+                if entity.fset:
+                    fn_source = self._get_function_source_with_overloads(entity.fset, entity_name, body_indent_level)
+                    methods.append(f"{body_indent}@{entity_name}.setter\n{fn_source}")
+
+                if entity.fdel:
+                    fn_source = self._get_function_source_with_overloads(entity.fdel, entity_name, body_indent_level)
+                    methods.append(f"{body_indent}@{entity_name}.deleter\n{fn_source}")
+
             elif isinstance(entity, FunctionWithAio):
                 # Note: FunctionWithAio is used for staticmethods
                 methods.append(
