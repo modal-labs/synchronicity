@@ -4,6 +4,8 @@ import pytest
 import sys
 import typing
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Iterable
 
 import synchronicity
 from synchronicity import overload_tracking
@@ -467,14 +469,18 @@ def test_dataclass() -> None:
     @dataclass(frozen=True)
     class MyDataclass:
         foo: str
-        bar: int = 2
-        buz: list = field(default_factory=list)
+        bar: Path
+        baz: Iterable[int]
+        qux: int = 2
+        hep: list = field(default_factory=list)
 
     src = _dataclass_source(MyDataclass)
     assert "import dataclasses" in src
     assert "@dataclasses.dataclass(" in src
     assert "frozen=True" in src
     assert "foo: str" in src
-    assert "bar: int = dataclasses.field(default=2" in src
-    assert "buz: list = dataclasses.field(default_factory=list" in src
+    assert "bar: pathlib.Path" in src
+    assert "baz: typing.Iterable[int]" in src
+    assert "qux: int = dataclasses.field(default=2" in src
+    assert "hep: list = dataclasses.field(default_factory=list" in src
     assert "def " not in src

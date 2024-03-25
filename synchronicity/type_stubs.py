@@ -252,7 +252,11 @@ class StubEmitter:
             indent = self._indent(1)
             annot = entity.__annotations__[name]
             if isinstance(annot, type):
-                annot = annot.__name__
+                if annot.__module__ not in {"builtins", entity.__module__}:
+                    prefix = f"{annot.__module__}."
+                else:
+                    prefix = ""
+                annot = f"{prefix}{annot.__name__}"
             field_params = {}
             for param in ["default", "default_factory", "init", "kw_only"]:
                 arg = getattr(field, param)
