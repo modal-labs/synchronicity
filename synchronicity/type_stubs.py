@@ -9,6 +9,7 @@ Improvement Ideas:
 import collections
 import collections.abc
 import contextlib
+import dataclasses
 import importlib
 import inspect
 import sys
@@ -236,8 +237,35 @@ class StubEmitter:
         )
 
     def add_dataclass(self, entity: type, name: str):
+        assert hasattr(entity, "__dataclass_params__")
+        assert hasattr(entity, "__dataclass_fields__")
         self.global_types.add(name)
-        self.parts.append(inspect.getsource(entity))
+        self.imports.add("dataclasses")
+
+        params = entity.__dataclass_params__
+        param_str = ", ".join(f"{name}={getattr(params, name)}" for name in params.__slots__)
+        decl = f"@dataclasses.dataclass({param_str})\nclass {name}:"
+
+        field_annotations = []
+        for name, field in entity.__dataclass_fields__.items():
+            field = entity.__dataclass_fields__[name]
+            indent = self._indent(1)
+            annot = entity.__annotations__[name]
+            if isinstance(annot, type):
+                annot = annot.__name__
+            field_params = {}
+            for param in ["default", "default_factory", "init", "kw_only"]:
+                arg = getattr(field, param)
+                if arg is dataclasses.MISSING:
+                    continue
+                if isinstance(arg, type):
+                    field_params[param] = arg.__name__
+                else:
+                    field_params[param] = arg
+            field_param_str = ", ".join(f"{param}={arg}" for param, arg in field_params.items())
+            field_annotations.append(f"{indent}{name}: {annot} = dataclasses.field({field_param_str})")
+
+        self.parts.append("\n".join([decl, *field_annotations]))
 
     def _get_dual_function_source(
         self,
@@ -548,7 +576,7 @@ class StubEmitter:
             return formatted_annotation.split(self.target_module + ".", 1)[1]
         return formatted_annotation
 
-    def _indent(self, level):
+    def _indent(self, level: int) -> str:
         return level * self._indentation
 
     def _get_function_source_with_overloads(self, func, name, indentation_level=0, transform_signature=None) -> str:

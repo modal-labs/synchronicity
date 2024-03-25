@@ -464,13 +464,17 @@ def test_collections_iterator():
 
 
 def test_dataclass() -> None:
-    @dataclass
+    @dataclass(frozen=True)
     class MyDataclass:
         foo: str
         bar: int = 2
         buz: list = field(default_factory=list)
 
     src = _dataclass_source(MyDataclass)
-    assert "bar: int = 2" in src
-    assert "field(default_factory=list)" in src
+    assert "import dataclasses" in src
+    assert "@dataclasses.dataclass(" in src
+    assert "frozen=True" in src
+    assert "foo: str" in src
+    assert "bar: int = dataclasses.field(default=2" in src
+    assert "buz: list = dataclasses.field(default_factory=list" in src
     assert "def " not in src
