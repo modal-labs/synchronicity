@@ -33,6 +33,7 @@ from synchronicity.synchronizer import (
 
 logger = getLogger(__name__)
 
+
 def generic_copy_with_args(specific_type, new_args):
     if hasattr(specific_type, "copy_with"):
         # not strictly necessary, but this makes the type stubs
@@ -94,7 +95,9 @@ class StubEmitter:
                 and entity_name not in explicit_members
             ):
                 continue  # skip imported stuff, unless it's explicitly in __all__
-            if inspect.isclass(entity):
+            if hasattr(entity, "__dataclass_fields__"):
+                emitter.add_dataclass(entity, entity_name)
+            elif inspect.isclass(entity):
                 emitter.add_class(entity, entity_name)
             elif inspect.isfunction(entity) or isinstance(entity, FunctionWithAio):
                 emitter.add_function(entity, entity_name, 0)
@@ -231,6 +234,10 @@ class StubEmitter:
                 ]
             )
         )
+
+    def add_dataclass(self, entity: type, name: str):
+        self.global_types.add(name)
+        self.parts.append(inspect.getsource(entity))
 
     def _get_dual_function_source(
         self,
@@ -525,7 +532,7 @@ class StubEmitter:
                 generic_copy_with_args(
                     annotation,
                     # ellipsis (...) needs to be passed as is, or it will be reformatted
-                    tuple(ReprObj(self._formatannotation(arg)) if arg != Ellipsis else Ellipsis for arg in args)
+                    tuple(ReprObj(self._formatannotation(arg)) if arg != Ellipsis else Ellipsis for arg in args),
                 )
             )
         except Exception:

@@ -3,6 +3,7 @@ import functools
 import pytest
 import sys
 import typing
+from dataclasses import dataclass, field
 
 import synchronicity
 from synchronicity import overload_tracking
@@ -41,6 +42,12 @@ def _function_source(func, target_module=__name__):
 def _class_source(cls, target_module=__name__):
     stub_emitter = StubEmitter(target_module)
     stub_emitter.add_class(cls, cls.__name__)
+    return stub_emitter.get_source()
+
+
+def _dataclass_source(cls, target_module=__name__):
+    stub_emitter = StubEmitter(target_module)
+    stub_emitter.add_dataclass(cls, cls.__name__)
     return stub_emitter.get_source()
 
 
@@ -454,3 +461,16 @@ def test_collections_iterator():
 
     src = _function_source(foo)
     assert "-> collections.abc.Iterator[int]" in src
+
+
+def test_dataclass() -> None:
+    @dataclass
+    class MyDataclass:
+        foo: str
+        bar: int = 2
+        buz: list = field(default_factory=list)
+
+    src = _dataclass_source(MyDataclass)
+    assert "bar: int = 2" in src
+    assert "field(default_factory=list)" in src
+    assert "def " not in src
