@@ -472,9 +472,11 @@ def test_dataclass() -> None:
         bar: Path
         baz: Iterable[int]
         qux: int = 2
+        kab: str = "hello"
         hep: list = field(default_factory=list)
 
     src = _dataclass_source(MyDataclass)
+    print(src)
     assert "import dataclasses" in src
     assert "@dataclasses.dataclass(" in src
     assert "frozen=True" in src
@@ -482,5 +484,6 @@ def test_dataclass() -> None:
     assert "bar: pathlib.Path" in src
     assert "baz: typing.Iterable[int]" in src
     assert "qux: int = dataclasses.field(default=2" in src
+    assert "kab: str = dataclasses.field(default='hello'" in src
     assert "hep: list = dataclasses.field(default_factory=list" in src
     assert "def " not in src

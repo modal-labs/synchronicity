@@ -265,7 +265,7 @@ class StubEmitter:
                 if isinstance(arg, type):
                     field_params[param] = arg.__name__
                 else:
-                    field_params[param] = arg
+                    field_params[param] = repr(arg)
             field_param_str = ", ".join(f"{param}={arg}" for param, arg in field_params.items())
             field_annotations.append(f"{indent}{name}: {annot} = dataclasses.field({field_param_str})")
 
