@@ -246,27 +246,32 @@ class StubEmitter:
         param_str = ", ".join(f"{name}={getattr(params, name)}" for name in params.__slots__)
         decl = f"@dataclasses.dataclass({param_str})\nclass {name}:"
 
+        def resolve_type(val):
+            # TODO maybe useful elsewhere?
+            if isinstance(val, type):
+                out = val.__name__
+                if val.__module__ not in {"builtins", entity.__module__}:
+                    self.imports.add(val.__module__)
+                    prefix = f"{val.__module__}."
+                else:
+                    prefix = ""
+                out = f"{prefix}{out}"
+            else:
+                out = repr(val)
+            return out
+
         field_annotations = []
         for name, field in entity.__dataclass_fields__.items():
             field = entity.__dataclass_fields__[name]
             indent = self._indent(1)
-            annot = entity.__annotations__[name]
-            if isinstance(annot, type):
-                if annot.__module__ not in {"builtins", entity.__module__}:
-                    self.imports.add(annot.__module__)
-                    prefix = f"{annot.__module__}."
-                else:
-                    prefix = ""
-                annot = f"{prefix}{annot.__name__}"
+            annot = resolve_type(entity.__annotations__[name])
+
             field_params = {}
             for param in ["default", "default_factory", "init", "kw_only"]:
                 arg = getattr(field, param)
                 if arg is dataclasses.MISSING:
                     continue
-                if isinstance(arg, type):
-                    field_params[param] = arg.__name__
-                else:
-                    field_params[param] = repr(arg)
+                field_params[param] = resolve_type(arg)
             field_param_str = ", ".join(f"{param}={arg}" for param, arg in field_params.items())
             field_annotations.append(f"{indent}{name}: {annot} = dataclasses.field({field_param_str})")
 
