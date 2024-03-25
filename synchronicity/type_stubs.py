@@ -253,6 +253,7 @@ class StubEmitter:
             annot = entity.__annotations__[name]
             if isinstance(annot, type):
                 if annot.__module__ not in {"builtins", entity.__module__}:
+                    self.imports.add(annot.__module__)
                     prefix = f"{annot.__module__}."
                 else:
                     prefix = ""
