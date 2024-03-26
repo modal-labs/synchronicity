@@ -33,6 +33,7 @@ from synchronicity.synchronizer import (
 
 logger = getLogger(__name__)
 
+
 def generic_copy_with_args(specific_type, new_args):
     if hasattr(specific_type, "copy_with"):
         # not strictly necessary, but this makes the type stubs
@@ -92,6 +93,7 @@ class StubEmitter:
                 hasattr(entity, "__module__")
                 and entity.__module__ != module.__name__
                 and entity_name not in explicit_members
+                and typing.get_origin(entity) is not typing.Literal
             ):
                 continue  # skip imported stuff, unless it's explicitly in __all__
             if inspect.isclass(entity):
@@ -103,6 +105,8 @@ class StubEmitter:
             elif hasattr(entity, "__class__") and getattr(entity.__class__, "__module__", None) == module.__name__:
                 # instances of stuff
                 emitter.add_variable(entity.__class__, entity_name)
+            elif typing.get_origin(entity) is typing.Literal:
+                emitter.add_literal(entity, entity_name)
 
         for varname, annotation in getattr(module, "__annotations__", {}).items():
             emitter.add_variable(annotation, varname)
@@ -112,6 +116,9 @@ class StubEmitter:
     def add_variable(self, annotation, name):
         # TODO: evaluate string annotations
         self.parts.append(self._get_var_annotation(name, annotation))
+
+    def add_literal(self, entity, name):
+        self.parts.append(f"{name} = {str(entity)}")
 
     def add_function(self, func, name, indentation_level=0):
         # adds function source code to module
@@ -525,7 +532,7 @@ class StubEmitter:
                 generic_copy_with_args(
                     annotation,
                     # ellipsis (...) needs to be passed as is, or it will be reformatted
-                    tuple(ReprObj(self._formatannotation(arg)) if arg != Ellipsis else Ellipsis for arg in args)
+                    tuple(ReprObj(self._formatannotation(arg)) if arg != Ellipsis else Ellipsis for arg in args),
                 )
             )
         except Exception:

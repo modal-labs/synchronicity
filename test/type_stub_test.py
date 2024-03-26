@@ -1,8 +1,10 @@
 import collections
 import functools
+import importlib
 import pytest
 import sys
 import typing
+from textwrap import dedent
 
 import synchronicity
 from synchronicity import overload_tracking
@@ -381,6 +383,28 @@ def test_translated_bound_type_vars():
     src = emitter.get_source()
     assert 'B = typing.TypeVar("B", bound="str")' in src
     assert "def ident(b: B) -> B" in src
+
+
+def test_literal_alias(tmp_path):
+    contents = dedent(
+        """
+        import typing
+        from typing import Literal
+        foo = typing.Literal["foo"]
+        bar = Literal["bar"]
+        """
+    )
+    with open(fname := (tmp_path / "foo.py"), "w") as f:
+        f.write(contents)
+
+    spec = importlib.util.spec_from_file_location("foo", fname)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    emitter = StubEmitter.from_module(mod)
+    src = emitter.get_source()
+    assert "foo = typing.Literal['foo']" in src
+    assert "bar = typing.Literal['bar']" in src
 
 
 def test_ellipsis():
