@@ -374,6 +374,9 @@ def _ident(b: _B) -> _B:
 ident = synchronizer.create_blocking(_ident, "ident", __name__)
 
 
+literal_foo = typing.Literal["foo"]
+
+
 def test_translated_bound_type_vars():
     emitter = StubEmitter(__name__)
     emitter.add_type_var(B, "B")
@@ -381,6 +384,12 @@ def test_translated_bound_type_vars():
     src = emitter.get_source()
     assert 'B = typing.TypeVar("B", bound="str")' in src
     assert "def ident(b: B) -> B" in src
+
+
+def test_literal_alias():
+    emitter = StubEmitter.from_module(sys.modules[__name__])
+    src = emitter.get_source()
+    assert "literal_foo = typing.Literal['foo']" in src
 
 
 def test_ellipsis():
