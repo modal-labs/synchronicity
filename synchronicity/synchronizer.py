@@ -4,8 +4,10 @@ import collections.abc
 import contextlib
 import functools
 import inspect
+import logging
 import platform
 import threading
+import time
 import typing
 import warnings
 from typing import ForwardRef, Optional
@@ -17,6 +19,9 @@ from .async_wrap import wraps_by_interface
 from .callback import Callback
 from .exceptions import UserCodeException, unwrap_coro_exception, wrap_coro_exception
 from .interface import Interface
+
+logger = logging.getLogger("synchronicity")
+
 
 _BUILTIN_ASYNC_METHODS = {
     "__aiter__": "__iter__",
@@ -103,6 +108,8 @@ class Synchronizer:
         multiwrap_warning=False,
         async_leakage_warning=True,
     ):
+        self.loop_delay_monitor_period = 1.0  # seconds
+        self.loop_delay_monitor_threshold = 1.0  # seconds
         self._multiwrap_warning = multiwrap_warning
         self._async_leakage_warning = async_leakage_warning
         self._loop = None
@@ -152,11 +159,22 @@ class Synchronizer:
             is_ready = threading.Event()
 
             def thread_inner():
+                async def loop_delay_monitor():
+                    while 1:
+                        t0 = time.monotonic()
+                        await asyncio.sleep(self.loop_delay_monitor_period)
+                        duration = time.monotonic() - t0
+                        delay = duration - self.loop_delay_monitor_period
+                        if delay > self.loop_delay_monitor_threshold:
+                            logger.warning(f"Detected an event loop delay of {delay:.2f}s")
+
                 async def loop_inner():
                     self._loop = asyncio.get_running_loop()
                     self._stopping = asyncio.Event()
                     is_ready.set()
+                    delay_monitor = asyncio.create_task(loop_delay_monitor())
                     await self._stopping.wait()  # wait until told to stop
+                    delay_monitor.cancel()
 
                 try:
                     asyncio.run(loop_inner())
@@ -168,6 +186,7 @@ class Synchronizer:
                         raise exc
 
             self._thread = threading.Thread(target=thread_inner, daemon=True)
+            self._thread.name = f"synchronicity-thread ({id(self)})"
             self._thread.start()
             is_ready.wait()  # TODO: this might block for a very short time
             return self._loop
