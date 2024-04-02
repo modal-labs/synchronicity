@@ -626,6 +626,9 @@ class Synchronizer:
                 new_dict[k] = self._wrap_proxy_classmethod(v, interface)
             elif isinstance(v, property):
                 new_dict[k] = self._wrap_proxy_property(v, interface)
+            elif isinstance(v, MethodWithAio):
+                # if library defines its own "synchronicity-like" interface we transfer it "as is" to the wrapper
+                new_dict[k] = v
             elif callable(v):
                 new_dict[k] = self._wrap_proxy_method(v, interface)
 
