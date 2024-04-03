@@ -10,6 +10,7 @@ import threading
 import time
 import typing
 import warnings
+from contextlib import asynccontextmanager
 from typing import ForwardRef, Optional
 
 from synchronicity.annotations import evaluated_annotation
@@ -87,6 +88,24 @@ def _type_requires_aio_usage(annotation, declaration_module):
     return False
 
 
+
+@asynccontextmanager
+async def loop_delay_monitor(monitor_period: float, warning_threshold: float):
+    async def monitor():
+        while 1:
+            t0 = time.monotonic()
+            await asyncio.sleep(monitor_period)
+            duration = time.monotonic() - t0
+            delay = duration - monitor_period
+            if delay >= warning_threshold:
+                logger.warning(f"Detected an event loop delay of {delay:.2f}s")
+
+    loop_task = asyncio.create_task(monitor())
+    try:
+        yield
+    finally:
+        loop_task.cancel()
+
 def should_have_aio_interface(func):
     # determines if a blocking function gets an .aio attribute with an async interface to the function or not
     if inspect.iscoroutinefunction(func) or inspect.isasyncgenfunction(func):
@@ -107,9 +126,11 @@ class Synchronizer:
         self,
         multiwrap_warning=False,
         async_leakage_warning=True,
+        loop_delay_monitor_period = None,  # seconds
+        loop_delay_monitor_threshold = None  # seconds
     ):
-        self.loop_delay_monitor_period = 1.0  # seconds
-        self.loop_delay_monitor_threshold = 1.0  # seconds
+        self._loop_delay_monitor_period = loop_delay_monitor_period
+        self._loop_delay_monitor_threshold = loop_delay_monitor_threshold
         self._multiwrap_warning = multiwrap_warning
         self._async_leakage_warning = async_leakage_warning
         self._loop = None
@@ -159,22 +180,15 @@ class Synchronizer:
             is_ready = threading.Event()
 
             def thread_inner():
-                async def loop_delay_monitor():
-                    while 1:
-                        t0 = time.monotonic()
-                        await asyncio.sleep(self.loop_delay_monitor_period)
-                        duration = time.monotonic() - t0
-                        delay = duration - self.loop_delay_monitor_period
-                        if delay > self.loop_delay_monitor_threshold:
-                            logger.warning(f"Detected an event loop delay of {delay:.2f}s")
-
                 async def loop_inner():
                     self._loop = asyncio.get_running_loop()
                     self._stopping = asyncio.Event()
                     is_ready.set()
-                    delay_monitor = asyncio.create_task(loop_delay_monitor())
-                    await self._stopping.wait()  # wait until told to stop
-                    delay_monitor.cancel()
+                    if self._loop_delay_monitor_period:
+                        async with loop_delay_monitor(self._loop_delay_monitor_period, self._loop_delay_monitor_threshold):
+                            await self._stopping.wait()  # wait until told to stop
+                    else:
+                        await self._stopping.wait()
 
                 try:
                     asyncio.run(loop_inner())
