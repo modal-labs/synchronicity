@@ -9,6 +9,7 @@ Improvement Ideas:
 import collections
 import collections.abc
 import contextlib
+import enum
 import importlib
 import inspect
 import sys
@@ -158,6 +159,13 @@ class StubEmitter:
 
     def add_class(self, cls, name):
         self.global_types.add(name)
+
+        if issubclass(cls, enum.Enum):
+            # Do not translate Enum classes.
+            self.imports.add("enum")
+            self.parts.append(inspect.getsource(cls))
+            return
+
         bases = []
         for b in self._get_translated_class_bases(cls):
             if b is not object:
