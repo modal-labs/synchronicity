@@ -14,6 +14,7 @@ import importlib
 import inspect
 import sys
 import typing
+import typing_extensions
 from logging import getLogger
 from pathlib import Path
 from typing import Generic, TypeVar
@@ -101,7 +102,7 @@ class StubEmitter:
                 emitter.add_class(entity, entity_name)
             elif inspect.isfunction(entity) or isinstance(entity, FunctionWithAio):
                 emitter.add_function(entity, entity_name, 0)
-            elif isinstance(entity, typing.TypeVar):
+            elif isinstance(entity, (typing.TypeVar, typing_extensions.ParamSpec)):
                 emitter.add_type_var(entity, entity_name)
             elif hasattr(entity, "__class__") and getattr(entity.__class__, "__module__", None) == module.__name__:
                 # instances of stuff
@@ -292,7 +293,7 @@ class StubEmitter:
         type_module = type(type_var).__module__
         self.imports.add(type_module)
         args = [f'"{name}"']
-        if type_var.__bound__:
+        if type_var.__bound__ and type_var.__bound__ is not type(None):
             translated_bound = self._translate_global_annotation(type_var.__bound__, type_var)
             str_annotation = self._formatannotation(translated_bound)
             args.append(f'bound="{str_annotation}"')
@@ -522,8 +523,8 @@ class StubEmitter:
         if origin is None or not args:
             if annotation == Ellipsis:
                 return "..."
-            if isinstance(annotation, type) or isinstance(annotation, TypeVar):
-                if annotation == None.__class__:  # check for "NoneType"
+            if isinstance(annotation, type) or isinstance(annotation, (TypeVar, typing_extensions.ParamSpec)):
+                if annotation == type(None):  # check for "NoneType"
                     return "None"
                 name = (
                     annotation.__qualname__  # type: ignore
@@ -532,17 +533,27 @@ class StubEmitter:
                 )
                 if annotation.__module__ in ("builtins", self.target_module):
                     return name
+                if annotation.__module__ is None:
+                    raise Exception(f"{annotation} has __module__ == None - did you forget to specify target module on a blocking type?")
                 return annotation.__module__ + "." + name
             return repr(annotation)
         # generic:
         try:
-            formatted_annotation = str(
-                generic_copy_with_args(
-                    annotation,
-                    # ellipsis (...) needs to be passed as is, or it will be reformatted
-                    tuple(ReprObj(self._formatannotation(arg)) if arg != Ellipsis else Ellipsis for arg in args),
+            formatted_args = []
+            for arg in args:
+                formatted_args.append(ReprObj(self._formatannotation(arg)))
+
+            if origin is collections.abc.Callable:
+                # special case for dealing with the first argument sometimes getting recast to a list when it shouldn't
+                argstr = ", ".join(repr(a) for a in formatted_args)
+                formatted_annotation = f"typing.Callable[{argstr}]"
+            else:
+                formatted_annotation = str(
+                    generic_copy_with_args(
+                        annotation,
+                        tuple(formatted_args)
+                    )
                 )
-            )
         except Exception:
             raise Exception(f"Could not reformat generic {annotation.__origin__} with arguments {args}")
 

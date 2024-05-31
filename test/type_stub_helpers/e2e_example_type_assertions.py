@@ -46,3 +46,10 @@ async def async_block() -> None:
     # not sure if this should actually be supported, but it is, for completeness:
     async with e2e_example_export.wrapped_make_context.aio(10.0) as c:
         assert_type(c, str)
+
+
+def f(a: str) -> float:
+    return 0.1
+
+res = e2e_example_export.wrap_callable(f).func(a="q")
+assert_type(res, float)

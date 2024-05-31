@@ -21,3 +21,12 @@ overloaded = synchronizer.create_blocking(e2e_example_impl._overloaded, "overloa
 returns_foo = synchronizer.create_blocking(e2e_example_impl._returns_foo, "returns_foo", __name__)
 
 wrapped_make_context = synchronizer.create_blocking(e2e_example_impl.make_context, "make_context", __name__)
+
+P = synchronizer.create_blocking(e2e_example_impl.P, "P", __name__)  # TODO: these shouldn't be needed/automate creation of these?
+
+R = synchronizer.create_blocking(e2e_example_impl.R, "R", __name__)  # TODO: these shouldn't be needed/automate creation of these?
+
+
+CallableWrapper = synchronizer.create_blocking(e2e_example_impl.CallableWrapper, "CallableWrapper", __name__)
+
+wrap_callable = synchronizer.create_blocking(e2e_example_impl.wrap_callable, "wrap_callable", __name__)
