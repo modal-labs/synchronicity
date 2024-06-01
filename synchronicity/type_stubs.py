@@ -76,6 +76,55 @@ def add_prefix_arg(arg_name, remove_args=0):
 
     return inject_arg_func
 
+def replace_type_vars(replacement_dict: dict[type, type]):
+    def _replace_type_vars_rec(tp: typing.Type[typing.Any]):
+        origin = typing.get_origin(tp)
+        args = typing.get_args(tp)
+
+        if isinstance(tp, (typing_extensions.ParamSpecArgs, typing_extensions.ParamSpecKwargs)):
+            return type(tp)(_replace_type_vars_rec(origin))
+
+        if tp in replacement_dict:
+            return replacement_dict[tp]
+
+        if origin:
+            newargs = tuple(_replace_type_vars_rec(a) for a in args)
+            return generic_copy_with_args(tp, newargs)
+
+        return tp
+
+    def _replace_type_vars_in_sig(sig: inspect.Signature):
+        parameters = [p.replace(annotation=_replace_type_vars_rec(p.annotation)) for p in sig.parameters.values()]
+        return sig.replace(
+            parameters=parameters,
+            return_annotation=_replace_type_vars_rec(sig.return_annotation),
+        )
+
+    return _replace_type_vars_in_sig
+
+
+def _get_type_vars(typ, synchronizer):
+    origin = typing.get_origin(typ)
+    ret = set()
+    if isinstance(typ, typing.TypeVar):
+        # check if it's translated (due to bounds= attributes etc.)
+        typ = synchronizer._translate_out(typ, Interface.BLOCKING)
+        ret.add(typ)
+    elif isinstance(typ, (typing.ParamSpecArgs, typing.ParamSpecKwargs)):
+        param_spec = origin
+        param_spec = synchronizer._translate_out(param_spec, Interface.BLOCKING)
+        ret.add(param_spec)
+    elif origin:
+        for arg in typing.get_args(typ):
+            ret |= _get_type_vars(arg, synchronizer)
+    return ret
+
+def _get_func_type_vars(func, synchronizer: synchronicity.Synchronizer) -> set[type]:
+    annos = inspect.get_annotations(func, eval_str=False)
+    ret = set()
+    for typ in annos.values():
+        ret |= _get_type_vars(typ, synchronizer)
+    return ret
 
 class StubEmitter:
     def __init__(self, target_module):
@@ -168,9 +217,12 @@ class StubEmitter:
             return
 
         bases = []
+        generic_type_vars: set[type] = set()
         for b in self._get_translated_class_bases(cls):
             if b is not object:
                 bases.append(self._formatannotation(b))
+            if getattr(b, "__origin__", None) == typing.Generic:
+                generic_type_vars |= {a for a in b.__args__}
 
         bases_str = "" if not bases else "(" + ", ".join(bases) + ")"
         decl = f"class {name}{bases_str}:"
@@ -219,6 +271,7 @@ class StubEmitter:
                         entity,
                         entity_name,
                         body_indent_level,
+                        parent_generic_type_vars=generic_type_vars
                     )
                 )
             elif isinstance(entity, MethodWithAio):
@@ -233,6 +286,7 @@ class StubEmitter:
                         entity,
                         entity_name,
                         body_indent_level,
+                        parent_generic_type_vars=generic_type_vars
                     )
                 methods.append(src)
 
@@ -253,6 +307,7 @@ class StubEmitter:
         entity: typing.Union[MethodWithAio, FunctionWithAio],
         entity_name,
         body_indent_level,
+        parent_generic_type_vars: set[type] = set(),  # if this is a method of a Generic class - this is the set of type var names
     ) -> str:
         if isinstance(entity, FunctionWithAio):
             transform_signature = add_prefix_arg(
@@ -268,37 +323,78 @@ class StubEmitter:
         self.imports.add("typing_extensions")
         # Synchronicity specific blocking + async method
         body_indent = self._indent(body_indent_level)
+
+        # Check any Generic TypeVar/ParamSpec used in the class x method, in order to
+        # create a new type var for the protocol itself, since a namespaced class can't use the
+        # generic type vars of its "namespace class" directly. This will roughly translate to:
+
+        # T = TypeVar("T")
+        # T_INNER = TypeVar("T_INNER")
+        # class Foo(Generic[T]):
+        #     class Method(typing.Protocol[T_INNER]):
+        #         def __call__(self, t: T_INNER):
+        #             ...
+        #
+        #     method: Method[T]
+        func_type_vars = _get_func_type_vars(entity._func, entity._synchronizer)
+        typevar_overlap = parent_generic_type_vars & func_type_vars
+
+        typevar_replacements = {}
+        for tvar in typevar_overlap:
+            replacement_typevar_name = tvar.__name__ + "_INNER"
+            new_tvar = type(tvar)(replacement_typevar_name, covariant=True)  # type: ignore  # could be either TypeVar or ParamSpec
+            new_tvar.__module__ = self.target_module   # avoid referencing synchronicity.type_stubs
+            typevar_replacements[tvar] = new_tvar
+            self.add_type_var(new_tvar, replacement_typevar_name)  # type: ignore
+
+        if typevar_overlap:
+            instance_argstr = ", ".join(tvar.__name__ for tvar in typevar_overlap)
+            parent_type_var_names_spec = f"[{instance_argstr}]"
+            declaration_argstr = ", ".join(typevar_replacements[tvar].__name__ for tvar in typevar_overlap)
+            protocol_declaration_type_var_spec = f"[{declaration_argstr}]"
+            # recursively replace any used type vars in the function annotation with newly created
+            final_transform_signature = lambda sig: replace_type_vars(typevar_replacements)(transform_signature(sig))
+        else:
+            parent_type_var_names_spec = ""
+            protocol_declaration_type_var_spec = ""
+            final_transform_signature = transform_signature
+
         # create an inline protocol type, inlining both the blocking and async interfaces:
         blocking_func_source = self._get_function_source_with_overloads(
             entity._func,
             "__call__",
             body_indent_level + 1,
-            transform_signature=transform_signature,
+            transform_signature=final_transform_signature,
         )
         aio_func_source = self._get_function_source_with_overloads(
             entity._aio_func,
             "aio",
             body_indent_level + 1,
-            transform_signature=transform_signature,
+            transform_signature=final_transform_signature,
         )
+
         protocol_attr = f"""\
-{body_indent}class __{entity_name}_spec(typing_extensions.Protocol):
+{body_indent}class __{entity_name}_spec(typing_extensions.Protocol{protocol_declaration_type_var_spec}):
 {blocking_func_source}
 {aio_func_source}
-{body_indent}{entity_name}: __{entity_name}_spec
+{body_indent}{entity_name}: __{entity_name}_spec{parent_type_var_names_spec}
 """
         return protocol_attr
 
-    def add_type_var(self, type_var, name):
-        type_module = type(type_var).__module__
+    def add_type_var(self, type_var: typing.Union[typing.TypeVar, typing.ParamSpec], name):
+        # TODO: deduplicate
+        type_module = type(type_var).__module__  # typing/typing_extensions
         self.imports.add(type_module)
         args = [f'"{name}"']
         if type_var.__bound__ and type_var.__bound__ is not type(None):
             translated_bound = self._translate_global_annotation(type_var.__bound__, type_var)
             str_annotation = self._formatannotation(translated_bound)
             args.append(f'bound="{str_annotation}"')
+        if isinstance(type_var, typing.TypeVar) and type_var.__covariant__:
+            args.append("covariant=True")
+
         self.global_types.add(name)
-        type_name = type(type_var).__name__  # could be both ParamSpec and TypeVar
+        type_name = type(type_var).__name__  # could be either ParamSpec or TypeVar
         self.parts.append(f'{name} = {type_module}.{type_name}({", ".join(args)})')
 
     def get_source(self):
@@ -316,6 +412,7 @@ class StubEmitter:
         # also marks the type name as directly referenced if it's part of the target module
         # so we can sanity check
         module = typ.__module__
+
         if module not in (self.target_module, "builtins"):
             self.imports.add(module)
 
@@ -387,7 +484,6 @@ class StubEmitter:
             interface=synchronicity_target_interface,
             home_module=home_module,
         )
-
         self._register_imports(translated_annotation)
         return translated_annotation
 
@@ -402,13 +498,22 @@ class StubEmitter:
         origin = getattr(type_annotation, "__origin__", None)
         args = getattr(type_annotation, "__args__", None)
 
-        if origin is None or args is None:
+        if isinstance(type_annotation, (typing_extensions.ParamSpecArgs, typing_extensions.ParamSpecKwargs)):
+            # ParamSpecArgs and ParamSpecKwargs are special - they have an origin (the ParamSpec) but no attrs
+            # we need to translate the origin in case it's a translated type annotation
+            translated_origin = type_annotation.__origin__
+            if synchronizer:
+                translated_origin = synchronizer._translate_out(translated_origin, interface)
+            return type(type_annotation)(translated_origin)
+
+        elif origin is None or args is None:
             # TODO(elias): handle translation of un-parameterized async entities, like `Awaitable`
             # scalar - if type is synchronicity origin type, use the blocking/async version instead
             if synchronizer:
                 return synchronizer._translate_out(type_annotation, interface)
             return type_annotation
 
+        # Generics
         if origin == typing.Literal:
             mapped_args = args
         else:
@@ -433,13 +538,16 @@ class StubEmitter:
 
             if origin == collections.abc.Coroutine:
                 return mapped_args[2]
-
+        if isinstance(type_annotation, (typing.ParamSpecArgs, typing.ParamSpecKwargs)):
+            # if this is a P.args or P.kwargs, check if P needs translation!
+            print("hej", type_annotation)
+        # first see if the generic itself needs translation
         if origin.__module__ not in (
             "typing",
             "collections.abc",
             "contextlib",
         ):  # don't translate built in generics in type annotations, even if they have been synchronicity wrapped
-            # for other hierarchy reasons...
+            # for base-class compatibility (e.g. AsyncContextManager, typing.Generic), otherwise it will break typing
             translated_origin = self._translate_annotation(origin, synchronizer, interface, home_module)
             if translated_origin is not origin:
                 # special case for synchronicity-translated generics,

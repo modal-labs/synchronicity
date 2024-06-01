@@ -347,7 +347,11 @@ def test_custom_generic():
 
 
 class ParamSpecGeneric(typing.Generic[P, T]):
-    ...
+    async def meth(self, *args: P.args, **kwargs: P.kwargs):
+        ...
+
+    def syncfunc(self) -> T:
+        ...
 
 
 BlockingParamSpecGeneric = synchronizer.create_blocking(
@@ -361,6 +365,11 @@ def test_paramspec_generic():
     src = _class_source(BlockingParamSpecGeneric)
     assert "class BlockingParamSpecGeneric(typing.Generic[Translated_P, Translated_T])" in src
 
+    assert "class __meth_spec(typing_extensions.Protocol[Translated_P_INNER]):" in src
+    assert "def __call__(self, *args: Translated_P_INNER.args, **kwargs: Translated_P_INNER.kwargs)" in src
+    assert "def aio(self, *args: Translated_P_INNER.args, **kwargs: Translated_P_INNER.kwargs)" in src
+    assert "meth: __meth_spec[Translated_P]" in src
+    assert "def syncfunc(self) -> Translated_T:" in src
 
 def test_synchronicity_generic_subclass():
     class Specific(MyGeneric[str]):
