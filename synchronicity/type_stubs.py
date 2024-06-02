@@ -626,11 +626,15 @@ class StubEmitter:
 
         origin = getattr(annotation, "__origin__", None)
         assert not isinstance(annotation, typing.ForwardRef)  # Forward refs should already have been evaluated!
-        args = getattr(annotation, "__args__", None)
+        args = typing.get_args(annotation)
 
         if origin is None or not args:
             if annotation == Ellipsis:
                 return "..."
+            if isinstance(annotation, list):
+                # e.g. first argument to typing.Callable
+                subargs = ",".join([self._formatannotation(arg) for arg in annotation])
+                return f"[{subargs}]"
             if isinstance(annotation, type) or isinstance(annotation, (TypeVar, typing_extensions.ParamSpec)):
                 if annotation == type(None):  # check for "NoneType"
                     return "None"
@@ -653,6 +657,7 @@ class StubEmitter:
 
             if origin is collections.abc.Callable:
                 # special case for dealing with the first argument sometimes getting recast to a list when it shouldn't
+
                 argstr = ", ".join(repr(a) for a in formatted_args)
                 formatted_annotation = f"typing.Callable[{argstr}]"
             else:

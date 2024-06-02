@@ -436,6 +436,14 @@ def test_literal_alias(tmp_path):
     assert "bar = typing.Literal['bar']" in src
 
 
+def test_callable():
+    def foo() -> typing.Callable[[str], float]:
+        return lambda x: 0.0
+
+    src = _function_source(foo)
+    assert "-> typing.Callable[[str], float]" in src
+
+
 def test_ellipsis():
     def foo() -> typing.Callable[..., typing.Any]:
         return lambda x: 0
