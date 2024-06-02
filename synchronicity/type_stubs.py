@@ -76,7 +76,7 @@ def add_prefix_arg(arg_name, remove_args=0):
 
     return inject_arg_func
 
-def replace_type_vars(replacement_dict: dict[type, type]):
+def replace_type_vars(replacement_dict: typing.Dict[type, type]):
     def _replace_type_vars_rec(tp: typing.Type[typing.Any]):
         origin = typing.get_origin(tp)
         args = typing.get_args(tp)
@@ -538,9 +538,7 @@ class StubEmitter:
 
             if origin == collections.abc.Coroutine:
                 return mapped_args[2]
-        if isinstance(type_annotation, (typing.ParamSpecArgs, typing.ParamSpecKwargs)):
-            # if this is a P.args or P.kwargs, check if P needs translation!
-            print("hej", type_annotation)
+
         # first see if the generic itself needs translation
         if origin.__module__ not in (
             "typing",
