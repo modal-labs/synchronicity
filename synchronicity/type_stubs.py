@@ -14,13 +14,13 @@ import importlib
 import inspect
 import sys
 import typing
-import typing_extensions
 from logging import getLogger
 from pathlib import Path
 from typing import Generic, TypeVar
 from unittest import mock
 
 import sigtools.specifiers  # type: ignore
+import typing_extensions
 from sigtools._signatures import EmptyAnnotation, UpgradedAnnotation, UpgradedParameter  # type: ignore
 
 import synchronicity
@@ -307,7 +307,7 @@ class StubEmitter:
         entity: typing.Union[MethodWithAio, FunctionWithAio],
         entity_name,
         body_indent_level,
-        parent_generic_type_vars: set[type] = set(),  # if this is a method of a Generic class - this is the set of type var names
+        parent_generic_type_vars: set[type] = set(),  # if this is a method of a Generic class - the set of type vars
     ) -> str:
         if isinstance(entity, FunctionWithAio):
             transform_signature = add_prefix_arg(
@@ -353,7 +353,8 @@ class StubEmitter:
             declaration_argstr = ", ".join(typevar_replacements[tvar].__name__ for tvar in typevar_overlap)
             protocol_declaration_type_var_spec = f"[{declaration_argstr}]"
             # recursively replace any used type vars in the function annotation with newly created
-            final_transform_signature = lambda sig: replace_type_vars(typevar_replacements)(transform_signature(sig))
+            def final_transform_signature(sig):
+                return replace_type_vars(typevar_replacements)(transform_signature(sig))
         else:
             parent_type_var_names_spec = ""
             protocol_declaration_type_var_spec = ""
@@ -644,7 +645,10 @@ class StubEmitter:
                 if annotation.__module__ in ("builtins", self.target_module):
                     return name
                 if annotation.__module__ is None:
-                    raise Exception(f"{annotation} has __module__ == None - did you forget to specify target module on a blocking type?")
+                    raise Exception(
+                        f"{annotation} has __module__ == None - did you forget"
+                        " to specify target module on a blocking type?"
+                    )
                 return annotation.__module__ + "." + name
             return repr(annotation)
         # generic:

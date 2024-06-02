@@ -1,7 +1,6 @@
-import sys
-
 import pytest
 import subprocess
+import sys
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
