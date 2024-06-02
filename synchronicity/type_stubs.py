@@ -78,11 +78,12 @@ def add_prefix_arg(arg_name, remove_args=0):
 
 def replace_type_vars(replacement_dict: typing.Dict[type, type]):
     def _replace_type_vars_rec(tp: typing.Type[typing.Any]):
-        origin = typing.get_origin(tp)
+        origin = getattr(tp, "__origin__", None)
         args = typing.get_args(tp)
 
         if isinstance(tp, (typing_extensions.ParamSpecArgs, typing_extensions.ParamSpecKwargs)):
-            return type(tp)(_replace_type_vars_rec(origin))
+            new_origin_type_var = _replace_type_vars_rec(origin)
+            return type(tp)(new_origin_type_var)
 
         if tp in replacement_dict:
             return replacement_dict[tp]
@@ -104,7 +105,7 @@ def replace_type_vars(replacement_dict: typing.Dict[type, type]):
 
 
 def _get_type_vars(typ, synchronizer):
-    origin = typing.get_origin(typ)
+    origin = getattr(typ, "__origin__", None)  # typing.get_origin returns None for ParamSpecArgs prior on <=Python3.9
     ret = set()
     if isinstance(typ, typing.TypeVar):
         # check if it's translated (due to bounds= attributes etc.)
@@ -124,6 +125,18 @@ def _get_func_type_vars(func, synchronizer: synchronicity.Synchronizer) -> typin
     for typ in getattr(func, "__annotations__", {}).values():
         ret |= _get_type_vars(typ, synchronizer)
     return ret
+
+
+def safe_get_args(annotation):
+    # "polyfill" of Python 3.10+ typing.get_args() behavior of
+    # not putting ParamSpec and Ellipsis in a list when used as first argument to a Callable
+    # can be removed if we drop support for *generating type stubs using Python <=3.9*
+    args = typing.get_args(annotation)
+    if sys.version_info[:2] <= (3, 9) and typing.get_origin(annotation) == collections.abc.Callable:
+        if args and type(args[0]) == list and isinstance(args[0][0], (typing_extensions.ParamSpec, type(...))):  # noqa
+            args = (args[0][0],) + args[1:]
+
+    return args
 
 class StubEmitter:
     def __init__(self, target_module):
@@ -323,10 +336,12 @@ class StubEmitter:
         # Synchronicity specific blocking + async method
         body_indent = self._indent(body_indent_level)
 
-        typevar_signature_transform, parent_type_var_names_spec, protocol_declaration_type_var_spec = self._prepare_method_generic_type_vars(
-            entity, parent_generic_type_vars)
+        typevar_signature_transform, parent_type_var_names_spec, protocol_declaration_type_var_spec = (
+            self._prepare_method_generic_type_vars(entity, parent_generic_type_vars)
+        )
 
-        final_transform_signature = lambda sig: typevar_signature_transform(transform_signature(sig))
+        def final_transform_signature(sig):
+            return typevar_signature_transform(transform_signature(sig))
 
         # create an inline protocol type, inlining both the blocking and async interfaces:
         blocking_func_source = self._get_function_source_with_overloads(
@@ -367,8 +382,10 @@ class StubEmitter:
         typevar_replacements = {}
         for tvar in typevar_overlap:
             replacement_typevar_name = tvar.__name__ + "_INNER"
-            new_tvar = type(tvar)(replacement_typevar_name,
-                                  covariant=True)  # type: ignore  # could be either TypeVar or ParamSpec
+            if isinstance(tvar, typing_extensions.ParamSpec):
+                new_tvar = typing_extensions.ParamSpec(replacement_typevar_name)
+            else:
+                new_tvar = typing.TypeVar(replacement_typevar_name, covariant=True)  # type: ignore
             new_tvar.__module__ = self.target_module  # avoid referencing synchronicity.type_stubs
             typevar_replacements[tvar] = new_tvar
             self.add_type_var(new_tvar, replacement_typevar_name)  # type: ignore
@@ -383,7 +400,7 @@ class StubEmitter:
         else:
             parent_type_var_names_spec = ""
             protocol_declaration_type_var_spec = ""
-            transform_signature = lambda sig: sig  # no change
+            transform_signature = lambda sig: sig  # noqa
         return transform_signature, parent_type_var_names_spec, protocol_declaration_type_var_spec
 
     def add_type_var(self, type_var: typing.Union[typing.TypeVar, typing_extensions.ParamSpec], name):
@@ -629,15 +646,11 @@ class StubEmitter:
 
         origin = getattr(annotation, "__origin__", None)
         assert not isinstance(annotation, typing.ForwardRef)  # Forward refs should already have been evaluated!
-        args = typing.get_args(annotation)
+        args = safe_get_args(annotation)
 
         if origin is None or not args:
             if annotation == Ellipsis:
                 return "..."
-            if isinstance(annotation, list):
-                # e.g. first argument to typing.Callable
-                subargs = ",".join([self._formatannotation(arg) for arg in annotation])
-                return f"[{subargs}]"
             if isinstance(annotation, type) or isinstance(annotation, (TypeVar, typing_extensions.ParamSpec)):
                 if annotation == type(None):  # check for "NoneType"
                     return "None"
@@ -654,6 +667,10 @@ class StubEmitter:
                         " to specify target module on a blocking type?"
                     )
                 return annotation.__module__ + "." + name
+            if isinstance(annotation, list):
+                # e.g. first argument to typing.Callable
+                subargs = ",".join([self._formatannotation(arg) for arg in annotation])
+                return f"[{subargs}]"
             return repr(annotation)
         # generic:
         try:
