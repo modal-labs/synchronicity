@@ -22,9 +22,9 @@ returns_foo = synchronizer.create_blocking(e2e_example_impl._returns_foo, "retur
 
 wrapped_make_context = synchronizer.create_blocking(e2e_example_impl.make_context, "make_context", __name__)
 
-P = synchronizer.create_blocking(e2e_example_impl.P, "P", __name__)  # TODO: these shouldn't be needed/automate creation of these?
-
-R = synchronizer.create_blocking(e2e_example_impl.R, "R", __name__)  # TODO: these shouldn't be needed/automate creation of these?
+# TODO: we shouldn't need to wrap typevars unless they have wrapped `bounds`
+P = synchronizer.create_blocking(e2e_example_impl.P, "P", __name__)
+R = synchronizer.create_blocking(e2e_example_impl.R, "R", __name__)
 
 
 CallableWrapper = synchronizer.create_blocking(e2e_example_impl.CallableWrapper, "CallableWrapper", __name__)

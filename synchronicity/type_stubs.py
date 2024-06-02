@@ -110,7 +110,7 @@ def _get_type_vars(typ, synchronizer):
         # check if it's translated (due to bounds= attributes etc.)
         typ = synchronizer._translate_out(typ, Interface.BLOCKING)
         ret.add(typ)
-    elif isinstance(typ, (typing.ParamSpecArgs, typing.ParamSpecKwargs)):
+    elif isinstance(typ, (typing_extensions.ParamSpecArgs, typing_extensions.ParamSpecKwargs)):
         param_spec = origin
         param_spec = synchronizer._translate_out(param_spec, Interface.BLOCKING)
         ret.add(param_spec)
@@ -307,7 +307,7 @@ class StubEmitter:
         entity: typing.Union[MethodWithAio, FunctionWithAio],
         entity_name,
         body_indent_level,
-        parent_generic_type_vars: typing.Set[type] = set(),  # if this is a method of a Generic class - the set of type vars
+        parent_generic_type_vars: typing.Set[type] = set(),  # if a method of a Generic class - the set of type vars
     ) -> str:
         if isinstance(entity, FunctionWithAio):
             transform_signature = add_prefix_arg(
@@ -382,7 +382,7 @@ class StubEmitter:
 """
         return protocol_attr
 
-    def add_type_var(self, type_var: typing.Union[typing.TypeVar, typing.ParamSpec], name):
+    def add_type_var(self, type_var: typing.Union[typing.TypeVar, typing_extensions.ParamSpec], name):
         # TODO: deduplicate
         type_module = type(type_var).__module__  # typing/typing_extensions
         self.imports.add(type_module)

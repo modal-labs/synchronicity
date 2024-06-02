@@ -7,9 +7,10 @@ import inspect
 import platform
 import threading
 import typing
-import typing_extensions
 import warnings
 from typing import ForwardRef, Optional
+
+import typing_extensions
 
 from synchronicity.annotations import evaluated_annotation
 from synchronicity.combined_types import FunctionWithAio, MethodWithAio
@@ -261,7 +262,7 @@ class Synchronizer:
                 return cls_dct[self._wrapped_attr][interface]
             else:
                 return obj
-        elif isinstance(obj, (typing.TypeVar, typing.ParamSpec)):
+        elif isinstance(obj, (typing.TypeVar, typing_extensions.ParamSpec)):
             if hasattr(obj, self._wrapped_attr):
                 return getattr(obj, self._wrapped_attr)[interface]
             else:
@@ -729,7 +730,7 @@ class Synchronizer:
 
     def _wrap_param_spec(self, obj, interface, name, target_module):
         # TODO(elias): Refactor - since this isn't used for live apps, move type stub generation into genstub
-        new_obj = typing.ParamSpec(name)  # noqa
+        new_obj = typing_extensions.ParamSpec(name)  # noqa
         setattr(new_obj, self._original_attr, obj)
         setattr(new_obj, SYNCHRONIZER_ATTR, self)
         setattr(new_obj, TARGET_INTERFACE_ATTR, interface)

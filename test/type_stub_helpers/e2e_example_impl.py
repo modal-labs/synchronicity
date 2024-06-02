@@ -1,6 +1,7 @@
 import typing
-import typing_extensions
 from typing import AsyncGenerator, List, TypeVar, Union, overload
+
+import typing_extensions
 
 from synchronicity.async_wrap import asynccontextmanager
 

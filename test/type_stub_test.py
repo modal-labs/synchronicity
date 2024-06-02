@@ -12,7 +12,7 @@ from synchronicity.async_wrap import asynccontextmanager
 from synchronicity.type_stubs import StubEmitter
 
 from .type_stub_helpers import some_mod
-
+import typing_extensions
 
 def noop():
     ...
@@ -319,7 +319,7 @@ def test_synchronicity_class():
 
 
 T = typing.TypeVar("T")
-P = typing.ParamSpec("P")
+P = typing_extensions.ParamSpec("P")
 
 
 Translated_T = synchronizer.create_blocking(T, "Translated_T", __name__)
@@ -453,7 +453,7 @@ def test_ellipsis():
 
 
 def test_param_spec():
-    P = typing.ParamSpec("P")
+    P = typing_extensions.ParamSpec("P")
     def foo() -> typing.Callable[P, typing.Any]:
         return lambda x: 0
 
