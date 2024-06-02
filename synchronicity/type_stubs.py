@@ -405,12 +405,12 @@ class StubEmitter:
 
     def add_type_var(self, type_var: typing.Union[typing.TypeVar, typing_extensions.ParamSpec], name):
         # TODO: deduplicate vs type vars that have already been added in the same file
-        if isinstance(type_var, typing.TypeVar):
-            type_module = "typing"
-            type_name = "TypeVar"
-        elif isinstance(type_var, typing_extensions.ParamSpec):
+        if isinstance(type_var, typing_extensions.ParamSpec):
             type_module = "typing_extensions"  # this ensures stubs created by newer Python's still work on Python 3.9
             type_name = "ParamSpec"
+        elif isinstance(type_var, typing.TypeVar):
+            type_module = "typing"
+            type_name = "TypeVar"
         else:
             raise TypeError("Not a TypeVar/ParamSpec")
 
