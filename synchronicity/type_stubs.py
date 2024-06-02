@@ -133,7 +133,7 @@ def safe_get_args(annotation):
     # can be removed if we drop support for *generating type stubs using Python <=3.9*
     args = typing.get_args(annotation)
     if sys.version_info[:2] <= (3, 9) and typing.get_origin(annotation) == collections.abc.Callable:
-        if args and type(args[0]) == list and isinstance(args[0][0], (typing_extensions.ParamSpec, type(...))):  # noqa
+        if args and type(args[0]) == list and args[0] and isinstance(args[0][0], (typing_extensions.ParamSpec, type(...))):  # noqa
             args = (args[0][0],) + args[1:]
 
     return args
@@ -404,8 +404,16 @@ class StubEmitter:
         return transform_signature, parent_type_var_names_spec, protocol_declaration_type_var_spec
 
     def add_type_var(self, type_var: typing.Union[typing.TypeVar, typing_extensions.ParamSpec], name):
-        # TODO: deduplicate
-        type_module = type(type_var).__module__  # typing/typing_extensions
+        # TODO: deduplicate vs type vars that have already been added in the same file
+        if isinstance(type_var, typing.TypeVar):
+            type_module = "typing"
+            type_name = "TypeVar"
+        elif isinstance(type_var, typing_extensions.ParamSpec):
+            type_module = "typing_extensions"  # this ensures stubs created by newer Python's still work on Python 3.9
+            type_name = "ParamSpec"
+        else:
+            raise TypeError("Not a TypeVar/ParamSpec")
+
         self.imports.add(type_module)
         args = [f'"{name}"']
         if type_var.__bound__ and type_var.__bound__ is not type(None):
@@ -416,7 +424,6 @@ class StubEmitter:
             args.append("covariant=True")
 
         self.global_types.add(name)
-        type_name = type(type_var).__name__  # could be either ParamSpec or TypeVar
         self.parts.append(f'{name} = {type_module}.{type_name}({", ".join(args)})')
 
     def get_source(self):
@@ -649,6 +656,11 @@ class StubEmitter:
         args = safe_get_args(annotation)
 
         if origin is None or not args:
+            if annotation == typing.Sized:
+                return "typing.Sized"  # hard-coded to fix Python 3.8(+?) where the repr is "typing.Sized[]" for some reason
+            if annotation == typing.Hashable:
+                return "typing.Hashable"  # hard-coded to fix Python 3.8(+?) where the repr is "typing.Hashable[]" for some reason
+
             if annotation == Ellipsis:
                 return "..."
             if isinstance(annotation, type) or isinstance(annotation, (TypeVar, typing_extensions.ParamSpec)):
