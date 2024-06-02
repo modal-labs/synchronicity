@@ -657,9 +657,9 @@ class StubEmitter:
 
         if origin is None or not args:
             if annotation == typing.Sized:
-                return "typing.Sized"  # hard-coded to fix Python 3.8(+?) where the repr is "typing.Sized[]" for some reason
+                return "typing.Sized"  # fix Python 3.8(+?) where the repr is "typing.Sized[]" for some reason
             if annotation == typing.Hashable:
-                return "typing.Hashable"  # hard-coded to fix Python 3.8(+?) where the repr is "typing.Hashable[]" for some reason
+                return "typing.Hashable"  # fix Python 3.8(+?) where the repr is "typing.Hashable[]" for some reason
 
             if annotation == Ellipsis:
                 return "..."
