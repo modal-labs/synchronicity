@@ -120,9 +120,8 @@ def _get_type_vars(typ, synchronizer):
     return ret
 
 def _get_func_type_vars(func, synchronizer: synchronicity.Synchronizer) -> typing.Set[type]:
-    annos = inspect.get_annotations(func, eval_str=False)
     ret = set()
-    for typ in annos.values():
+    for typ in getattr(func, "__annotations__", {}).values():
         ret |= _get_type_vars(typ, synchronizer)
     return ret
 
