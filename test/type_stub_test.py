@@ -6,13 +6,15 @@ import sys
 import typing
 from textwrap import dedent
 
+import typing_extensions
+
 import synchronicity
 from synchronicity import overload_tracking
 from synchronicity.async_wrap import asynccontextmanager
 from synchronicity.type_stubs import StubEmitter
 
 from .type_stub_helpers import some_mod
-import typing_extensions
+
 
 def noop():
     ...
