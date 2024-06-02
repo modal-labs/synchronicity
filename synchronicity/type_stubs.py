@@ -217,7 +217,7 @@ class StubEmitter:
             return
 
         bases = []
-        generic_type_vars: set[type] = set()
+        generic_type_vars: typing.Set[type] = set()
         for b in self._get_translated_class_bases(cls):
             if b is not object:
                 bases.append(self._formatannotation(b))
@@ -307,7 +307,7 @@ class StubEmitter:
         entity: typing.Union[MethodWithAio, FunctionWithAio],
         entity_name,
         body_indent_level,
-        parent_generic_type_vars: set[type] = set(),  # if this is a method of a Generic class - the set of type vars
+        parent_generic_type_vars: typing.Set[type] = set(),  # if this is a method of a Generic class - the set of type vars
     ) -> str:
         if isinstance(entity, FunctionWithAio):
             transform_signature = add_prefix_arg(
