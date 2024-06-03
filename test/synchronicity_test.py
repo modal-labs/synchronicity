@@ -1,13 +1,16 @@
 import asyncio
 import concurrent.futures
 import inspect
+import typing
+
 import pytest
 import time
 from typing import Coroutine
 from unittest.mock import MagicMock
 
+import synchronicity
 from synchronicity import Interface, Synchronizer
-
+import typing
 SLEEP_DELAY = 0.1
 
 
@@ -566,3 +569,19 @@ async def test_non_async_aiter():
     it = WrappedIt()
     assert list(it) == ["foo", "bar"]
 
+
+def test_generic_baseclass():
+    class Foo:
+        pass
+
+    T = typing.TypeVar("T")
+
+    class GenericClass(typing.Generic[T], Foo):
+        async def do_something(self):
+            return 1
+
+    s = synchronicity.Synchronizer()
+    WrappedGenericClass = s.create_blocking(GenericClass, name="BlockingGenericClass")
+    instance: WrappedGenericClass[str] = WrappedGenericClass()  #  should be allowed
+    assert isinstance(instance, WrappedGenericClass)
+    assert instance.do_something() == 1
