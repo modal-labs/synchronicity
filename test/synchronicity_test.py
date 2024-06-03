@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 
 import synchronicity
 from synchronicity import Interface, Synchronizer
-import typing
+
 SLEEP_DELAY = 0.1
 
 
@@ -577,7 +577,7 @@ def test_generic_baseclass():
         async def do_something(self):
             return 1
 
-    s = synchronicity.Synchronizer()
+    s = synchronicity.Synchronizer(multiwrap_warning=False)
     WrappedGenericClass = s.create_blocking(GenericClass, name="BlockingGenericClass")
     instance: WrappedGenericClass[str] = WrappedGenericClass()  #  should be allowed
     assert isinstance(instance, WrappedGenericClass)
