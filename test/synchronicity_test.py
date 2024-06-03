@@ -571,12 +571,9 @@ async def test_non_async_aiter():
 
 
 def test_generic_baseclass():
-    class Foo:
-        pass
-
     T = typing.TypeVar("T")
 
-    class GenericClass(typing.Generic[T], Foo):
+    class GenericClass(typing.Generic[T]):
         async def do_something(self):
             return 1
 
