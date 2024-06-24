@@ -23,7 +23,9 @@ def test_multiwrap_no_warning(recwarn):
     assert f_s(42) == 1764
     f_s_s = s.create_blocking(f_s)
     assert f_s_s(42) == 1764
-    print(recwarn.list)  # DEBUG
+    print("Recorded warnings:")
+    for w in recwarn.list:
+        print(str(w))
     assert len(recwarn) == 0
 
 
