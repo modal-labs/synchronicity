@@ -1,10 +1,9 @@
 import asyncio
 import concurrent.futures
 import inspect
-import typing
-
 import pytest
 import time
+import typing
 from typing import Coroutine
 from unittest.mock import MagicMock
 
