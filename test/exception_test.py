@@ -4,7 +4,6 @@ import inspect
 import pytest
 import time
 
-
 SLEEP_DELAY = 0.1
 
 

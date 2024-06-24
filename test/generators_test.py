@@ -1,8 +1,6 @@
 import asyncio
 import pytest
 
-from synchronicity import Synchronizer
-
 events = []
 
 

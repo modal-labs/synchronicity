@@ -2,8 +2,6 @@ import asyncio
 import pytest
 from typing import Any, Dict
 
-from synchronicity import Synchronizer
-
 
 def test_getattr(synchronizer):
     class Foo:

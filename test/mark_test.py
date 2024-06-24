@@ -1,4 +1,3 @@
-from synchronicity import Synchronizer
 
 
 def test_function_sync(synchronizer):
