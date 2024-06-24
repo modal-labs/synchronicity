@@ -1,8 +1,7 @@
 from synchronicity import Synchronizer
 
 
-def test_translate():
-    s = Synchronizer()
+def test_translate(synchronizer):
 
     class Foo:
         pass
@@ -37,9 +36,9 @@ def test_translate():
         def cls_out(cls):
             return FooProvider
 
-    BlockingFoo = s.create_blocking(Foo)
+    BlockingFoo = synchronizer.create_blocking(Foo)
     assert BlockingFoo.__name__ == "BlockingFoo"
-    BlockingFooProvider = s.create_blocking(FooProvider)
+    BlockingFooProvider = synchronizer.create_blocking(FooProvider)
     assert BlockingFooProvider.__name__ == "BlockingFooProvider"
     foo_provider = BlockingFooProvider()
 

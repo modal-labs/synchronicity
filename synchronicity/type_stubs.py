@@ -137,10 +137,10 @@ def safe_get_args(annotation):
     if sys.version_info[:2] <= (3, 9) and typing.get_origin(annotation) == collections.abc.Callable:
         if (
             args
-            and type(args[0]) == list
+            and type(args[0]) == list  # noqa  (want specific type)
             and args[0]
             and isinstance(args[0][0], (typing_extensions.ParamSpec, type(...)))
-        ):  # noqa
+        ):
             args = (args[0][0],) + args[1:]
 
     return args

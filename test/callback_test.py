@@ -2,7 +2,7 @@ import asyncio
 import pytest
 import time
 
-from synchronicity import Interface, Synchronizer
+from synchronicity import Interface
 
 
 def sleep(ms):
@@ -16,9 +16,8 @@ async def sleep_async(ms):
 
 
 @pytest.mark.asyncio
-async def test_blocking():
-    s = Synchronizer()
-    sleep_cb = s.create_callback(sleep, Interface.BLOCKING)
+async def test_blocking(synchronizer):
+    sleep_cb = synchronizer.create_callback(sleep, Interface.BLOCKING)
     t0 = time.time()
     coros = [sleep_cb(200), sleep_cb(300)]
     rets = await asyncio.gather(*coros)
@@ -27,9 +26,8 @@ async def test_blocking():
 
 
 @pytest.mark.asyncio
-async def test_async():
-    s = Synchronizer()
-    sleep_cb = s.create_callback(sleep_async, Interface.ASYNC)
+async def test_async(synchronizer):
+    sleep_cb = synchronizer.create_callback(sleep_async, Interface.ASYNC)
     t0 = time.time()
     coros = [sleep_cb(200), sleep_cb(300)]
     rets = await asyncio.gather(*coros)
@@ -38,8 +36,7 @@ async def test_async():
 
 
 @pytest.mark.asyncio
-async def test_translate():
-    s = Synchronizer()
+async def test_translate(synchronizer):
 
     class Foo:
         def __init__(self, x):
@@ -48,14 +45,14 @@ async def test_translate():
         def get(self):
             return self.x
 
-    BlockingFoo = s.create_blocking(Foo)
+    BlockingFoo = synchronizer.create_blocking(Foo)
 
     def f(foo):
         assert isinstance(foo, BlockingFoo)
         x = foo.get()
         return BlockingFoo(x + 1)
 
-    f_cb = s.create_callback(f, Interface.BLOCKING)
+    f_cb = synchronizer.create_callback(f, Interface.BLOCKING)
 
     foo1 = Foo(42)
     foo2 = await f_cb(foo1)

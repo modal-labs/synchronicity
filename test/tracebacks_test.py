@@ -1,8 +1,6 @@
 import pytest
 import traceback
 
-from synchronicity import Synchronizer
-
 
 class CustomException(Exception):
     pass
@@ -44,17 +42,15 @@ def test_sync_to_async(synchronizer):
 
 
 @pytest.mark.asyncio
-async def test_async_to_async():
-    s = Synchronizer()
-    f_s = s.create_async(f)
+async def test_async_to_async(synchronizer):
+    f_s = synchronizer.create_async(f)
     with pytest.raises(CustomException) as excinfo:
         await f_s()
     check_traceback(excinfo.value)
 
 
-def test_sync_to_async_gen():
-    s = Synchronizer()
-    gen_s = s.create_blocking(gen)
+def test_sync_to_async_gen(synchronizer):
+    gen_s = synchronizer.create_blocking(gen)
     with pytest.raises(CustomException) as excinfo:
         for x in gen_s():
             pass
@@ -62,9 +58,8 @@ def test_sync_to_async_gen():
 
 
 @pytest.mark.asyncio
-async def test_async_to_async_gen():
-    s = Synchronizer()
-    gen_s = s.create_async(gen)
+async def test_async_to_async_gen(synchronizer):
+    gen_s = synchronizer.create_async(gen)
     with pytest.raises(CustomException) as excinfo:
         async for x in gen_s():
             pass
@@ -72,9 +67,8 @@ async def test_async_to_async_gen():
 
 
 @pytest.mark.skip(reason="This one will be much easier to fix once AUTODETECT is gone")
-def test_sync_to_async_ctx_mgr():
-    s = Synchronizer()
-    ctx_mgr = s.create_blocking(s.asynccontextmanager(gen))
+def test_sync_to_async_ctx_mgr(synchronizer):
+    ctx_mgr = synchronizer.create_blocking(synchronizer.asynccontextmanager(gen))
     with pytest.raises(CustomException) as excinfo:
         with ctx_mgr():
             pass
