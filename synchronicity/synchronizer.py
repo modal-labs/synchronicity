@@ -185,6 +185,9 @@ class Synchronizer:
             self._thread.join()
             self._thread = None
 
+    def __del__(self):
+        self._close_loop()
+
     def _get_loop(self, start=False):
         if self._loop is None and start:
             return self._start_loop()
