@@ -76,6 +76,7 @@ def add_prefix_arg(arg_name, remove_args=0):
 
     return inject_arg_func
 
+
 def replace_type_vars(replacement_dict: typing.Dict[type, type]):
     def _replace_type_vars_rec(tp: typing.Type[typing.Any]):
         origin = getattr(tp, "__origin__", None)
@@ -120,6 +121,7 @@ def _get_type_vars(typ, synchronizer):
             ret |= _get_type_vars(arg, synchronizer)
     return ret
 
+
 def _get_func_type_vars(func, synchronizer: synchronicity.Synchronizer) -> typing.Set[type]:
     ret = set()
     for typ in getattr(func, "__annotations__", {}).values():
@@ -133,10 +135,16 @@ def safe_get_args(annotation):
     # can be removed if we drop support for *generating type stubs using Python <=3.9*
     args = typing.get_args(annotation)
     if sys.version_info[:2] <= (3, 9) and typing.get_origin(annotation) == collections.abc.Callable:
-        if args and type(args[0]) == list and args[0] and isinstance(args[0][0], (typing_extensions.ParamSpec, type(...))):  # noqa
+        if (
+            args
+            and type(args[0]) == list
+            and args[0]
+            and isinstance(args[0][0], (typing_extensions.ParamSpec, type(...)))
+        ):  # noqa
             args = (args[0][0],) + args[1:]
 
     return args
+
 
 class StubEmitter:
     def __init__(self, target_module):
@@ -280,10 +288,7 @@ class StubEmitter:
                 # Note: FunctionWithAio is used for staticmethods
                 methods.append(
                     self._get_dual_function_source(
-                        entity,
-                        entity_name,
-                        body_indent_level,
-                        parent_generic_type_vars=generic_type_vars
+                        entity, entity_name, body_indent_level, parent_generic_type_vars=generic_type_vars
                     )
                 )
             elif isinstance(entity, MethodWithAio):
@@ -295,10 +300,7 @@ class StubEmitter:
                     src = f"{body_indent}@classmethod\n{fn_source}"
                 else:
                     src = self._get_dual_function_source(
-                        entity,
-                        entity_name,
-                        body_indent_level,
-                        parent_generic_type_vars=generic_type_vars
+                        entity, entity_name, body_indent_level, parent_generic_type_vars=generic_type_vars
                     )
                 methods.append(src)
 
@@ -336,9 +338,11 @@ class StubEmitter:
         # Synchronicity specific blocking + async method
         body_indent = self._indent(body_indent_level)
 
-        typevar_signature_transform, parent_type_var_names_spec, protocol_declaration_type_var_spec = (
-            self._prepare_method_generic_type_vars(entity, parent_generic_type_vars)
-        )
+        (
+            typevar_signature_transform,
+            parent_type_var_names_spec,
+            protocol_declaration_type_var_spec,
+        ) = self._prepare_method_generic_type_vars(entity, parent_generic_type_vars)
 
         def final_transform_signature(sig):
             return typevar_signature_transform(transform_signature(sig))
@@ -696,12 +700,7 @@ class StubEmitter:
                 argstr = ", ".join(repr(a) for a in formatted_args)
                 formatted_annotation = f"typing.Callable[{argstr}]"
             else:
-                formatted_annotation = str(
-                    generic_copy_with_args(
-                        annotation,
-                        tuple(formatted_args)
-                    )
-                )
+                formatted_annotation = str(generic_copy_with_args(annotation, tuple(formatted_args)))
         except Exception:
             raise Exception(f"Could not reformat generic {annotation.__origin__} with arguments {args}")
 

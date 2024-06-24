@@ -67,5 +67,6 @@ class CallableWrapper(typing.Generic[P, R]):
     async def func(self, *args: P.args, **kwargs: P.kwargs) -> R:
         return  # type: ignore
 
+
 def wrap_callable(c: typing.Callable[P, R]) -> CallableWrapper[P, R]:
     return  # type: ignore

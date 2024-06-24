@@ -51,5 +51,6 @@ async def async_block() -> None:
 def f(a: str) -> float:
     return 0.1
 
+
 res = e2e_example_export.wrap_callable(f).func(a="q")
 assert_type(res, float)

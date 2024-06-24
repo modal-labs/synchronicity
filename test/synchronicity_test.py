@@ -189,7 +189,6 @@ async def test_generator_async(synchronizer):
 
 @pytest.mark.asyncio
 async def test_function_returning_coroutine(synchronizer):
-
     def func() -> Coroutine:
         async def inner():
             return 10
@@ -458,7 +457,6 @@ def test_set_class_name(synchronizer):
 
 @pytest.mark.asyncio
 async def test_blocking_nested_aio_returns_blocking_obj(synchronizer):
-
     class Foo:
         async def get_self(self):
             return self
@@ -494,7 +492,6 @@ def test_no_input_translation(monkeypatch, synchronizer):
 
 
 def test_no_output_translation(monkeypatch, synchronizer):
-
     @synchronizer.create_blocking
     def does_output_translation(arg: float) -> str:
         return str(arg)

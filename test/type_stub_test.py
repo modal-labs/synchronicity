@@ -331,11 +331,13 @@ Translated_P = synchronizer.create_blocking(P, "Translated_P", __name__)
 class MyGeneric(typing.Generic[T]):
     ...
 
+
 BlockingMyGeneric = synchronizer.create_blocking(
     MyGeneric,
     "BlockingMyGeneric",
     __name__,
 )
+
 
 def test_custom_generic():
     # TODO: build out this test a bit, as it currently creates an invalid stub (missing base types)
@@ -356,11 +358,7 @@ class ParamSpecGeneric(typing.Generic[P, T]):
         ...
 
 
-BlockingParamSpecGeneric = synchronizer.create_blocking(
-    ParamSpecGeneric,
-    "BlockingParamSpecGeneric",
-    __name__
-)
+BlockingParamSpecGeneric = synchronizer.create_blocking(ParamSpecGeneric, "BlockingParamSpecGeneric", __name__)
 
 
 def test_paramspec_generic():
@@ -372,6 +370,7 @@ def test_paramspec_generic():
     assert "def aio(self, *args: Translated_P_INNER.args, **kwargs: Translated_P_INNER.kwargs)" in src
     assert "meth: __meth_spec[Translated_P]" in src
     assert "def syncfunc(self) -> Translated_T:" in src
+
 
 def test_synchronicity_generic_subclass():
     class Specific(MyGeneric[str]):
@@ -456,12 +455,12 @@ def test_ellipsis():
 
 def test_param_spec():
     P = typing_extensions.ParamSpec("P")
+
     def foo() -> typing.Callable[P, typing.Any]:
         return lambda x: 0
 
     src = _function_source(foo)
     assert "-> typing.Callable[P, typing.Any]" in src
-
 
 
 def test_typing_literal():

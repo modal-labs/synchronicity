@@ -6,7 +6,6 @@ from synchronicity import Synchronizer
 
 
 def test_getattr(synchronizer):
-
     class Foo:
         _attrs: Dict[str, Any]
 

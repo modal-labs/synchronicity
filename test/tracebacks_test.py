@@ -92,7 +92,6 @@ async def test_async_to_async_ctx_mgr(synchronizer):
 
 
 def test_recursive(synchronizer):
-
     async def f(n):
         if n == 0:
             raise CustomException("boom!")
