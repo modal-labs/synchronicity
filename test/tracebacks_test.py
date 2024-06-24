@@ -36,9 +36,8 @@ def check_traceback(exc):
         raise Exception(f"Got {n_outside} frames outside user code, expected 1")
 
 
-def test_sync_to_async():
-    s = Synchronizer()
-    f_s = s.create_blocking(f)
+def test_sync_to_async(synchronizer):
+    f_s = synchronizer.create_blocking(f)
     with pytest.raises(CustomException) as excinfo:
         f_s()
     check_traceback(excinfo.value)
@@ -84,17 +83,15 @@ def test_sync_to_async_ctx_mgr():
 
 @pytest.mark.skip(reason="This one will be much easier to fix once AUTODETECT is gone")
 @pytest.mark.asyncio
-async def test_async_to_async_ctx_mgr():
-    s = Synchronizer()
-    ctx_mgr = s.create_async(s.asynccontextmanager(gen))
+async def test_async_to_async_ctx_mgr(synchronizer):
+    ctx_mgr = synchronizer.create_async(synchronizer.asynccontextmanager(gen))
     with pytest.raises(CustomException) as excinfo:
         async with ctx_mgr():
             pass
     check_traceback(excinfo.value)
 
 
-def test_recursive():
-    s = Synchronizer()
+def test_recursive(synchronizer):
 
     async def f(n):
         if n == 0:
@@ -103,6 +100,6 @@ def test_recursive():
             return await f(n - 1)
 
     with pytest.raises(CustomException) as excinfo:
-        f_blocking = s.create_blocking(f)
+        f_blocking = synchronizer.create_blocking(f)
         f_blocking(10)
     check_traceback(excinfo.value)
