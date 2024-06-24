@@ -37,7 +37,6 @@ async def test_async(synchronizer):
 
 @pytest.mark.asyncio
 async def test_translate(synchronizer):
-
     class Foo:
         def __init__(self, x):
             self.x = x

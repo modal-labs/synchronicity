@@ -1,8 +1,4 @@
-from synchronicity import Synchronizer
-
-
 def test_translate(synchronizer):
-
     class Foo:
         pass
 
