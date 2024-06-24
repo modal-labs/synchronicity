@@ -1,11 +1,10 @@
 from synchronicity import Synchronizer
 
 
-def test_function_sync():
-    s = Synchronizer()
+def test_function_sync(synchronizer):
 
     async def f(x):
         return x**2
 
-    f_blocking = s.create_blocking(f)
+    f_blocking = synchronizer.create_blocking(f)
     assert f_blocking(42) == 1764

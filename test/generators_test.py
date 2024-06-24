@@ -13,26 +13,26 @@ async def async_producer():
 
 
 @pytest.mark.asyncio
-async def test_generator_order_async():
+async def test_generator_order_async(synchronizer):
     events.clear()
-    async_producer_synchronized = Synchronizer().create_async(async_producer)
+    async_producer_synchronized = synchronizer.create_async(async_producer)
     async for i in async_producer_synchronized():
         events.append("consumer")
     assert events == ["producer", "consumer"] * 10
 
 
 @pytest.mark.asyncio
-async def test_generator_order_explicit_async():
+async def test_generator_order_explicit_async(synchronizer):
     events.clear()
-    async_producer_synchronized = Synchronizer().create_async(async_producer)
+    async_producer_synchronized = synchronizer.create_async(async_producer)
     async for i in async_producer_synchronized():
         events.append("consumer")
     assert events == ["producer", "consumer"] * 10
 
 
-def test_generator_order_sync():
+def test_generator_order_sync(synchronizer):
     events.clear()
-    async_producer_synchronized = Synchronizer().create_blocking(async_producer)
+    async_producer_synchronized = synchronizer.create_blocking(async_producer)
     for i in async_producer_synchronized():
         events.append("consumer")
     assert events == ["producer", "consumer"] * 10
@@ -44,8 +44,8 @@ async def async_bidirectional_producer(i):
 
 
 @pytest.mark.asyncio
-async def test_bidirectional_generator_async():
-    f = Synchronizer().create_async(async_bidirectional_producer)
+async def test_bidirectional_generator_async(synchronizer):
+    f = synchronizer.create_async(async_bidirectional_producer)
     gen = f(42)
     value = await gen.asend(None)
     assert value == 42
@@ -53,8 +53,8 @@ async def test_bidirectional_generator_async():
         await gen.asend(42 * 42)
 
 
-def test_bidirectional_generator_sync():
-    f = Synchronizer().create_blocking(async_bidirectional_producer)
+def test_bidirectional_generator_sync(synchronizer):
+    f = synchronizer.create_blocking(async_bidirectional_producer)
     gen = f(42)
     value = gen.send(None)
     assert value == 42
@@ -74,16 +74,16 @@ async def athrow_example_gen():
 
 
 @pytest.mark.asyncio
-async def test_athrow_async():
-    gen = Synchronizer().create_async(athrow_example_gen)()
+async def test_athrow_async(synchronizer):
+    gen = synchronizer.create_async(athrow_example_gen)()
     v = await gen.asend(None)
     assert v == "hello"
     v = await gen.athrow(ZeroDivisionError)
     assert v == "world"
 
 
-def test_athrow_sync():
-    gen = Synchronizer().create_blocking(athrow_example_gen)()
+def test_athrow_sync(synchronizer):
+    gen = synchronizer.create_blocking(athrow_example_gen)()
     v = gen.send(None)
     assert v == "hello"
     v = gen.throw(ZeroDivisionError)
@@ -91,16 +91,16 @@ def test_athrow_sync():
 
 
 @pytest.mark.asyncio
-async def test_athrow_baseexc_async():
-    gen = Synchronizer().create_async(athrow_example_gen)()
+async def test_athrow_baseexc_async(synchronizer):
+    gen = synchronizer.create_async(athrow_example_gen)()
     v = await gen.asend(None)
     assert v == "hello"
     v = await gen.athrow(KeyboardInterrupt)
     assert v == "foobar"
 
 
-def test_athrow_baseexc_sync():
-    gen = Synchronizer().create_blocking(athrow_example_gen)()
+def test_athrow_baseexc_sync(synchronizer):
+    gen = synchronizer.create_blocking(athrow_example_gen)()
     v = gen.send(None)
     assert v == "hello"
     v = gen.throw(KeyboardInterrupt)
@@ -115,11 +115,11 @@ async def ensure_stop_async_iteration():
         events.append(exc)
 
 
-def test_ensure_stop_async_iteration():
+def test_ensure_stop_async_iteration(synchronizer):
     events.clear()
 
     def create_generator():
-        gen_f = Synchronizer().create_blocking(ensure_stop_async_iteration)
+        gen_f = synchronizer.create_blocking(ensure_stop_async_iteration)
         for x in gen_f():
             break
 
@@ -133,10 +133,9 @@ class MyGenerator:
         return async_producer()
 
 
-def test_custom_generator():
+def test_custom_generator(synchronizer):
     events.clear()
-    s = Synchronizer()
-    BlockingMyGenerator = s.create_blocking(MyGenerator)
+    BlockingMyGenerator = synchronizer.create_blocking(MyGenerator)
     blocking_my_generator = BlockingMyGenerator()
     for x in blocking_my_generator:
         events.append("consumer")
