@@ -1,5 +1,6 @@
 import pytest
 import subprocess
+import sys
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
@@ -16,11 +17,14 @@ class FailedMyPyCheck(Exception):
         self.output = output
 
 
-def run_mypy(input_file):
+def run_mypy(input_file, print_errors=True):
     p = subprocess.Popen(["mypy", input_file], stderr=subprocess.STDOUT, stdout=subprocess.PIPE)
     result_code = p.wait()
     if result_code != 0:
-        raise FailedMyPyCheck(p.stdout.read())
+        mypy_report = p.stdout.read().decode("utf8")
+        if print_errors:
+            print(mypy_report, file=sys.stderr)
+        raise FailedMyPyCheck(mypy_report)
 
 
 @contextmanager
@@ -75,4 +79,4 @@ def test_failing_assertion(interface_file, failing_assertion, error_matches):
     # we use the assertion file as a template to insert statements that should fail type checking
     with temp_assertion_file(failing_assertion) as custom_file:  # we pass int instead of str
         with pytest.raises(FailedMyPyCheck, match=error_matches):
-            run_mypy(custom_file)
+            run_mypy(custom_file, print_errors=False)

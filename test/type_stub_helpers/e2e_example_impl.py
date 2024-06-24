@@ -1,6 +1,8 @@
 import typing
 from typing import AsyncGenerator, List, TypeVar, Union, overload
 
+import typing_extensions
+
 from synchronicity.async_wrap import asynccontextmanager
 
 
@@ -18,11 +20,11 @@ class _Foo:
 
     @staticmethod
     def some_static(arg: str) -> float:
-        ...
+        return  # type: ignore
 
     @classmethod
     def clone(cls, foo: "_Foo") -> "_Foo":  # self ref
-        ...
+        return  # type: ignore
 
 
 _T = TypeVar("_T", bound=_Foo)
@@ -55,3 +57,16 @@ async def _returns_foo() -> _Foo:
 @asynccontextmanager
 async def make_context(a: float) -> typing.AsyncGenerator[str, None]:
     yield "hello"
+
+
+P = typing_extensions.ParamSpec("P")
+R = typing.TypeVar("R")
+
+
+class CallableWrapper(typing.Generic[P, R]):
+    async def func(self, *args: P.args, **kwargs: P.kwargs) -> R:
+        return  # type: ignore
+
+
+def wrap_callable(c: typing.Callable[P, R]) -> CallableWrapper[P, R]:
+    return  # type: ignore
