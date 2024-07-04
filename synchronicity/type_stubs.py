@@ -105,8 +105,8 @@ def replace_type_vars(replacement_dict: typing.Dict[type, type]):
     return _replace_type_vars_in_sig
 
 
-def _get_type_vars(typ, synchronizer):
-    origin = getattr(typ, "__origin__", None)  # typing.get_origin returns None for ParamSpecArgs prior on <=Python3.9
+def _get_type_vars(typ, synchronizer, home_module):
+    origin = getattr(typ, "__origin__", None)  # typing.get_origin returns None for ParamSpecArgs on <=Python3.9
     ret = set()
     if isinstance(typ, typing.TypeVar):
         # check if it's translated (due to bounds= attributes etc.)
@@ -118,14 +118,31 @@ def _get_type_vars(typ, synchronizer):
         ret.add(param_spec)
     elif origin:
         for arg in typing.get_args(typ):
-            ret |= _get_type_vars(arg, synchronizer)
+            ret |= _get_type_vars(arg, synchronizer, home_module)
+    else:
+        # Copied string annotation handling from StubEmitter.translate_annotations - TODO: unify?
+        # The reason it cant be used directly is that this method should return the original type params
+        # and not translated values
+        if isinstance(typ, typing.ForwardRef):  # TypeVars wrap their arguments as ForwardRefs (sometimes?)
+            typ = typ.__forward_arg__
+        if isinstance(typ, str):
+            try:
+                typ = evaluated_annotation(typ, declaration_module=home_module)
+            except Exception:
+                logger.exception(
+                    f"Error when evaluating {typ} in {home_module}. Falling back to string typ"
+                )
+                return ret
+            return _get_type_vars(typ, synchronizer, home_module)
     return ret
 
 
 def _get_func_type_vars(func, synchronizer: synchronicity.Synchronizer) -> typing.Set[type]:
     ret = set()
+    home_module = func.__module__
     for typ in getattr(func, "__annotations__", {}).values():
-        ret |= _get_type_vars(typ, synchronizer)
+        ret |= _get_type_vars(typ, synchronizer, home_module)
+        print("type vars for func", func, typ, ret)
     return ret
 
 
@@ -383,7 +400,7 @@ class StubEmitter:
         #     method: Method[T]
         func_type_vars = _get_func_type_vars(entity._func, entity._synchronizer)
         typevar_overlap = parent_generic_type_vars & func_type_vars
-        typevar_replacements = {}
+        typevar_replacements = {}  # TODO: use StubEmitter.translate_annotations?
         for tvar in typevar_overlap:
             replacement_typevar_name = tvar.__name__ + "_INNER"
             if isinstance(tvar, typing_extensions.ParamSpec):
