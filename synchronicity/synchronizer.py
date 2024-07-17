@@ -133,7 +133,8 @@ class Synchronizer:
         self.create_blocking(self._ctx_mgr_cls)
 
         # TODO: ugly, remove this and the whole require_already_wrapped:
-        self.create_blocking(typing.Generic, "WrappedGeneric")
+
+        self.create_blocking(typing.Generic, "WrappedGeneric", __name__)
 
         atexit.register(self._close_loop)
 

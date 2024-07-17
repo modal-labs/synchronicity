@@ -404,7 +404,7 @@ class StubEmitter:
         for tvar in typevar_overlap:
             replacement_typevar_name = tvar.__name__ + "_INNER"
             if isinstance(tvar, typing_extensions.ParamSpec):
-                new_tvar = typing_extensions.ParamSpec(replacement_typevar_name)
+                new_tvar = typing_extensions.ParamSpec(replacement_typevar_name)  # type: ignore
             else:
                 new_tvar = typing.TypeVar(replacement_typevar_name, covariant=True)  # type: ignore
             new_tvar.__module__ = self.target_module  # avoid referencing synchronicity.type_stubs
