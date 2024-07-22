@@ -565,4 +565,3 @@ async def test_non_async_aiter():
     # check sync iteration on the wrapped iterator
     it = WrappedIt()
     assert list(it) == ["foo", "bar"]
-

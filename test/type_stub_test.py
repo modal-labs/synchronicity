@@ -464,8 +464,7 @@ def test_wrapped_context_manager_is_both_blocking_and_async():
     assert "AbstractAsyncContextManager" not in wrapped_foo_src
 
 
-# TODO: remove skip
-#@pytest.mark.skipif(sys.version_info < (3, 9), reason="collections.abc.Iterator isn't a generic type before Python 3.9")
+@pytest.mark.skipif(sys.version_info < (3, 9), reason="collections.abc.Iterator isn't a generic type before Python 3.9")
 def test_collections_iterator():
     def foo() -> typing.Iterator[int]:
         class MyIterator(collections.abc.Iterator):

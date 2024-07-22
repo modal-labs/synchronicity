@@ -44,7 +44,6 @@ def generic_copy_with_args(specific_type, new_args):
     return typing.get_origin(specific_type)[new_args]
 
 
-
 def add_prefix_arg(arg_name, remove_args=0):
     def inject_arg_func(sig: inspect.Signature):
         parameters = list(sig.parameters.values())
@@ -56,7 +55,6 @@ def add_prefix_arg(arg_name, remove_args=0):
         )
 
     return inject_arg_func
-
 
 
 class StubEmitter:
@@ -128,9 +126,8 @@ class StubEmitter:
 
             retranslated_bases = []
             for impl_base in impl_bases:
-                retranslated_bases.append(
-                    self._translate_annotation(impl_base, synchronizer, target_interface, cls.__module__)
-                )
+                wrapped_base = self._translate_annotation(impl_base, synchronizer, target_interface, cls.__module__)
+                retranslated_bases.append(wrapped_base)
 
             return tuple(retranslated_bases)
 
@@ -420,10 +417,11 @@ class StubEmitter:
             "typing",
             "collections.abc",
             "contextlib",
-            "builtins"
+            "builtins",
         ):  # don't translate built in generics in type annotations, even if they have been synchronicity wrapped
-            # for other hierarchy reasons
             translated_origin = self._translate_annotation(origin, synchronizer, interface, home_module)
+            t = translated_origin[mapped_args]
+            t.__origin__ = translated_origin  # This ensures that the translated origin is preserved in case of a wrapped generic base
             return translated_origin[mapped_args]
 
         return generic_copy_with_args(type_annotation, mapped_args)
@@ -456,13 +454,12 @@ class StubEmitter:
             if param.upgraded_annotation is not EmptyAnnotation:
                 raw_annotation = param.upgraded_annotation.source_value()
                 translated_annotation = self._translate_global_annotation(raw_annotation, func)
-                print("pre", raw_annotation, translated_annotation)
             elif param.annotation != inspect._empty:
                 raw_annotation = param.annotation
                 translated_annotation = self._translate_global_annotation(raw_annotation, func)
             else:
                 translated_annotation = param.annotation
-            
+
             new_parameters.append(
                 param.replace(
                     annotation=translated_annotation,
@@ -512,10 +509,10 @@ class StubEmitter:
             return repr(annotation)
 
         # generic:
-        
+
         if (annotation.__module__, annotation.__name__) == ("typing", "Optional"):
             # typing.Optional adds a None argument that we shouldn't include when formatting
-            optional_arg, = [a for a in args if a is not type(None)]
+            (optional_arg,) = [a for a in args if a is not type(None)]
             comma_separated_args = self._formatannotation(optional_arg)
         else:
             formatted_args = [self._formatannotation(a) for a in args]
@@ -523,7 +520,7 @@ class StubEmitter:
 
         if annotation.__module__ in ("typing", "contextlib") and annotation.__name__.startswith("Abstract"):
             # Technically not needed after Python 3.8 (?) when all these Abstract* classes exist and are usable
-            origin_name = annotation.__name__[len("Abstract"):]  # cut the "Abstract"
+            origin_name = annotation.__name__[len("Abstract") :]  # cut the "Abstract"
         else:
             origin_name = annotation.__name__
 
@@ -542,7 +539,7 @@ class StubEmitter:
         # formatted_annotation = formatted_annotation.replace(
         #     "typing.Abstract", "typing."
         # )  # fix for Python 3.7 formatting typing.AsyncContextManager as 'typing.AbstractContextManager' etc.
-        
+
         # # this is a bit ugly, but gets rid of incorrect module qualification of Generic subclasses:
         # # TODO: find a better way...
 
