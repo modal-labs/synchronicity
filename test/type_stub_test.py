@@ -466,9 +466,9 @@ def test_wrapped_context_manager_is_both_blocking_and_async():
 
 @pytest.mark.skipif(sys.version_info < (3, 9), reason="collections.abc.Iterator isn't a generic type before Python 3.9")
 def test_collections_iterator():
-    def foo() -> typing.Iterator[int]:
+    def foo() -> collections.abc.Iterator[int]:
         class MyIterator(collections.abc.Iterator):
-            def __iter__(self) -> typing.Iterator[int]:
+            def __iter__(self) -> collections.abc.Iterator[int]:
                 return self
 
             def __next__(self) -> int:
@@ -477,4 +477,4 @@ def test_collections_iterator():
         return MyIterator()
 
     src = _function_source(foo)
-    assert "-> typing.Iterator[int]" in src
+    assert "-> collections.abc.Iterator[int]" in src
