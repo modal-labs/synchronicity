@@ -421,7 +421,8 @@ class StubEmitter:
         ):  # don't translate built in generics in type annotations, even if they have been synchronicity wrapped
             translated_origin = self._translate_annotation(origin, synchronizer, interface, home_module)
             t = translated_origin[mapped_args]
-            t.__origin__ = translated_origin  # This ensures that the translated origin is preserved in case of a wrapped generic base
+            # This ensures that the translated origin is preserved in case of a wrapped generic base:
+            t.__origin__ = translated_origin
             return translated_origin[mapped_args]
 
         return generic_copy_with_args(type_annotation, mapped_args)
@@ -526,26 +527,10 @@ class StubEmitter:
 
         if annotation.__module__ not in ("builtins", self.target_module):
             # need to qualify the module of the origin
-            if annotation.__module__ == "collections.abc":
-                origin_module = "typing"  # slightly cleaner and possibly supports older python versions where collections.abc versions didn't exist
-            else:
-                origin_module = annotation.__module__
-            self.imports.add(origin_module)
+            origin_module = annotation.__module__
             origin_name = f"{origin_module}.{origin_name}"
 
         return f"{origin_name}[{comma_separated_args}]"
-
-        # OLD CODE: Remove/refactor if needed
-        # formatted_annotation = formatted_annotation.replace(
-        #     "typing.Abstract", "typing."
-        # )  # fix for Python 3.7 formatting typing.AsyncContextManager as 'typing.AbstractContextManager' etc.
-
-        # # this is a bit ugly, but gets rid of incorrect module qualification of Generic subclasses:
-        # # TODO: find a better way...
-
-        # if formatted_annotation.startswith(self.target_module + "."):
-        #     return formatted_annotation.split(self.target_module + ".", 1)[1]
-        # return formatted_annotation
 
     def _indent(self, level):
         return level * self._indentation
