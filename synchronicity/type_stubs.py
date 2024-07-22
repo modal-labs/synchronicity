@@ -44,24 +44,6 @@ def generic_copy_with_args(specific_type, new_args):
     return typing.get_origin(specific_type)[new_args]
 
 
-class ReprObj:
-    # Hacky repr passthrough object so we can pass verbatim type annotations as partial arguments
-    # to generic and have them render correctly through `repr()`, used by inspect.Signature etc.
-    def __init__(self, repr: str):
-        assert isinstance(repr, str), f"{repr} is not a string!"
-        self._repr = repr
-
-    def __repr__(self):
-        return self._repr
-
-    def __str__(self):
-        return self._repr
-
-    def __call__(self):
-        # being a callable gets around some generic's automatic type checking of provided types
-        # otherwise we get errors like `provided argument is not a type`
-        pass
-
 
 def add_prefix_arg(arg_name, remove_args=0):
     def inject_arg_func(sig: inspect.Signature):
@@ -74,6 +56,7 @@ def add_prefix_arg(arg_name, remove_args=0):
         )
 
     return inject_arg_func
+
 
 
 class StubEmitter:
@@ -124,7 +107,7 @@ class StubEmitter:
     def add_function(self, func, name, indentation_level=0):
         # adds function source code to module
         if isinstance(func, FunctionWithAio):
-            # since the original function signature lacks the "self" argument of the "synthetic" Protocol, we inject it
+            # this is a synchronicity-emitted replacement function/method for an originally async function
             self.parts.append(self._get_dual_function_source(func, name, indentation_level))
         else:
             self.parts.append(self._get_function_source_with_overloads(func, name, indentation_level))
@@ -437,15 +420,11 @@ class StubEmitter:
             "typing",
             "collections.abc",
             "contextlib",
+            "builtins"
         ):  # don't translate built in generics in type annotations, even if they have been synchronicity wrapped
-            # for other hierarchy reasons...
+            # for other hierarchy reasons
             translated_origin = self._translate_annotation(origin, synchronizer, interface, home_module)
-            if translated_origin is not origin:
-                # special case for synchronicity-translated generics,
-                # due to synchronicitys wrappers not being valid generics
-                # kind of ugly as it returns a string representation rather than a type...
-                str_args = ", ".join(self._formatannotation(arg) for arg in mapped_args)
-                return ReprObj(f"{self._formatannotation(translated_origin)}[{str_args}]")
+            return translated_origin[mapped_args]
 
         return generic_copy_with_args(type_annotation, mapped_args)
 
@@ -477,12 +456,13 @@ class StubEmitter:
             if param.upgraded_annotation is not EmptyAnnotation:
                 raw_annotation = param.upgraded_annotation.source_value()
                 translated_annotation = self._translate_global_annotation(raw_annotation, func)
+                print("pre", raw_annotation, translated_annotation)
             elif param.annotation != inspect._empty:
                 raw_annotation = param.annotation
                 translated_annotation = self._translate_global_annotation(raw_annotation, func)
             else:
                 translated_annotation = param.annotation
-
+            
             new_parameters.append(
                 param.replace(
                     annotation=translated_annotation,
@@ -493,15 +473,15 @@ class StubEmitter:
             )
 
         sig = sig.replace(parameters=new_parameters)
+
         if transform_signature:
             sig = transform_signature(sig)
-
-        # kind of ugly, but this ensures valid formatting of Generics etc, see docstring above
+        # kind of ugly, but this ensures valid formatting of Generics etc, see docstring above and _formatannotation
         with mock.patch("inspect.formatannotation", self._formatannotation):
             return str(sig)
 
     def _get_var_annotation(self, name, annotation):
-        # TODO: how to translate annotation here - we don't know the
+        # TODO: how to translate annotation here - we don't know the home module
         self._register_imports(annotation)
         return f"{name}: {self._formatannotation(annotation, None)}"
 
@@ -509,12 +489,8 @@ class StubEmitter:
         """modified version of `inspect.formatannotations`
         * Uses verbatim `None` instead of `NoneType` for None-arguments in generic types
         * Doesn't omit `typing.`-module from qualified imports in type names
-        * recurses through generic types using ReprObj wrapper
         * ignores base_module (uses self.target_module instead)
         """
-
-        assert base_module is None  # inspect.Signature isn't generally using the base_module arg afaik
-
         origin = getattr(annotation, "__origin__", None)
         assert not isinstance(annotation, typing.ForwardRef)  # Forward refs should already have been evaluated!
         args = getattr(annotation, "__args__", None)
@@ -534,27 +510,45 @@ class StubEmitter:
                     return name
                 return annotation.__module__ + "." + name
             return repr(annotation)
+
         # generic:
-        try:
-            formatted_annotation = str(
-                generic_copy_with_args(
-                    annotation,
-                    # ellipsis (...) needs to be passed as is, or it will be reformatted
-                    tuple(ReprObj(self._formatannotation(arg)) if arg != Ellipsis else Ellipsis for arg in args),
-                )
-            )
-        except Exception:
-            raise Exception(f"Could not reformat generic {annotation.__origin__} with arguments {args}")
+        
+        if (annotation.__module__, annotation.__name__) == ("typing", "Optional"):
+            # typing.Optional adds a None argument that we shouldn't include when formatting
+            optional_arg, = [a for a in args if a is not type(None)]
+            comma_separated_args = self._formatannotation(optional_arg)
+        else:
+            formatted_args = [self._formatannotation(a) for a in args]
+            comma_separated_args = ", ".join(formatted_args)
 
-        formatted_annotation = formatted_annotation.replace(
-            "typing.Abstract", "typing."
-        )  # fix for Python 3.7 formatting typing.AsyncContextManager as 'typing.AbstractContextManager' etc.
-        # this is a bit ugly, but gets rid of incorrect module qualification of Generic subclasses:
-        # TODO: find a better way...
+        if annotation.__module__ in ("typing", "contextlib") and annotation.__name__.startswith("Abstract"):
+            # Technically not needed after Python 3.8 (?) when all these Abstract* classes exist and are usable
+            origin_name = annotation.__name__[len("Abstract"):]  # cut the "Abstract"
+        else:
+            origin_name = annotation.__name__
 
-        if formatted_annotation.startswith(self.target_module + "."):
-            return formatted_annotation.split(self.target_module + ".", 1)[1]
-        return formatted_annotation
+        if annotation.__module__ not in ("builtins", self.target_module):
+            # need to qualify the module of the origin
+            if annotation.__module__ == "collections.abc":
+                origin_module = "typing"  # slightly cleaner and possibly supports older python versions where collections.abc versions didn't exist
+            else:
+                origin_module = annotation.__module__
+            self.imports.add(origin_module)
+            origin_name = f"{origin_module}.{origin_name}"
+
+        return f"{origin_name}[{comma_separated_args}]"
+
+        # OLD CODE: Remove/refactor if needed
+        # formatted_annotation = formatted_annotation.replace(
+        #     "typing.Abstract", "typing."
+        # )  # fix for Python 3.7 formatting typing.AsyncContextManager as 'typing.AbstractContextManager' etc.
+        
+        # # this is a bit ugly, but gets rid of incorrect module qualification of Generic subclasses:
+        # # TODO: find a better way...
+
+        # if formatted_annotation.startswith(self.target_module + "."):
+        #     return formatted_annotation.split(self.target_module + ".", 1)[1]
+        # return formatted_annotation
 
     def _indent(self, level):
         return level * self._indentation

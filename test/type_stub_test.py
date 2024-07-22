@@ -237,7 +237,7 @@ def test_forward_ref():
     src = stub.get_source()
     assert "class Forwarder:" in src
     assert (
-        "def foo(self) -> typing.Union[Forwardee, None]:" in src
+        "def foo(self) -> typing.Optional[Forwardee]:" in src
     )  # should technically be 'Forwardee', but non-strings seem ok in pure type stubs
 
 
@@ -464,11 +464,12 @@ def test_wrapped_context_manager_is_both_blocking_and_async():
     assert "AbstractAsyncContextManager" not in wrapped_foo_src
 
 
-@pytest.mark.skipif(sys.version_info < (3, 9), reason="collections.abc.Iterator isn't a generic type before Python 3.9")
+# TODO: remove skip
+#@pytest.mark.skipif(sys.version_info < (3, 9), reason="collections.abc.Iterator isn't a generic type before Python 3.9")
 def test_collections_iterator():
-    def foo() -> collections.abc.Iterator[int]:
+    def foo() -> typing.Iterator[int]:
         class MyIterator(collections.abc.Iterator):
-            def __iter__(self) -> collections.abc.Iterator[int]:
+            def __iter__(self) -> typing.Iterator[int]:
                 return self
 
             def __next__(self) -> int:
@@ -477,4 +478,4 @@ def test_collections_iterator():
         return MyIterator()
 
     src = _function_source(foo)
-    assert "-> collections.abc.Iterator[int]" in src
+    assert "-> typing.Iterator[int]" in src
