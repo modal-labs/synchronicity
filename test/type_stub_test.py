@@ -221,7 +221,7 @@ def test_string_annotation():
 
 
 class Forwarder:
-    def foo(self) -> typing.Optional["Forwardee"]:
+    def foo(self) -> typing.List["Forwardee"]:
         ...
 
 
@@ -237,8 +237,21 @@ def test_forward_ref():
     src = stub.get_source()
     assert "class Forwarder:" in src
     assert (
-        "def foo(self) -> typing.Optional[Forwardee]:" in src
-    )  # should technically be 'Forwardee', but non-strings seem ok in pure type stubs
+        "def foo(self) -> typing.List[Forwardee]:" in src
+    )  # should technically be quoted 'Forwardee', but non-strings seem ok in pure type stubs
+
+
+def test_optional():
+    # Not super important, but try to preserve typing.Optional as typing.Optional instead of typing.Union[None, ...]
+    # This only works on Python 3.10+, since 3.9 and earlier do "eager" conversion when creating the type
+    def f() -> typing.Optional[str]:
+        ...
+
+    src = _function_source(f)
+    if sys.version_info[:2] >= (3, 10):
+        assert "typing.Optional[str]" in src
+    else:
+        assert "typing.Union[str, None]" in src
 
 
 class SelfRefFoo:

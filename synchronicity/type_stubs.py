@@ -16,7 +16,7 @@ import sys
 import typing
 from logging import getLogger
 from pathlib import Path
-from typing import Generic, TypeVar
+from typing import TypeVar
 from unittest import mock
 
 import sigtools.specifiers  # type: ignore
@@ -55,6 +55,23 @@ def add_prefix_arg(arg_name, remove_args=0):
         )
 
     return inject_arg_func
+
+
+def get_specific_generic_name(annotation):
+    """get the name of the generic type of a "specific" type (with args)
+    e.g.
+    >>> get_specific_generic_name(typing.List[str])
+    "List"
+    """
+    if hasattr(annotation, "__name__"):
+        # this works on new pythons
+        return annotation.__name__
+    elif hasattr(annotation, "_name") and annotation._name is not None:
+        # fallback for older Python (at least 3.8)
+        return annotation._name
+    else:
+        # also an old python
+        return get_specific_generic_name(annotation.__origin__)
 
 
 class StubEmitter:
@@ -300,9 +317,10 @@ class StubEmitter:
 
         if module == self.target_module:
             if not hasattr(typ, "__name__"):
-                # weird special case with Generic subclasses in the target module...
+                # weird special case with Generic subclasses in the target module
+                # fall back to the origin name
+                print("v", typ, vars(typ))
                 generic_origin = typ.__origin__
-                assert issubclass(generic_origin, Generic)  # noqa
                 name = generic_origin.__name__
             else:
                 name = typ.__name__
@@ -510,8 +528,9 @@ class StubEmitter:
             return repr(annotation)
 
         # generic:
+        origin_name = get_specific_generic_name(annotation)
 
-        if (annotation.__module__, annotation.__name__) == ("typing", "Optional"):
+        if (annotation.__module__, origin_name) == ("typing", "Optional"):
             # typing.Optional adds a None argument that we shouldn't include when formatting
             (optional_arg,) = [a for a in args if a is not type(None)]
             comma_separated_args = self._formatannotation(optional_arg)
@@ -519,11 +538,11 @@ class StubEmitter:
             formatted_args = [self._formatannotation(a) for a in args]
             comma_separated_args = ", ".join(formatted_args)
 
-        if annotation.__module__ in ("typing", "contextlib") and annotation.__name__.startswith("Abstract"):
-            # Technically not needed after Python 3.8 (?) when all these Abstract* classes exist and are usable
-            origin_name = annotation.__name__[len("Abstract") :]  # cut the "Abstract"
-        else:
-            origin_name = annotation.__name__
+        if annotation.__module__ in ("typing", "contextlib") and origin_name.startswith("Abstract"):
+            # TODO: not sure if this is still needed. Was used to force non-use of Abstract* generics
+            # that don't exist on older Pythons like 3.8, but now I think we wouldn't use that unless
+            # explicitly used by the implementation
+            origin_name = origin_name[len("Abstract") :]  # cut the "Abstract"
 
         if annotation.__module__ not in ("builtins", self.target_module):
             # need to qualify the module of the origin
