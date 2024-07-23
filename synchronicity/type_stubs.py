@@ -539,9 +539,10 @@ class StubEmitter:
             comma_separated_args = ", ".join(formatted_args)
 
         if annotation.__module__ in ("typing", "contextlib") and origin_name.startswith("Abstract"):
-            # TODO: not sure if this is still needed. Was used to force non-use of Abstract* generics
-            # that don't exist on older Pythons like 3.8, but now I think we wouldn't use that unless
-            # explicitly used by the implementation
+            # This is needed for Python <=3.8 where there is a bug (?) in the typing.AsyncContextManager
+            # causing it to be represented with the non-existent name typing.AbstractContextManager
+            # >>> typing.AsyncContextManager
+            # typing.AbstractAsyncContextManager
             origin_name = origin_name[len("Abstract") :]  # cut the "Abstract"
 
         if annotation.__module__ not in ("builtins", self.target_module):
