@@ -559,7 +559,13 @@ def test_returns_forward_wrapped_generic():
             return ReturnVal()
 
         
-    Container = synchronizer.create_blocking(_Container)
+    Container = synchronizer.create_blocking(_Container, "Container")
 
     src = _class_source(Container)
-    print(src)
+
+    # base class should be generic in the (potentially) translated type var (could have wrapped bounds spec)
+    assert "class Container(typing.Generic[Translated_T]):" in src
+    assert "Translated_T_INNER = typing.TypeVar" in src  # distinct "inner copy" of Translated_T needs to be declared
+    assert "typing_extensions.Protocol[Translated_T_INNER]" in src
+    assert "def __call__(self) -> ReturnVal[Translated_T_INNER]:" in src
+    assert "fun: __fun_spec[Translated_T]" in src

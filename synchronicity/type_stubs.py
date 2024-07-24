@@ -123,7 +123,6 @@ def _get_func_type_vars(func, synchronizer: synchronicity.Synchronizer) -> typin
     home_module = func.__module__
     for typ in getattr(func, "__annotations__", {}).values():
         ret |= _get_type_vars(typ, synchronizer, home_module)
-        print("type vars for func", func, typ, ret)
     return ret
 
 
@@ -594,10 +593,14 @@ class StubEmitter:
         ):  # don't translate built in generics in type annotations, even if they have been synchronicity wrapped
             # for base-class compatibility (e.g. AsyncContextManager, typing.Generic), otherwise it will break typing
             translated_origin = self._translate_annotation(origin, synchronizer, interface, home_module)
-            t = translated_origin[mapped_args]
-            # This ensures that the translated origin is preserved in case of a wrapped generic base:
+            t = translated_origin[mapped_args]  # this seems to fall back to the __class_getitem__ of the base
+            # In order to get the right origin and args on the output, we manuall have to assign them:
+            # TODO: We could probably fix this in the synchronicity layer by making wrapped generics true generics, or
+            #  hackily by not letting __class_getitem__ proxy to the wrapped class' method for custom generics
+            t.__module__ = translated_origin.__module__
             t.__origin__ = translated_origin
-            return translated_origin[mapped_args]
+            t.__args__ = mapped_args
+            return t
 
         return generic_copy_with_args(type_annotation, mapped_args)
 
