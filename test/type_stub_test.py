@@ -247,7 +247,9 @@ def test_optional():
     def f() -> typing.Optional[str]:
         ...
 
-    src = _function_source(f)
+    wrapped_f = synchronizer.create_blocking(f, "wrapped_f", __name__)
+
+    src = _function_source(wrapped_f)
     if sys.version_info[:2] >= (3, 10):
         assert "typing.Optional[str]" in src
     else:

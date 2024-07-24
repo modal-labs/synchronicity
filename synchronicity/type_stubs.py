@@ -319,7 +319,6 @@ class StubEmitter:
             if not hasattr(typ, "__name__"):
                 # weird special case with Generic subclasses in the target module
                 # fall back to the origin name
-                print("v", typ, vars(typ))
                 generic_origin = typ.__origin__
                 name = generic_origin.__name__
             else:
