@@ -16,7 +16,7 @@ import sys
 import typing
 from logging import getLogger
 from pathlib import Path
-from typing import Generic, TypeVar
+from typing import TypeVar
 from unittest import mock
 
 import sigtools.specifiers  # type: ignore
@@ -43,25 +43,6 @@ def generic_copy_with_args(specific_type, new_args):
         # instead of changing it into `collections.abc.Iterator`
         return specific_type.copy_with(new_args)
     return typing.get_origin(specific_type)[new_args]
-
-
-class ReprObj:
-    # Hacky repr passthrough object so we can pass verbatim type annotations as partial arguments
-    # to generic and have them render correctly through `repr()`, used by inspect.Signature etc.
-    def __init__(self, repr: str):
-        assert isinstance(repr, str), f"{repr} is not a string!"
-        self._repr = repr
-
-    def __repr__(self):
-        return self._repr
-
-    def __str__(self):
-        return self._repr
-
-    def __call__(self):
-        # being a callable gets around some generic's automatic type checking of provided types
-        # otherwise we get errors like `provided argument is not a type`
-        pass
 
 
 def add_prefix_arg(arg_name, remove_args=0):
@@ -162,6 +143,22 @@ def safe_get_args(annotation):
 
     return args
 
+def get_specific_generic_name(annotation):
+    """get the name of the generic type of a "specific" type (with args)
+    e.g.
+    >>> get_specific_generic_name(typing.List[str])
+    "List"
+    """
+    if hasattr(annotation, "__name__"):
+        # this works on new pythons
+        return annotation.__name__
+    elif hasattr(annotation, "_name") and annotation._name is not None:
+        # fallback for older Python (at least 3.8)
+        return annotation._name
+    else:
+        # also an old python
+        return get_specific_generic_name(annotation.__origin__)
+
 
 class StubEmitter:
     def __init__(self, target_module):
@@ -211,7 +208,7 @@ class StubEmitter:
     def add_function(self, func, name, indentation_level=0):
         # adds function source code to module
         if isinstance(func, FunctionWithAio):
-            # since the original function signature lacks the "self" argument of the "synthetic" Protocol, we inject it
+            # this is a synchronicity-emitted replacement function/method for an originally async function
             self.parts.append(self._get_dual_function_source(func, name, indentation_level))
         else:
             self.parts.append(self._get_function_source_with_overloads(func, name, indentation_level))
@@ -232,9 +229,8 @@ class StubEmitter:
 
             retranslated_bases = []
             for impl_base in impl_bases:
-                retranslated_bases.append(
-                    self._translate_annotation(impl_base, synchronizer, target_interface, cls.__module__)
-                )
+                wrapped_base = self._translate_annotation(impl_base, synchronizer, target_interface, cls.__module__)
+                retranslated_bases.append(wrapped_base)
 
             return tuple(retranslated_bases)
 
@@ -468,9 +464,9 @@ class StubEmitter:
 
         if module == self.target_module:
             if not hasattr(typ, "__name__"):
-                # weird special case with Generic subclasses in the target module...
+                # weird special case with Generic subclasses in the target module
+                # fall back to the origin name
                 generic_origin = typ.__origin__
-                assert issubclass(generic_origin, Generic)  # noqa
                 name = generic_origin.__name__
             else:
                 name = typ.__name__
@@ -594,15 +590,14 @@ class StubEmitter:
             "typing",
             "collections.abc",
             "contextlib",
+            "builtins",
         ):  # don't translate built in generics in type annotations, even if they have been synchronicity wrapped
             # for base-class compatibility (e.g. AsyncContextManager, typing.Generic), otherwise it will break typing
             translated_origin = self._translate_annotation(origin, synchronizer, interface, home_module)
-            if translated_origin is not origin:
-                # special case for synchronicity-translated generics,
-                # due to synchronicitys wrappers not being valid generics
-                # kind of ugly as it returns a string representation rather than a type...
-                str_args = ", ".join(self._formatannotation(arg) for arg in mapped_args)
-                return ReprObj(f"{self._formatannotation(translated_origin)}[{str_args}]")
+            t = translated_origin[mapped_args]
+            # This ensures that the translated origin is preserved in case of a wrapped generic base:
+            t.__origin__ = translated_origin
+            return translated_origin[mapped_args]
 
         return generic_copy_with_args(type_annotation, mapped_args)
 
@@ -650,15 +645,15 @@ class StubEmitter:
             )
 
         sig = sig.replace(parameters=new_parameters)
+
         if transform_signature:
             sig = transform_signature(sig)
-
-        # kind of ugly, but this ensures valid formatting of Generics etc, see docstring above
+        # kind of ugly, but this ensures valid formatting of Generics etc, see docstring above and _formatannotation
         with mock.patch("inspect.formatannotation", self._formatannotation):
             return str(sig)
 
     def _get_var_annotation(self, name, annotation):
-        # TODO: how to translate annotation here - we don't know the
+        # TODO: how to translate annotation here - we don't know the home module
         self._register_imports(annotation)
         return f"{name}: {self._formatannotation(annotation, None)}"
 
@@ -666,12 +661,8 @@ class StubEmitter:
         """modified version of `inspect.formatannotations`
         * Uses verbatim `None` instead of `NoneType` for None-arguments in generic types
         * Doesn't omit `typing.`-module from qualified imports in type names
-        * recurses through generic types using ReprObj wrapper
         * ignores base_module (uses self.target_module instead)
         """
-
-        assert base_module is None  # inspect.Signature isn't generally using the base_module arg afaik
-
         origin = getattr(annotation, "__origin__", None)
         assert not isinstance(annotation, typing.ForwardRef)  # Forward refs should already have been evaluated!
         args = safe_get_args(annotation)
@@ -705,31 +696,31 @@ class StubEmitter:
                 subargs = ",".join([self._formatannotation(arg) for arg in annotation])
                 return f"[{subargs}]"
             return repr(annotation)
+
         # generic:
-        try:
-            formatted_args = []
-            for arg in args:
-                formatted_args.append(ReprObj(self._formatannotation(arg)))
+        origin_name = get_specific_generic_name(annotation)
 
-            if origin is collections.abc.Callable:
-                # special case for dealing with the first argument sometimes getting recast to a list when it shouldn't
+        if (annotation.__module__, origin_name) == ("typing", "Optional"):
+            # typing.Optional adds a None argument that we shouldn't include when formatting
+            (optional_arg,) = [a for a in args if a is not type(None)]
+            comma_separated_args = self._formatannotation(optional_arg)
+        else:
+            formatted_args = [self._formatannotation(a) for a in args]
+            comma_separated_args = ", ".join(formatted_args)
 
-                argstr = ", ".join(repr(a) for a in formatted_args)
-                formatted_annotation = f"typing.Callable[{argstr}]"
-            else:
-                formatted_annotation = str(generic_copy_with_args(annotation, tuple(formatted_args)))
-        except Exception:
-            raise Exception(f"Could not reformat generic {annotation.__origin__} with arguments {args}")
+        if annotation.__module__ in ("typing", "contextlib") and origin_name.startswith("Abstract"):
+            # This is needed for Python <=3.8 where there is a bug (?) in the typing.AsyncContextManager
+            # causing it to be represented with the non-existent name typing.AbstractContextManager
+            # >>> typing.AsyncContextManager
+            # typing.AbstractAsyncContextManager
+            origin_name = origin_name[len("Abstract") :]  # cut the "Abstract"
 
-        formatted_annotation = formatted_annotation.replace(
-            "typing.Abstract", "typing."
-        )  # fix for Python 3.7 formatting typing.AsyncContextManager as 'typing.AbstractContextManager' etc.
-        # this is a bit ugly, but gets rid of incorrect module qualification of Generic subclasses:
-        # TODO: find a better way...
+        if annotation.__module__ not in ("builtins", self.target_module):
+            # need to qualify the module of the origin
+            origin_module = annotation.__module__
+            origin_name = f"{origin_module}.{origin_name}"
 
-        if formatted_annotation.startswith(self.target_module + "."):
-            return formatted_annotation.split(self.target_module + ".", 1)[1]
-        return formatted_annotation
+        return f"{origin_name}[{comma_separated_args}]"
 
     def _indent(self, level):
         return level * self._indentation
