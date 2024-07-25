@@ -238,7 +238,7 @@ class StubEmitter:
             bases.append(self._translate_global_annotation(b, cls))
         return bases
 
-    def add_class(self, cls, name):
+    def add_class(self, cls, name) -> None:
         self.global_types.add(name)
 
         if issubclass(cls, enum.Enum):
@@ -583,7 +583,7 @@ class StubEmitter:
             if origin == collections.abc.Coroutine:
                 return mapped_args[2]
 
-        # first see if the generic itself needs translation
+        # first see if the generic itself needs translation (in case of wrapped custom generics)
         if origin.__module__ not in (
             "typing",
             "collections.abc",
@@ -592,7 +592,7 @@ class StubEmitter:
         ):  # don't translate built in generics in type annotations, even if they have been synchronicity wrapped
             # for base-class compatibility (e.g. AsyncContextManager, typing.Generic), otherwise it will break typing
             translated_origin = self._translate_annotation(origin, synchronizer, interface, home_module)
-            t = translated_origin[mapped_args]  # this seems to fall back to the __class_getitem__ of the base
+            t = translated_origin[mapped_args]  # type: ignore  # this seems to fall back to the __class_getitem__ of the implementation class
             # In order to get the right origin and args on the output, we manuall have to assign them:
             # TODO: We could probably fix this in the synchronicity layer by making wrapped generics true generics, or
             #  hackily by not letting __class_getitem__ proxy to the wrapped class' method for custom generics
