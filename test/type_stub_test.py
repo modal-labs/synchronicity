@@ -544,21 +544,24 @@ def test_collections_iterator():
 
 
 U = typing.TypeVar("U")
+
+
 class _ReturnVal(typing.Generic[U]):
     pass
 
+
 ReturnVal = synchronizer.create_blocking(_ReturnVal, "ReturnVal", __name__)
+
 
 def test_returns_forward_wrapped_generic():
     # forward reference of a wrapped generic as a string is one of the trickier cases to handle
-    # as the string needs to be evaluated, the generics need to be recursively expanded and 
+    # as the string needs to be evaluated, the generics need to be recursively expanded and
     # type vars need to be replaced with "inner" generated versions
 
     class _Container(typing.Generic[T]):
         async def fun(self) -> "ReturnVal[T]":
             return ReturnVal()
 
-        
     Container = synchronizer.create_blocking(_Container, "Container")
 
     src = _class_source(Container)

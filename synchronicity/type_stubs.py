@@ -110,9 +110,7 @@ def _get_type_vars(typ, synchronizer, home_module):
             try:
                 typ = evaluated_annotation(typ, declaration_module=home_module)
             except Exception:
-                logger.exception(
-                    f"Error when evaluating {typ} in {home_module}. Falling back to string typ"
-                )
+                logger.exception(f"Error when evaluating {typ} in {home_module}. Falling back to string typ")
                 return ret
             return _get_type_vars(typ, synchronizer, home_module)
     return ret
@@ -141,6 +139,7 @@ def safe_get_args(annotation):
             args = (args[0][0],) + args[1:]
 
     return args
+
 
 def get_specific_generic_name(annotation):
     """get the name of the generic type of a "specific" type (with args)
