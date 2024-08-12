@@ -5,12 +5,10 @@ import time
 from synchronicity import Synchronizer
 
 
-def test_start_loop():
+def test_start_loop(synchronizer):
     # Make sure there's no race condition in _start_loop
-    s = Synchronizer()
-
     with concurrent.futures.ThreadPoolExecutor() as executor:
-        ret = list(executor.map(lambda i: s._start_loop(), range(1000)))
+        ret = list(executor.map(lambda i: synchronizer._start_loop(), range(1000)))
 
     assert len(set(ret)) == 1
     assert isinstance(ret[0], asyncio.AbstractEventLoop)
@@ -21,10 +19,8 @@ async def f(i):
     return i**2
 
 
-def test_multithreaded(n_threads=20):
-    s = Synchronizer()
-
-    f_s = s.create_blocking(f)
+def test_multithreaded(synchronizer, n_threads=20):
+    f_s = synchronizer.create_blocking(f)
 
     t0 = time.time()
     with concurrent.futures.ThreadPoolExecutor(max_workers=n_threads) as executor:

@@ -41,7 +41,7 @@ def test_check_double_wrapped(recwarn, synchronizer):
     assert len(recwarn) == 0
     ret = synchronizer.create_blocking(returns_asyncgen)()
     assert inspect.isasyncgen(ret)
-    assert len(recwarn) == 1
-
     for w in recwarn.list:
         print("Recorded warning:", w)
+
+    assert len(recwarn) == 1
