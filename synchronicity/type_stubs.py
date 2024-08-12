@@ -166,6 +166,7 @@ class StubEmitter:
         self._indentation = "    "
         self.global_types = set()
         self.referenced_global_types = set()
+        self._typevar_inner_replacements = {}
 
     @classmethod
     def from_module(cls, module):
@@ -382,8 +383,8 @@ class StubEmitter:
 
     def _prepare_method_generic_type_vars(self, entity, parent_generic_type_vars):
         # Check any Generic TypeVar/ParamSpec used in the class x method, in order to
-        # create a new type var for the protocol itself, since a namespaced class can't use the
-        # generic type vars of its "namespace class" directly. This will roughly translate to:
+        # create a new type var for the protocol itself, since a "namespaced class" can't use the
+        # generic type vars of its "parent class" directly. This will roughly translate to:
         # T = TypeVar("T")
         # T_INNER = TypeVar("T_INNER")
         # class Foo(Generic[T]):
@@ -394,24 +395,26 @@ class StubEmitter:
         #     method: Method[T]
         func_type_vars = _get_func_type_vars(entity._func, entity._synchronizer)
         typevar_overlap = parent_generic_type_vars & func_type_vars
-        typevar_replacements = {}  # TODO: use StubEmitter.translate_annotations?
+
         for tvar in typevar_overlap:
+            if tvar in self._typevar_inner_replacements:
+                continue
             replacement_typevar_name = tvar.__name__ + "_INNER"
             if isinstance(tvar, typing_extensions.ParamSpec):
                 new_tvar = typing_extensions.ParamSpec(replacement_typevar_name)  # type: ignore
             else:
                 new_tvar = typing.TypeVar(replacement_typevar_name, covariant=True)  # type: ignore
             new_tvar.__module__ = self.target_module  # avoid referencing synchronicity.type_stubs
-            typevar_replacements[tvar] = new_tvar
+            self._typevar_inner_replacements[tvar] = new_tvar
             self.add_type_var(new_tvar, replacement_typevar_name)  # type: ignore
         if typevar_overlap:
             instance_argstr = ", ".join(tvar.__name__ for tvar in typevar_overlap)
             parent_type_var_names_spec = f"[{instance_argstr}]"
-            declaration_argstr = ", ".join(typevar_replacements[tvar].__name__ for tvar in typevar_overlap)
+            declaration_argstr = ", ".join(self._typevar_inner_replacements[tvar].__name__ for tvar in typevar_overlap)
             protocol_declaration_type_var_spec = f"[{declaration_argstr}]"
 
             # recursively replace any used type vars in the function annotation with newly created
-            transform_signature = replace_type_vars(typevar_replacements)
+            transform_signature = replace_type_vars(self._typevar_inner_replacements)
         else:
             parent_type_var_names_spec = ""
             protocol_declaration_type_var_spec = ""
