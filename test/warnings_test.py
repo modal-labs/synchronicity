@@ -44,4 +44,4 @@ def test_check_double_wrapped(recwarn, synchronizer):
     assert len(recwarn) == 1
 
     for w in recwarn.list:
-        print(w)
+        print("Recorded warning:", w)
