@@ -2,8 +2,6 @@ import asyncio
 import concurrent.futures
 import time
 
-from synchronicity import Synchronizer
-
 
 def test_start_loop(synchronizer):
     # Make sure there's no race condition in _start_loop

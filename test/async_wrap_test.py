@@ -1,7 +1,6 @@
 import inspect
 import typing
 
-import synchronicity
 from synchronicity import Interface, async_wrap
 from synchronicity.async_wrap import wraps_by_interface
 from synchronicity.synchronizer import FunctionWithAio

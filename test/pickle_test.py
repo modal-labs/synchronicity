@@ -1,7 +1,7 @@
 import pickle
 import pytest
 
-from synchronicity import Interface, Synchronizer
+from synchronicity import Interface
 
 
 class PicklableClass:

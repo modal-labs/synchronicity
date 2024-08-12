@@ -2,8 +2,6 @@ import pytest
 import sys
 from contextlib import asynccontextmanager
 
-from synchronicity import Synchronizer
-
 
 async def noop():
     pass
