@@ -1,13 +1,10 @@
 [project]
 name = "synchronicity"
-version = "0.6.7"
+version = "0.7.0"
 description = "Export blocking and async library versions from a single async implementation"
 readme = "README.md"
 
-dependencies = [
-    "sigtools==4.0.1",
-    "typing_extensions>=4.6",
-]
+dependencies = ["sigtools==4.0.1", "typing_extensions>=4.6"]
 requires-python = ">=3.8"
 
 [build-system]
@@ -26,7 +23,5 @@ select = ['E', 'F', 'W', 'I']
 
 [tool.ruff.lint.isort]
 combine-as-imports = true
-known-first-party = [
-    "synchronicity",
-]
+known-first-party = ["synchronicity"]
 extra-standard-library = ["pytest"]
