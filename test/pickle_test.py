@@ -1,7 +1,7 @@
 import pickle
 import pytest
 
-from synchronicity import Interface, Synchronizer
+from synchronicity import Interface
 
 
 class PicklableClass:
@@ -10,9 +10,8 @@ class PicklableClass:
 
 
 @pytest.mark.skip(reason="Let's revisit this in 0.2.0")
-def test_pickle():
-    s = Synchronizer()
-    BlockingPicklableClass = s.create(PicklableClass, Interface.BLOCKING)
+def test_pickle(synchronizer):
+    BlockingPicklableClass = synchronizer.create(PicklableClass, Interface.BLOCKING)
     obj = BlockingPicklableClass()
     assert obj.f(42) == 1764
     data = pickle.dumps(obj)
@@ -20,6 +19,5 @@ def test_pickle():
     assert obj2.f(43) == 1849
 
 
-def test_pickle_synchronizer():
-    s = Synchronizer()
-    pickle.dumps(s)
+def test_pickle_synchronizer(synchronizer):
+    pickle.dumps(synchronizer)

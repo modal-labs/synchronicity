@@ -1,8 +1,6 @@
 import pytest
 import traceback
 
-from synchronicity import Synchronizer
-
 
 class CustomException(Exception):
     pass
@@ -36,26 +34,23 @@ def check_traceback(exc):
         raise Exception(f"Got {n_outside} frames outside user code, expected 1")
 
 
-def test_sync_to_async():
-    s = Synchronizer()
-    f_s = s.create_blocking(f)
+def test_sync_to_async(synchronizer):
+    f_s = synchronizer.create_blocking(f)
     with pytest.raises(CustomException) as excinfo:
         f_s()
     check_traceback(excinfo.value)
 
 
 @pytest.mark.asyncio
-async def test_async_to_async():
-    s = Synchronizer()
-    f_s = s.create_async(f)
+async def test_async_to_async(synchronizer):
+    f_s = synchronizer.create_async(f)
     with pytest.raises(CustomException) as excinfo:
         await f_s()
     check_traceback(excinfo.value)
 
 
-def test_sync_to_async_gen():
-    s = Synchronizer()
-    gen_s = s.create_blocking(gen)
+def test_sync_to_async_gen(synchronizer):
+    gen_s = synchronizer.create_blocking(gen)
     with pytest.raises(CustomException) as excinfo:
         for x in gen_s():
             pass
@@ -63,9 +58,8 @@ def test_sync_to_async_gen():
 
 
 @pytest.mark.asyncio
-async def test_async_to_async_gen():
-    s = Synchronizer()
-    gen_s = s.create_async(gen)
+async def test_async_to_async_gen(synchronizer):
+    gen_s = synchronizer.create_async(gen)
     with pytest.raises(CustomException) as excinfo:
         async for x in gen_s():
             pass
@@ -73,9 +67,8 @@ async def test_async_to_async_gen():
 
 
 @pytest.mark.skip(reason="This one will be much easier to fix once AUTODETECT is gone")
-def test_sync_to_async_ctx_mgr():
-    s = Synchronizer()
-    ctx_mgr = s.create_blocking(s.asynccontextmanager(gen))
+def test_sync_to_async_ctx_mgr(synchronizer):
+    ctx_mgr = synchronizer.create_blocking(synchronizer.asynccontextmanager(gen))
     with pytest.raises(CustomException) as excinfo:
         with ctx_mgr():
             pass
@@ -84,18 +77,15 @@ def test_sync_to_async_ctx_mgr():
 
 @pytest.mark.skip(reason="This one will be much easier to fix once AUTODETECT is gone")
 @pytest.mark.asyncio
-async def test_async_to_async_ctx_mgr():
-    s = Synchronizer()
-    ctx_mgr = s.create_async(s.asynccontextmanager(gen))
+async def test_async_to_async_ctx_mgr(synchronizer):
+    ctx_mgr = synchronizer.create_async(synchronizer.asynccontextmanager(gen))
     with pytest.raises(CustomException) as excinfo:
         async with ctx_mgr():
             pass
     check_traceback(excinfo.value)
 
 
-def test_recursive():
-    s = Synchronizer()
-
+def test_recursive(synchronizer):
     async def f(n):
         if n == 0:
             raise CustomException("boom!")
@@ -103,6 +93,6 @@ def test_recursive():
             return await f(n - 1)
 
     with pytest.raises(CustomException) as excinfo:
-        f_blocking = s.create_blocking(f)
+        f_blocking = synchronizer.create_blocking(f)
         f_blocking(10)
     check_traceback(excinfo.value)

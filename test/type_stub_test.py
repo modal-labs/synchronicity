@@ -6,6 +6,8 @@ import sys
 import typing
 from textwrap import dedent
 
+import typing_extensions
+
 import synchronicity
 from synchronicity import overload_tracking
 from synchronicity.async_wrap import asynccontextmanager
@@ -334,13 +336,17 @@ def test_synchronicity_class():
 
 
 T = typing.TypeVar("T")
+P = typing_extensions.ParamSpec("P")
+
+
+Translated_T = synchronizer.create_blocking(T, "Translated_T", __name__)
+Translated_P = synchronizer.create_blocking(P, "Translated_P", __name__)
 
 
 class MyGeneric(typing.Generic[T]):
     ...
 
 
-BlockingGeneric = synchronizer.create_blocking(typing.Generic, "BlockingGeneric", __name__)
 BlockingMyGeneric = synchronizer.create_blocking(
     MyGeneric,
     "BlockingMyGeneric",
@@ -350,11 +356,35 @@ BlockingMyGeneric = synchronizer.create_blocking(
 
 def test_custom_generic():
     # TODO: build out this test a bit, as it currently creates an invalid stub (missing base types)
+    src = _class_source(BlockingMyGeneric)
+
     class Specific(MyGeneric[str]):
         ...
 
     src = _class_source(Specific)
     assert "class Specific(MyGeneric[str]):" in src
+
+
+class ParamSpecGeneric(typing.Generic[P, T]):
+    async def meth(self, *args: P.args, **kwargs: P.kwargs):
+        ...
+
+    def syncfunc(self) -> T:
+        ...
+
+
+BlockingParamSpecGeneric = synchronizer.create_blocking(ParamSpecGeneric, "BlockingParamSpecGeneric", __name__)
+
+
+def test_paramspec_generic():
+    src = _class_source(BlockingParamSpecGeneric)
+    assert "class BlockingParamSpecGeneric(typing.Generic[Translated_P, Translated_T])" in src
+
+    assert "class __meth_spec(typing_extensions.Protocol[Translated_P_INNER]):" in src
+    assert "def __call__(self, *args: Translated_P_INNER.args, **kwargs: Translated_P_INNER.kwargs)" in src
+    assert "def aio(self, *args: Translated_P_INNER.args, **kwargs: Translated_P_INNER.kwargs)" in src
+    assert "meth: __meth_spec[Translated_P]" in src
+    assert "def syncfunc(self) -> Translated_T:" in src
 
 
 def test_synchronicity_generic_subclass():
@@ -422,12 +452,30 @@ def test_literal_alias(tmp_path):
     assert "bar = typing.Literal['bar']" in src
 
 
+def test_callable():
+    def foo() -> typing.Callable[[str], float]:
+        return lambda x: 0.0
+
+    src = _function_source(foo)
+    assert "-> typing.Callable[[str], float]" in src
+
+
 def test_ellipsis():
     def foo() -> typing.Callable[..., typing.Any]:
         return lambda x: 0
 
     src = _function_source(foo)
     assert "-> typing.Callable[..., typing.Any]" in src
+
+
+def test_param_spec():
+    P = typing_extensions.ParamSpec("P")
+
+    def foo() -> typing.Callable[P, typing.Any]:
+        return lambda x: 0
+
+    src = _function_source(foo)
+    assert "-> typing.Callable[P, typing.Any]" in src
 
 
 def test_typing_literal():
@@ -493,3 +541,34 @@ def test_collections_iterator():
 
     src = _function_source(foo)
     assert "-> collections.abc.Iterator[int]" in src
+
+
+U = typing.TypeVar("U")
+
+
+class _ReturnVal(typing.Generic[U]):
+    pass
+
+
+ReturnVal = synchronizer.create_blocking(_ReturnVal, "ReturnVal", __name__)
+
+
+def test_returns_forward_wrapped_generic():
+    # forward reference of a wrapped generic as a string is one of the trickier cases to handle
+    # as the string needs to be evaluated, the generics need to be recursively expanded and
+    # type vars need to be replaced with "inner" generated versions
+
+    class _Container(typing.Generic[T]):
+        async def fun(self) -> "ReturnVal[T]":
+            return ReturnVal()
+
+    Container = synchronizer.create_blocking(_Container, "Container")
+
+    src = _class_source(Container)
+
+    # base class should be generic in the (potentially) translated type var (could have wrapped bounds spec)
+    assert "class Container(typing.Generic[Translated_T]):" in src
+    assert "Translated_T_INNER = typing.TypeVar" in src  # distinct "inner copy" of Translated_T needs to be declared
+    assert "typing_extensions.Protocol[Translated_T_INNER]" in src
+    assert "def __call__(self) -> ReturnVal[Translated_T_INNER]:" in src
+    assert "fun: __fun_spec[Translated_T]" in src

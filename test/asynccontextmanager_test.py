@@ -2,8 +2,6 @@ import pytest
 import sys
 from contextlib import asynccontextmanager
 
-from synchronicity import Synchronizer
-
 
 async def noop():
     pass
@@ -11,9 +9,6 @@ async def noop():
 
 async def error():
     raise Exception("problem")
-
-
-s = Synchronizer()
 
 
 class Resource:
@@ -42,8 +37,8 @@ class Resource:
             yield
 
 
-def test_asynccontextmanager_sync():
-    r = s.create_blocking(Resource)()
+def test_asynccontextmanager_sync(synchronizer):
+    r = synchronizer.create_blocking(Resource)()
     assert r.get_state() == "none"
     with r.wrap():
         assert r.get_state() == "entered"
@@ -51,8 +46,8 @@ def test_asynccontextmanager_sync():
 
 
 @pytest.mark.asyncio
-async def test_asynccontextmanager_async():
-    r = s.create_async(Resource)()
+async def test_asynccontextmanager_async(synchronizer):
+    r = synchronizer.create_async(Resource)()
     assert r.get_state() == "none"
     async with r.wrap():
         assert r.get_state() == "entered"
@@ -60,8 +55,8 @@ async def test_asynccontextmanager_async():
 
 
 @pytest.mark.asyncio
-async def test_asynccontextmanager_async_raise():
-    r = s.create_async(Resource)()
+async def test_asynccontextmanager_async_raise(synchronizer):
+    r = synchronizer.create_async(Resource)()
     assert r.get_state() == "none"
     with pytest.raises(Exception):
         async with r.wrap():
@@ -71,27 +66,26 @@ async def test_asynccontextmanager_async_raise():
 
 
 @pytest.mark.asyncio
-async def test_asynccontextmanager_yield_twice():
-    r = s.create_async(Resource)()
+async def test_asynccontextmanager_yield_twice(synchronizer):
+    r = synchronizer.create_async(Resource)()
     with pytest.raises(RuntimeError):
         async with r.wrap_yield_twice():
             pass
 
 
 @pytest.mark.asyncio
-async def test_asynccontextmanager_never_yield():
-    r = s.create_async(Resource)()
+async def test_asynccontextmanager_never_yield(synchronizer):
+    r = synchronizer.create_async(Resource)()
     with pytest.raises(RuntimeError):
         async with r.wrap_never_yield():
             pass
 
 
 @pytest.mark.asyncio
-async def test_asynccontextmanager_nested():
-    s = Synchronizer()
+async def test_asynccontextmanager_nested(synchronizer):
     finally_blocks = []
 
-    @s.create_async
+    @synchronizer.create_async
     @asynccontextmanager
     async def a():
         try:
@@ -99,7 +93,7 @@ async def test_asynccontextmanager_nested():
         finally:
             finally_blocks.append("A")
 
-    @s.create_async
+    @synchronizer.create_async
     @asynccontextmanager
     async def b():
         async with a() as it:
@@ -116,8 +110,8 @@ async def test_asynccontextmanager_nested():
 
 
 @pytest.mark.asyncio
-async def test_asynccontextmanager_with_in_async():
-    r = s.create_async(Resource)()
+async def test_asynccontextmanager_with_in_async(synchronizer):
+    r = synchronizer.create_async(Resource)()
     err_cls = AttributeError if sys.version_info < (3, 11) else TypeError
     with pytest.raises(err_cls):
         with r.wrap():

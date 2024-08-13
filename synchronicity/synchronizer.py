@@ -10,6 +10,8 @@ import typing
 import warnings
 from typing import ForwardRef, Optional
 
+import typing_extensions
+
 from synchronicity.annotations import evaluated_annotation
 from synchronicity.combined_types import FunctionWithAio, MethodWithAio
 
@@ -130,6 +132,10 @@ class Synchronizer:
         self.create_async(self._ctx_mgr_cls)
         self.create_blocking(self._ctx_mgr_cls)
 
+        # TODO: ugly, remove this and the whole require_already_wrapped:
+
+        self.create_blocking(typing.Generic, "WrappedGeneric", __name__)
+
         atexit.register(self._close_loop)
 
     _PICKLE_ATTRS = [
@@ -179,6 +185,9 @@ class Synchronizer:
                 self._loop.call_soon_threadsafe(self._stopping.set)
             self._thread.join()
             self._thread = None
+
+    def __del__(self):
+        self._close_loop()
 
     def _get_loop(self, start=False):
         if self._loop is None and start:
@@ -258,7 +267,7 @@ class Synchronizer:
                 return cls_dct[self._wrapped_attr][interface]
             else:
                 return obj
-        elif isinstance(obj, typing.TypeVar):
+        elif isinstance(obj, (typing.TypeVar, typing_extensions.ParamSpec)):
             if hasattr(obj, self._wrapped_attr):
                 return getattr(obj, self._wrapped_attr)[interface]
             else:
@@ -692,6 +701,8 @@ class Synchronizer:
             )
         elif inspect.isfunction(obj):
             new_obj = self._wrap_callable(obj, interface, name, target_module=target_module)
+        elif isinstance(obj, typing_extensions.ParamSpec):
+            new_obj = self._wrap_param_spec(obj, interface, name, target_module)
         elif isinstance(obj, typing.TypeVar):
             new_obj = self._wrap_type_var(obj, interface, name, target_module)
         elif self._wrapped_attr in obj.__class__.__dict__:
@@ -713,6 +724,18 @@ class Synchronizer:
 
         # TODO(elias): Refactor - since this isn't used for live apps, move type stub generation into genstub
         new_obj = typing.TypeVar(name, bound=obj.__bound__)  # noqa
+        setattr(new_obj, self._original_attr, obj)
+        setattr(new_obj, SYNCHRONIZER_ATTR, self)
+        setattr(new_obj, TARGET_INTERFACE_ATTR, interface)
+        new_obj.__module__ = target_module
+        if not hasattr(obj, self._wrapped_attr):
+            setattr(obj, self._wrapped_attr, {})
+        getattr(obj, self._wrapped_attr)[interface] = new_obj
+        return new_obj
+
+    def _wrap_param_spec(self, obj, interface, name, target_module):
+        # TODO(elias): Refactor - since this isn't used for live apps, move type stub generation into genstub
+        new_obj = typing_extensions.ParamSpec(name)  # noqa
         setattr(new_obj, self._original_attr, obj)
         setattr(new_obj, SYNCHRONIZER_ATTR, self)
         setattr(new_obj, TARGET_INTERFACE_ATTR, interface)

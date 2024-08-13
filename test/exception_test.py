@@ -4,8 +4,6 @@ import inspect
 import pytest
 import time
 
-from synchronicity import Synchronizer
-
 SLEEP_DELAY = 0.1
 
 
@@ -18,19 +16,17 @@ async def f_raises():
     raise CustomException("something failed")
 
 
-def test_function_raises_sync():
-    s = Synchronizer()
+def test_function_raises_sync(synchronizer):
     t0 = time.time()
     with pytest.raises(CustomException):
-        f_raises_s = s.create_blocking(f_raises)
+        f_raises_s = synchronizer.create_blocking(f_raises)
         f_raises_s()
     assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
 
 
-def test_function_raises_sync_futures():
-    s = Synchronizer()
+def test_function_raises_sync_futures(synchronizer):
     t0 = time.time()
-    f_raises_s = s.create_blocking(f_raises)
+    f_raises_s = synchronizer.create_blocking(f_raises)
     fut = f_raises_s(_future=True)
     assert isinstance(fut, concurrent.futures.Future)
     assert time.time() - t0 < SLEEP_DELAY
@@ -40,10 +36,9 @@ def test_function_raises_sync_futures():
 
 
 @pytest.mark.asyncio
-async def test_function_raises_async():
-    s = Synchronizer()
+async def test_function_raises_async(synchronizer):
     t0 = time.time()
-    f_raises_s = s.create_async(f_raises)
+    f_raises_s = synchronizer.create_async(f_raises)
     coro = f_raises_s()
     assert inspect.iscoroutine(coro)
     assert time.time() - t0 < SLEEP_DELAY
@@ -57,11 +52,10 @@ async def f_raises_baseexc():
     raise KeyboardInterrupt
 
 
-def test_function_raises_baseexc_sync():
-    s = Synchronizer()
+def test_function_raises_baseexc_sync(synchronizer):
     t0 = time.time()
     with pytest.raises(BaseException):
-        f_raises_baseexc_s = s.create_blocking(f_raises_baseexc)
+        f_raises_baseexc_s = synchronizer.create_blocking(f_raises_baseexc)
         f_raises_baseexc_s()
     assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
 
@@ -71,10 +65,9 @@ def f_raises_syncwrap():
 
 
 @pytest.mark.asyncio
-async def test_function_raises_async_syncwrap():
-    s = Synchronizer()
+async def test_function_raises_async_syncwrap(synchronizer):
     t0 = time.time()
-    f_raises_syncwrap_s = s.create_async(f_raises_syncwrap)
+    f_raises_syncwrap_s = synchronizer.create_async(f_raises_syncwrap)
     coro = f_raises_syncwrap_s()
     assert inspect.iscoroutine(coro)
     assert time.time() - t0 < SLEEP_DELAY

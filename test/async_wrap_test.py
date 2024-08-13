@@ -1,7 +1,6 @@
 import inspect
 import typing
 
-import synchronicity
 from synchronicity import Interface, async_wrap
 from synchronicity.async_wrap import wraps_by_interface
 from synchronicity.synchronizer import FunctionWithAio
@@ -37,7 +36,7 @@ def test_wrap_asynccontextmanager_annotations():
     assert foo.__annotations__["return"] == typing.AsyncContextManager[int]
 
 
-def test_wrap_staticmethod():
+def test_wrap_staticmethod(synchronizer):
     class Foo:
         @staticmethod
         async def a_static_method() -> typing.Awaitable[str]:
@@ -46,7 +45,6 @@ def test_wrap_staticmethod():
 
             return wrapped()
 
-    synchronizer = synchronicity.Synchronizer()
     BlockingFoo = synchronizer.create_blocking(Foo)
     AsyncFoo = synchronizer.create_async(Foo)
 
