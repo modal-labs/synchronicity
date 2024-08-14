@@ -572,3 +572,20 @@ def test_returns_forward_wrapped_generic():
     assert "typing_extensions.Protocol[Translated_T_INNER]" in src
     assert "def __call__(self) -> ReturnVal[Translated_T_INNER]:" in src
     assert "fun: __fun_spec[Translated_T]" in src
+
+
+def custom_field():  # needs to be in global scope
+    pass
+
+
+def test_dataclass_transform():
+    @typing_extensions.dataclass_transform(field_specifiers=(custom_field,))
+    def decorator():
+        pass
+
+    src = _function_source(decorator)
+    assert "@typing_extensions.dataclass_transform(field_specifiers=(custom_field, ))\n" in src
+
+    src = _function_source(decorator, target_module="other_module")
+    assert "import test.type_stub_test" in src
+    assert "@typing_extensions.dataclass_transform(field_specifiers=(test.type_stub_test.custom_field, ))\n" in src
