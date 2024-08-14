@@ -1,5 +1,3 @@
-
-
 def test_docs(synchronizer):
     class Foo:
         def __init__(self):

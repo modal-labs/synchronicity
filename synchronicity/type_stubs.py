@@ -787,13 +787,13 @@ class StubEmitter:
             if dt_spec["field_specifiers"]:
                 refs = ""
                 for field_spec_entity in dt_spec["field_specifiers"]:
-                    if field_spec_entity.__module__ == self.target_module: 
+                    if field_spec_entity.__module__ == self.target_module:
                         ref = field_spec_entity.__qualname__
                     else:
                         self.imports.add(field_spec_entity.__module__)
                         ref = f"{field_spec_entity.__module__}.{field_spec_entity.__qualname__}"
                     refs += ref + ", "
-                    
+
                 args = f"field_specifiers=({refs})"
             maybe_decorators = f"{signature_indent}@typing_extensions.dataclass_transform({args})\n"
 
