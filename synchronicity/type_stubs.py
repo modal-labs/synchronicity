@@ -781,6 +781,22 @@ class StubEmitter:
         body_indent: str,
         transform_signature=None,
     ) -> str:
+        maybe_decorators = ""
+        if hasattr(func, "__dataclass_transform__"):
+            dt_spec = func.__dataclass_transform__
+            if dt_spec["field_specifiers"]:
+                refs = ""
+                for field_spec_entity in dt_spec["field_specifiers"]:
+                    if field_spec_entity.__module__ == self.target_module: 
+                        ref = field_spec_entity.__qualname__
+                    else:
+                        self.imports.add(field_spec_entity.__module__)
+                        ref = f"{field_spec_entity.__module__}.{field_spec_entity.__qualname__}"
+                    refs += ref + ", "
+                    
+                args = f"field_specifiers=({refs})"
+            maybe_decorators = f"{signature_indent}@typing_extensions.dataclass_transform({args})\n"
+
         async_prefix = ""
         if inspect.iscoroutinefunction(func):
             # note: async prefix should not be used for annotated abstract/stub *async generators*,
@@ -792,7 +808,7 @@ class StubEmitter:
 
         return "\n".join(
             [
-                f"{signature_indent}{async_prefix}def {name}{signature}:",
+                f"{maybe_decorators}{signature_indent}{async_prefix}def {name}{signature}:",
                 f"{body_indent}...",
                 "",
             ]
