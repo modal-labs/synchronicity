@@ -54,7 +54,6 @@ def safe_get_module(obj: typing.Any) -> typing.Optional[str]:
         return obj.__module__[1:]  # strip leading underscore
 
     return obj.__module__
-        
 
 
 def generic_copy_with_args(specific_type, new_args):
@@ -249,7 +248,9 @@ class StubEmitter:
 
             retranslated_bases = []
             for impl_base in impl_bases:
-                wrapped_base = self._translate_annotation(impl_base, synchronizer, target_interface, safe_get_module(cls))
+                wrapped_base = self._translate_annotation(
+                    impl_base, synchronizer, target_interface, safe_get_module(cls)
+                )
                 retranslated_bases.append(wrapped_base)
 
             return tuple(retranslated_bases)

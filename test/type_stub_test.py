@@ -594,6 +594,7 @@ def test_dataclass_transform():
 
 def test_contextvar():
     import contextvars
+
     s = StubEmitter("blah")
     s.add_variable(contextvars.ContextVar, "c")
     src = s.get_source()
