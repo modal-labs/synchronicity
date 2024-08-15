@@ -19,20 +19,20 @@ async def sleep_async(ms):
 async def test_blocking(synchronizer):
     sleep_cb = synchronizer.create_callback(sleep, Interface.BLOCKING)
     t0 = time.time()
-    coros = [sleep_cb(200), sleep_cb(300)]
+    coros = [sleep_cb(200), sleep_cb(300), sleep_cb(300), sleep_cb(300)]
     rets = await asyncio.gather(*coros)
-    assert rets == [200, 300]
-    assert 0.3 <= time.time() - t0 <= 0.4  # make sure they run in parallel
+    assert rets == [200, 300, 300, 300]
+    assert 0.3 <= time.time() - t0 < 0.5  # make sure they run in parallel
 
 
 @pytest.mark.asyncio
 async def test_async(synchronizer):
     sleep_cb = synchronizer.create_callback(sleep_async, Interface.ASYNC)
     t0 = time.time()
-    coros = [sleep_cb(200), sleep_cb(300)]
+    coros = [sleep_cb(200), sleep_cb(300), sleep_cb(300), sleep_cb(300)]
     rets = await asyncio.gather(*coros)
-    assert rets == [200, 300]
-    assert 0.3 <= time.time() - t0 <= 0.4
+    assert rets == [200, 300, 300, 300]
+    assert 0.3 <= time.time() - t0 <= 0.5
 
 
 @pytest.mark.asyncio
