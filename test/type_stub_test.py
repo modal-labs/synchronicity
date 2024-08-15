@@ -588,4 +588,5 @@ def test_dataclass_transform():
 
     src = _function_source(decorator, target_module="other_module")
     assert "import test.type_stub_test" in src
+    assert "import typing_extensions" in src
     assert "@typing_extensions.dataclass_transform(field_specifiers=(test.type_stub_test.custom_field, ))\n" in src

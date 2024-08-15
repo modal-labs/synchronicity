@@ -795,6 +795,7 @@ class StubEmitter:
                     refs += ref + ", "
 
                 args = f"field_specifiers=({refs})"
+            self.imports.add("typing_extensions")
             maybe_decorators = f"{signature_indent}@typing_extensions.dataclass_transform({args})\n"
 
         async_prefix = ""
