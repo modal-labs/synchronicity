@@ -590,3 +590,13 @@ def test_dataclass_transform():
     assert "import test.type_stub_test" in src
     assert "import typing_extensions" in src
     assert "@typing_extensions.dataclass_transform(field_specifiers=(test.type_stub_test.custom_field, ))\n" in src
+
+
+def test_contextvar():
+    import contextvars
+
+    s = StubEmitter("blah")
+    s.add_variable(contextvars.ContextVar, "c")
+    src = s.get_source()
+    assert "import contextvars" in src
+    assert "c: contextvars.ContextVar" in src

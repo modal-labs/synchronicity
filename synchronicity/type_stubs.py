@@ -9,6 +9,7 @@ Improvement Ideas:
 import collections
 import collections.abc
 import contextlib
+import contextvars
 import enum
 import importlib
 import inspect
@@ -34,6 +35,25 @@ from synchronicity.synchronizer import (
 )
 
 logger = getLogger(__name__)
+
+
+def safe_get_module(obj: typing.Any) -> typing.Optional[str]:
+    """Handles some special cases where obj.__module__ isn't correct or ugly
+
+    e.g. in Python 3.8 contextvars.ContextVar.__module__ == "builtins"
+    and in Python 3.11 contextvars.ContextVar.__module__ == "_contextvars"
+    and in emitted code it should *preferably* be "contextvars"
+    """
+    if obj == contextvars.ContextVar:
+        return "contextvars"
+
+    if not hasattr(obj, "__module__"):
+        return None
+
+    if obj.__module__ in ("_contextvars", "_asyncio"):
+        return obj.__module__[1:]  # strip leading underscore
+
+    return obj.__module__
 
 
 def generic_copy_with_args(specific_type, new_args):
@@ -118,7 +138,7 @@ def _get_type_vars(typ, synchronizer, home_module):
 
 def _get_func_type_vars(func, synchronizer: synchronicity.Synchronizer) -> typing.Set[type]:
     ret = set()
-    home_module = func.__module__
+    home_module = safe_get_module(func)
     for typ in getattr(func, "__annotations__", {}).values():
         ret |= _get_type_vars(typ, synchronizer, home_module)
     return ret
@@ -175,7 +195,7 @@ class StubEmitter:
         for entity_name, entity in module.__dict__.copy().items():
             if (
                 hasattr(entity, "__module__")
-                and entity.__module__ != module.__name__
+                and safe_get_module(entity) != module.__name__
                 and entity_name not in explicit_members
                 and typing.get_origin(entity) is not typing.Literal
             ):
@@ -186,7 +206,7 @@ class StubEmitter:
                 emitter.add_function(entity, entity_name, 0)
             elif isinstance(entity, (typing.TypeVar, typing_extensions.ParamSpec)):
                 emitter.add_type_var(entity, entity_name)
-            elif hasattr(entity, "__class__") and getattr(entity.__class__, "__module__", None) == module.__name__:
+            elif hasattr(entity, "__class__") and safe_get_module(entity.__class__) == module.__name__:
                 # instances of stuff
                 emitter.add_variable(entity.__class__, entity_name)
             elif typing.get_origin(entity) is typing.Literal:
@@ -228,7 +248,9 @@ class StubEmitter:
 
             retranslated_bases = []
             for impl_base in impl_bases:
-                wrapped_base = self._translate_annotation(impl_base, synchronizer, target_interface, cls.__module__)
+                wrapped_base = self._translate_annotation(
+                    impl_base, synchronizer, target_interface, safe_get_module(cls)
+                )
                 retranslated_bases.append(wrapped_base)
 
             return tuple(retranslated_bases)
@@ -458,7 +480,7 @@ class StubEmitter:
         # add import for a single type, non-recursive (See _register_imports)
         # also marks the type name as directly referenced if it's part of the target module
         # so we can sanity check
-        module = typ.__module__
+        module = safe_get_module(typ)
 
         if module not in (self.target_module, "builtins"):
             self.imports.add(module)
@@ -494,9 +516,9 @@ class StubEmitter:
         synchronicity_target_interface = getattr(source_class_or_function, TARGET_INTERFACE_ATTR, None)
         synchronizer = getattr(source_class_or_function, SYNCHRONIZER_ATTR, None)
         if synchronizer:
-            home_module = getattr(source_class_or_function, synchronizer._original_attr).__module__
+            home_module = safe_get_module(getattr(source_class_or_function, synchronizer._original_attr))
         else:
-            home_module = source_class_or_function.__module__
+            home_module = safe_get_module(source_class_or_function)
 
         return self._translate_annotation(annotation, synchronizer, synchronicity_target_interface, home_module)
 
@@ -587,7 +609,7 @@ class StubEmitter:
                 return mapped_args[2]
 
         # first see if the generic itself needs translation (in case of wrapped custom generics)
-        if origin.__module__ not in (
+        if safe_get_module(origin) not in (
             "typing",
             "collections.abc",
             "contextlib",
@@ -599,7 +621,7 @@ class StubEmitter:
             # In order to get the right origin and args on the output, we manuall have to assign them:
             # TODO: We could probably fix this in the synchronicity layer by making wrapped generics true generics, or
             #  hackily by not letting __class_getitem__ proxy to the wrapped class' method for custom generics
-            t.__module__ = translated_origin.__module__
+            t.__module__ = safe_get_module(translated_origin)
             t.__origin__ = translated_origin
             t.__args__ = mapped_args
             return t
@@ -688,14 +710,15 @@ class StubEmitter:
                     if hasattr(annotation, "__qualname__")
                     else annotation.__name__
                 )
-                if annotation.__module__ in ("builtins", self.target_module):
+                annotation_module = safe_get_module(annotation)
+                if annotation_module in ("builtins", self.target_module):
                     return name
-                if annotation.__module__ is None:
+                if annotation_module is None:
                     raise Exception(
                         f"{annotation} has __module__ == None - did you forget"
                         " to specify target module on a blocking type?"
                     )
-                return annotation.__module__ + "." + name
+                return annotation_module + "." + name
             if isinstance(annotation, list):
                 # e.g. first argument to typing.Callable
                 subargs = ",".join([self._formatannotation(arg) for arg in annotation])
@@ -705,7 +728,7 @@ class StubEmitter:
         # generic:
         origin_name = get_specific_generic_name(annotation)
 
-        if (annotation.__module__, origin_name) == ("typing", "Optional"):
+        if (safe_get_module(annotation), origin_name) == ("typing", "Optional"):
             # typing.Optional adds a None argument that we shouldn't include when formatting
             (optional_arg,) = [a for a in args if a is not type(None)]
             comma_separated_args = self._formatannotation(optional_arg)
@@ -787,11 +810,12 @@ class StubEmitter:
             if dt_spec["field_specifiers"]:
                 refs = ""
                 for field_spec_entity in dt_spec["field_specifiers"]:
-                    if field_spec_entity.__module__ == self.target_module:
+                    field_spec_module = safe_get_module(field_spec_entity)
+                    if field_spec_module == self.target_module:
                         ref = field_spec_entity.__qualname__
                     else:
-                        self.imports.add(field_spec_entity.__module__)
-                        ref = f"{field_spec_entity.__module__}.{field_spec_entity.__qualname__}"
+                        self.imports.add(field_spec_module)
+                        ref = f"{field_spec_module}.{field_spec_entity.__qualname__}"
                     refs += ref + ", "
 
                 args = f"field_specifiers=({refs})"
