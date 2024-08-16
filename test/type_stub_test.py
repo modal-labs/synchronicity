@@ -11,7 +11,7 @@ import typing_extensions
 import synchronicity
 from synchronicity import overload_tracking
 from synchronicity.async_wrap import asynccontextmanager
-from synchronicity.type_stubs import StubEmitter
+from synchronicity.type_stubs import StubEmitter, safe_get_module
 
 from .type_stub_helpers import some_mod
 
@@ -600,3 +600,7 @@ def test_contextvar():
     src = s.get_source()
     assert "import contextvars" in src
     assert "c: contextvars.ContextVar" in src
+
+
+def test_concatenate_origin_module():
+    assert safe_get_module(typing_extensions.Concatenate) == "typing_extensions"
