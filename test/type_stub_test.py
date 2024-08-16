@@ -603,8 +603,7 @@ def test_contextvar():
 
 
 @pytest.mark.skipif(
-    sys.version_info < (3, 10),
-    reason="typing.Callable strips Concatenate wrappers at runtime before Python 3.10 :("
+    sys.version_info < (3, 10), reason="typing.Callable strips Concatenate wrappers at runtime before Python 3.10 :("
 )
 def test_concatenate_origin_module():
     s = StubEmitter(__name__)

@@ -177,3 +177,17 @@ This library is limb-amputating edge
 ====================================
 
 This is code I broke out of a personal projects, and it's not been battle-tested. There is a small test suite that you can run using pytest.
+
+
+Release process
+===============
+Should automate this...
+
+* Make a new branch `release-X.Y.Z` from main
+* Bump version in pyproject.toml to `X.Y.Z`
+* Commit that change and create a PR
+* Merge the PR once green
+* Checkout main
+* `git tag -a vX.Y.Z -m "* release bullets"`
+* git push --tags
+* `TWINE_USERNAME=__token__ TWINE_PASSWORD="$PYPI_TOKEN_SYNCHRONICITY" make publish`
