@@ -53,8 +53,12 @@ def safe_get_module(obj: typing.Any) -> typing.Optional[str]:
     if obj.__module__ in ("_contextvars", "_asyncio"):
         return obj.__module__[1:]  # strip leading underscore
 
-    if obj == typing_extensions.Concatenate:
-        return "typing_extensions"
+    try:
+        if (obj.__module__, obj.__name__) == ("typing", "Concatenate"):
+            return "typing_extensions"
+    except Exception:
+        pass
+
     return obj.__module__
 
 
@@ -738,16 +742,18 @@ class StubEmitter:
             formatted_args = [self._formatannotation(a) for a in args]
             comma_separated_args = ", ".join(formatted_args)
 
-        if annotation.__module__ in ("typing", "contextlib") and origin_name.startswith("Abstract"):
+        annotation_module = safe_get_module(annotation)
+        if annotation_module in ("typing", "contextlib") and origin_name.startswith("Abstract"):
             # This is needed for Python <=3.8 where there is a bug (?) in the typing.AsyncContextManager
             # causing it to be represented with the non-existent name typing.AbstractContextManager
             # >>> typing.AsyncContextManager
             # typing.AbstractAsyncContextManager
             origin_name = origin_name[len("Abstract") :]  # cut the "Abstract"
 
-        if annotation.__module__ not in ("builtins", self.target_module):
+        if annotation_module not in ("builtins", self.target_module):
             # need to qualify the module of the origin
-            origin_module = annotation.__module__
+            origin_module = annotation_module
+            print("using origin module", origin_module, "for", annotation)
             origin_name = f"{origin_module}.{origin_name}"
 
         return f"{origin_name}[{comma_separated_args}]"
