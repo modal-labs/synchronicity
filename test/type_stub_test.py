@@ -602,5 +602,15 @@ def test_contextvar():
     assert "c: contextvars.ContextVar" in src
 
 
+@pytest.mark.skipif(
+    sys.version_info < (3, 10),
+    reason="typing.Callable strips Concatenate wrappers at runtime before Python 3.10 :("
+)
 def test_concatenate_origin_module():
-    assert safe_get_module(typing_extensions.Concatenate) == "typing_extensions"
+    s = StubEmitter(__name__)
+    P = typing_extensions.ParamSpec("P")
+    R = typing.TypeVar("R")
+    s.add_variable(typing.Callable[typing_extensions.Concatenate[typing.Any, P], R], "f")
+    src = s.get_source()
+    print(src)
+    assert "f: typing.Callable[typing_extensions.Concatenate[typing.Any, P], R]" in src
