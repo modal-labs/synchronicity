@@ -53,6 +53,8 @@ def safe_get_module(obj: typing.Any) -> typing.Optional[str]:
     if obj.__module__ in ("_contextvars", "_asyncio"):
         return obj.__module__[1:]  # strip leading underscore
 
+    if obj == typing_extensions.Concatenate:
+        return "typing_extensions"
     return obj.__module__
 
 
