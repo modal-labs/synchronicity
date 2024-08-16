@@ -56,7 +56,7 @@ def safe_get_module(obj: typing.Any) -> typing.Optional[str]:
     try:
         if (obj.__module__, obj.__name__) == ("typing", "Concatenate"):
             return "typing_extensions"
-    except:
+    except Exception:
         pass
 
     return obj.__module__
