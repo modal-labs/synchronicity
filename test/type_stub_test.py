@@ -579,17 +579,17 @@ def custom_field():  # needs to be in global scope
 
 
 def test_dataclass_transform():
-    @typing_extensions.dataclass_transform(field_specifiers=(custom_field,))
+    @typing_extensions.dataclass_transform(field_specifiers=(custom_field,), kw_only_default=True)
     def decorator():
         pass
 
     src = _function_source(decorator)
-    assert "@typing_extensions.dataclass_transform(field_specifiers=(custom_field, ))\n" in src
+    assert "@typing_extensions.dataclass_transform(field_specifiers=(custom_field, ), kw_only_default=True, )\n" in src
 
     src = _function_source(decorator, target_module="other_module")
     assert "import test.type_stub_test" in src
     assert "import typing_extensions" in src
-    assert "@typing_extensions.dataclass_transform(field_specifiers=(test.type_stub_test.custom_field, ))\n" in src
+    assert "field_specifiers=(test.type_stub_test.custom_field, )" in src
 
 
 def test_contextvar():

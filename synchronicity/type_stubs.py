@@ -55,6 +55,9 @@ def safe_get_module(obj: typing.Any) -> typing.Optional[str]:
 
     try:
         if (obj.__module__, obj.__name__) == ("typing", "Concatenate"):
+            # typing_extensions.Concatenate forwards typing.Concatenate if
+            # available, but we still want to emit typing_extensions to be
+            # backwards compatible
             return "typing_extensions"
     except Exception:
         pass
@@ -825,8 +828,13 @@ class StubEmitter:
                         self.imports.add(field_spec_module)
                         ref = f"{field_spec_module}.{field_spec_entity.__qualname__}"
                     refs += ref + ", "
+                        
+                args = f"field_specifiers=({refs}), "
+            bool_attrs = {"eq_default": True, "order_default": False, "kw_only_default": False, "frozen_default": False}
+            for k, v in bool_attrs.items():
+                if dt_spec[k] != v:
+                    args += f"{k}={dt_spec[k]}, "
 
-                args = f"field_specifiers=({refs})"
             self.imports.add("typing_extensions")
             maybe_decorators = f"{signature_indent}@typing_extensions.dataclass_transform({args})\n"
 
