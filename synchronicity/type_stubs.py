@@ -828,7 +828,7 @@ class StubEmitter:
                         self.imports.add(field_spec_module)
                         ref = f"{field_spec_module}.{field_spec_entity.__qualname__}"
                     refs += ref + ", "
-                        
+
                 args = f"field_specifiers=({refs}), "
             bool_attrs = {"eq_default": True, "order_default": False, "kw_only_default": False, "frozen_default": False}
             for k, v in bool_attrs.items():
