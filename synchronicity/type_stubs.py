@@ -756,7 +756,6 @@ class StubEmitter:
         if annotation_module not in ("builtins", self.target_module):
             # need to qualify the module of the origin
             origin_module = annotation_module
-            print("using origin module", origin_module, "for", annotation)
             origin_name = f"{origin_module}.{origin_name}"
 
         return f"{origin_name}[{comma_separated_args}]"
