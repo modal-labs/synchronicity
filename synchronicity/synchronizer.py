@@ -1,6 +1,7 @@
 import asyncio
 import atexit
 import collections.abc
+import concurrent.futures
 import contextlib
 import functools
 import inspect
@@ -8,7 +9,6 @@ import platform
 import threading
 import typing
 import warnings
-import concurrent.futures
 from typing import ForwardRef, Optional
 
 import typing_extensions
@@ -18,7 +18,7 @@ from synchronicity.combined_types import FunctionWithAio, MethodWithAio
 
 from .async_wrap import wraps_by_interface
 from .callback import Callback
-from .exceptions import UserCodeException, unwrap_coro_exception, wrap_coro_exception, SynchronizerShutdown
+from .exceptions import SynchronizerShutdown, UserCodeException, unwrap_coro_exception, wrap_coro_exception
 from .interface import Interface
 
 _BUILTIN_ASYNC_METHODS = {
@@ -100,6 +100,7 @@ def should_have_aio_interface(func):
 
 class Synchronizer:
     """Helps you offer a blocking (synchronous) interface to asynchronous code."""
+
     _stopping: asyncio.Event
 
     def __init__(
@@ -354,7 +355,7 @@ class Synchronizer:
                 if not self._loop or self._stopping.is_set():
                     raise SynchronizerShutdown()
                 raise
-            
+
         if getattr(original_func, self._output_translation_attr, True):
             return self._translate_out(value, interface)
         return value

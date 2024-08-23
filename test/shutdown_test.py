@@ -1,13 +1,11 @@
 import asyncio
-from concurrent.futures import thread
 import os
+import pytest
 import signal
 import subprocess
 import sys
 import threading
 import time
-
-import pytest
 
 import synchronicity
 from synchronicity.exceptions import SynchronizerShutdown
@@ -34,17 +32,15 @@ def test_shutdown():
 
 def test_shutdown_raises_shutdown_error():
     s = synchronicity.Synchronizer()
-    
+
     @s.create_blocking
     async def wrapped():
         await asyncio.sleep(10)
-
 
     def shut_down_soon():
         s._get_loop(start=True)  # ensure loop is running
         time.sleep(0.1)
         s._close_loop()
-        
 
     t = threading.Thread(target=shut_down_soon)
     t.start()
@@ -54,15 +50,15 @@ def test_shutdown_raises_shutdown_error():
 
     t.join()
 
+
 @pytest.mark.asyncio
 async def test_shutdown_raises_shutdown_error_async():
     s = synchronicity.Synchronizer()
-    
-    
+
     @s.create_blocking
     async def wrapped():
         await asyncio.sleep(10)
-        
+
     @s.create_blocking
     async def supercall():
         try:
@@ -77,7 +73,6 @@ async def test_shutdown_raises_shutdown_error_async():
         s._get_loop(start=True)  # ensure loop is running
         time.sleep(0.1)
         s._close_loop()
-        
 
     t = threading.Thread(target=shut_down_soon)
     t.start()
