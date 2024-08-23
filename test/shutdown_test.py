@@ -2,7 +2,7 @@ import os
 import signal
 import subprocess
 import sys
-from typing import List
+
 
 def assert_prints(p: subprocess.Popen, *messages: str):
     for msg in messages:
@@ -22,13 +22,13 @@ def test_shutdown():
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         env={"PYTHONUNBUFFERED": "1"},
-        encoding="utf8"
+        encoding="utf8",
     )
     assert_prints(
         p,
         "calling wrapped func",
         "starting up synchronicity event loop",
-        *(["running"] * 3)  # wait for 3 "running" messages before siginting the process
+        *(["running"] * 3),  # wait for 3 "running" messages before siginting the process
     )
     p.send_signal(signal.SIGINT)
     assert_prints(
@@ -54,16 +54,16 @@ def test_shutdown_ctx_mgr():
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         env={"PYTHONUNBUFFERED": "1"},
-        encoding="utf8"
+        encoding="utf8",
     )
     assert_prints(
         p,
         "starting up synchronicity event loop",  # start up loop explicitly
         "calling wrapped func",
-        *(["running"] * 3)
+        *(["running"] * 3),
     )
     p.send_signal(signal.SIGINT)
-    
+
     assert_prints(
         p,
         "start shutting down synchronicity event loop",

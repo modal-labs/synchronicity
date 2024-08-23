@@ -28,7 +28,7 @@ wrapped_func = s.create_blocking(run)
 
 try:
     with s:
-        print("calling wrapped func")        
+        print("calling wrapped func")
         wrapped_func()
 except KeyboardInterrupt:
     pass

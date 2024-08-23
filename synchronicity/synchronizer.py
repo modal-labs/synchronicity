@@ -4,6 +4,7 @@ import collections.abc
 import contextlib
 import functools
 import inspect
+import logging
 import platform
 import threading
 import typing
@@ -20,7 +21,6 @@ from .callback import Callback
 from .exceptions import UserCodeException, unwrap_coro_exception, wrap_coro_exception
 from .interface import Interface
 
-import logging
 logger = logging.getLogger("synchronicity")
 
 
@@ -149,7 +149,7 @@ class Synchronizer:
 
     def __enter__(self):
         self._start_loop()
-        
+
     def __exit__(self, *args, **kwargs):
         self._close_loop()
 
