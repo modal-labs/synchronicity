@@ -17,7 +17,7 @@ import sys
 import typing
 from logging import getLogger
 from pathlib import Path
-from typing import TypeVar
+from typing import TypeVar, overload
 from unittest import mock
 
 import sigtools.specifiers  # type: ignore
@@ -780,18 +780,18 @@ class StubEmitter:
         for overload_func in overloaded_signatures:
             self.imports.add("typing")
             parts.append(f"{signature_indent}@typing.overload")
+            
             if interface:
                 overload_func = synchronizer._wrap(overload_func, interface, name=name)
-
-            parts.append(
-                self._get_function_source(
-                    overload_func,
-                    name,
-                    signature_indent,
-                    body_indent,
-                    transform_signature=transform_signature,
-                )
+            
+            overload_src = self._get_function_source(
+                overload_func,
+                name,
+                signature_indent,
+                body_indent,
+                transform_signature=transform_signature,
             )
+            parts.append(overload_src)
 
         if not overloaded_signatures:
             # only add the functions complete signatures if there are no stubs

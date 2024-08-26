@@ -6,6 +6,7 @@ import functools
 import inspect
 import platform
 import threading
+import types
 import typing
 import warnings
 from typing import ForwardRef, Optional
@@ -131,10 +132,6 @@ class Synchronizer:
         self._ctx_mgr_cls = contextlib._AsyncGeneratorContextManager
         self.create_async(self._ctx_mgr_cls)
         self.create_blocking(self._ctx_mgr_cls)
-
-        # TODO: ugly, remove this and the whole require_already_wrapped:
-
-        self.create_blocking(typing.Generic, "WrappedGeneric", __name__)
 
         atexit.register(self._close_loop)
 
@@ -597,10 +594,19 @@ class Synchronizer:
         return my_init
 
     def _wrap_class(self, cls, interface, name, target_module=None):
-        bases = tuple(
-            self._wrap(base, interface, require_already_wrapped=(name is not None)) if base != object else object
-            for base in cls.__bases__
-        )
+        new_bases = []
+        for base in cls.__dict__.get("__orig_bases__", cls.__bases__):
+            base_is_generic = hasattr(base, "__origin__")
+            if base is object or (base_is_generic and base.__origin__ == typing.Generic):
+                new_bases.append(base)  # no need to wrap these, just add them as base classes
+            else:
+                if base_is_generic:
+                    wrapped_generic = self._wrap(base.__origin__, interface, require_already_wrapped=(name is not None))
+                    new_bases.append(wrapped_generic.__class_getitem__(*base.__args__))
+                else:
+                    new_bases.append(self._wrap(base, interface, require_already_wrapped=(name is not None)))
+            
+        bases = tuple(new_bases)
         new_dict = {self._original_attr: cls}
         if cls is not None:
             new_dict["__init__"] = self._wrap_proxy_constructor(cls, interface)
@@ -644,7 +650,7 @@ class Synchronizer:
         if name is None:
             name = _CLASS_PREFIXES[interface] + cls.__name__
 
-        new_cls = type.__new__(type, name, bases, new_dict)
+        new_cls = types.new_class(name, bases, exec_body=lambda ns: ns.update(new_dict))
         new_cls.__module__ = cls.__module__ if target_module is None else target_module
         new_cls.__doc__ = cls.__doc__
         if "__annotations__" in cls.__dict__:
