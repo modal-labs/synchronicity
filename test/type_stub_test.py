@@ -398,7 +398,6 @@ def test_synchronicity_generic_subclass():
     assert BlockingSpecific.__bases__ == (BlockingMyGeneric,)
     assert BlockingSpecific.__orig_bases__ == (BlockingMyGeneric[str],)
 
-    
     src = _class_source(BlockingSpecific)
     assert "class BlockingSpecific(BlockingMyGeneric[str]):" in src
 

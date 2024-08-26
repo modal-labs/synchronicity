@@ -605,7 +605,7 @@ class Synchronizer:
                     new_bases.append(wrapped_generic.__class_getitem__(*base.__args__))
                 else:
                     new_bases.append(self._wrap(base, interface, require_already_wrapped=(name is not None)))
-            
+
         bases = tuple(new_bases)
         new_dict = {self._original_attr: cls}
         if cls is not None:
