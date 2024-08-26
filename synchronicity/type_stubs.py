@@ -242,29 +242,6 @@ class StubEmitter:
             self.parts.append(self._get_function_source_with_overloads(func, name, indentation_level))
 
     def _get_translated_class_bases(self, cls):
-        # get __orig_bases__ (__bases__ with potential generic args) for any class
-        # note that this has to unwrap the class first in case of synchronicity wrappers,
-        # since synchronicity classes don't preserve/translate __orig_bases__.
-        # (This is due to __init_subclass__ triggering in odd ways for wrapper classes)
-
-        if TARGET_INTERFACE_ATTR in cls.__dict__:
-            # get base classes from origin class instead, to preserve potential Generic base classes
-            # which are otherwise stripped by synchronicitys wrappers
-            synchronizer = cls.__dict__[SYNCHRONIZER_ATTR]
-            impl_cls = cls.__dict__[synchronizer._original_attr]
-            target_interface = cls.__dict__[TARGET_INTERFACE_ATTR]
-            impl_bases = self._get_translated_class_bases(impl_cls)
-
-            retranslated_bases = []
-            for impl_base in impl_bases:
-                wrapped_base = self._translate_annotation(
-                    impl_base, synchronizer, target_interface, safe_get_module(cls)
-                )
-                retranslated_bases.append(wrapped_base)
-
-            return tuple(retranslated_bases)
-
-        # the case that the annotation is a Generic base class, but *not* a synchronicity wrapped one
         bases = []
         for b in cls.__dict__.get("__orig_bases__", cls.__bases__):
             bases.append(self._translate_global_annotation(b, cls))
@@ -780,18 +757,18 @@ class StubEmitter:
         for overload_func in overloaded_signatures:
             self.imports.add("typing")
             parts.append(f"{signature_indent}@typing.overload")
+
             if interface:
                 overload_func = synchronizer._wrap(overload_func, interface, name=name)
 
-            parts.append(
-                self._get_function_source(
-                    overload_func,
-                    name,
-                    signature_indent,
-                    body_indent,
-                    transform_signature=transform_signature,
-                )
+            overload_src = self._get_function_source(
+                overload_func,
+                name,
+                signature_indent,
+                body_indent,
+                transform_signature=transform_signature,
             )
+            parts.append(overload_src)
 
         if not overloaded_signatures:
             # only add the functions complete signatures if there are no stubs

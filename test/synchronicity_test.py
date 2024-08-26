@@ -275,8 +275,9 @@ class MyClass(Base):
 
 
 def test_class_sync(synchronizer):
-    BlockingMyClass = synchronizer.create_blocking(MyClass)
-    BlockingBase = synchronizer.create_blocking(Base)
+    BlockingBase = synchronizer.create_blocking(Base, name="BlockingBase")
+    BlockingMyClass = synchronizer.create_blocking(MyClass, name="BlockingMyClass")
+
     assert BlockingMyClass.__name__ == "BlockingMyClass"
     obj = BlockingMyClass(x=42)
     assert isinstance(obj, BlockingMyClass)
