@@ -3,6 +3,11 @@ name = "synchronicity"
 version = "0.7.5"
 description = "Export blocking and async library versions from a single async implementation"
 readme = "README.md"
+classifiers = [
+  "Operating System :: OS Independent",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+]
 
 dependencies = ["sigtools==4.0.1", "typing_extensions>=4.6"]
 requires-python = ">=3.8"
