@@ -4,6 +4,7 @@ import collections.abc
 import contextlib
 import functools
 import inspect
+import os
 import platform
 import threading
 import types
@@ -111,6 +112,7 @@ class Synchronizer:
         self._loop = None
         self._loop_creation_lock = threading.Lock()
         self._thread = None
+        self._owner_pid = None
         self._stopping = None
 
         if platform.system() == "Windows":
@@ -150,6 +152,8 @@ class Synchronizer:
     def _start_loop(self):
         with self._loop_creation_lock:
             if self._loop and self._loop.is_running():
+                # in case of a race between two _start_loop, the loop might already
+                # be created here by another thread
                 return self._loop
 
             is_ready = threading.Event()
@@ -170,9 +174,11 @@ class Synchronizer:
                     if "can't create new thread at interpreter shutdown" not in str(exc):
                         raise exc
 
-            self._thread = threading.Thread(target=thread_inner, daemon=True)
-            self._thread.start()
+            self._owner_pid = os.getpid()
+            thread = threading.Thread(target=thread_inner, daemon=True)
+            thread.start()
             is_ready.wait()  # TODO: this might block for a very short time
+            self._thread = thread
             return self._loop
 
     def _close_loop(self):
@@ -182,11 +188,21 @@ class Synchronizer:
                 self._loop.call_soon_threadsafe(self._stopping.set)
             self._thread.join()
             self._thread = None
+            self._loop = None
+            self._owner_pid = None
 
     def __del__(self):
         self._close_loop()
 
-    def _get_loop(self, start=False):
+    def _get_loop(self, start=False) -> asyncio.AbstractEventLoop:
+        if self._thread and not self._thread.is_alive():
+            if self._owner_pid == os.getpid():
+                # warn - thread died without us forking
+                raise RuntimeError("Synchronizer thread unexpectedly died")
+
+            self._thread = None
+            self._loop = None
+
         if self._loop is None and start:
             return self._start_loop()
         return self._loop
