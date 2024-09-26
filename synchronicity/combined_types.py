@@ -25,7 +25,11 @@ class FunctionWithAio:
         try:
             return self._func(*args, **kwargs)
         except UserCodeException as uc_exc:
-            raise uc_exc.exc from None
+            # The exception context is from Synchronicity, which may confuse users. Set __suppress_context__ to
+            # True to avoid showing the user those error messages. This will preserve uc_exc.exc.__cause__, but
+            # will cause uc_exc.exc.__context__ to be lost. Unfortunately, I don't know how to avoid that.
+            uc_exc.exc.__suppress_context__ = True
+            raise uc_exc.exc
 
 
 class MethodWithAio:
