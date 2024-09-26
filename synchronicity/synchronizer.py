@@ -152,6 +152,8 @@ class Synchronizer:
     def _start_loop(self):
         with self._loop_creation_lock:
             if self._loop and self._loop.is_running():
+                # in case of a race between two _start_loop, the loop might already
+                # be created here by another thread
                 return self._loop
 
             is_ready = threading.Event()
@@ -173,9 +175,10 @@ class Synchronizer:
                         raise exc
 
             self._owner_pid = os.getpid()
-            self._thread = threading.Thread(target=thread_inner, daemon=True)
-            self._thread.start()
+            thread = threading.Thread(target=thread_inner, daemon=True)
+            thread.start()
             is_ready.wait()  # TODO: this might block for a very short time
+            self._thread = thread
             return self._loop
 
     def _close_loop(self):
