@@ -4,7 +4,6 @@ import collections.abc
 import contextlib
 import functools
 import inspect
-import os
 import platform
 import threading
 import types
@@ -112,7 +111,6 @@ class Synchronizer:
         self._loop = None
         self._loop_creation_lock = threading.Lock()
         self._thread = None
-        self._owner_pid = None
         self._stopping = None
 
         if platform.system() == "Windows":
@@ -172,7 +170,6 @@ class Synchronizer:
                     if "can't create new thread at interpreter shutdown" not in str(exc):
                         raise exc
 
-            self._owner_pid = os.getpid()
             self._thread = threading.Thread(target=thread_inner, daemon=True)
             self._thread.start()
             is_ready.wait()  # TODO: this might block for a very short time
@@ -185,21 +182,11 @@ class Synchronizer:
                 self._loop.call_soon_threadsafe(self._stopping.set)
             self._thread.join()
             self._thread = None
-            self._loop = None
-            self._owner_pid = None
 
     def __del__(self):
         self._close_loop()
 
-    def _get_loop(self, start=False) -> asyncio.AbstractEventLoop:
-        if self._thread and not self._thread.is_alive():
-            if self._owner_pid == os.getpid():
-                # warn - thread died without us forking
-                raise RuntimeError("Synchronizer thread unexpectedly died")
-
-            self._thread = None
-            self._loop = None
-
+    def _get_loop(self, start=False):
         if self._loop is None and start:
             return self._start_loop()
         return self._loop
