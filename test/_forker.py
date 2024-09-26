@@ -1,9 +1,9 @@
 import os
-import sys
+
 import synchronicity
 
-
 synchronizer = synchronicity.Synchronizer()
+
 
 @synchronizer.create_blocking
 async def dummy():

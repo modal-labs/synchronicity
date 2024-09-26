@@ -1,15 +1,15 @@
-import os
-from pathlib import Path
 import subprocess
 import sys
-
-import pytest
-
-import synchronicity
+from pathlib import Path
 
 
 def test_fork_restarts_loop():
-    p = subprocess.Popen([sys.executable, Path(__file__).parent / "_forker.py"], encoding="utf8", stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    p = subprocess.Popen(
+        [sys.executable, Path(__file__).parent / "_forker.py"],
+        encoding="utf8",
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
     try:
         stdout, stderr = p.communicate(timeout=2)
     except subprocess.TimeoutExpired:
