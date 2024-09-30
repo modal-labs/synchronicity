@@ -17,7 +17,11 @@ def test_shutdown():
         assert p.stdout.readline() == b"running\n"
     p.send_signal(signal.SIGINT)
     assert p.stdout.readline() == b"cancelled\n"
-    assert p.stdout.readline() == b"stopping\n"
-    assert p.stdout.readline() == b"exiting\n"
+    assert p.stdout.readline() == b"handled cancellation\n"
+    assert p.stdout.readline() == b"exit async\n"
+    assert (
+        p.stdout.readline() == b"keyboard interrupt\n"
+    )  # we want the keyboard interrupt to come *after* the running function has been cancelled!
+
     stderr_content = p.stderr.read()
     assert b"Traceback" not in stderr_content
