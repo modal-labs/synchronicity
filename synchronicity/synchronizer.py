@@ -329,10 +329,11 @@ class Synchronizer:
         coro = self._wrap_check_async_leakage(coro)
         loop = self._get_loop(start=True)
 
-        keyboard_interrupt: asyncio.Event
+        keyboard_interrupt: asyncio.Event = None
 
         async def keyboard_interruptable_corofunc():
             nonlocal keyboard_interrupt
+            # we have to create the event inside of the target event loop on older Python versions:
             keyboard_interrupt = asyncio.Event()
             coro_task = asyncio.create_task(coro)
             interrupt_task = asyncio.create_task(keyboard_interrupt.wait())
@@ -349,7 +350,11 @@ class Synchronizer:
             # in case there is a keyboard interrupt while we are waiting
             # we cancel the *underlying* coro (unlike what fut.cancel() would do)
             # and then wait for the wrapper coroutine to get a result back
-            loop.call_soon_threadsafe(keyboard_interrupt.set)
+            if keyboard_interrupt:
+                loop.call_soon_threadsafe(keyboard_interrupt.set)
+            else:
+                # edge case - interrupted before the wrapper task has started running
+                fut.cancel()  # cancel top level task
             try:
                 value = fut.result()
             except concurrent.futures.CancelledError:
