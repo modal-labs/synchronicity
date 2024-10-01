@@ -5,7 +5,7 @@ from pathlib import Path
 
 def test_fork_restarts_loop():
     p = subprocess.Popen(
-        [sys.executable, Path(__file__).parent / "_forker.py"],
+        [sys.executable, Path(__file__).parent / "support" / "_forker.py"],
         encoding="utf8",
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

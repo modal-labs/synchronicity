@@ -10,16 +10,17 @@ async def run():
             await asyncio.sleep(0.3)
     except asyncio.CancelledError:
         print("cancelled")
+        await asyncio.sleep(0.1)
+        print("handled cancellation")
         raise
     finally:
-        print("stopping")
         await asyncio.sleep(0.1)
-        print("exiting")
+        print("exit async")
 
 
 s = Synchronizer()
-
+blocking_run = s.create_blocking(run)
 try:
-    s.create_blocking(run)()
+    blocking_run()
 except KeyboardInterrupt:
-    pass
+    print("keyboard interrupt")

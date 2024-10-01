@@ -1,6 +1,9 @@
 import asyncio
+import asyncio.futures
 import atexit
 import collections.abc
+import concurrent
+import concurrent.futures
 import contextlib
 import functools
 import inspect
@@ -325,8 +328,28 @@ class Synchronizer:
         coro = wrap_coro_exception(coro)
         coro = self._wrap_check_async_leakage(coro)
         loop = self._get_loop(start=True)
-        fut = asyncio.run_coroutine_threadsafe(coro, loop)
-        value = fut.result()
+
+        coro_task = asyncio.ensure_future(coro, loop=loop)
+
+        async def wrapper_coro():
+            # this wrapper is needed since run_coroutine_threadsafe *only* accepts coroutines
+            return await coro_task
+
+        fut = asyncio.run_coroutine_threadsafe(wrapper_coro(), loop)
+        try:
+            value = fut.result()
+        except KeyboardInterrupt as exc:
+            # in case there is a keyboard interrupt while we are waiting
+            # we cancel the *underlying* coro_task (unlike what fut.cancel() would do)
+            # and then wait for the *wrapper* coroutine to get a result back, which
+            # happens after the cancellation resolves
+            loop.call_soon_threadsafe(coro_task.cancel)
+            try:
+                value = fut.result()
+            except concurrent.futures.CancelledError:
+                # we *expect* this cancellation, but defer to the passed coro to potentially
+                # intercept and treat the cancellation some other way
+                raise exc  # if cancel - re-raise the original KeyboardInterrupt again
 
         if getattr(original_func, self._output_translation_attr, True):
             return self._translate_out(value, interface)
