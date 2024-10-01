@@ -4,6 +4,7 @@ import functools
 import inspect
 import typing
 from contextlib import asynccontextmanager as _asynccontextmanager
+import typing_extensions
 
 from .exceptions import UserCodeException
 from .interface import Interface
@@ -42,9 +43,11 @@ YIELD_TYPE = typing.TypeVar("YIELD_TYPE")
 SEND_TYPE = typing.TypeVar("SEND_TYPE")
 
 
+P = typing_extensions.ParamSpec("P")
+
 def asynccontextmanager(
-    f: typing.Callable[..., typing.AsyncGenerator[YIELD_TYPE, SEND_TYPE]],
-) -> typing.Callable[[], typing.AsyncContextManager[YIELD_TYPE]]:
+    f: typing.Callable[P, typing.AsyncGenerator[YIELD_TYPE, SEND_TYPE]],
+) -> typing.Callable[P, typing.AsyncContextManager[YIELD_TYPE]]:
     """Wrapper around contextlib.asynccontextmanager that sets correct type annotations
 
     The standard library one doesn't
