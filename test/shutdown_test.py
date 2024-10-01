@@ -1,9 +1,8 @@
 import os
+import pytest
 import signal
 import subprocess
 import sys
-
-import pytest
 
 
 def test_shutdown():
@@ -30,7 +29,6 @@ def test_shutdown():
 
 
 def test_keyboard_interrupt_doesnt_cancel(synchronizer):
-
     @synchronizer.create_blocking
     async def a():
         raise KeyboardInterrupt()
