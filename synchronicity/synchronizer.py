@@ -347,9 +347,6 @@ class Synchronizer:
         try:
             value = fut.result()
         except KeyboardInterrupt as exc:
-            if fut.done():
-                # exception came from "inside" the future, just reraise it
-                raise
             # in case there is a keyboard interrupt while we are waiting
             # we cancel the *underlying* coro (unlike what fut.cancel() would do)
             # and then wait for the wrapper coroutine to get a result back
