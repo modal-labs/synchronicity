@@ -3,6 +3,8 @@ import signal
 import subprocess
 import sys
 
+import pytest
+
 
 def test_shutdown():
     # We run it in a separate process so we can simulate interrupting it
@@ -25,3 +27,13 @@ def test_shutdown():
 
     stderr_content = p.stderr.read()
     assert b"Traceback" not in stderr_content
+
+
+def test_keyboard_interrupt_doesnt_cancel(synchronizer):
+
+    @synchronizer.create_blocking
+    async def a():
+        raise KeyboardInterrupt()
+
+    with pytest.raises(KeyboardInterrupt):
+        a()

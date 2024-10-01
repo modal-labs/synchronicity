@@ -329,32 +329,21 @@ class Synchronizer:
         coro = self._wrap_check_async_leakage(coro)
         loop = self._get_loop(start=True)
 
-        keyboard_interrupt: asyncio.Event = None
+        coro_task = asyncio.ensure_future(coro, loop=loop)
 
-        async def keyboard_interruptable_corofunc():
-            nonlocal keyboard_interrupt
-            # we have to create the event inside of the target event loop on older Python versions:
-            keyboard_interrupt = asyncio.Event()
-            coro_task = asyncio.create_task(coro)
-            interrupt_task = asyncio.create_task(keyboard_interrupt.wait())
-            done, _ = await asyncio.wait([interrupt_task, coro_task], return_when=asyncio.FIRST_COMPLETED)
-            if coro_task not in done:
-                assert interrupt_task in done
-                coro_task.cancel()
-            return await coro_task  # allow coro task to run async cancellation handling
+        async def wrapper_coro():
+            # this wrapper is needed since run_coroutine_threadsafe *only* accepts coroutines
+            return await coro_task
 
-        fut = asyncio.run_coroutine_threadsafe(keyboard_interruptable_corofunc(), loop)
+        fut = asyncio.run_coroutine_threadsafe(wrapper_coro(), loop)
         try:
             value = fut.result()
         except KeyboardInterrupt as exc:
             # in case there is a keyboard interrupt while we are waiting
-            # we cancel the *underlying* coro (unlike what fut.cancel() would do)
-            # and then wait for the wrapper coroutine to get a result back
-            if keyboard_interrupt:
-                loop.call_soon_threadsafe(keyboard_interrupt.set)
-            else:
-                # edge case - interrupted before the wrapper task has started running
-                fut.cancel()  # cancel top level task
+            # we cancel the *underlying* coro_task (unlike what fut.cancel() would do)
+            # and then wait for the *wrapper* coroutine to get a result back, which
+            # happens after the cancellation resolves
+            loop.call_soon_threadsafe(coro_task.cancel)
             try:
                 value = fut.result()
             except concurrent.futures.CancelledError:
