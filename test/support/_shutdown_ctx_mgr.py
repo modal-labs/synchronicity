@@ -1,9 +1,10 @@
 import asyncio
-from contextlib import asynccontextmanager
 import sys
 import time
+from contextlib import asynccontextmanager
 
 from synchronicity import Synchronizer
+
 
 @asynccontextmanager
 async def ctx_mgr():

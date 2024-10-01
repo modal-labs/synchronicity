@@ -1,9 +1,8 @@
-import os
-from pathlib import Path
 import pytest
 import signal
 import subprocess
 import sys
+from pathlib import Path
 
 
 def test_shutdown():
@@ -51,10 +50,9 @@ def test_shutdown_during_ctx_mgr_setup():
         assert p.stdout.readline() == b"enter\n"
     p.send_signal(signal.SIGINT)
     assert p.stdout.readline() == b"exit\n"
-    assert (
-        p.stdout.readline() == b"keyboard interrupt\n"
-    )
+    assert p.stdout.readline() == b"keyboard interrupt\n"
     assert p.stderr.read() == b""
+
 
 def test_shutdown_during_ctx_mgr_yield():
     # We run it in a separate process so we can simulate interrupting it
@@ -69,7 +67,5 @@ def test_shutdown_during_ctx_mgr_yield():
         assert p.stdout.readline() == b"in ctx\n"
     p.send_signal(signal.SIGINT)
     assert p.stdout.readline() == b"exit\n"
-    assert (
-        p.stdout.readline() == b"keyboard interrupt\n"
-    )
+    assert p.stdout.readline() == b"keyboard interrupt\n"
     assert p.stderr.read() == b""
