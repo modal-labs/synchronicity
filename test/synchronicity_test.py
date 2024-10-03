@@ -43,7 +43,6 @@ def test_function_sync_future(synchronizer):
     assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
 
 
-
 @pytest.mark.asyncio
 async def test_function_async_as_function_attribute(synchronizer):
     s = synchronizer
@@ -304,7 +303,6 @@ def test_class_sync_futures(synchronizer):
     assert time.time() - t0 > 2 * SLEEP_DELAY
 
 
-
 @pytest.mark.asyncio
 async def test_class_async_as_method_attribute(synchronizer):
     BlockingMyClass = synchronizer.create_blocking(MyClass)
@@ -334,7 +332,6 @@ async def test_class_async_as_method_attribute(synchronizer):
 
     assert await obj.my_static_method.aio() == 43
     assert await obj.my_class_method.aio() == 44
-
 
 
 @pytest.mark.skip(reason="Skip this until we've made it impossible to re-synchronize objects")

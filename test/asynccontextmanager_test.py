@@ -1,6 +1,6 @@
-import typing
 import pytest
-import sys
+import typing
+
 from synchronicity.async_wrap import asynccontextmanager
 
 
@@ -113,7 +113,7 @@ async def test_asynccontextmanager_nested(synchronizer):
 @pytest.mark.asyncio
 async def test_asynccontextmanager_with_in_async(synchronizer):
     r = synchronizer.create_blocking(Resource)()
-    #err_cls = AttributeError if sys.version_info < (3, 11) else TypeError
-    #with pytest.raises(err_cls):
+    # err_cls = AttributeError if sys.version_info < (3, 11) else TypeError
+    # with pytest.raises(err_cls):
     with r.wrap.aio():  # TODO: this *should* not be allowed, but works for stupid reasons
         pass

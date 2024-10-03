@@ -25,15 +25,16 @@ See https://github.com/modal-labs/synchronicity/pull/165 for more details.
 import asyncio
 import concurrent
 import inspect
-import typing
 import pytest
 import time
+import typing
 
 SLEEP_DELAY = 0.1
 
 
 class CustomExceptionCause(Exception):
     pass
+
 
 class CustomException(Exception):
     pass
@@ -77,6 +78,7 @@ def test_function_raises_sync_futures(synchronizer):
         fut.result()
     assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
     assert exc.value.__suppress_context__ or exc.value.__context__ is None
+
 
 def test_function_raises_with_cause_sync_futures(synchronizer):
     t0 = time.time()

@@ -50,4 +50,3 @@ def test_wrap_staticmethod(synchronizer):
     assert isinstance(BlockingFoo.__dict__["a_static_method"], FunctionWithAio)
     assert not inspect.iscoroutinefunction(BlockingFoo.__dict__["a_static_method"]._func)
     assert inspect.iscoroutinefunction(BlockingFoo.__dict__["a_static_method"].aio)
-
