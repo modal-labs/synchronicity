@@ -25,6 +25,7 @@ See https://github.com/modal-labs/synchronicity/pull/165 for more details.
 import asyncio
 import concurrent
 import inspect
+import typing
 import pytest
 import time
 
@@ -92,8 +93,8 @@ def test_function_raises_with_cause_sync_futures(synchronizer):
 @pytest.mark.asyncio
 async def test_function_raises_async(synchronizer):
     t0 = time.time()
-    f_raises_s = synchronizer.create_async(f_raises)
-    coro = f_raises_s()
+    f_raises_s = synchronizer.create_blocking(f_raises)
+    coro = f_raises_s.aio()
     assert inspect.iscoroutine(coro)
     assert time.time() - t0 < SLEEP_DELAY
     with pytest.raises(CustomException) as exc:
@@ -105,8 +106,8 @@ async def test_function_raises_async(synchronizer):
 @pytest.mark.asyncio
 async def test_function_raises_with_cause_async(synchronizer):
     t0 = time.time()
-    f_raises_s = synchronizer.create_async(f_raises_with_cause)
-    coro = f_raises_s()
+    f_raises_s = synchronizer.create_blocking(f_raises_with_cause)
+    coro = f_raises_s.aio()
     assert inspect.iscoroutine(coro)
     assert time.time() - t0 < SLEEP_DELAY
     with pytest.raises(CustomException) as exc:
@@ -129,15 +130,15 @@ def test_function_raises_baseexc_sync(synchronizer):
     assert exc.value.__suppress_context__ or exc.value.__context__ is None
 
 
-def f_raises_syncwrap():
+def f_raises_syncwrap() -> typing.Coroutine[typing.Any, typing.Any, None]:
     return f_raises()  # returns a coro
 
 
 @pytest.mark.asyncio
 async def test_function_raises_async_syncwrap(synchronizer):
     t0 = time.time()
-    f_raises_syncwrap_s = synchronizer.create_async(f_raises_syncwrap)
-    coro = f_raises_syncwrap_s()
+    f_raises_syncwrap_s = synchronizer.create_blocking(f_raises_syncwrap)
+    coro = f_raises_syncwrap_s.aio()
     assert inspect.iscoroutine(coro)
     assert time.time() - t0 < SLEEP_DELAY
     with pytest.raises(CustomException) as exc:
@@ -146,15 +147,15 @@ async def test_function_raises_async_syncwrap(synchronizer):
     assert exc.value.__suppress_context__ or exc.value.__context__ is None
 
 
-def f_raises_with_cause_syncwrap():
+def f_raises_with_cause_syncwrap() -> typing.Coroutine[typing.Any, typing.Any, None]:
     return f_raises_with_cause()  # returns a coro
 
 
 @pytest.mark.asyncio
 async def test_function_raises_with_cause_async_syncwrap(synchronizer):
     t0 = time.time()
-    f_raises_syncwrap_s = synchronizer.create_async(f_raises_with_cause_syncwrap)
-    coro = f_raises_syncwrap_s()
+    f_raises_syncwrap_s = synchronizer.create_blocking(f_raises_with_cause_syncwrap)
+    coro = f_raises_syncwrap_s.aio()
     assert inspect.iscoroutine(coro)
     assert time.time() - t0 < SLEEP_DELAY
     with pytest.raises(CustomException) as exc:

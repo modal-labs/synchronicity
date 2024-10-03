@@ -4,7 +4,7 @@ def test_docs(synchronizer):
             """init docs"""
             self._attrs = {}
 
-        def bar(self):
+        async def bar(self):
             """bar docs"""
 
     foo = Foo()
@@ -16,7 +16,4 @@ def test_docs(synchronizer):
     assert blocking_foo.__init__.__doc__ == "init docs"
     assert blocking_foo.bar.__doc__ == "bar docs"
 
-    AsyncFoo = synchronizer.create_async(Foo)
-    async_foo = AsyncFoo()
-    assert async_foo.__init__.__doc__ == "init docs"
-    assert async_foo.bar.__doc__ == "bar docs"
+    assert blocking_foo.bar.aio.__doc__ == "bar docs"

@@ -44,13 +44,11 @@ _RETURN_FUTURE_KWARG = "_future"
 # Default names for classes
 _CLASS_PREFIXES = {
     Interface.BLOCKING: "Blocking",
-    Interface.ASYNC: "Async",
 }
 
 # Default names for functions
 _FUNCTION_PREFIXES = {
     Interface.BLOCKING: "blocking_",
-    Interface.ASYNC: "async_",  # deprecated, will be removed soon!
     Interface._ASYNC_WITH_BLOCKING_TYPES: "aio_",
 }
 
@@ -135,7 +133,6 @@ class Synchronizer:
 
         # Prep a synchronized context manager in case one is returned and needs translation
         self._ctx_mgr_cls = contextlib._AsyncGeneratorContextManager
-        self.create_async(self._ctx_mgr_cls)
         self.create_blocking(self._ctx_mgr_cls)
 
         atexit.register(self._close_loop)
@@ -482,7 +479,7 @@ class Synchronizer:
                 else:
                     return res
             elif is_coroutine:
-                if interface in (Interface.ASYNC, Interface._ASYNC_WITH_BLOCKING_TYPES):
+                if interface == Interface._ASYNC_WITH_BLOCKING_TYPES:
                     coro = self._run_function_async(res, interface, f)
                     if not is_coroutinefunction:
                         # If this is a non-async function that returns a coroutine,
@@ -509,7 +506,7 @@ class Synchronizer:
             elif is_asyncgen:
                 # Note that the _run_generator_* functions handle their own
                 # unwrapping of exceptions (this happens during yielding)
-                if interface in (Interface.ASYNC, Interface._ASYNC_WITH_BLOCKING_TYPES):
+                if interface == Interface._ASYNC_WITH_BLOCKING_TYPES:
                     return self._run_generator_async(res, interface, f)
                 elif interface == Interface.BLOCKING:
                     return self._run_generator_sync(res, interface, f)
@@ -657,20 +654,17 @@ class Synchronizer:
         for k, v in cls.__dict__.items():
             if k in _BUILTIN_ASYNC_METHODS:
                 k_sync = _BUILTIN_ASYNC_METHODS[k]
-                if interface == Interface.BLOCKING:
-                    new_dict[k_sync] = self._wrap_proxy_method(
-                        v,
-                        interface,
-                        allow_futures=False,
-                        include_aio_interface=False,
-                    )
-                    new_dict[k] = self._wrap_proxy_method(
-                        v,
-                        Interface._ASYNC_WITH_BLOCKING_TYPES,
-                        allow_futures=False,
-                    )
-                elif interface == Interface.ASYNC:
-                    new_dict[k] = self._wrap_proxy_method(v, interface, allow_futures=False)
+                new_dict[k_sync] = self._wrap_proxy_method(
+                    v,
+                    Interface.BLOCKING,
+                    allow_futures=False,
+                    include_aio_interface=False,
+                )
+                new_dict[k] = self._wrap_proxy_method(
+                    v,
+                    Interface._ASYNC_WITH_BLOCKING_TYPES,
+                    allow_futures=False,
+                )
             elif k in ("__new__", "__init__"):
                 # Skip custom constructor in the wrapped class
                 # Instead, delegate to the base class constructor and wrap it
@@ -679,16 +673,17 @@ class Synchronizer:
                 pass
             elif isinstance(v, staticmethod):
                 # TODO(erikbern): this feels pretty hacky
-                new_dict[k] = self._wrap_proxy_staticmethod(v, interface)
+                new_dict[k] = self._wrap_proxy_staticmethod(v, Interface.BLOCKING)
             elif isinstance(v, classmethod):
-                new_dict[k] = self._wrap_proxy_classmethod(v, interface)
+                new_dict[k] = self._wrap_proxy_classmethod(v, Interface.BLOCKING)
             elif isinstance(v, property):
-                new_dict[k] = self._wrap_proxy_property(v, interface)
+                new_dict[k] = self._wrap_proxy_property(v, Interface.BLOCKING)
             elif isinstance(v, MethodWithAio):
-                # if library defines its own "synchronicity-like" interface we transfer it "as is" to the wrapper
+                # if library defines its own MethodWithAio descriptor we transfer it "as is" to the wrapper
+                # without wrapping it again
                 new_dict[k] = v
             elif callable(v):
-                new_dict[k] = self._wrap_proxy_method(v, interface)
+                new_dict[k] = self._wrap_proxy_method(v, Interface.BLOCKING)
 
         if name is None:
             name = _CLASS_PREFIXES[interface] + cls.__name__
@@ -812,10 +807,6 @@ class Synchronizer:
     # New interface that (almost) doesn't mutate objects
     def create_blocking(self, obj, name: Optional[str] = None, target_module: Optional[str] = None):
         wrapped = self._wrap(obj, Interface.BLOCKING, name, target_module=target_module)
-        return wrapped
-
-    def create_async(self, obj, name: Optional[str] = None, target_module: Optional[str] = None):
-        wrapped = self._wrap(obj, Interface.ASYNC, name, target_module=target_module)
         return wrapped
 
     def is_synchronized(self, obj):

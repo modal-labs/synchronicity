@@ -12,12 +12,10 @@ class ImplType:
 synchronizer = Synchronizer()
 
 BlockingType = synchronizer.create_blocking(ImplType, "BlockingType", __name__)
-AsyncType = synchronizer.create_async(ImplType, "AsyncType", __name__)
 
 
 def test_wrapped_class_keeps_class_annotations():
     assert BlockingType.__annotations__ == ImplType.__annotations__
-    assert AsyncType.__annotations__ == AsyncType.__annotations__
 
 
 @pytest.mark.parametrize(
@@ -35,12 +33,12 @@ def test_wrapped_class_keeps_class_annotations():
         ),
         (
             typing.AsyncContextManager[ImplType],
-            Interface.ASYNC,
-            typing.AsyncContextManager[AsyncType],
+            Interface._ASYNC_WITH_BLOCKING_TYPES,
+            typing.AsyncContextManager[BlockingType],
         ),
         (
             typing.Awaitable[typing.Awaitable[str]],
-            Interface.ASYNC,
+            Interface._ASYNC_WITH_BLOCKING_TYPES,
             typing.Awaitable[typing.Awaitable[str]],
         ),
         (typing.Awaitable[typing.Awaitable[str]], Interface.BLOCKING, str),
@@ -52,7 +50,7 @@ def test_wrapped_class_keeps_class_annotations():
             Interface.BLOCKING,
             typing.Union[BlockingType, None],
         ),
-        (typing.Optional[ImplType], Interface.ASYNC, typing.Union[AsyncType, None]),
+        (typing.Optional[ImplType], Interface._ASYNC_WITH_BLOCKING_TYPES, typing.Union[BlockingType, None]),
     ],
 )
 def test_annotation_mapping(t, interface, expected):

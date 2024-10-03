@@ -10,7 +10,7 @@ def test_wrap_corofunc_using_async():
     async def foo():
         pass
 
-    @wraps_by_interface(Interface.ASYNC, foo)
+    @wraps_by_interface(Interface._ASYNC_WITH_BLOCKING_TYPES, foo)
     async def bar():
         pass
 
@@ -21,7 +21,7 @@ def test_wrap_corofunc_using_non_async():
     async def foo():
         pass
 
-    @wraps_by_interface(Interface.ASYNC, foo)
+    @wraps_by_interface(Interface._ASYNC_WITH_BLOCKING_TYPES, foo)
     def bar():
         pass
 
@@ -46,12 +46,8 @@ def test_wrap_staticmethod(synchronizer):
             return wrapped()
 
     BlockingFoo = synchronizer.create_blocking(Foo)
-    AsyncFoo = synchronizer.create_async(Foo)
 
     assert isinstance(BlockingFoo.__dict__["a_static_method"], FunctionWithAio)
     assert not inspect.iscoroutinefunction(BlockingFoo.__dict__["a_static_method"]._func)
     assert inspect.iscoroutinefunction(BlockingFoo.__dict__["a_static_method"].aio)
 
-    # deprecated interface
-    assert isinstance(AsyncFoo.__dict__["a_static_method"], staticmethod)
-    assert inspect.iscoroutinefunction(AsyncFoo.__dict__["a_static_method"].__func__)

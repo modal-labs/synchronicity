@@ -13,8 +13,8 @@ async def async_producer():
 @pytest.mark.asyncio
 async def test_generator_order_async(synchronizer):
     events.clear()
-    async_producer_synchronized = synchronizer.create_async(async_producer)
-    async for i in async_producer_synchronized():
+    async_producer_synchronized = synchronizer.create_blocking(async_producer)
+    async for i in async_producer_synchronized.aio():
         events.append("consumer")
     assert events == ["producer", "consumer"] * 10
 
@@ -22,8 +22,8 @@ async def test_generator_order_async(synchronizer):
 @pytest.mark.asyncio
 async def test_generator_order_explicit_async(synchronizer):
     events.clear()
-    async_producer_synchronized = synchronizer.create_async(async_producer)
-    async for i in async_producer_synchronized():
+    async_producer_synchronized = synchronizer.create_blocking(async_producer)
+    async for i in async_producer_synchronized.aio():
         events.append("consumer")
     assert events == ["producer", "consumer"] * 10
 
@@ -43,8 +43,8 @@ async def async_bidirectional_producer(i):
 
 @pytest.mark.asyncio
 async def test_bidirectional_generator_async(synchronizer):
-    f = synchronizer.create_async(async_bidirectional_producer)
-    gen = f(42)
+    f = synchronizer.create_blocking(async_bidirectional_producer)
+    gen = f.aio(42)
     value = await gen.asend(None)
     assert value == 42
     with pytest.raises(StopAsyncIteration):
@@ -73,7 +73,7 @@ async def athrow_example_gen():
 
 @pytest.mark.asyncio
 async def test_athrow_async(synchronizer):
-    gen = synchronizer.create_async(athrow_example_gen)()
+    gen = synchronizer.create_blocking(athrow_example_gen).aio()
     v = await gen.asend(None)
     assert v == "hello"
     v = await gen.athrow(ZeroDivisionError)
@@ -90,7 +90,7 @@ def test_athrow_sync(synchronizer):
 
 @pytest.mark.asyncio
 async def test_athrow_baseexc_async(synchronizer):
-    gen = synchronizer.create_async(athrow_example_gen)()
+    gen = synchronizer.create_blocking(athrow_example_gen).aio()
     v = await gen.asend(None)
     assert v == "hello"
     v = await gen.athrow(KeyboardInterrupt)

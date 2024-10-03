@@ -27,7 +27,7 @@ async def test_blocking(synchronizer):
 
 @pytest.mark.asyncio
 async def test_async(synchronizer):
-    sleep_cb = synchronizer.create_callback(sleep_async, Interface.ASYNC)
+    sleep_cb = synchronizer.create_callback(sleep_async, Interface._ASYNC_WITH_BLOCKING_TYPES)
     t0 = time.time()
     coros = [sleep_cb(200), sleep_cb(300), sleep_cb(300), sleep_cb(300)]
     rets = await asyncio.gather(*coros)
