@@ -388,7 +388,8 @@ class Synchronizer:
                 else:
                     value = self._run_function_sync(gen.asend(value), interface, original_func)
             except UserCodeException as uc_exc:
-                raise uc_exc.exc from None
+                uc_exc.exc.__suppress_context__ = True
+                raise uc_exc.exc
             except StopAsyncIteration:
                 break
             try:
@@ -407,7 +408,8 @@ class Synchronizer:
                 else:
                     value = await self._run_function_async(gen.asend(value), interface, original_func)
             except UserCodeException as uc_exc:
-                raise uc_exc.exc from None
+                uc_exc.exc.__suppress_context__ = True
+                raise uc_exc.exc
             except StopAsyncIteration:
                 break
             try:
@@ -500,7 +502,8 @@ class Synchronizer:
                     except UserCodeException as uc_exc:
                         # Used to skip a frame when called from `proxy_method`.
                         if unwrap_user_excs and not (Interface.BLOCKING and include_aio_interface):
-                            raise uc_exc.exc from None
+                            uc_exc.exc.__suppress_context__ = True
+                            raise uc_exc.exc
                         else:
                             raise uc_exc
             elif is_asyncgen:
@@ -575,7 +578,8 @@ class Synchronizer:
             try:
                 return wrapped_method(instance, *args, **kwargs)
             except UserCodeException as uc_exc:
-                raise uc_exc.exc from None
+                uc_exc.exc.__suppress_context__ = True
+                raise uc_exc.exc
 
         if interface == Interface.BLOCKING and include_aio_interface and should_have_aio_interface(method):
             async_proxy_method = synchronizer_self._wrap_proxy_method(
