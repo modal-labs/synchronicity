@@ -680,6 +680,12 @@ class StubEmitter:
         assert not isinstance(annotation, typing.ForwardRef)  # Forward refs should already have been evaluated!
         args = safe_get_args(annotation)
 
+        if isinstance(annotation, typing_extensions.ParamSpecArgs):
+            return self._formatannotation(typing_extensions.get_origin(annotation)) + "." + "args"
+
+        if isinstance(annotation, typing_extensions.ParamSpecKwargs):
+            return self._formatannotation(typing_extensions.get_origin(annotation)) + "." + "kwargs"
+
         if origin is None or not args:
             if annotation == typing.Sized:
                 return "typing.Sized"  # fix Python 3.8(+?) where the repr is "typing.Sized[]" for some reason
