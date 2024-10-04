@@ -69,3 +69,26 @@ def test_shutdown_during_ctx_mgr_yield():
     assert p.stdout.readline() == b"exit\n"
     assert p.stdout.readline() == b"keyboard interrupt\n"
     assert p.stderr.read() == b""
+
+
+def test_shutdown_during_async_run():
+    fn = Path(__file__).parent / "support" / "_shutdown_async_run.py"
+    p = subprocess.Popen(
+        [sys.executable, fn],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env={"PYTHONUNBUFFERED": "1"},
+        encoding="utf-8",
+    )
+    for i in range(2):  # this number doesn't matter, it's a while loop
+        assert p.stdout.readline() == "running\n"
+    p.send_signal(signal.SIGINT)
+    assert p.stdout.readline() == "cancelled\n"
+    assert p.stdout.readline() == "handled cancellation\n"
+    assert p.stdout.readline() == "exit async\n"
+    assert (
+        p.stdout.readline() == "keyboard interrupt\n"
+    )  # we want the keyboard interrupt to come *after* the running function has been cancelled!
+
+    stderr_content = p.stderr.read()
+    assert "Traceback" not in stderr_content
