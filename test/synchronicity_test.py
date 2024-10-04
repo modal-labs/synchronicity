@@ -44,31 +44,6 @@ def test_function_sync_future(synchronizer):
 
 
 @pytest.mark.asyncio
-async def test_function_async_deprecated(synchronizer):
-    t0 = time.time()
-    f_s = synchronizer.create_async(f)
-    assert f_s.__name__ == "async_f"
-    coro = f_s(42)
-    assert inspect.iscoroutine(coro)
-    assert time.time() - t0 < SLEEP_DELAY
-    assert await coro == 1764
-    assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
-
-    # Make sure the same-loop calls work
-    f2_s = synchronizer.create_async(f2)
-    assert f2_s.__name__ == "async_f2"
-    coro = f2_s(f_s, 42)
-    assert await coro == 1764
-
-    # Make sure cross-loop calls work
-    s2 = synchronizer
-    f2_s2 = s2.create_async(f2)
-    assert f2_s2.__name__ == "async_f2"
-    coro = f2_s2(f_s, 42)
-    assert await coro == 1764
-
-
-@pytest.mark.asyncio
 async def test_function_async_as_function_attribute(synchronizer):
     s = synchronizer
     t0 = time.time()
@@ -101,8 +76,8 @@ async def test_function_async_block_event_loop(synchronizer):
         # This blocks the event loop, but not the main event loop
         time.sleep(SLEEP_DELAY)
 
-    spinlock_s = synchronizer.create_async(spinlock)
-    spinlock_coro = spinlock_s()
+    spinlock_s = synchronizer.create_blocking(spinlock)
+    spinlock_coro = spinlock_s.aio()
     sleep_coro = asyncio.sleep(SLEEP_DELAY)
 
     t0 = time.time()
@@ -129,9 +104,9 @@ def test_function_many_parallel_sync_futures(synchronizer):
 
 @pytest.mark.asyncio
 async def test_function_many_parallel_async(synchronizer):
-    g = synchronizer.create_async(f)
+    g = synchronizer.create_blocking(f)
     t0 = time.time()
-    coros = [g(i) for i in range(100)]
+    coros = [g.aio(i) for i in range(100)]
     assert inspect.iscoroutine(coros[0])
     assert time.time() - t0 < SLEEP_DELAY
     assert await asyncio.gather(*coros) == [z**2 for z in range(100)]
@@ -221,10 +196,15 @@ def test_sync_lambda_returning_coroutine_sync_futures(synchronizer):
 
 
 @pytest.mark.asyncio
-async def test_sync_lambda_returning_coroutine_async(synchronizer):
+async def test_sync_inline_func_returning_coroutine_async(synchronizer):
     t0 = time.time()
-    g = synchronizer.create_async(lambda z: f(z + 1))
-    coro = g(42)
+
+    # NOTE: we don't create the async variant unless we know the function returns a coroutine
+    def func(z) -> Coroutine:
+        return f(z + 1)
+
+    g = synchronizer.create_blocking(func)
+    coro = g.aio(42)
     assert inspect.iscoroutine(coro)
     assert time.time() - t0 < SLEEP_DELAY
     assert await coro == 1849
@@ -324,32 +304,6 @@ def test_class_sync_futures(synchronizer):
 
 
 @pytest.mark.asyncio
-async def test_class_async_deprecated(synchronizer):
-    AsyncMyClass = synchronizer.create_async(MyClass)
-    AsyncBase = synchronizer.create_async(Base)
-    assert AsyncMyClass.__name__ == "AsyncMyClass"
-    obj = AsyncMyClass(x=42)
-    assert isinstance(obj, AsyncMyClass)
-    assert isinstance(obj, AsyncBase)
-    await obj.start()
-    coro = obj.get_result()
-    assert inspect.iscoroutine(coro)
-    assert await coro == 1764
-
-    t0 = time.time()
-    async with obj as z:
-        assert z == 42
-        assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
-
-    assert time.time() - t0 > 2 * SLEEP_DELAY
-
-    lst = []
-    async for z in obj:
-        lst.append(z)
-    assert lst == list(range(42))
-
-
-@pytest.mark.asyncio
 async def test_class_async_as_method_attribute(synchronizer):
     BlockingMyClass = synchronizer.create_blocking(MyClass)
     BlockingBase = synchronizer.create_blocking(Base)
@@ -380,32 +334,6 @@ async def test_class_async_as_method_attribute(synchronizer):
     assert await obj.my_class_method.aio() == 44
 
 
-@pytest.mark.asyncio
-async def test_class_async_back_and_forth(synchronizer):
-    AsyncMyClass = synchronizer.create_async(MyClass)
-    AsyncBase = synchronizer.create_async(Base)
-    synchronizer.create_blocking(MyClass)
-    async_obj = AsyncMyClass(x=42)
-    assert isinstance(async_obj, AsyncMyClass)
-    assert isinstance(async_obj, AsyncBase)
-    await async_obj.start()
-
-    def get(o):
-        return o.get_result()  # Blocking
-
-    # Make it into a sync object
-    blocking_obj = synchronizer._translate_out(synchronizer._translate_in(async_obj), Interface.BLOCKING)
-    assert type(blocking_obj).__name__ == "BlockingMyClass"
-
-    # Run it in a sync context
-    loop = asyncio.get_event_loop()
-    fut = loop.run_in_executor(None, get, blocking_obj)
-    ret = await fut
-    assert ret == 1764
-
-    # The problem here is that f is already synchronized by another synchronizer, which shouldn't be allowed
-
-
 @pytest.mark.skip(reason="Skip this until we've made it impossible to re-synchronize objects")
 def test_event_loop(synchronizer):
     t0 = time.time()
@@ -429,18 +357,18 @@ def test_event_loop(synchronizer):
         synchronizer._start_loop(new_loop)
 
 
-@pytest.mark.parametrize("interface_type", [Interface.BLOCKING, Interface.ASYNC])
-def test_doc_transfer(interface_type, synchronizer):
+def test_doc_transfer(synchronizer):
     class Foo:
         """Hello"""
 
-        def foo(self):
+        async def foo(self):
             """hello"""
 
-    output_class = synchronizer._wrap(Foo, interface_type)
+    output_class = synchronizer.create_blocking(Foo)
 
     assert output_class.__doc__ == "Hello"
     assert output_class.foo.__doc__ == "hello"
+    assert output_class.foo.aio.__doc__ == "hello"
 
 
 def test_set_function_name(synchronizer):

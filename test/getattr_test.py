@@ -39,17 +39,15 @@ def test_getattr(synchronizer):
     BlockingFoo = synchronizer.create_blocking(Foo)
 
     blocking_foo = BlockingFoo()
-    blocking_foo.x = 42
-    assert blocking_foo.x == 42
+    blocking_foo.x = 43
+    assert blocking_foo.x == 43
     with pytest.raises(KeyError):
         blocking_foo.y
-    assert blocking_foo.z == 42
+    assert blocking_foo.z == 43
 
     blocking_foo = BlockingFoo.make_foo()
+    blocking_foo.x = 44
     assert isinstance(blocking_foo, BlockingFoo)
 
-    AsyncFoo = synchronizer.create_async(Foo)
-    async_foo = AsyncFoo()
-    async_foo.x = 42
-    assert asyncio.run(async_foo.x) == 42
-    assert async_foo.z == 42
+    # TODO: there is no longer a way to make async properties, but there is this w/ async __getattr__:
+    assert asyncio.run(blocking_foo.__getattr__.aio("x")) == 44
