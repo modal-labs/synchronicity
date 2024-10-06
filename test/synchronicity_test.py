@@ -482,3 +482,56 @@ def test_generic_baseclass():
     instance: WrappedGenericClass[str] = WrappedGenericClass()  #  should be allowed
     assert isinstance(instance, WrappedGenericClass)
     assert instance.do_something() == 1
+
+
+@pytest.mark.asyncio
+async def test_async_cancellation(synchronizer):
+
+    states = []
+    async def foo(abort_cancellation: bool, cancel_self: bool = False):
+        states.append("ready")
+        if cancel_self:
+            asyncio.tasks.current_task().cancel()
+        try:
+            await asyncio.sleep(10)
+        except asyncio.CancelledError:
+            states.append("cancelled")
+            await asyncio.sleep(0.1)
+            states.append("handled cancellation")
+            if not abort_cancellation:
+                raise
+        return "done"
+
+    wrapped_foo = synchronizer.create_blocking(foo)
+    async def start_task(abort_cancellation: bool, cancel_self: bool = False):
+        states.clear()
+        calling_task = asyncio.create_task(wrapped_foo.aio(abort_cancellation=abort_cancellation, cancel_self=cancel_self))
+        while not "ready" in states:
+            await asyncio.sleep(0.01)  # do't cancel before the task even starts
+        return calling_task
+
+    # Case 1: cancel in parent goes into the coroutine and comes back out:
+    calling_task = await start_task(abort_cancellation=False)
+    calling_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await calling_task
+    assert states == ["ready", "cancelled", "handled cancellation"]
+
+    # Case 2: cancel in parent goes into the coroutine and is "aborted" by the coroutine:
+    calling_task = await start_task(abort_cancellation=True)
+    calling_task.cancel()
+    assert await calling_task == "done"
+    assert states == ["ready", "cancelled", "handled cancellation"]
+
+    # Case 3: cancellation from within the coroutine itself comes back out:
+    calling_task = await start_task(abort_cancellation=False, cancel_self=True)
+    with pytest.raises(asyncio.CancelledError):
+        await calling_task
+    assert states == ["ready", "cancelled", "handled cancellation"]
+
+    # Case 4: cancellation of the synchronicity task containing the coroutine itself
+    # but it's caught and should not be propagated to the caller:
+    calling_task = await start_task(abort_cancellation=True, cancel_self=True)
+    assert await calling_task == "done"
+    assert "ready" in states
+    assert states == ["ready", "cancelled", "handled cancellation"]

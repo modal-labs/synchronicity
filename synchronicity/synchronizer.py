@@ -371,7 +371,9 @@ class Synchronizer:
             coro_task = asyncio.ensure_future(coro, loop=loop)
 
             async def run_coro():
-                # this runs in the synchronicity thread
+                # this lets us cancel coro_task without cancelling
+                # the c_fut directly, which would
+                # to a_fut, regardless if `coro` handles the cancellation
                 return await coro_task
 
             c_fut = asyncio.run_coroutine_threadsafe(run_coro(), loop)
@@ -385,7 +387,7 @@ class Synchronizer:
             except asyncio.CancelledError:
                 if a_fut.cancelled():
                     raise  # cancellation came from within c_fut
-                loop.call_soon_threadsafe(coro_task.cancel)  # cancell inner task
+                loop.call_soon_threadsafe(coro_task.cancel)  # cancel inner task
                 value = await a_fut  # typically also yields a cancellation error
 
         if getattr(original_func, self._output_translation_attr, True):
