@@ -486,8 +486,8 @@ def test_generic_baseclass():
 
 @pytest.mark.asyncio
 async def test_async_cancellation(synchronizer):
-
     states = []
+
     async def foo(abort_cancellation: bool, cancel_self: bool = False):
         states.append("ready")
         if cancel_self:
@@ -503,10 +503,13 @@ async def test_async_cancellation(synchronizer):
         return "done"
 
     wrapped_foo = synchronizer.create_blocking(foo)
+
     async def start_task(abort_cancellation: bool, cancel_self: bool = False):
         states.clear()
-        calling_task = asyncio.create_task(wrapped_foo.aio(abort_cancellation=abort_cancellation, cancel_self=cancel_self))
-        while not "ready" in states:
+        calling_task = asyncio.create_task(
+            wrapped_foo.aio(abort_cancellation=abort_cancellation, cancel_self=cancel_self)
+        )
+        while "ready" not in states:
             await asyncio.sleep(0.01)  # do't cancel before the task even starts
         return calling_task
 
