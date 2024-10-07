@@ -2,8 +2,6 @@ import asyncio
 import pytest
 import time
 
-from synchronicity import Interface
-
 
 def sleep(ms):
     time.sleep(ms / 1000)

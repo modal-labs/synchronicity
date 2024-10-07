@@ -8,7 +8,7 @@ from typing import Coroutine
 from unittest.mock import MagicMock
 
 import synchronicity
-from synchronicity import Interface, Synchronizer
+from synchronicity import Synchronizer
 
 SLEEP_DELAY = 0.1
 

@@ -617,6 +617,7 @@ def test_concatenate_origin_module():
     print(src)
     assert "f: typing.Callable[typing_extensions.Concatenate[typing.Any, P], R]" in src
 
+
 def test_paramspec_args():
     from .type_stub_helpers.some_mod import P
 
@@ -625,4 +626,7 @@ def test_paramspec_args():
 
     src = _function_source(foo)
     assert "import test.type_stub_helpers.some_mod" in src
-    assert "def foo(fn: typing.Callable[test.type_stub_helpers.some_mod.P, None], *args: test.type_stub_helpers.some_mod.P.args, **kwargs: test.type_stub_helpers.some_mod.P.kwargs) -> str:" in src  # noqa: E501
+    assert (
+        "def foo(fn: typing.Callable[test.type_stub_helpers.some_mod.P, None], *args: test.type_stub_helpers.some_mod.P.args, **kwargs: test.type_stub_helpers.some_mod.P.kwargs) -> str:"
+        in src
+    )  # noqa: E501
