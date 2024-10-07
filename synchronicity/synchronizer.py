@@ -23,7 +23,7 @@ from synchronicity.combined_types import FunctionWithAio, MethodWithAio
 from .async_wrap import wraps_by_interface
 from .callback import Callback
 from .exceptions import UserCodeException, unwrap_coro_exception, wrap_coro_exception
-from .interface import Interface
+from .interface import DEFAULT_CLASS_PREFIX, DEFAULT_FUNCTION_PREFIXES, Interface
 
 _BUILTIN_ASYNC_METHODS = {
     "__aiter__": "__iter__",
@@ -40,17 +40,6 @@ IGNORED_ATTRIBUTES = (
 )
 
 _RETURN_FUTURE_KWARG = "_future"
-
-# Default names for classes
-_CLASS_PREFIXES = {
-    Interface.BLOCKING: "Blocking",
-}
-
-# Default names for functions
-_FUNCTION_PREFIXES = {
-    Interface.BLOCKING: "blocking_",
-    Interface._ASYNC_WITH_BLOCKING_TYPES: "aio_",
-}
 
 TARGET_INTERFACE_ATTR = "_sync_target_interface"
 SYNCHRONIZER_ATTR = "_sync_synchronizer"
@@ -244,19 +233,15 @@ class Synchronizer:
 
         return coro_wrapped()
 
-    def _wrap_instance(self, obj, interface):
+    def _wrap_instance(self, obj):
         # Takes an object and creates a new proxy object for it
         cls = obj.__class__
         cls_dct = cls.__dict__
-        interfaces = cls_dct[self._wrapped_attr]
-        if interface not in interfaces:
-            raise RuntimeError(f"Class {cls} has not synchronized {interface}.")
-        interface_cls = interfaces[interface]
-        new_obj = interface_cls.__new__(interface_cls)
+        wrapper_cls = cls_dct[self._wrapped_attr][Interface.BLOCKING]
+        new_obj = wrapper_cls.__new__(wrapper_cls)
         # Store a reference to the original object
         new_obj.__dict__[self._original_attr] = obj
         new_obj.__dict__[SYNCHRONIZER_ATTR] = self
-        new_obj.__dict__[TARGET_INTERFACE_ATTR] = interface
         return new_obj
 
     def _translate_scalar_in(self, obj):
@@ -269,27 +254,24 @@ class Synchronizer:
         else:
             return obj
 
-    def _translate_scalar_out(self, obj, interface):
-        if interface == Interface._ASYNC_WITH_BLOCKING_TYPES:
-            interface = Interface.BLOCKING
-
+    def _translate_scalar_out(self, obj):
         # If it's an internal object, translate it to the external interface
         if inspect.isclass(obj):  # TODO: functions?
             cls_dct = obj.__dict__
             if self._wrapped_attr in cls_dct:
-                return cls_dct[self._wrapped_attr][interface]
+                return cls_dct[self._wrapped_attr][Interface.BLOCKING]
             else:
                 return obj
         elif isinstance(obj, (typing.TypeVar, typing_extensions.ParamSpec)):
             if hasattr(obj, self._wrapped_attr):
-                return getattr(obj, self._wrapped_attr)[interface]
+                return getattr(obj, self._wrapped_attr)[Interface.BLOCKING]
             else:
                 return obj
         else:
             cls_dct = obj.__class__.__dict__
             if self._wrapped_attr in cls_dct:
                 # This is an *instance* of a synchronized class, translate its type
-                return self._wrap(obj, interface)
+                return self._wrap(obj, interface=Interface.BLOCKING)
             else:
                 return obj
 
@@ -306,19 +288,20 @@ class Synchronizer:
     def _translate_in(self, obj):
         return self._recurse_map(self._translate_scalar_in, obj)
 
-    def _translate_out(self, obj, interface):
-        return self._recurse_map(lambda scalar: self._translate_scalar_out(scalar, interface), obj)
+    def _translate_out(self, obj, interface=None):
+        # TODO: remove deprecated interface arg - not used but needs deprecation path in case of external usage
+        return self._recurse_map(lambda scalar: self._translate_scalar_out(scalar), obj)
 
-    def _translate_coro_out(self, coro, interface, original_func):
+    def _translate_coro_out(self, coro, original_func):
         async def unwrap_coro():
             res = await coro
             if getattr(original_func, self._output_translation_attr, True):
-                return self._translate_out(res, interface)
+                return self._translate_out(res)
             return res
 
         return unwrap_coro()
 
-    def _run_function_sync(self, coro, interface, original_func):
+    def _run_function_sync(self, coro, original_func):
         if self._is_inside_loop():
             raise Exception("Deadlock detected: calling a sync function from the synchronizer loop")
 
@@ -349,19 +332,19 @@ class Synchronizer:
                 raise exc  # if cancel - re-raise the original KeyboardInterrupt again
 
         if getattr(original_func, self._output_translation_attr, True):
-            return self._translate_out(value, interface)
+            return self._translate_out(value)
         return value
 
-    def _run_function_sync_future(self, coro, interface, original_func):
+    def _run_function_sync_future(self, coro, original_func):
         coro = wrap_coro_exception(coro)
         coro = self._wrap_check_async_leakage(coro)
         loop = self._get_loop(start=True)
         # For futures, we unwrap the result at this point, not in f_wrapped
         coro = unwrap_coro_exception(coro)
-        coro = self._translate_coro_out(coro, interface, original_func)
+        coro = self._translate_coro_out(coro, original_func=original_func)
         return asyncio.run_coroutine_threadsafe(coro, loop)
 
-    async def _run_function_async(self, coro, interface, original_func):
+    async def _run_function_async(self, coro, original_func):
         coro = wrap_coro_exception(coro)
         coro = self._wrap_check_async_leakage(coro)
         loop = self._get_loop(start=True)
@@ -391,17 +374,17 @@ class Synchronizer:
                 value = await a_fut  # typically also yields a cancellation error
 
         if getattr(original_func, self._output_translation_attr, True):
-            return self._translate_out(value, interface)
+            return self._translate_out(value)
         return value
 
-    def _run_generator_sync(self, gen, interface, original_func):
+    def _run_generator_sync(self, gen, original_func):
         value, is_exc = None, False
         while True:
             try:
                 if is_exc:
-                    value = self._run_function_sync(gen.athrow(value), interface, original_func)
+                    value = self._run_function_sync(gen.athrow(value), original_func)
                 else:
-                    value = self._run_function_sync(gen.asend(value), interface, original_func)
+                    value = self._run_function_sync(gen.asend(value), original_func)
             except UserCodeException as uc_exc:
                 uc_exc.exc.__suppress_context__ = True
                 raise uc_exc.exc
@@ -414,14 +397,14 @@ class Synchronizer:
                 value = exc
                 is_exc = True
 
-    async def _run_generator_async(self, gen, interface, original_func):
+    async def _run_generator_async(self, gen, original_func):
         value, is_exc = None, False
         while True:
             try:
                 if is_exc:
-                    value = await self._run_function_async(gen.athrow(value), interface, original_func)
+                    value = await self._run_function_async(gen.athrow(value), original_func)
                 else:
-                    value = await self._run_function_async(gen.asend(value), interface, original_func)
+                    value = await self._run_function_async(gen.asend(value), original_func)
             except UserCodeException as uc_exc:
                 uc_exc.exc.__suppress_context__ = True
                 raise uc_exc.exc
@@ -434,8 +417,8 @@ class Synchronizer:
                 value = exc
                 is_exc = True
 
-    def create_callback(self, f, interface):
-        return Callback(self, f, interface)
+    def create_callback(self, f):
+        return Callback(self, f)
 
     def _update_wrapper(self, f_wrapped, f, name=None, interface=None, target_module=None):
         """Very similar to functools.update_wrapper"""
@@ -464,7 +447,7 @@ class Synchronizer:
             return f
 
         if name is None:
-            _name = _FUNCTION_PREFIXES[interface] + f.__name__
+            _name = DEFAULT_FUNCTION_PREFIXES[interface] + f.__name__
         else:
             _name = name
 
@@ -491,14 +474,14 @@ class Synchronizer:
                 if not allow_futures:
                     raise Exception("Can not return future for this function")
                 elif is_coroutine:
-                    return self._run_function_sync_future(res, interface, f)
+                    return self._run_function_sync_future(res, f)
                 elif is_asyncgen:
                     raise Exception("Can not return futures for generators")
                 else:
                     return res
             elif is_coroutine:
                 if interface == Interface._ASYNC_WITH_BLOCKING_TYPES:
-                    coro = self._run_function_async(res, interface, f)
+                    coro = self._run_function_async(res, f)
                     if not is_coroutinefunction:
                         # If this is a non-async function that returns a coroutine,
                         # then this is the exit point, and we need to unwrap any
@@ -509,7 +492,7 @@ class Synchronizer:
                 elif interface == Interface.BLOCKING:
                     # This is the exit point, so we need to unwrap the exception here
                     try:
-                        return self._run_function_sync(res, interface, f)
+                        return self._run_function_sync(res, f)
                     except StopAsyncIteration:
                         # this is a special case for handling __next__ wrappers around
                         # __anext__ that raises StopAsyncIteration
@@ -525,9 +508,9 @@ class Synchronizer:
                 # Note that the _run_generator_* functions handle their own
                 # unwrapping of exceptions (this happens during yielding)
                 if interface == Interface._ASYNC_WITH_BLOCKING_TYPES:
-                    return self._run_generator_async(res, interface, f)
+                    return self._run_generator_async(res, f)
                 elif interface == Interface.BLOCKING:
-                    return self._run_generator_sync(res, interface, f)
+                    return self._run_generator_sync(res, f)
             else:
                 if inspect.isfunction(res) or isinstance(res, functools.partial):  # TODO: HACKY HACK
                     # TODO: this is needed for decorator wrappers that returns functions
@@ -538,7 +521,7 @@ class Synchronizer:
                         kwargs = self._translate_in(kwargs)
                         f_res = res(*args, **kwargs)
                         if getattr(f, self._output_translation_attr, True):
-                            return self._translate_out(f_res, interface)
+                            return self._translate_out(f_res)
                         else:
                             return f_res
 
@@ -704,7 +687,7 @@ class Synchronizer:
                 new_dict[k] = self._wrap_proxy_method(v, Interface.BLOCKING)
 
         if name is None:
-            name = _CLASS_PREFIXES[interface] + cls.__name__
+            name = DEFAULT_CLASS_PREFIX + cls.__name__
 
         new_cls = types.new_class(name, bases, exec_body=lambda ns: ns.update(new_dict))
         new_cls.__module__ = cls.__module__ if target_module is None else target_module
@@ -712,7 +695,6 @@ class Synchronizer:
         if "__annotations__" in cls.__dict__:
             new_cls.__annotations__ = cls.__annotations__  # transfer annotations
 
-        setattr(new_cls, TARGET_INTERFACE_ATTR, interface)
         setattr(new_cls, SYNCHRONIZER_ATTR, self)
         return new_cls
 
@@ -768,7 +750,7 @@ class Synchronizer:
         elif isinstance(obj, typing.TypeVar):
             new_obj = self._wrap_type_var(obj, interface, name, target_module)
         elif self._wrapped_attr in obj.__class__.__dict__:
-            new_obj = self._wrap_instance(obj, interface)
+            new_obj = self._wrap_instance(obj)
         else:
             raise Exception("Argument %s is not a class or a callable" % obj)
 
