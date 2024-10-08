@@ -626,18 +626,17 @@ class StubEmitter:
         * TypeVars default repr is `~T` instead of `origin_module.T` etc.
         """
 
-        interface = func.__dict__.get(TARGET_INTERFACE_ATTR, None)
-        if interface is None:
-            interface = getattr(func, TARGET_INTERFACE_ATTR, None)
-
+        interface = getattr(func, TARGET_INTERFACE_ATTR, None)
         synchronizer = getattr(func, SYNCHRONIZER_ATTR, None)
+        root_func = func
+        
         if synchronizer:
             home_module = safe_get_module(getattr(func, synchronizer._original_attr))
         else:
             home_module = safe_get_module(func)
 
         if interface:
-            root_func = func.__dict__[SYNCHRONIZER_ATTR]._translate_in(func)
+            root_func = synchronizer._translate_in(func)
         else:
             root_func = func
 
