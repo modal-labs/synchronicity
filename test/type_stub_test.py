@@ -297,7 +297,7 @@ def test_synchronicity_type_translation():
 def test_synchronicity_wrapped_class():
     src = _class_source(Foo)
     print(src)
-    #assert "__init__" not in Foo
+    # assert "__init__" not in Foo
     assert "class __clone_spec(typing_extensions.Protocol):" in src
     assert "    def __call__(self, foo: Foo) -> Foo" in src
     assert "    async def aio(self, foo: Foo) -> Foo" in src
@@ -630,6 +630,6 @@ def test_paramspec_args():
     src = _function_source(foo)
     assert "import test.type_stub_helpers.some_mod" in src
     assert (
-        "def foo(fn: typing.Callable[test.type_stub_helpers.some_mod.P, None], *args: test.type_stub_helpers.some_mod.P.args, **kwargs: test.type_stub_helpers.some_mod.P.kwargs) -> str:"
+        "def foo(fn: typing.Callable[test.type_stub_helpers.some_mod.P, None], *args: test.type_stub_helpers.some_mod.P.args, **kwargs: test.type_stub_helpers.some_mod.P.kwargs) -> str:"  # noqa
         in src
     )  # noqa: E501

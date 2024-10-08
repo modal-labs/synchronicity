@@ -625,7 +625,7 @@ class StubEmitter:
           since it will override runtime-transformed annotations on a wrapper
         * TypeVars default repr is `~T` instead of `origin_module.T` etc.
         """
-        
+
         interface = func.__dict__.get(TARGET_INTERFACE_ATTR, None)
         if interface is None:
             interface = getattr(func, TARGET_INTERFACE_ATTR, None)
