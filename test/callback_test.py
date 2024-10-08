@@ -2,8 +2,6 @@ import asyncio
 import pytest
 import time
 
-from synchronicity import Interface
-
 
 def sleep(ms):
     time.sleep(ms / 1000)
@@ -17,7 +15,7 @@ async def sleep_async(ms):
 
 @pytest.mark.asyncio
 async def test_blocking(synchronizer):
-    sleep_cb = synchronizer.create_callback(sleep, Interface.BLOCKING)
+    sleep_cb = synchronizer.create_callback(sleep)
     t0 = time.time()
     coros = [sleep_cb(200), sleep_cb(300), sleep_cb(300), sleep_cb(300)]
     rets = await asyncio.gather(*coros)
@@ -27,7 +25,7 @@ async def test_blocking(synchronizer):
 
 @pytest.mark.asyncio
 async def test_async(synchronizer):
-    sleep_cb = synchronizer.create_callback(sleep_async, Interface._ASYNC_WITH_BLOCKING_TYPES)
+    sleep_cb = synchronizer.create_callback(sleep_async)
     t0 = time.time()
     coros = [sleep_cb(200), sleep_cb(300), sleep_cb(300), sleep_cb(300)]
     rets = await asyncio.gather(*coros)
@@ -51,7 +49,7 @@ async def test_translate(synchronizer):
         x = foo.get()
         return BlockingFoo(x + 1)
 
-    f_cb = synchronizer.create_callback(f, Interface.BLOCKING)
+    f_cb = synchronizer.create_callback(f)
 
     foo1 = Foo(42)
     foo2 = await f_cb(foo1)

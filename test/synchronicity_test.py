@@ -8,7 +8,7 @@ from typing import Coroutine
 from unittest.mock import MagicMock
 
 import synchronicity
-from synchronicity import Interface, Synchronizer
+from synchronicity import Synchronizer
 
 SLEEP_DELAY = 0.1
 
@@ -433,7 +433,7 @@ def test_no_output_translation(monkeypatch, synchronizer):
     out_translate_spy = MagicMock(wraps=synchronizer._translate_scalar_out)
     monkeypatch.setattr(synchronizer, "_translate_scalar_out", out_translate_spy)
     does_output_translation(3.14)  # test without decorator, this *should* do input translation
-    out_translate_spy.assert_called_once_with("3.14", Interface.BLOCKING)
+    out_translate_spy.assert_called_once_with("3.14")
 
     out_translate_spy.reset_mock()
     without_output_translation(3.14)

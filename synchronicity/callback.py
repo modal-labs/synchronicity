@@ -7,9 +7,8 @@ class Callback:
 
     Currently only supports non-generator functions."""
 
-    def __init__(self, synchronizer, f, interface):
+    def __init__(self, synchronizer, f):
         self._synchronizer = synchronizer
-        self._interface = interface
         self._f = f
 
     def _invoke(self, args, kwargs):
@@ -30,8 +29,8 @@ class Callback:
 
     async def __call__(self, *args, **kwargs):
         # This translates the opposite way from the code in the synchronizer
-        args = self._synchronizer._translate_out(args, self._interface)
-        kwargs = self._synchronizer._translate_out(kwargs, self._interface)
+        args = self._synchronizer._translate_out(args)
+        kwargs = self._synchronizer._translate_out(kwargs)
 
         # This function may be blocking, so we need to run it on a thread
         loop = asyncio.get_event_loop()
