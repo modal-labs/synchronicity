@@ -629,7 +629,7 @@ class StubEmitter:
         interface = getattr(func, TARGET_INTERFACE_ATTR, None)
         synchronizer = getattr(func, SYNCHRONIZER_ATTR, None)
         root_func = func
-        
+
         if synchronizer:
             home_module = safe_get_module(getattr(func, synchronizer._original_attr))
         else:
