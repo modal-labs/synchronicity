@@ -212,7 +212,7 @@ class StubEmitter:
             if inspect.isclass(entity):
                 emitter.add_class(entity, entity_name)
             elif inspect.isfunction(entity) or isinstance(entity, FunctionWithAio):
-                emitter.add_function(entity, entity_name, 0)
+                emitter.add_function(entity, entity_name)
             elif isinstance(entity, (typing.TypeVar, typing_extensions.ParamSpec)):
                 emitter.add_type_var(entity, entity_name)
             elif hasattr(entity, "__class__") and safe_get_module(entity.__class__) == module.__name__:
@@ -625,11 +625,26 @@ class StubEmitter:
           since it will override runtime-transformed annotations on a wrapper
         * TypeVars default repr is `~T` instead of `origin_module.T` etc.
         """
-        sig = sigtools.specifiers.signature(func)
+
+        interface = getattr(func, TARGET_INTERFACE_ATTR, None)
+        synchronizer = getattr(func, SYNCHRONIZER_ATTR, None)
+        root_func = func
+
+        if synchronizer:
+            home_module = safe_get_module(getattr(func, synchronizer._original_attr))
+        else:
+            home_module = safe_get_module(func)
+
+        if interface:
+            root_func = synchronizer._translate_in(func)
+        else:
+            root_func = func
+
+        sig = sigtools.specifiers.signature(root_func)
 
         if sig.upgraded_return_annotation is not EmptyAnnotation:
             raw_return_annotation = sig.upgraded_return_annotation.source_value()
-            return_annotation = self._translate_global_annotation(raw_return_annotation, func)
+            return_annotation = self._translate_annotation(raw_return_annotation, synchronizer, interface, home_module)
             sig = sig.replace(
                 return_annotation=return_annotation,
                 upgraded_return_annotation=UpgradedAnnotation.upgrade(
@@ -641,10 +656,10 @@ class StubEmitter:
         for param in sig.parameters.values():
             if param.upgraded_annotation is not EmptyAnnotation:
                 raw_annotation = param.upgraded_annotation.source_value()
-                translated_annotation = self._translate_global_annotation(raw_annotation, func)
+                translated_annotation = self._translate_annotation(raw_annotation, synchronizer, interface, home_module)
             elif param.annotation != inspect._empty:
                 raw_annotation = param.annotation
-                translated_annotation = self._translate_global_annotation(raw_annotation, func)
+                translated_annotation = self._translate_annotation(raw_annotation, synchronizer, interface, home_module)
             else:
                 translated_annotation = param.annotation
 

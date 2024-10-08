@@ -37,7 +37,7 @@ with e2e_example_export.wrapped_make_context(10.0) as c:
 
 
 async def async_block() -> None:
-    res = await e2e_example_export.returns_foo.aio(blocking_foo)
+    res = await e2e_example_export.returns_foo.aio()
     assert_type(res, e2e_example_export.BlockingFoo)
 
     async with e2e_example_export.wrapped_make_context(10.0) as c:

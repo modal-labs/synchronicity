@@ -281,23 +281,26 @@ Foo = synchronizer.create_blocking(_Foo, "Foo", __name__)
 
 
 def test_synchronicity_type_translation():
-    async def _get_foo(foo: _Foo) -> _Foo:
+    async def _get_foo(foo: _Foo) -> typing.AsyncContextManager[_Foo]:
         return foo
 
     get_foo = synchronizer.create_blocking(_get_foo, "get_foo", __name__)
     src = _function_source(get_foo)
 
+    print(src)
     assert "class __get_foo_spec(typing_extensions.Protocol):" in src
-    assert "    def __call__(self, foo: Foo) -> Foo" in src
-    assert "    async def aio(self, *args, **kwargs) -> Foo" in src
+    assert "    def __call__(self, foo: Foo) -> synchronicity.combined_types.AsyncAndBlockingContextManager[Foo]" in src
+    assert "    async def aio(self, foo: Foo) -> typing.AsyncContextManager[Foo]" in src
     assert "get_foo: __get_foo_spec"
 
 
-def test_synchronicity_self_ref():
+def test_synchronicity_wrapped_class():
     src = _class_source(Foo)
+    print(src)
+    # assert "__init__" not in Foo
     assert "class __clone_spec(typing_extensions.Protocol):" in src
     assert "    def __call__(self, foo: Foo) -> Foo" in src
-    assert "    async def aio(self, *args, **kwargs) -> Foo" in src
+    assert "    async def aio(self, foo: Foo) -> Foo" in src
     assert "clone: __clone_spec" in src
 
 
@@ -326,7 +329,7 @@ def test_synchronicity_class():
         def __call__(self, arg: bool) -> int:
             ...
 
-        async def aio(self, *args, **kwargs) -> int:
+        async def aio(self, arg: bool) -> int:
             ...
 
     meth: __meth_spec
@@ -407,7 +410,7 @@ def test_synchronicity_generic_subclass():
     foo = synchronizer.create_blocking(foo_impl, "foo")
     src = _function_source(foo)
     assert "def __call__(self, bar: BlockingMyGeneric[str]):" in src
-    assert "async def aio(self, *args, **kwargs):" in src
+    assert "async def aio(self, bar: BlockingMyGeneric[str]):" in src
 
 
 _B = typing.TypeVar("_B", bound="str")
