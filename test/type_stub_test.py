@@ -627,6 +627,6 @@ def test_paramspec_args():
     src = _function_source(foo)
     assert "import test.type_stub_helpers.some_mod" in src
     assert (
-        "def foo(fn: typing.Callable[test.type_stub_helpers.some_mod.P, None], *args: test.type_stub_helpers.some_mod.P.args, **kwargs: test.type_stub_helpers.some_mod.P.kwargs) -> str:"
+        "def foo(fn: typing.Callable[test.type_stub_helpers.some_mod.P, None], *args: test.type_stub_helpers.some_mod.P.args, **kwargs: test.type_stub_helpers.some_mod.P.kwargs) -> str:"  # noqa
         in src
     )  # noqa: E501
