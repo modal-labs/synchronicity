@@ -329,7 +329,7 @@ def test_synchronicity_class():
         def __call__(self, arg: bool) -> int:
             ...
 
-        async def aio(self, *args, **kwargs) -> int:
+        async def aio(self, arg: bool) -> int:
             ...
 
     meth: __meth_spec
@@ -410,7 +410,7 @@ def test_synchronicity_generic_subclass():
     foo = synchronizer.create_blocking(foo_impl, "foo")
     src = _function_source(foo)
     assert "def __call__(self, bar: BlockingMyGeneric[str]):" in src
-    assert "async def aio(self, *args, **kwargs):" in src
+    assert "async def aio(self, bar: BlockingMyGeneric[str]):" in src
 
 
 _B = typing.TypeVar("_B", bound="str")
