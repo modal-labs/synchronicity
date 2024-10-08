@@ -1,3 +1,4 @@
+import textwrap
 import pytest
 import subprocess
 import sys
@@ -72,6 +73,15 @@ def test_mypy_assertions(interface_file):
             "e2e_example_export.listify(123)",
             'Value of type variable "_T_Blocking" of "__call__" of "__listify_spec" cannot be "int"',
         ),  #  int does not satisfy the type bound of the typevar (!)
+        (
+            textwrap.dedent(
+                """
+                async def a() -> None:
+                    aio_res = await e2e_example_export.returns_foo.aio("hello")
+                """
+            ),
+            'Too many arguments for "aio" of "__returns_foo_spec"'
+        )
     ],
 )
 def test_failing_assertion(interface_file, failing_assertion, error_matches):
