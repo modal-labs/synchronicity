@@ -53,7 +53,7 @@ def test_translate(synchronizer):
 
     # Translate an object in and then back out, make sure it's the same
     foo = BlockingFoo()
-    assert type(foo) is Foo
+    assert type(foo) is BlockingFoo
     foo_provider.set(foo)
     assert foo_provider.get() == foo
 
