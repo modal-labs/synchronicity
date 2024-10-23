@@ -9,12 +9,12 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.9"
 
       - name: Install ruff
-        run: pip install ruff==0.2.0
+        run: pip install ruff==0.7.0
 
       - name: Check lint with Ruff
         run: ruff check .
@@ -26,12 +26,12 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.9"
 
       - name: Install mypy
-        run: pip install mypy==1.8.0
+        run: pip install mypy==1.13.0
 
       - name: Run
-        run: mypy synchronicity
+        run: mypy src/synchronicity

@@ -710,7 +710,7 @@ class StubEmitter:
             if annotation == Ellipsis:
                 return "..."
             if isinstance(annotation, type) or isinstance(annotation, (TypeVar, typing_extensions.ParamSpec)):
-                if annotation == type(None):  # check for "NoneType"
+                if annotation is type(None):  # check for "NoneType"
                     return "None"
                 name = (
                     annotation.__qualname__  # type: ignore

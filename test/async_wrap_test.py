@@ -30,8 +30,7 @@ def test_wrap_corofunc_using_non_async():
 
 def test_wrap_asynccontextmanager_annotations():
     @async_wrap.asynccontextmanager  # this would not work with contextlib.asynccontextmanager
-    async def foo() -> typing.AsyncGenerator[int, None]:
-        ...
+    async def foo() -> typing.AsyncGenerator[int, None]: ...
 
     assert foo.__annotations__["return"] == typing.AsyncContextManager[int]
 

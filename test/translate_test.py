@@ -5,7 +5,7 @@ def test_translate(synchronizer):
     class FooProvider:
         def __init__(self, foo=None):
             if foo is not None:
-                assert type(foo) == Foo
+                assert type(foo) is Foo
                 self.foo = foo
             else:
                 self.foo = Foo()
@@ -21,7 +21,7 @@ def test_translate(synchronizer):
             return self.foo
 
         def set(self, foo):
-            assert type(foo) == Foo
+            assert type(foo) is Foo
             self.foo = foo
 
         @classmethod
@@ -53,7 +53,7 @@ def test_translate(synchronizer):
 
     # Translate an object in and then back out, make sure it's the same
     foo = BlockingFoo()
-    assert type(foo) != Foo
+    assert type(foo) is Foo
     foo_provider.set(foo)
     assert foo_provider.get() == foo
 
