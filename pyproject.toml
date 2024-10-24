@@ -4,7 +4,7 @@ version = "0.8.3"
 description = "Export blocking and async library versions from a single async implementation"
 readme = "README.md"
 authors = [
-    { name = "Elias Freider", email = "elias@modal.com" } 
+    { name = "Modal Labs" }
 ]
 requires-python = ">=3.8"
 dependencies = [
