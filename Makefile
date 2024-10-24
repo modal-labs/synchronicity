@@ -2,7 +2,7 @@ clean:
 	rm -rf build dist
 
 build: clean
-	pip wheel -w dist --no-deps .
+	uv build
 
 publish: build
-	twine upload dist/*
+	uv publish
