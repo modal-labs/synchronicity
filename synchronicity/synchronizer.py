@@ -317,7 +317,14 @@ class Synchronizer:
 
         fut = asyncio.run_coroutine_threadsafe(wrapper_coro(), loop)
         try:
-            value = fut.result()
+            while 1:
+                try:
+                    # poll every second to give Windows a chance to abort on Ctrl-C
+                    #
+                    value = fut.result(timeout=0.1)
+                    break
+                except concurrent.futures.TimeoutError:
+                    pass
         except KeyboardInterrupt as exc:
             # in case there is a keyboard interrupt while we are waiting
             # we cancel the *underlying* coro_task (unlike what fut.cancel() would do)
@@ -326,9 +333,10 @@ class Synchronizer:
             loop.call_soon_threadsafe(coro_task.cancel)
             try:
                 value = fut.result()
-            except concurrent.futures.CancelledError:
+            except concurrent.futures.CancelledError as expected_cancellation:
                 # we *expect* this cancellation, but defer to the passed coro to potentially
                 # intercept and treat the cancellation some other way
+                expected_cancellation.__suppress_context__ = True
                 raise exc  # if cancel - re-raise the original KeyboardInterrupt again
 
         if getattr(original_func, self._output_translation_attr, True):
