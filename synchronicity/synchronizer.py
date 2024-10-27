@@ -373,8 +373,15 @@ class Synchronizer:
             try:
                 # The shield here prevents a cancelled caller from cancelling c_fut directly
                 # so that we can instead cancel the underlying coro_task and wait for it
-                # to be handled
-                value = await asyncio.shield(a_fut)
+                # to bubble up.
+                # the loop + wait_for timeout is for windows ctrl-C compatibility
+                while 1:
+                    try:
+                        value = await asyncio.wait_for(asyncio.shield(a_fut), timeout=0.1)
+                        break
+                    except asyncio.TimeoutError:
+                        continue
+
             except asyncio.CancelledError:
                 if a_fut.cancelled():
                     raise  # cancellation came from within c_fut

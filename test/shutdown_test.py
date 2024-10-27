@@ -31,23 +31,24 @@ def test_shutdown():
     # We run it in a separate process so we can simulate interrupting it
     fn = Path(__file__).parent / "support" / "_shutdown.py"
     p = PopenWithCtrlC(
-        [sys.executable, fn],
+        [sys.executable, "-u", fn],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        env={"PYTHONUNBUFFERED": "1"},
+        encoding="utf8"
     )
     for i in range(2):  # this number doesn't matter, it's a while loop
-        assert p.stdout.readline() == b"running\n"
+        assert p.stdout.readline() == "running\n"
     p.send_ctrl_c()
-    assert p.stdout.readline() == b"cancelled\n"
-    assert p.stdout.readline() == b"handled cancellation\n"
-    assert p.stdout.readline() == b"exit async\n"
+    assert p.stdout.readline() == "cancelled\n"
+    assert p.stdout.readline() == "handled cancellation\n"
+    assert p.stdout.readline() == "exit async\n"
     assert (
-        p.stdout.readline() == b"keyboard interrupt\n"
+        p.stdout.readline() == "keyboard interrupt\n"
     )  # we want the keyboard interrupt to come *after* the running function has been cancelled!
 
     stderr_content = p.stderr.read()
-    assert b"Traceback" not in stderr_content
+    print("stderr:", stderr_content)
+    assert "Traceback" not in stderr_content
 
 
 def test_keyboard_interrupt_reraised_as_is(synchronizer):
@@ -63,34 +64,34 @@ def test_shutdown_during_ctx_mgr_setup():
     # We run it in a separate process so we can simulate interrupting it
     fn = Path(__file__).parent / "support" / "_shutdown_ctx_mgr.py"
     p = PopenWithCtrlC(
-        [sys.executable, fn, "enter"],
+        [sys.executable, "-u", fn, "enter"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        env={"PYTHONUNBUFFERED": "1"},
+        encoding="utf8",
     )
     for i in range(2):  # this number doesn't matter, it's a while loop
-        assert p.stdout.readline() == b"enter\n"
+        assert p.stdout.readline() == "enter\n"
     p.send_ctrl_c()
-    assert p.stdout.readline() == b"exit\n"
-    assert p.stdout.readline() == b"keyboard interrupt\n"
-    assert p.stderr.read() == b""
+    assert p.stdout.readline() == "exit\n"
+    assert p.stdout.readline() == "keyboard interrupt\n"
+    assert p.stderr.read() == ""
 
 
 def test_shutdown_during_ctx_mgr_yield():
     # We run it in a separate process so we can simulate interrupting it
     fn = Path(__file__).parent / "support" / "_shutdown_ctx_mgr.py"
     p = PopenWithCtrlC(
-        [sys.executable, fn, "yield"],
+        [sys.executable, "-u", fn, "yield"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        env={"PYTHONUNBUFFERED": "1"},
+        encoding="utf8"
     )
     for i in range(2):  # this number doesn't matter, it's a while loop
-        assert p.stdout.readline() == b"in ctx\n"
+        assert p.stdout.readline() == "in ctx\n"
     p.send_ctrl_c()
-    assert p.stdout.readline() == b"exit\n"
-    assert p.stdout.readline() == b"keyboard interrupt\n"
-    assert p.stderr.read() == b""
+    assert p.stdout.readline() == "exit\n"
+    assert p.stdout.readline() == "keyboard interrupt\n"
+    assert p.stderr.read() == ""
 
 
 def test_shutdown_during_async_run():
@@ -99,7 +100,6 @@ def test_shutdown_during_async_run():
         [sys.executable, fn],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        env={"PYTHONUNBUFFERED": "1"},
         encoding="utf-8",
     )
     for i in range(2):  # this number doesn't matter, it's a while loop
