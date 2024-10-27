@@ -84,6 +84,7 @@ def test_mypy_assertions(interface_file):
         ),
     ],
 )
+@pytest.mark.skipif(sys.platform == "win32", reason="temp_assertion_file permissions issues on github actions (windows)")
 def test_failing_assertion(interface_file, failing_assertion, error_matches):
     # since there appears to be no good way of asserting failing type checks (and skipping to the next assertion)
     # we use the assertion file as a template to insert statements that should fail type checking
