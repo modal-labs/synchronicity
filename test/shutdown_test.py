@@ -4,6 +4,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+
 class PopenWithCtrlC(subprocess.Popen):
     def __init__(self, *args, creationflags=0, **kwargs):
         if sys.platform == "win32":
