@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 import synchronicity
 from synchronicity import Synchronizer
 
-SLEEP_DELAY = 0.1
+SLEEP_DELAY = 0.5
 
 
 async def f(x):

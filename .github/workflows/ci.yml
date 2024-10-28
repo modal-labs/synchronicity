@@ -2,7 +2,7 @@ name: Run Python Tests
 on: push
 
 jobs:
-  build:
+  tests:
     strategy:
       fail-fast: false # run all variants across python versions/os to completion
       matrix:
