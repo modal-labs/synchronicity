@@ -1,8 +1,7 @@
+import pytest
 import subprocess
 import sys
 from pathlib import Path
-
-import pytest
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Windows can't fork")

@@ -30,12 +30,7 @@ class PopenWithCtrlC(subprocess.Popen):
 def test_shutdown():
     # We run it in a separate process so we can simulate interrupting it
     fn = Path(__file__).parent / "support" / "_shutdown.py"
-    p = PopenWithCtrlC(
-        [sys.executable, "-u", fn],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        encoding="utf8"
-    )
+    p = PopenWithCtrlC([sys.executable, "-u", fn], stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf8")
     for i in range(2):  # this number doesn't matter, it's a while loop
         assert p.stdout.readline() == "running\n"
     p.send_ctrl_c()
@@ -81,10 +76,7 @@ def test_shutdown_during_ctx_mgr_yield():
     # We run it in a separate process so we can simulate interrupting it
     fn = Path(__file__).parent / "support" / "_shutdown_ctx_mgr.py"
     p = PopenWithCtrlC(
-        [sys.executable, "-u", fn, "yield"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        encoding="utf8"
+        [sys.executable, "-u", fn, "yield"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf8"
     )
     for i in range(2):  # this number doesn't matter, it's a while loop
         assert p.stdout.readline() == "in ctx\n"
