@@ -94,11 +94,13 @@ def test_shutdown_during_async_run():
         stderr=subprocess.PIPE,
         encoding="utf-8",
     )
+
     def line():
         # debugging help
-        l = p.stdout.readline()
-        print(l)
-        return l
+        line_data = p.stdout.readline()
+        print(line_data)
+        return line_data
+
     for i in range(2):  # this number doesn't matter, it's a while loop
         assert line() == "running\n"
     p.send_ctrl_c()
