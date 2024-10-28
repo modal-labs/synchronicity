@@ -41,9 +41,7 @@ def test_shutdown():
         p.stdout.readline() == "keyboard interrupt\n"
     )  # we want the keyboard interrupt to come *after* the running function has been cancelled!
 
-    stderr_content = p.stderr.read()
-    print("stderr:", stderr_content)
-    assert "Traceback" not in stderr_content
+    assert p.stderr.read().strip() == ""
 
 
 def test_keyboard_interrupt_reraised_as_is(synchronizer):
@@ -83,7 +81,7 @@ def test_shutdown_during_ctx_mgr_yield():
     p.send_ctrl_c()
     assert p.stdout.readline() == "exit\n"
     assert p.stdout.readline() == "keyboard interrupt\n"
-    assert p.stderr.read() == ""
+    assert p.stderr.read().strip() == ""
 
 
 def test_shutdown_during_async_run():
@@ -111,5 +109,4 @@ def test_shutdown_during_async_run():
         line() == "keyboard interrupt\n"
     )  # we want the keyboard interrupt to come *after* the running function has been cancelled!
 
-    stderr_content = p.stderr.read()
-    assert "Traceback" not in stderr_content
+    assert p.stderr.read().strip() == ""
