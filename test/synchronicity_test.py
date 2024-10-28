@@ -115,7 +115,7 @@ async def test_function_many_parallel_async(synchronizer):
 
 async def gen(n):
     for i in range(n):
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(SLEEP_DELAY)
         yield i
 
 

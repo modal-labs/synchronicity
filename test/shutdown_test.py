@@ -86,7 +86,8 @@ def test_shutdown_during_ctx_mgr_yield():
     assert p.stderr.read() == ""
 
 
-def test_shutdown_during_async_run():
+@pytest.mark.parametrize("i", range(10))  # don't allow this to flake!
+def test_shutdown_during_async_run(i):
     fn = Path(__file__).parent / "support" / "_shutdown_async_run.py"
     p = PopenWithCtrlC(
         [sys.executable, "-u", fn],
@@ -104,7 +105,9 @@ def test_shutdown_during_async_run():
     for i in range(2):  # this number doesn't matter, it's a while loop
         assert line() == "running\n"
     p.send_ctrl_c()
-    assert line() == "cancelled\n"
+    while (next_line := line()) == "running\n":
+        pass
+    assert next_line == "cancelled\n"
     assert line() == "handled cancellation\n"
     assert line() == "exit async\n"
     assert (
