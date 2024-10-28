@@ -383,6 +383,7 @@ class Synchronizer:
                         continue
 
             except asyncio.CancelledError:
+                print("DEBUG:cancel")
                 if a_fut.cancelled():
                     raise  # cancellation came from within c_fut
                 loop.call_soon_threadsafe(coro_task.cancel)  # cancel inner task

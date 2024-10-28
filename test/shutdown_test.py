@@ -107,7 +107,8 @@ def test_shutdown_during_async_run(i):
     p.send_ctrl_c()
     while (next_line := line()) == "running\n":
         pass
-    assert next_line == "cancelled\n"
+    assert next_line == "DEBUG:cancel\n"
+    assert line() == "cancelled\n"
     assert line() == "handled cancellation\n"
     assert line() == "exit async\n"
     assert (
