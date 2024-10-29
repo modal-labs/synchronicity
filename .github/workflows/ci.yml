@@ -29,4 +29,4 @@ jobs:
       - name: Install dependencies
         run: uv sync --group=dev
       - name: Run tests with pytest
-        run: uv run pytest -s
+        run: uv run --group=dev pytest -s
