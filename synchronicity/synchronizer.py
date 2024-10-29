@@ -20,7 +20,6 @@ import typing_extensions
 from synchronicity.annotations import evaluated_annotation
 from synchronicity.combined_types import FunctionWithAio, MethodWithAio
 
-
 from .async_wrap import wraps_by_interface
 from .callback import Callback
 from .exceptions import UserCodeException, unwrap_coro_exception, wrap_coro_exception
@@ -384,7 +383,7 @@ class Synchronizer:
                     except asyncio.TimeoutError:
                         continue
 
-            except asyncio.CancelledError as exc:
+            except asyncio.CancelledError:
                 if a_fut.cancelled():
                     raise  # cancellation came from within c_fut
                 loop.call_soon_threadsafe(coro_task.cancel)  # cancel inner task

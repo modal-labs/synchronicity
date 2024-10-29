@@ -8,6 +8,7 @@ from synchronicity.exceptions import NestedEventLoops
 
 T = typing.TypeVar("T")
 
+
 class Runner:
     """Simplified backport of asyncio.Runner from Python 3.11
 
