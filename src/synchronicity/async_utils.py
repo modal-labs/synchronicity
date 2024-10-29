@@ -44,7 +44,10 @@ class Runner:
         coro_task = asyncio.ensure_future(coro, loop=self._loop)
 
         async def wrapper_coro():
-            # this wrapper is needed since run_coroutine_threadsafe *only* accepts coroutines
+            # this wrapper ensures that we won't reraise KeyboardInterrupt into
+            # the calling scope until all async finalizers in coro_task have
+            # finished executing. It even allows the coro to prevent cancellation
+            # and thereby ignoring the first keyboardinterrupt
             return await coro_task
 
         def _sigint_handler(signum, frame):
