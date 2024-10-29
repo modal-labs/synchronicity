@@ -57,6 +57,15 @@ wheels = [
 ]
 
 [[package]]
+name = "console-ctrl"
+version = "0.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/cf/e9/a660d9f118bfb7c8d5c01dfd5c12336d8cc8d0bd287bb533423bf7df2668/console-ctrl-0.1.0.tar.gz", hash = "sha256:2e4a21d6a1148bddd50688dadf1b1d28a337a70fb0f52b5e79f0335eb54ea4cf", size = 2290 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/51/2c/db21216ca9e80974cf79d19863e87381035e8ebb6fdb2253d6f47f6ff721/console_ctrl-0.1.0-py3-none-any.whl", hash = "sha256:60239bbfe7d7145b68f19c16818f06a06137efbdc1f6149634daa8ffc14dd5d4", size = 3279 },
+]
+
+[[package]]
 name = "distlib"
 version = "0.3.9"
 source = { registry = "https://pypi.org/simple" }
@@ -486,6 +495,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "console-ctrl", marker = "python_full_version >= '3.8' or platform_python_implementation == 'CPython'" },
     { name = "gevent", marker = "python_full_version >= '3.8' or platform_python_implementation == 'CPython'" },
     { name = "mypy", marker = "python_full_version >= '3.8' or platform_python_implementation == 'CPython'" },
     { name = "mypy-extensions", marker = "python_full_version >= '3.8' or platform_python_implementation == 'CPython'" },
@@ -503,6 +513,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "console-ctrl" },
     { name = "gevent", specifier = ">=24.2.1" },
     { name = "mypy", specifier = ">=1.13.0" },
     { name = "mypy-extensions", specifier = ">=1.0.0" },

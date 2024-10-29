@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 import synchronicity
 from synchronicity import Synchronizer
 
-SLEEP_DELAY = 0.1
+SLEEP_DELAY = 0.5
 
 
 async def f(x):
@@ -115,7 +115,7 @@ async def test_function_many_parallel_async(synchronizer):
 
 async def gen(n):
     for i in range(n):
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(SLEEP_DELAY)
         yield i
 
 

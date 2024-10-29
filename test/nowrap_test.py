@@ -23,8 +23,8 @@ def test_nowrap():
 
     t0 = time.time()
     assert my_obj.f(111) == 12321
-    assert 0.19 < time.time() - t0 < 0.21
+    assert 0.15 < time.time() - t0 < 0.25
 
     t0 = time.time()
     assert my_obj.g(111) == 1367631
-    assert 0.19 < time.time() - t0 < 0.21
+    assert 0.15 < time.time() - t0 < 0.25

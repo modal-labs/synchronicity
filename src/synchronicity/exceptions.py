@@ -39,3 +39,7 @@ async def unwrap_coro_exception(coro):
     except UserCodeException as uc_exc:
         uc_exc.exc.__suppress_context__ = True
         raise uc_exc.exc
+
+
+class NestedEventLoops(Exception):
+    pass
