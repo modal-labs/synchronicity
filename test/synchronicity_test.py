@@ -295,12 +295,12 @@ def test_class_sync_futures(synchronizer):
     assert isinstance(fut, concurrent.futures.Future)
     assert fut.result() == 1764
 
-    t0 = time.time()
+    t0 = time.monotonic()
     with obj as z:
         assert z == 42
-        assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
+        assert SLEEP_DELAY <= time.monotonic() - t0 < 2 * SLEEP_DELAY
 
-    assert time.time() - t0 > 2 * SLEEP_DELAY
+    assert time.monotonic() - t0 >= 2 * SLEEP_DELAY
 
 
 @pytest.mark.asyncio

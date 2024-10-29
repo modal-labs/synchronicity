@@ -1,14 +1,7 @@
 import asyncio
-import sys
 
 from synchronicity import Synchronizer
-
-if sys.version_info < (3, 11):
-    # asyncio.Runner doesn't exist prior to 3.11,
-    # and asyncio.run() is unsafe for sigints on <3.11
-    from synchronicity.async_utils import Runner
-else:
-    from asyncio import Runner
+from synchronicity.async_utils import Runner
 
 
 async def run():
