@@ -1,6 +1,6 @@
 repos:
-  - repo: https://github.com/charliermarsh/ruff-pre-commit
-    rev: "v0.2.0"
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: "v0.7.1"
     hooks:
       - id: ruff
         # Autofix, and respect `exclude` and `extend-exclude` settings.

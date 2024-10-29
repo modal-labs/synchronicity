@@ -1,8 +1,10 @@
+import pytest
 import subprocess
 import sys
 from pathlib import Path
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows can't fork")
 def test_fork_restarts_loop():
     p = subprocess.Popen(
         [sys.executable, Path(__file__).parent / "support" / "_forker.py"],
