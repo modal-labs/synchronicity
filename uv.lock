@@ -504,6 +504,17 @@ dev = [
     { name = "pytest-asyncio", marker = "python_full_version >= '3.8' or platform_python_implementation == 'CPython'" },
     { name = "ruff", marker = "python_full_version >= '3.8' or platform_python_implementation == 'CPython'" },
 ]
+lint = [
+    { name = "mypy", marker = "python_full_version >= '3.8' or platform_python_implementation == 'CPython'" },
+    { name = "mypy-extensions", marker = "python_full_version >= '3.8' or platform_python_implementation == 'CPython'" },
+    { name = "ruff", marker = "python_full_version >= '3.8' or platform_python_implementation == 'CPython'" },
+]
+test = [
+    { name = "console-ctrl", marker = "python_full_version >= '3.8' or platform_python_implementation == 'CPython'" },
+    { name = "gevent", marker = "python_full_version >= '3.8' or platform_python_implementation == 'CPython'" },
+    { name = "pytest", marker = "python_full_version >= '3.8' or platform_python_implementation == 'CPython'" },
+    { name = "pytest-asyncio", marker = "python_full_version >= '3.8' or platform_python_implementation == 'CPython'" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -513,7 +524,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "console-ctrl" },
+    { name = "console-ctrl", specifier = ">=0.1.0" },
     { name = "gevent", specifier = ">=24.2.1" },
     { name = "mypy", specifier = ">=1.13.0" },
     { name = "mypy-extensions", specifier = ">=1.0.0" },
@@ -521,6 +532,17 @@ dev = [
     { name = "pytest", specifier = ">=8.3.3" },
     { name = "pytest-asyncio", specifier = ">=0.24.0" },
     { name = "ruff", specifier = ">=0.7.0" },
+]
+lint = [
+    { name = "mypy", specifier = ">=1.13.0" },
+    { name = "mypy-extensions", specifier = ">=1.0.0" },
+    { name = "ruff", specifier = ">=0.7.0" },
+]
+test = [
+    { name = "console-ctrl", specifier = ">=0.1.0" },
+    { name = "gevent", specifier = ">=24.2.1" },
+    { name = "pytest", specifier = ">=8.3.3" },
+    { name = "pytest-asyncio", specifier = ">=0.24.0" },
 ]
 
 [[package]]
