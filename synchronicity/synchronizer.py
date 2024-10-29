@@ -20,6 +20,7 @@ import typing_extensions
 from synchronicity.annotations import evaluated_annotation
 from synchronicity.combined_types import FunctionWithAio, MethodWithAio
 
+
 from .async_wrap import wraps_by_interface
 from .callback import Callback
 from .exceptions import UserCodeException, unwrap_coro_exception, wrap_coro_exception
@@ -374,7 +375,8 @@ class Synchronizer:
                 # The shield here prevents a cancelled caller from cancelling c_fut directly
                 # so that we can instead cancel the underlying coro_task and wait for it
                 # to bubble up.
-                # the loop + wait_for timeout is for windows ctrl-C compatibility
+                # the loop + wait_for timeout is for windows ctrl-C compatibility since
+                # windows doesn't truly interrupt the event loop on sigint
                 while 1:
                     try:
                         value = await asyncio.wait_for(asyncio.shield(a_fut), timeout=0.1)
@@ -382,8 +384,7 @@ class Synchronizer:
                     except asyncio.TimeoutError:
                         continue
 
-            except asyncio.CancelledError:
-                print("DEBUG:cancel")
+            except asyncio.CancelledError as exc:
                 if a_fut.cancelled():
                     raise  # cancellation came from within c_fut
                 loop.call_soon_threadsafe(coro_task.cancel)  # cancel inner task

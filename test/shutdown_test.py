@@ -86,8 +86,8 @@ def test_shutdown_during_ctx_mgr_yield():
     assert p.stderr.read() == ""
 
 
-@pytest.mark.parametrize("i", range(10))  # don't allow this to flake!
-def test_shutdown_during_async_run(i):
+@pytest.mark.parametrize("run_number", range(10))  # don't allow this to flake!
+def test_shutdown_during_async_run(run_number):
     fn = Path(__file__).parent / "support" / "_shutdown_async_run.py"
     p = PopenWithCtrlC(
         [sys.executable, "-u", fn],
@@ -102,18 +102,16 @@ def test_shutdown_during_async_run(i):
         print(line_data)
         return line_data
 
-    for i in range(2):  # this number doesn't matter, it's a while loop
-        assert line() == "running\n"
+    assert line() == "running\n"
     p.send_ctrl_c()
+    print("sigint sent")
     while (next_line := line()) == "running\n":
         pass
-    assert next_line == "DEBUG:cancel\n"
-    assert line() == "cancelled\n"
-    assert line() == "handled cancellation\n"
-    assert line() == "exit async\n"
-    assert (
-        line() == "keyboard interrupt\n"
-    )  # we want the keyboard interrupt to come *after* the running function has been cancelled!
-
-    stderr_content = p.stderr.read()
-    assert "Traceback" not in stderr_content
+    assert next_line == "cancelled\n"
+    stdout, stderr = p.communicate(timeout=5)
+    print(stderr)
+    assert stdout == """handled cancellation
+exit async
+keyboard interrupt
+"""
+    assert stderr == ""
