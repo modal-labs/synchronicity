@@ -367,7 +367,8 @@ class Synchronizer:
                 # The shield here prevents a cancelled caller from cancelling c_fut directly
                 # so that we can instead cancel the underlying coro_task and wait for it
                 # to bubble up.
-                # the loop + wait_for timeout is for windows ctrl-C compatibility
+                # the loop + wait_for timeout is for windows ctrl-C compatibility since
+                # windows doesn't truly interrupt the event loop on sigint
                 while 1:
                     try:
                         value = await asyncio.wait_for(asyncio.shield(a_fut), timeout=0.1)
