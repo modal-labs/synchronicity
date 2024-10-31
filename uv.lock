@@ -486,7 +486,7 @@ wheels = [
 
 [[package]]
 name = "synchronicity"
-version = "0.8.3"
+version = "0.9.0"
 source = { editable = "." }
 dependencies = [
     { name = "sigtools", marker = "python_full_version >= '3.8' or platform_python_implementation == 'CPython'" },

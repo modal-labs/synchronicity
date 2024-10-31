@@ -25,8 +25,9 @@ import typing_extensions
 from sigtools._signatures import EmptyAnnotation, UpgradedAnnotation, UpgradedParameter  # type: ignore
 
 import synchronicity
-from synchronicity import Interface, combined_types, overload_tracking
+from synchronicity import combined_types, overload_tracking
 from synchronicity.annotations import evaluated_annotation
+from synchronicity.interface import Interface
 from synchronicity.synchronizer import (
     SYNCHRONIZER_ATTR,
     TARGET_INTERFACE_ATTR,
@@ -120,11 +121,11 @@ def _get_type_vars(typ, synchronizer, home_module):
     ret = set()
     if isinstance(typ, typing.TypeVar):
         # check if it's translated (due to bounds= attributes etc.)
-        typ = synchronizer._translate_out(typ, Interface.BLOCKING)
+        typ = synchronizer._translate_out(typ)
         ret.add(typ)
     elif isinstance(typ, (typing_extensions.ParamSpecArgs, typing_extensions.ParamSpecKwargs)):
         param_spec = origin
-        param_spec = synchronizer._translate_out(param_spec, Interface.BLOCKING)
+        param_spec = synchronizer._translate_out(param_spec)
         ret.add(param_spec)
     elif origin:
         for arg in typing.get_args(typ):
