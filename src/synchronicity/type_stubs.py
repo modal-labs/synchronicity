@@ -733,10 +733,15 @@ class StubEmitter:
                 # e.g. first argument to typing.Callable
                 subargs = ",".join([self._formatannotation(arg) for arg in annotation])
                 return f"[{subargs}]"
+
             return repr(annotation)
 
         # generic:
         origin_name = get_specific_generic_name(annotation)
+        if origin is contextlib.AbstractAsyncContextManager:
+            # python 3.13 adds a second optional exit arg, we only want to emit the first one
+            # to be backwards compatible
+            args = args[:1]
 
         if (safe_get_module(annotation), origin_name) == ("typing", "Optional"):
             # typing.Optional adds a None argument that we shouldn't include when formatting
