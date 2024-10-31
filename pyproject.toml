@@ -1,6 +1,6 @@
 [project]
 name = "synchronicity"
-version = "0.9.2"
+version = "0.9.3"
 description = "Export blocking and async library versions from a single async implementation"
 readme = "README.md"
 authors = [
