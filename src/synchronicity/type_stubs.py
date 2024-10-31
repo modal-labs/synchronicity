@@ -581,7 +581,9 @@ class StubEmitter:
                 return typing.Generator[mapped_args + (None,)]  # type: ignore
 
             if origin == contextlib.AbstractAsyncContextManager:
-                return combined_types.AsyncAndBlockingContextManager[mapped_args]  # type: ignore
+                # TODO: in Python 3.13 mapped_args has a second argument for the exit type of the context
+                #  manager, but we ignore that for now
+                return combined_types.AsyncAndBlockingContextManager[mapped_args[0]]
 
             if origin == collections.abc.AsyncIterable:
                 return typing.Iterable[mapped_args]  # type: ignore
