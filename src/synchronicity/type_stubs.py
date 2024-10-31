@@ -578,16 +578,18 @@ class StubEmitter:
         if interface == Interface.BLOCKING:
             # blocking interface special generic translations:
             if origin == collections.abc.AsyncGenerator:
-                return typing.Generator[mapped_args + (None,)]  # type: ignore
+                return typing.Generator[mapped_args + (None,)]  # type: ignore[valid-type,misc]
 
             if origin == contextlib.AbstractAsyncContextManager:
-                return combined_types.AsyncAndBlockingContextManager[mapped_args]  # type: ignore
+                # TODO: in Python 3.13 mapped_args has a second argument for the exit type of the context
+                #  manager, but we ignore that for now
+                return combined_types.AsyncAndBlockingContextManager[mapped_args[0]]  # type: ignore[valid-type]
 
             if origin == collections.abc.AsyncIterable:
-                return typing.Iterable[mapped_args]  # type: ignore
+                return typing.Iterable[mapped_args]  # type: ignore[valid-type]
 
             if origin == collections.abc.AsyncIterator:
-                return typing.Iterator[mapped_args]  # type: ignore
+                return typing.Iterator[mapped_args]  # type: ignore[valid-type]
 
             if origin == collections.abc.Awaitable:
                 return mapped_args[0]
