@@ -283,12 +283,9 @@ def test_synchronicity_type_translation():
     print(src)
     assert "class __get_foo_spec(typing_extensions.Protocol):" in src
     assert "    def __call__(self, foo: Foo) -> synchronicity.combined_types.AsyncAndBlockingContextManager[Foo]" in src
-    if sys.version_info < (3, 13):
-        expected_original_repr = "typing.AsyncContextManager[Foo]"
-    else:
-        # python 3.13 has an exit type generic argument to context managers
-        expected_original_repr = "typing.AsyncContextManager[Foo, bool | None]"
-    assert f"    async def aio(self, foo: Foo) -> {expected_original_repr}" in src
+    # python 3.13 has an exit type generic argument, e.g. typing.AsyncContextManager[Foo, bool | None]
+    # but we want the type stubs to work on older versions of python too (without conditionals everywhere):
+    assert "    async def aio(self, foo: Foo) -> typing.AsyncContextManager[Foo]" in src
     assert "get_foo: __get_foo_spec"
 
 
