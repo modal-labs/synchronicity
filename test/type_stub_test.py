@@ -16,20 +16,17 @@ from synchronicity.type_stubs import StubEmitter
 from .type_stub_helpers import some_mod
 
 
-def noop():
-    ...
+def noop(): ...
 
 
-def arg_no_anno(arg1):
-    ...
+def arg_no_anno(arg1): ...
 
 
 def scalar_args(arg1: str, arg2: int) -> float:
     return 0
 
 
-def generic_other_module_arg(arg: typing.List[some_mod.Foo]):
-    ...
+def generic_other_module_arg(arg: typing.List[some_mod.Foo]): ...
 
 
 async def async_func() -> str:
@@ -171,8 +168,7 @@ def test_wrapped_function_with_new_annotations():
     This test makes sure we do just that.
     """
 
-    def orig(arg: str):
-        ...
+    def orig(arg: str): ...
 
     @functools.wraps(orig)
     def wrapper(extra_arg: int, *args, **kwargs):
@@ -223,12 +219,10 @@ def test_string_annotation():
 
 
 class Forwarder:
-    def foo(self) -> typing.List["Forwardee"]:
-        ...
+    def foo(self) -> typing.List["Forwardee"]: ...
 
 
-class Forwardee:
-    ...
+class Forwardee: ...
 
 
 def test_forward_ref():
@@ -246,8 +240,7 @@ def test_forward_ref():
 def test_optional():
     # Not super important, but try to preserve typing.Optional as typing.Optional instead of typing.Union[None, ...]
     # This only works on Python 3.10+, since 3.9 and earlier do "eager" conversion when creating the type
-    def f() -> typing.Optional[str]:
-        ...
+    def f() -> typing.Optional[str]: ...
 
     wrapped_f = synchronizer.create_blocking(f, "wrapped_f", __name__)
 
@@ -290,6 +283,8 @@ def test_synchronicity_type_translation():
     print(src)
     assert "class __get_foo_spec(typing_extensions.Protocol):" in src
     assert "    def __call__(self, foo: Foo) -> synchronicity.combined_types.AsyncAndBlockingContextManager[Foo]" in src
+    # python 3.13 has an exit type generic argument, e.g. typing.AsyncContextManager[Foo, bool | None]
+    # but we want the type stubs to work on older versions of python too (without conditionals everywhere):
     assert "    async def aio(self, foo: Foo) -> typing.AsyncContextManager[Foo]" in src
     assert "get_foo: __get_foo_spec"
 
@@ -306,8 +301,7 @@ def test_synchronicity_wrapped_class():
 
 class _WithClassMethod:
     @classmethod
-    def classy(cls):
-        ...
+    def classy(cls): ...
 
     async def meth(self, arg: bool) -> int:
         return 0
@@ -346,8 +340,7 @@ Translated_T = synchronizer.create_blocking(T, "Translated_T", __name__)
 Translated_P = synchronizer.create_blocking(P, "Translated_P", __name__)
 
 
-class MyGeneric(typing.Generic[T]):
-    ...
+class MyGeneric(typing.Generic[T]): ...
 
 
 BlockingMyGeneric = synchronizer.create_blocking(
@@ -361,19 +354,16 @@ def test_custom_generic():
     # TODO: build out this test a bit, as it currently creates an invalid stub (missing base types)
     src = _class_source(BlockingMyGeneric)
 
-    class Specific(MyGeneric[str]):
-        ...
+    class Specific(MyGeneric[str]): ...
 
     src = _class_source(Specific)
     assert "class Specific(MyGeneric[str]):" in src
 
 
 class ParamSpecGeneric(typing.Generic[P, T]):
-    async def meth(self, *args: P.args, **kwargs: P.kwargs):
-        ...
+    async def meth(self, *args: P.args, **kwargs: P.kwargs): ...
 
-    def syncfunc(self) -> T:
-        ...
+    def syncfunc(self) -> T: ...
 
 
 BlockingParamSpecGeneric = synchronizer.create_blocking(ParamSpecGeneric, "BlockingParamSpecGeneric", __name__)
@@ -391,8 +381,7 @@ def test_paramspec_generic():
 
 
 def test_synchronicity_generic_subclass():
-    class Specific(MyGeneric[str]):
-        ...
+    class Specific(MyGeneric[str]): ...
 
     assert Specific.__bases__ == (MyGeneric,)
     assert Specific.__orig_bases__ == (MyGeneric[str],)
@@ -404,8 +393,7 @@ def test_synchronicity_generic_subclass():
     src = _class_source(BlockingSpecific)
     assert "class BlockingSpecific(BlockingMyGeneric[str]):" in src
 
-    async def foo_impl(bar: MyGeneric[str]):
-        ...
+    async def foo_impl(bar: MyGeneric[str]): ...
 
     foo = synchronizer.create_blocking(foo_impl, "foo")
     src = _function_source(foo)
@@ -496,12 +484,10 @@ def test_overloads_unwrapped_functions():
     with overload_tracking.patched_overload():
 
         @typing.overload
-        def _overloaded(arg: str) -> float:
-            ...
+        def _overloaded(arg: str) -> float: ...
 
         @typing.overload
-        def _overloaded(arg: int) -> int:
-            ...
+        def _overloaded(arg: int) -> int: ...
 
         def _overloaded(arg: typing.Union[str, int]):
             if isinstance(arg, str):

@@ -25,8 +25,9 @@ import typing_extensions
 from sigtools._signatures import EmptyAnnotation, UpgradedAnnotation, UpgradedParameter  # type: ignore
 
 import synchronicity
-from synchronicity import Interface, combined_types, overload_tracking
+from synchronicity import combined_types, overload_tracking
 from synchronicity.annotations import evaluated_annotation
+from synchronicity.interface import Interface
 from synchronicity.synchronizer import (
     SYNCHRONIZER_ATTR,
     TARGET_INTERFACE_ATTR,
@@ -120,11 +121,11 @@ def _get_type_vars(typ, synchronizer, home_module):
     ret = set()
     if isinstance(typ, typing.TypeVar):
         # check if it's translated (due to bounds= attributes etc.)
-        typ = synchronizer._translate_out(typ, Interface.BLOCKING)
+        typ = synchronizer._translate_out(typ)
         ret.add(typ)
     elif isinstance(typ, (typing_extensions.ParamSpecArgs, typing_extensions.ParamSpecKwargs)):
         param_spec = origin
-        param_spec = synchronizer._translate_out(param_spec, Interface.BLOCKING)
+        param_spec = synchronizer._translate_out(param_spec)
         ret.add(param_spec)
     elif origin:
         for arg in typing.get_args(typ):
@@ -577,16 +578,18 @@ class StubEmitter:
         if interface == Interface.BLOCKING:
             # blocking interface special generic translations:
             if origin == collections.abc.AsyncGenerator:
-                return typing.Generator[mapped_args + (None,)]  # type: ignore
+                return typing.Generator[mapped_args + (None,)]  # type: ignore[valid-type,misc]
 
             if origin == contextlib.AbstractAsyncContextManager:
-                return combined_types.AsyncAndBlockingContextManager[mapped_args]  # type: ignore
+                # TODO: in Python 3.13 mapped_args has a second argument for the exit type of the context
+                #  manager, but we ignore that for now
+                return combined_types.AsyncAndBlockingContextManager[mapped_args[0]]  # type: ignore[valid-type]
 
             if origin == collections.abc.AsyncIterable:
-                return typing.Iterable[mapped_args]  # type: ignore
+                return typing.Iterable[mapped_args]  # type: ignore[valid-type]
 
             if origin == collections.abc.AsyncIterator:
-                return typing.Iterator[mapped_args]  # type: ignore
+                return typing.Iterator[mapped_args]  # type: ignore[valid-type]
 
             if origin == collections.abc.Awaitable:
                 return mapped_args[0]
@@ -710,7 +713,7 @@ class StubEmitter:
             if annotation == Ellipsis:
                 return "..."
             if isinstance(annotation, type) or isinstance(annotation, (TypeVar, typing_extensions.ParamSpec)):
-                if annotation == type(None):  # check for "NoneType"
+                if annotation is type(None):  # check for "NoneType"
                     return "None"
                 name = (
                     annotation.__qualname__  # type: ignore
@@ -730,10 +733,15 @@ class StubEmitter:
                 # e.g. first argument to typing.Callable
                 subargs = ",".join([self._formatannotation(arg) for arg in annotation])
                 return f"[{subargs}]"
+
             return repr(annotation)
 
         # generic:
         origin_name = get_specific_generic_name(annotation)
+        if origin is contextlib.AbstractAsyncContextManager:
+            # python 3.13 adds a second optional exit arg, we only want to emit the first one
+            # to be backwards compatible
+            args = args[:1]
 
         if (safe_get_module(annotation), origin_name) == ("typing", "Optional"):
             # typing.Optional adds a None argument that we shouldn't include when formatting
