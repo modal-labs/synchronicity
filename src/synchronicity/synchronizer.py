@@ -30,6 +30,7 @@ _BUILTIN_ASYNC_METHODS = {
     "__aenter__": "__enter__",
     "__aexit__": "__exit__",
     "__anext__": "__next__",
+    "aclose": "close"
 }
 
 IGNORED_ATTRIBUTES = (
