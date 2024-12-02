@@ -455,19 +455,25 @@ async def test_non_async_aiter(synchronizer):
             value = await self._gen.__anext__()
             return value
 
+        async def aclose(self):
+            await self._gen.aclose()
+
     WrappedIt = synchronizer.create_blocking(It, name="WrappedIt")
 
     # just a sanity check of the original iterable:
     orig_async_it = It()
     assert [v async for v in orig_async_it] == ["foo", "bar"]
+    await orig_async_it.aclose()
 
     # check async iteration on the wrapped iterator
     it = WrappedIt()
     assert [v async for v in it] == ["foo", "bar"]
+    await it.aclose()
 
     # check sync iteration on the wrapped iterator
     it = WrappedIt()
     assert list(it) == ["foo", "bar"]
+    it.close()
 
 
 def test_generic_baseclass():
