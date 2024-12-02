@@ -473,6 +473,7 @@ async def test_non_async_aiter(synchronizer):
     # check sync iteration on the wrapped iterator
     it = WrappedIt()
     assert list(it) == ["foo", "bar"]
+    it.close()
 
 
 def test_generic_baseclass():
