@@ -493,7 +493,7 @@ def test_generic_baseclass():
     assert isinstance(instance, WrappedGenericClass)
     assert instance.do_something() == 1
 
-    Q = typing.TypeVar("O")
+    Q = typing.TypeVar("Q")
     Y = typing.TypeVar("Y")
 
     class GenericSubclass(GenericClass[Q, Y]):
