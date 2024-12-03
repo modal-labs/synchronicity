@@ -478,16 +478,33 @@ async def test_non_async_aiter(synchronizer):
 
 def test_generic_baseclass():
     T = typing.TypeVar("T")
+    V = typing.TypeVar("V")
 
-    class GenericClass(typing.Generic[T]):
+    class GenericClass(typing.Generic[T, V]):
         async def do_something(self):
             return 1
 
-    s = synchronicity.Synchronizer(multiwrap_warning=False)
+    s = synchronicity.Synchronizer()
     WrappedGenericClass = s.create_blocking(GenericClass, name="BlockingGenericClass")
-    instance: WrappedGenericClass[str] = WrappedGenericClass()  #  should be allowed
+
+    assert WrappedGenericClass[str, float].__args__ == (str, float)
+
+    instance: WrappedGenericClass[str, float] = WrappedGenericClass()  #  should be allowed
     assert isinstance(instance, WrappedGenericClass)
     assert instance.do_something() == 1
+
+    Q = typing.TypeVar("O")
+    Y = typing.TypeVar("Y")
+
+    class GenericSubclass(GenericClass[Q, Y]):
+        pass
+
+    WrappedGenericSubclass = s.create_blocking(GenericSubclass, name="BlockingGenericSubclass")
+    assert WrappedGenericSubclass[bool, int].__args__ == (bool, int)
+    instance_2 = WrappedGenericSubclass()
+    assert isinstance(instance_2, WrappedGenericSubclass)
+    assert isinstance(instance_2, WrappedGenericClass)  # still instance of parent
+    assert instance.do_something() == 1  # has base methods
 
 
 @pytest.mark.asyncio

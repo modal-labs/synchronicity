@@ -660,7 +660,7 @@ class Synchronizer:
             else:
                 if base_is_generic:
                     wrapped_generic = self._wrap(base.__origin__, interface, require_already_wrapped=(name is not None))
-                    new_bases.append(wrapped_generic.__class_getitem__(*base.__args__))
+                    new_bases.append(wrapped_generic.__class_getitem__(base.__args__))
                 else:
                     new_bases.append(self._wrap(base, interface, require_already_wrapped=(name is not None)))
 
