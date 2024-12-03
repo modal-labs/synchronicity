@@ -500,7 +500,7 @@ def test_generic_baseclass():
         pass
 
     WrappedGenericSubclass = s.create_blocking(GenericSubclass, name="BlockingGenericSubclass")
-    assert WrappedGenericSubclass[bool, int].__args__ == (str, float)
+    assert WrappedGenericSubclass[bool, int].__args__ == (bool, int)
     instance_2 = WrappedGenericSubclass()
     assert isinstance(instance_2, WrappedGenericSubclass)
     assert isinstance(instance_2, WrappedGenericClass)  # still instance of parent
