@@ -135,6 +135,8 @@ def _get_type_vars(typ, synchronizer, home_module):
         # The reason it cant be used directly is that this method should return the original type params
         # and not translated values
         if isinstance(typ, typing.ForwardRef):  # TypeVars wrap their arguments as ForwardRefs (sometimes?)
+            if hasattr(typ, "__forward_module__") and typ.__forward_module__ is not None:
+                return ret
             typ = typ.__forward_arg__
         if isinstance(typ, str):
             try:
@@ -695,7 +697,17 @@ class StubEmitter:
         * ignores base_module (uses self.target_module instead)
         """
         origin = getattr(annotation, "__origin__", None)
-        assert not isinstance(annotation, typing.ForwardRef)  # Forward refs should already have been evaluated!
+
+        # For forward refs from modules that cannot be evaluated at runtime
+        # but can be used freely in stub files, import the module and return the
+        # original annotation
+        if isinstance(annotation, typing.ForwardRef):
+            if hasattr(annotation, "__forward_module__") and annotation.__forward_module__ is not None:
+                self.imports.add(annotation.__forward_module__)
+                return annotation.__forward_arg__
+
+        # The remaining forward refs should already have been evaluated
+        assert not isinstance(annotation, typing.ForwardRef)
         args = safe_get_args(annotation)
 
         if isinstance(annotation, typing_extensions.ParamSpecArgs):

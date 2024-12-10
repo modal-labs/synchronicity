@@ -619,3 +619,15 @@ def test_paramspec_args():
         "def foo(fn: typing.Callable[test.type_stub_helpers.some_mod.P, None], *args: test.type_stub_helpers.some_mod.P.args, **kwargs: test.type_stub_helpers.some_mod.P.kwargs) -> str:"  # noqa
         in src
     )  # noqa: E501
+
+if typing.TYPE_CHECKING:
+    import _typeshed
+
+def test_typeshed():
+    """Test that _typeshed annotations are preserved in stubs."""
+    def foo() -> "_typeshed.OpenTextMode":
+        return "r"
+
+    src = _function_source(foo)
+    assert "import _typeshed" in src
+    assert "def foo() -> _typeshed.OpenTextMode:" in src

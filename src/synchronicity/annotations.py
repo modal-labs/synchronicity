@@ -5,6 +5,9 @@ import sys
 
 logger = logging.getLogger("synchronicity")
 
+# Modules that cannot be evaluated at runtime, e.g.,
+# only available under the TYPE_CHECKING guard, but can be used freely in stub files
+TYPE_CHECKING_OVERRIDES = {"_typeshed"}
 
 def evaluated_annotation(annotation, *, globals_=None, declaration_module=None):
     # evaluate string annotations...
@@ -24,6 +27,14 @@ def evaluated_annotation(annotation, *, globals_=None, declaration_module=None):
             # in case of unimported modules referenced in the annotation itself
             # typically happens with TYPE_CHECKING guards etc.
             ref_module, _ = annotation.rsplit(".", 1)
+            # for modules that can't be evaluated at runtime,
+            # return a ForwardRef with __forward_module__ set
+            # to the name of the module that we want to import in the stub file
+            if ref_module in TYPE_CHECKING_OVERRIDES:
+                import typing
+                ref = typing.ForwardRef(annotation)
+                ref.__forward_module__ = ref_module
+                return ref
             # hack: import the library *into* the namespace of the supplied globals
             exec(f"import {ref_module}", globals_)
             return eval(annotation, globals_)
