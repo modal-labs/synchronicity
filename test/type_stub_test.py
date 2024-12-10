@@ -620,11 +620,14 @@ def test_paramspec_args():
         in src
     )  # noqa: E501
 
+
 if typing.TYPE_CHECKING:
     import _typeshed
 
+
 def test_typeshed():
     """Test that _typeshed annotations are preserved in stubs."""
+
     def foo() -> "_typeshed.OpenTextMode":
         return "r"
 
