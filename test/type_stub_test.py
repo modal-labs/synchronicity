@@ -178,6 +178,16 @@ def test_wrapped_function_with_new_annotations():
     assert _function_source(wrapper) == "def orig(extra_arg: int, arg: float):\n    ...\n"
 
 
+def test_wrapped_async_func_remains_async():
+    async def orig(arg: str): ...
+
+    @functools.wraps(orig)
+    def wrapper(*args, **kwargs):
+        return orig(*args, **kwargs)
+
+    assert _function_source(wrapper) == "async def orig(arg: str):\n    ...\n"
+
+
 class Base:
     def base_method(self) -> str:
         return ""

@@ -56,6 +56,18 @@ ASYNC_GENERIC_ORIGINS = (
 )
 
 
+def iscoroutinefunction(func):
+    if hasattr(func, "__wrapped__"):
+        return iscoroutinefunction(func.__wrapped__)
+    return inspect.iscoroutinefunction(func)
+
+
+def isasyncgenfunction(func):
+    if hasattr(func, "__wrapped__"):
+        return isasyncgenfunction(func.__wrapped__)
+    return inspect.isasyncgenfunction(func)
+
+
 def _type_requires_aio_usage(annotation, declaration_module):
     if isinstance(annotation, ForwardRef):
         annotation = annotation.__forward_arg__
@@ -79,7 +91,7 @@ def _type_requires_aio_usage(annotation, declaration_module):
 
 def should_have_aio_interface(func):
     # determines if a blocking function gets an .aio attribute with an async interface to the function or not
-    if inspect.iscoroutinefunction(func) or inspect.isasyncgenfunction(func):
+    if iscoroutinefunction(func) or isasyncgenfunction(func):
         return True
     # check annotations if they contain any async entities that would need an event loop to be translated:
     # This catches things like vanilla functions returning Coroutines
@@ -468,7 +480,7 @@ class Synchronizer:
         else:
             _name = name
 
-        is_coroutinefunction = inspect.iscoroutinefunction(f)
+        is_coroutinefunction = iscoroutinefunction(f)
 
         @wraps_by_interface(interface, f)
         def f_wrapped(*args, **kwargs):
