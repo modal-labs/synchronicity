@@ -390,6 +390,7 @@ class StubEmitter:
 {aio_func_source}
 {body_indent}{entity_name}: __{entity_name}_spec{parent_type_var_names_spec}
 """
+
         return protocol_attr
 
     def _prepare_method_generic_type_vars(self, entity, parent_generic_type_vars):
@@ -855,8 +856,13 @@ class StubEmitter:
             self.imports.add("typing_extensions")
             maybe_decorators = f"{signature_indent}@typing_extensions.dataclass_transform({args})\n"
 
+        def is_async(func):
+            if hasattr(func, "__wrapped__") and not hasattr(func, SYNCHRONIZER_ATTR):
+                return is_async(func.__wrapped__)
+            return inspect.iscoroutinefunction(func)
+
         async_prefix = ""
-        if inspect.iscoroutinefunction(func):
+        if is_async(func):
             # note: async prefix should not be used for annotated abstract/stub *async generators*,
             # so we don't check for inspect.isasyncgenfunction since they contain no yield keyword,
             # and would otherwise indicate an awaitable that returns an async generator to static type checkers
