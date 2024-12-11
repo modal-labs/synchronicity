@@ -26,7 +26,7 @@ from sigtools._signatures import EmptyAnnotation, UpgradedAnnotation, UpgradedPa
 
 import synchronicity
 from synchronicity import combined_types, overload_tracking
-from synchronicity.annotations import evaluated_annotation
+from synchronicity.annotations import TYPE_CHECKING_OVERRIDES, evaluated_annotation
 from synchronicity.interface import Interface
 from synchronicity.synchronizer import (
     SYNCHRONIZER_ATTR,
@@ -702,7 +702,7 @@ class StubEmitter:
         # but can be used freely in stub files, import the module and return the
         # original annotation
         if isinstance(annotation, typing.ForwardRef):
-            if hasattr(annotation, "__forward_module__") and annotation.__forward_module__ is not None:
+            if hasattr(annotation, "__forward_module__") and annotation.__forward_module__ in TYPE_CHECKING_OVERRIDES:
                 self.imports.add(annotation.__forward_module__)
                 return annotation.__forward_arg__
 
