@@ -27,6 +27,7 @@ from sigtools._signatures import EmptyAnnotation, UpgradedAnnotation, UpgradedPa
 import synchronicity
 from synchronicity import combined_types, overload_tracking
 from synchronicity.annotations import TYPE_CHECKING_OVERRIDES, evaluated_annotation
+from synchronicity.async_wrap import is_coroutine_function_follow_wrapped
 from synchronicity.interface import Interface
 from synchronicity.synchronizer import (
     SYNCHRONIZER_ATTR,
@@ -857,12 +858,12 @@ class StubEmitter:
             maybe_decorators = f"{signature_indent}@typing_extensions.dataclass_transform({args})\n"
 
         def is_async(func):
-            if hasattr(func, "__wrapped__") and not hasattr(func, SYNCHRONIZER_ATTR):
+            if hasattr(func, "__wrapped__") and getattr(func, TARGET_INTERFACE_ATTR, None) != Interface.BLOCKING:
                 return is_async(func.__wrapped__)
             return inspect.iscoroutinefunction(func)
 
         async_prefix = ""
-        if is_async(func):
+        if is_coroutine_function_follow_wrapped(func):
             # note: async prefix should not be used for annotated abstract/stub *async generators*,
             # so we don't check for inspect.isasyncgenfunction since they contain no yield keyword,
             # and would otherwise indicate an awaitable that returns an async generator to static type checkers

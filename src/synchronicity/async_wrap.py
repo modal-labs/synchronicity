@@ -38,6 +38,15 @@ def wraps_by_interface(interface: Interface, func):
         return functools.wraps(func)
 
 
+def is_coroutine_function_follow_wrapped(func: typing.Callable) -> bool:
+    """Determine if a function returns a coroutine, unwrapping decorators, but not the async synchronicitiy interace."""
+    from .synchronizer import TARGET_INTERFACE_ATTR  # Avoid circular import
+
+    if hasattr(func, "__wrapped__") and getattr(func, TARGET_INTERFACE_ATTR, None) != Interface.BLOCKING:
+        return is_coroutine_function_follow_wrapped(func.__wrapped__)
+    return inspect.iscoroutinefunction(func)
+
+
 YIELD_TYPE = typing.TypeVar("YIELD_TYPE")
 SEND_TYPE = typing.TypeVar("SEND_TYPE")
 
