@@ -436,7 +436,6 @@ class StubEmitter:
             superself_var.__module__ = self.target_module
             self.add_type_var(superself_var, superself_name)
             self._typevar_inner_replacements[typing_extensions.Self] = superself_var
-            self._typevar_inner_replacements[typing.Self] = superself_var
             self.imports.add("typing_extensions")
             extra_instance_args = ["typing_extensions.Self"]
             extra_declaration_args = ["SUPERSELF"]
