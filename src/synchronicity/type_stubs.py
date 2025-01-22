@@ -484,7 +484,7 @@ class StubEmitter:
             args.append("covariant=True")
 
         self.global_types.add(name)
-        self.parts.append(f'{name} = {type_module}.{type_name}({", ".join(args)})')
+        self.parts.append(f"{name} = {type_module}.{type_name}({', '.join(args)})")
 
     def get_source(self):
         missing_types = self.referenced_global_types - self.global_types
@@ -669,17 +669,15 @@ class StubEmitter:
 
         interface = getattr(func, TARGET_INTERFACE_ATTR, None)
         synchronizer = getattr(func, SYNCHRONIZER_ATTR, None)
-        root_func = func
 
         if synchronizer:
             home_module = safe_get_module(getattr(func, synchronizer._original_attr))
         else:
             home_module = safe_get_module(func)
 
-        if interface:
+        root_func = func
+        if interface and synchronizer:
             root_func = synchronizer._translate_in(func)
-        else:
-            root_func = func
 
         sig = sigtools.specifiers.signature(root_func)
 
