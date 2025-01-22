@@ -68,12 +68,14 @@ def safe_get_module(obj: typing.Any) -> typing.Optional[str]:
 
 
 def generic_copy_with_args(specific_type, new_args):
-    if hasattr(specific_type, "copy_with"):
+    origin = typing_extensions.get_origin(specific_type)
+    if hasattr(specific_type, "copy_with") and origin not in (typing.Callable, collections.abc.Callable):
         # not strictly necessary, but this makes the type stubs
         # preserve generic alias names when possible, e.g. using `typing.Iterator`
         # instead of changing it into `collections.abc.Iterator`
         return specific_type.copy_with(new_args)
-    return typing.get_origin(specific_type)[new_args]
+
+    return origin[new_args]
 
 
 def add_prefix_arg(arg_name, remove_args=0):
@@ -92,11 +94,15 @@ def add_prefix_arg(arg_name, remove_args=0):
 def replace_type_vars(replacement_dict: typing.Dict[type, type]):
     def _replace_type_vars_rec(tp: typing.Type[typing.Any]):
         origin = getattr(tp, "__origin__", None)
-        args = typing.get_args(tp)
+        args = safe_get_args(tp)
 
         if isinstance(tp, (typing_extensions.ParamSpecArgs, typing_extensions.ParamSpecKwargs)):
             new_origin_type_var = _replace_type_vars_rec(origin)
             return type(tp)(new_origin_type_var)
+
+        if type(tp) is list:  # typically first argument to typing.Callable
+            # intentionally not using isinstance, since ParamSpec is a subclass of list in Python 3.9
+            return [_replace_type_vars_rec(arg) for arg in tp]
 
         if tp in replacement_dict:
             return replacement_dict[tp]
@@ -129,7 +135,7 @@ def _get_type_vars(typ, synchronizer, home_module):
         param_spec = synchronizer._translate_out(param_spec)
         ret.add(param_spec)
     elif origin:
-        for arg in typing.get_args(typ):
+        for arg in safe_get_args(typ):
             ret |= _get_type_vars(arg, synchronizer, home_module)
     else:
         # Copied string annotation handling from StubEmitter.translate_annotations - TODO: unify?
@@ -160,12 +166,12 @@ def _get_func_type_vars(func, synchronizer: synchronicity.Synchronizer) -> typin
 def safe_get_args(annotation):
     # "polyfill" of Python 3.10+ typing.get_args() behavior of
     # not putting ParamSpec and Ellipsis in a list when used as first argument to a Callable
-    # can be removed if we drop support for *generating type stubs using Python <=3.9*
+    # This can be removed if we drop support for *generating type stubs using Python <=3.9*
     args = typing.get_args(annotation)
     if sys.version_info[:2] <= (3, 9) and typing.get_origin(annotation) == collections.abc.Callable:
         if (
             args
-            and type(args[0]) == list  # noqa  (want specific type)
+            and type(args[0]) is list
             and args[0]
             and isinstance(args[0][0], (typing_extensions.ParamSpec, type(...)))
         ):
@@ -420,22 +426,45 @@ class StubEmitter:
             new_tvar.__module__ = self.target_module  # avoid referencing synchronicity.type_stubs
             self._typevar_inner_replacements[tvar] = new_tvar
             self.add_type_var(new_tvar, replacement_typevar_name)  # type: ignore
-        if typevar_overlap:
-            instance_argstr = ", ".join(tvar.__name__ for tvar in typevar_overlap)
+
+        extra_instance_args = []
+        extra_declaration_args = []
+
+        if isinstance(entity, MethodWithAio):
+            # support for typing.Self (which would otherwise reference the protocol class)
+            superself_name = "SUPERSELF"
+            superself_var = typing.TypeVar(superself_name, covariant=True)  # type: ignore
+            superself_var.__module__ = self.target_module
+            self.add_type_var(superself_var, superself_name)
+            self._typevar_inner_replacements[typing_extensions.Self] = superself_var
+            self.imports.add("typing_extensions")
+            extra_instance_args = ["typing_extensions.Self"]
+            extra_declaration_args = ["SUPERSELF"]
+
+        protocol_generic_args = [
+            self._typevar_inner_replacements[tvar].__name__ for tvar in typevar_overlap
+        ] + extra_declaration_args
+        if protocol_generic_args:
+            instance_argstr = ", ".join([tvar.__name__ for tvar in typevar_overlap] + extra_instance_args)
             parent_type_var_names_spec = f"[{instance_argstr}]"
-            declaration_argstr = ", ".join(self._typevar_inner_replacements[tvar].__name__ for tvar in typevar_overlap)
+            declaration_argstr = ", ".join(protocol_generic_args)
             protocol_declaration_type_var_spec = f"[{declaration_argstr}]"
 
             # recursively replace any used type vars in the function annotation with newly created
             transform_signature = replace_type_vars(self._typevar_inner_replacements)
         else:
+            transform_signature = lambda x: x  # noqa
             parent_type_var_names_spec = ""
             protocol_declaration_type_var_spec = ""
-            transform_signature = lambda sig: sig  # noqa
+
         return transform_signature, parent_type_var_names_spec, protocol_declaration_type_var_spec
 
-    def add_type_var(self, type_var: typing.Union[typing.TypeVar, typing_extensions.ParamSpec], name):
-        # TODO: deduplicate vs type vars that have already been added in the same file
+    def add_type_var(self, type_var: typing.Union[typing.TypeVar, typing_extensions.ParamSpec], name: str):
+        if name in self.global_types:
+            # skip already added type
+            # TODO: check that the already added type is the same?
+            return
+
         if isinstance(type_var, typing_extensions.ParamSpec):
             type_module = "typing_extensions"  # this ensures stubs created by newer Python's still work on Python 3.9
             type_name = "ParamSpec"
@@ -455,7 +484,7 @@ class StubEmitter:
             args.append("covariant=True")
 
         self.global_types.add(name)
-        self.parts.append(f'{name} = {type_module}.{type_name}({", ".join(args)})')
+        self.parts.append(f"{name} = {type_module}.{type_name}({', '.join(args)})")
 
     def get_source(self):
         missing_types = self.referenced_global_types - self.global_types
@@ -537,6 +566,11 @@ class StubEmitter:
                     f"Error when evaluating {annotation} in {home_module}. Falling back to string annotation"
                 )
                 return annotation
+        if type(annotation) is list:  # not using isinstance since ParamSpec is a subclass of list in Python 3.9
+            return [
+                self._translate_annotation(x, synchronizer, synchronicity_target_interface, home_module)
+                for x in annotation
+            ]
 
         translated_annotation = self._translate_annotation_map_types(
             annotation,
@@ -556,7 +590,7 @@ class StubEmitter:
     ):
         # recursively map a nested type annotation to match the output interface
         origin = getattr(type_annotation, "__origin__", None)
-        args = getattr(type_annotation, "__args__", None)
+        args = safe_get_args(type_annotation)
 
         if isinstance(type_annotation, (typing_extensions.ParamSpecArgs, typing_extensions.ParamSpecKwargs)):
             # ParamSpecArgs and ParamSpecKwargs are special - they have an origin (the ParamSpec) but no attrs
@@ -635,17 +669,15 @@ class StubEmitter:
 
         interface = getattr(func, TARGET_INTERFACE_ATTR, None)
         synchronizer = getattr(func, SYNCHRONIZER_ATTR, None)
-        root_func = func
 
         if synchronizer:
             home_module = safe_get_module(getattr(func, synchronizer._original_attr))
         else:
             home_module = safe_get_module(func)
 
-        if interface:
+        root_func = func
+        if interface and synchronizer:
             root_func = synchronizer._translate_in(func)
-        else:
-            root_func = func
 
         sig = sigtools.specifiers.signature(root_func)
 
