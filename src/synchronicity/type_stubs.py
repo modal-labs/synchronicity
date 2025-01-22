@@ -100,7 +100,8 @@ def replace_type_vars(replacement_dict: typing.Dict[type, type]):
             new_origin_type_var = _replace_type_vars_rec(origin)
             return type(tp)(new_origin_type_var)
 
-        if isinstance(tp, list):  # typically first argument to typing.Callable
+        if type(tp) is list:  # typically first argument to typing.Callable
+            # intentionally not using isinstance, since ParamSpec is a subclass of list in Python 3.9
             return [_replace_type_vars_rec(arg) for arg in tp]
 
         if tp in replacement_dict:
@@ -170,7 +171,7 @@ def safe_get_args(annotation):
     if sys.version_info[:2] <= (3, 9) and typing.get_origin(annotation) == collections.abc.Callable:
         if (
             args
-            and type(args[0]) == list  # noqa  (want specific type)
+            and type(args[0]) is list
             and args[0]
             and isinstance(args[0][0], (typing_extensions.ParamSpec, type(...)))
         ):
@@ -565,7 +566,7 @@ class StubEmitter:
                     f"Error when evaluating {annotation} in {home_module}. Falling back to string annotation"
                 )
                 return annotation
-        if isinstance(annotation, list):
+        if type(annotation) is list:  # not using isinstance since ParamSpec is a subclass of list in Python 3.9
             return [
                 self._translate_annotation(x, synchronizer, synchronicity_target_interface, home_module)
                 for x in annotation
