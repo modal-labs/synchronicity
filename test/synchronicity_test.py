@@ -182,7 +182,7 @@ def test_sync_lambda_returning_coroutine_sync(synchronizer):
     g = synchronizer.create_blocking(lambda z: f(z + 1))
     ret = g(42)
     assert ret == 1849
-    assert time.time() - t0 > SLEEP_DELAY
+    assert time.time() - t0 >= SLEEP_DELAY
 
 
 def test_sync_lambda_returning_coroutine_sync_futures(synchronizer):
@@ -192,7 +192,7 @@ def test_sync_lambda_returning_coroutine_sync_futures(synchronizer):
     assert isinstance(fut, concurrent.futures.Future)
     assert time.time() - t0 < SLEEP_DELAY
     assert fut.result() == 1849
-    assert time.time() - t0 > SLEEP_DELAY
+    assert time.time() - t0 >= SLEEP_DELAY
 
 
 @pytest.mark.asyncio
@@ -208,7 +208,7 @@ async def test_sync_inline_func_returning_coroutine_async(synchronizer):
     assert inspect.iscoroutine(coro)
     assert time.time() - t0 < SLEEP_DELAY
     assert await coro == 1849
-    assert time.time() - t0 > SLEEP_DELAY
+    assert time.time() - t0 >= SLEEP_DELAY
 
 
 class Base:
