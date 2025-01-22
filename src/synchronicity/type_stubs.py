@@ -94,7 +94,7 @@ def add_prefix_arg(arg_name, remove_args=0):
 def replace_type_vars(replacement_dict: typing.Dict[type, type]):
     def _replace_type_vars_rec(tp: typing.Type[typing.Any]):
         origin = getattr(tp, "__origin__", None)
-        args = typing_extensions.get_args(tp)
+        args = safe_get_args(tp)
 
         if isinstance(tp, (typing_extensions.ParamSpecArgs, typing_extensions.ParamSpecKwargs)):
             new_origin_type_var = _replace_type_vars_rec(origin)
@@ -135,7 +135,7 @@ def _get_type_vars(typ, synchronizer, home_module):
         param_spec = synchronizer._translate_out(param_spec)
         ret.add(param_spec)
     elif origin:
-        for arg in typing.get_args(typ):
+        for arg in safe_get_args(typ):
             ret |= _get_type_vars(arg, synchronizer, home_module)
     else:
         # Copied string annotation handling from StubEmitter.translate_annotations - TODO: unify?
@@ -166,7 +166,7 @@ def _get_func_type_vars(func, synchronizer: synchronicity.Synchronizer) -> typin
 def safe_get_args(annotation):
     # "polyfill" of Python 3.10+ typing.get_args() behavior of
     # not putting ParamSpec and Ellipsis in a list when used as first argument to a Callable
-    # can be removed if we drop support for *generating type stubs using Python <=3.9*
+    # This can be removed if we drop support for *generating type stubs using Python <=3.9*
     args = typing.get_args(annotation)
     if sys.version_info[:2] <= (3, 9) and typing.get_origin(annotation) == collections.abc.Callable:
         if (
@@ -590,7 +590,7 @@ class StubEmitter:
     ):
         # recursively map a nested type annotation to match the output interface
         origin = getattr(type_annotation, "__origin__", None)
-        args = typing_extensions.get_args(type_annotation)
+        args = safe_get_args(type_annotation)
 
         if isinstance(type_annotation, (typing_extensions.ParamSpecArgs, typing_extensions.ParamSpecKwargs)):
             # ParamSpecArgs and ParamSpecKwargs are special - they have an origin (the ParamSpec) but no attrs
