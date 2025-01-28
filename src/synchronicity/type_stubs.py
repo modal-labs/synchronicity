@@ -445,7 +445,11 @@ class StubEmitter:
             self._typevar_inner_replacements[tvar].__name__ for tvar in typevar_overlap
         ] + extra_declaration_args
         if protocol_generic_args:
-            instance_argstr = ", ".join([tvar.__name__ for tvar in typevar_overlap] + extra_instance_args)
+            original_type_var_names = []
+            for tvar in typevar_overlap:
+                original_type_var_names.append(self._formatannotation(tvar))
+
+            instance_argstr = ", ".join(original_type_var_names + extra_instance_args)
             parent_type_var_names_spec = f"[{instance_argstr}]"
             declaration_argstr = ", ".join(protocol_generic_args)
             protocol_declaration_type_var_spec = f"[{declaration_argstr}]"
