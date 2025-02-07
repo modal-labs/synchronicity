@@ -16,7 +16,7 @@ Background: why is anything like this needed
 
 Let's say you have an asynchronous function
 
-```python
+```python fixture:quicksleep
 async def f(x):
     await asyncio.sleep(1.0)
     return x**2
@@ -54,7 +54,7 @@ This library offers a simple `Synchronizer` class that creates an event loop on 
 * In the synchronous case, wrapped functions will simply block until the result is available (note that you can make it return a future as well, [see below](#returning-futures))
 * In the asynchronous case, you use a special `.aio` member *on the wrapper function itself* which works just like the usual business of calling asynchronous code (`await`, `async for` etc.), except that async code is executed on the `Synchronizer`'s own event loop ([more on why this matters below](#using-synchronicity-with-other-asynchronous-code)).
 
-```python
+```python fixture:quicksleep
 import asyncio
 from synchronicity import Synchronizer
 
@@ -73,7 +73,7 @@ print('f(42) =', ret)
 ```
 
 Async usage of the `f` wrapper, using the `f.aio` special coroutine function. This will execute `f` on `synchronizer`'s event loop - not the main event loop used by `asyncio.run()` here:
-```python continuation
+```python continuation fixture:quicksleep
 async def g():
     # Running f in an asynchronous context works the normal way
     ret = await f.aio(42)  # f.aio is roughly equivalent to the original `f`
@@ -90,13 +90,12 @@ Generators
 
 The decorator also works on async generators, wrapping them as a regular (non-async) generator:
 
-```python
+```python fixture:quicksleep
 @synchronizer.wrap
 async def f(n):
     for i in range(n):
         await asyncio.sleep(1.0)
     yield i
-
 
 # Note that the following runs in a synchronous context
 # Each number will take 1s to print
@@ -104,9 +103,9 @@ for ret in f(3):
     print(ret)
 ```
 
-Wrapped generators can also be invoked asynchronously:
+The wrapped generators can also be called safely in an async context using the `.aio` property:
 
-```py continuation
+```py continuation fixture:quicksleep
 async def async_iteration():
     async for ret in f.aio(3):
         pass
@@ -147,13 +146,30 @@ Context managers
 
 You can synchronize context manager classes just like any other class and the special methods will be handled properly.
 
+```python fixture:quicksleep
+@synchronizer.wrap
+class CtxMgr:
+    def __init__(self, exit_delay: float):
+        self.exit_delay = exit_delay
+
+    async def __aenter__(self):
+        pass
+    
+    async def __aexit__(self, exc, exc_type, tb):
+        await asyncio.sleep(self.exit_delay)
+
+with CtxMgr(exit_delay=1):
+    print("sleeping 1 second")
+print("done")
+```
+
 
 Returning futures
 -----------------
 
-You can also make functions return a `Future` object by adding `_future=True` to any call. This can be useful if you want to dispatch many calls from a blocking context, but you want to resolve them roughly in parallel:
+You can also make functions return a `concurrent.futures.Future` object by adding `_future=True` to any call. This can be useful if you want to dispatch many calls from a blocking context, but you want to resolve them roughly in parallel:
 
-```python
+```python fixture:quicksleep
 @synchronizer.wrap
 async def f(x):
     await asyncio.sleep(1.0)
@@ -181,20 +197,47 @@ For this reason, synchronicity includes a basic type stub (.pyi) generation tool
 
 The tool will to the best of its ability also emit type stubs for non-synchronicity entities, since type checkers would otherwise not detect those anymore when the `.pyi` file is present. To avoid that, it can be a good idea to put wrappers in a separate module, qualifying their name and home module manually:
 
-Given a `my_module.py`:
+A recommended structure would be something like this:
+
+#### _my_library.py (private library implementation)
 ```py
-class MyClass:
-    async def foo(self) -> int:
-        pass
+import typing
+
+async def foo() -> typing.AsyncGenerator[int, None]:
+    yield 1
 ```
-You can emit type stubs for that module using:
+
+#### my_library.py (public library interface)
+```py notest
+import _my_library
+from synchronicity import Synchronizer
+
+synchronizer = Synchronizer()
+
+foo = synchronizer.wrap(_my_library.foo, name="MyClass", target_module=__name__)
+```
+
+You can then emit type stubs for the public module, as part of your build process:
 ```shell
 python -m synchronicity.type_stubs my_module
 ```
-That type stub would typically look something like:
+That type stub would then look something like:
 ```pyi
+import typing
+
+class __MyClass_spec(typing.Protocol):
+    def __call__(self) -> typing.Generator[int, None, None]:
+        ...
+
+    def aio(self) -> typing.AsyncGenerator[int, None]:
+        ...
+
+MyClass: __MyClass_spec
 
 ```
+
+The special `*_spec` protocols here make sure that both calling the wrapped `foo()` method and `foo.aio()` will be statically valid operations, and their respective return values are typed correctly.
+
 
 Gotchas
 =======
