@@ -251,19 +251,26 @@ The special `*_spec` protocol types here make sure that both calling the wrapped
 Gotchas
 =======
 
-* It works for classes that are context managers, but not for functions returning a context manager
-* It creates a new class (with the same name) when wrapping classes, which might lead to typing problems if you have any any un-synchronized usage of the same class
-* No idea how this interacts with typing annotations
-* If a class is "synchronized", it wraps all the methods on the class, but this typically means you can't reach into attributes and run asynchronous code on it: you might get errors such as "attached to a different loop"
-* Note that all synchronized code will run on a different thread, and a different event loop, so calling the code might have some minor extra overhead
+* If you have a non-async function that *returns* an awaitable or other async entity, but isn't itself defined with the `async` keyword, you have to *type annotate* that function with the correct async return type - otherwise it will not get wrapped correctly.
+
+    ```py
+    @synchronizer.wrap
+    def foo() -> typing.AsyncContextManager[str]
+        return make_context_manager() 
+    ```
+* If a class is "synchronized", any instance of that class will be a proxy for an instance of the original class. Methods on the class will delegate to methods of the underlying class, but *attributes* of the original class aren't directly reachable and would need getter methods or @properties to be reachable on the wrapper.
+* Note that all synchronized code will run on a different thread, and a different event loop, so calling the code might have some minor extra overhead.
+* Since all arguments and return values of wrapped functions are recursively run-time inspected to "translate" them, large data structures that are passed in and out can incur extra overhead. This can be disabled using a `@synchronizer.no_io_translation` decorator on the original function.
+
 
 Future ideas
 =====
 * Use type annotations instead of runtime type inspection to determine the wrapping logic. This would prevent overly zealous argument/return value inspection when it isn't needed.
 * Use (optional?) code generation (using type annotations) for instead of runtime wrappers + type stub generation. This would make it easier to navigate error tracebacks, and lead to simpler/better static types for wrappers. 
-* Support the opposite case, i.e. you have a blocking function/generator/class/object, and you want to call it asynchronously (this is relatively simple to do for plain functions using [loop.run_in_executor](https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.run_in_executor), but Python has no built-in support for generators, and it would be nice to transform a whole class
-* More documentation
-* Make it possible to annotate methods selectively to return futures
+* Support the opposite case, i.e. you have a blocking function/generator/class/object, and you want to call it asynchronously (this is relatively simple to do for plain functions using [loop.run_in_executor](https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.run_in_executor), but Python has no built-in support for generators, and it would be nice to transform a whole class.
+* More/better documentation
+* Make it possible to annotate methods selectively to return futures?
+
 
 Release process
 ===============
