@@ -52,7 +52,7 @@ How to use this library
 This library offers a simple `Synchronizer` class that creates an event loop on a separate thread, and wraps functions/generators/classes so that execution happens on that thread.
 
 * In the synchronous case, wrapped functions will simply block until the result is available (note that you can make it return a future as well, [see below](#returning-futures))
-* In the asynchronous case, you use a special `.aio` member *on the wrapper function itself* which works just like the usual business of calling asynchronous code (`await`, `async with` etc.), except that async code is executed on the `Synchronizer`'s own event loop ([more on why this matters below](#using-synchronicity-with-other-asynchronous-code)).
+* In the asynchronous case, you use a special `.aio` member *on the wrapper function itself* which works just like the usual business of calling asynchronous code (`await`, `async for` etc.), except that async code is executed on the `Synchronizer`'s own event loop ([more on why this matters below](#using-synchronicity-with-other-asynchronous-code)).
 
 ```python
 import asyncio
@@ -60,7 +60,7 @@ from synchronicity import Synchronizer
 
 synchronizer = Synchronizer()
 
-@synchronizer.create_blocking
+@synchronizer.wrap
 async def f(x):
     await asyncio.sleep(1.0)
     return x**2
@@ -70,12 +70,16 @@ async def f(x):
 ret = f(42)  # Blocks
 assert isinstance(ret, int)
 print('f(42) =', ret)
+```
 
-
+Async usage of the `f` wrapper, using the `f.aio` special coroutine function. This will execute `f` on `synchronizer`'s event loop - not the main event loop used by `asyncio.run()` here:
+```python continuation
 async def g():
     # Running f in an asynchronous context works the normal way
     ret = await f.aio(42)  # f.aio is roughly equivalent to the original `f`
     print('f(42) =', ret)
+
+asyncio.run(g())
 ```
 
 More advanced examples
@@ -84,20 +88,30 @@ More advanced examples
 Generators
 ----------
 
-The decorator also works on generators:
+The decorator also works on async generators, wrapping them as a regular (non-async) generator:
 
 ```python
-@synchronizer.create_blocking
+@synchronizer.wrap
 async def f(n):
     for i in range(n):
         await asyncio.sleep(1.0)
-	yield i
+    yield i
 
 
 # Note that the following runs in a synchronous context
 # Each number will take 1s to print
-for ret in f(10):
+for ret in f(3):
     print(ret)
+```
+
+Wrapped generators can also be invoked asynchronously:
+
+```py continuation
+async def async_iteration():
+    async for ret in f.aio(3):
+        pass
+    
+asyncio.run(async_iteration())
 ```
 
 Synchronizing whole classes
@@ -107,7 +121,7 @@ The `Synchronizer` wrapper operates on classes by creating a new class that wrap
 
 
 ```python
-@synchronizer.create_blocking
+@synchronizer.wrap
 class DBConnection:
     def __init__(self, url):
         self._url = url
@@ -140,11 +154,7 @@ Returning futures
 You can also make functions return a `Future` object by adding `_future=True` to any call. This can be useful if you want to dispatch many calls from a blocking context, but you want to resolve them roughly in parallel:
 
 ```python
-from synchronicity import Synchronizer
-
-synchronizer = Synchronizer()
-
-@synchronizer.create_blocking
+@synchronizer.wrap
 async def f(x):
     await asyncio.sleep(1.0)
     return x**2
@@ -166,6 +176,25 @@ A common pitfall in asynchronous programming is to accidentally lock up an event
 # Static typing
 
 One issue with the wrapper functions and classes is that they will have different argument and return value types than the wrapped originals. This type transformation can't easily be expressed statically in Python's typing system.
+
+For this reason, synchronicity includes a basic type stub (.pyi) generation tool (`python -m synchronicity.type_stubs`) that takes Python modules names as inputs and emits a `.pyi` file for each module with static types translating any synchronicity-wrapped classes or functions.
+
+The tool will to the best of its ability also emit type stubs for non-synchronicity entities, since type checkers would otherwise not detect those anymore when the `.pyi` file is present. To avoid that, it can be a good idea to put wrappers in a separate module, qualifying their name and home module manually:
+
+Given a `my_module.py`:
+```py
+class MyClass:
+    async def foo(self) -> int:
+        pass
+```
+You can emit type stubs for that module using:
+```shell
+python -m synchronicity.type_stubs my_module
+```
+That type stub would typically look something like:
+```pyi
+
+```
 
 Gotchas
 =======
