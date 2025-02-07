@@ -136,10 +136,19 @@ class DBConnection:
 db_conn = DBConnection('tcp://localhost:1234')
 db_conn.connect()
 data = db_conn.query('select * from foo')
+```
+*Or*, we could opt to use the wrapped class in an async context if we want to:
+```python continuation
+async def async_main():
+    db_conn = DBConnection('tcp://localhost:1234')
+    await db_conn.connect.aio()
+    await db_conn.query.aio('select * from foo')  # .aio works on methods too
 
+asyncio.run(async_main())
+```
 async def async_calling():
     await db_conn.query.aio('select * from foo')  # .aio works on methods too
-```
+
 
 Context managers
 ----------------
@@ -189,7 +198,7 @@ This library can also be useful in purely asynchronous settings, if you have mul
 A common pitfall in asynchronous programming is to accidentally lock up an event loop by making non-async long-running calls within the event loop. If your async library shares an event loop with a user's own async code, a synchronous call (bug) in either the library or the user code would prevent the other from running concurrent tasks. Using synchronicity wrappers on your library functions, you avoid this pitfall by isolating the library execution to its own event loop and thread automatically.  
 
 
-# Static typing
+# Static type support for wrappers
 
 One issue with the wrapper functions and classes is that they will have different argument and return value types than the wrapped originals. This type transformation can't easily be expressed statically in Python's typing system.
 
@@ -221,22 +230,22 @@ You can then emit type stubs for the public module, as part of your build proces
 ```shell
 python -m synchronicity.type_stubs my_module
 ```
-That type stub would then look something like:
-```pyi
+The automatically generated type stub would then look something like:
+```py
 import typing
+import typing_extensions
 
-class __MyClass_spec(typing.Protocol):
+class __foo_spec(typing_extensions.Protocol):
     def __call__(self) -> typing.Generator[int, None, None]:
         ...
 
     def aio(self) -> typing.AsyncGenerator[int, None]:
         ...
 
-MyClass: __MyClass_spec
-
+foo: __foo_spec
 ```
 
-The special `*_spec` protocols here make sure that both calling the wrapped `foo()` method and `foo.aio()` will be statically valid operations, and their respective return values are typed correctly.
+The special `*_spec` protocol types here make sure that both calling the wrapped `for x in foo()` method and `async for x in foo.aio()` will be statically valid operations, and their respective return values are typed correctly.
 
 
 Gotchas
