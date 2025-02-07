@@ -28,9 +28,9 @@ A "simple" way to create a synchronous equivalent would be to implement a set of
 
 * It's kind of tedious grunt work to have to do this for every method/function
 * [asyncio.run](https://docs.python.org/3/library/asyncio-task.html#asyncio.run) doesn't work with generators
-* In many cases, you need to preserve an event loop running between calls.
+* In many cases, you need to preserve an event loop running between calls
 
-The last case is particularly challenging. For instance, let's say you are implementing a client to a database that needs to have a persistent connection, and you want to built it in asyncio:
+The last case is particularly challenging. For instance, let's say you are implementing a client to a database that needs to have a persistent connection, and you want to build it in asyncio:
 
 ```python
 class DBConnection:
@@ -49,12 +49,13 @@ How do you expose a synchronous interface to this code? The problem is that wrap
 How to use this library
 =======================
 
-This library offers a simple `Synchronizer` class that creates an event loop on a separate thread, and wraps functions/generators/classes so that synchronous execution happens on that thread. When you call anything, it will detect if you're running in a synchronous or asynchronous context, and behave correspondingly.
+This library offers a simple `Synchronizer` class that creates an event loop on a separate thread, and wraps functions/generators/classes so that execution happens on that thread.
 
-* In the synchronous case, it will simply block until the result is available (note that you can make it return a future as well, see later)
-* In the asynchronous case, it works just like the usual business of calling asynchronous code
+* In the synchronous case, wrapped functions will simply block until the result is available (note that you can make it return a future as well, [see below](#returning-futures))
+* In the asynchronous case, you use a special `.aio` member *on the wrapper function itself* which works just like the usual business of calling asynchronous code (`await`, `async with` etc.), except that async code is executed on the `Synchronizer`'s own event loop ([more on why this matters below](#using-synchronicity-with-other-asynchronous-code)).
 
 ```python
+import asyncio
 from synchronicity import Synchronizer
 
 synchronizer = Synchronizer()
@@ -67,12 +68,13 @@ async def f(x):
 
 # Running f in a synchronous context blocks until the result is available
 ret = f(42)  # Blocks
+assert isinstance(ret, int)
 print('f(42) =', ret)
 
 
 async def g():
     # Running f in an asynchronous context works the normal way
-    ret = await f(42)
+    ret = await f.aio(42)  # f.aio is roughly equivalent to the original `f`
     print('f(42) =', ret)
 ```
 
@@ -101,7 +103,7 @@ for ret in f(10):
 Synchronizing whole classes
 ---------------------------
 
-It also operates on classes by wrapping every method on the class:
+The `Synchronizer` wrapper operates on classes by creating a new class that wraps every method on the class:
 
 
 ```python
@@ -121,7 +123,16 @@ class DBConnection:
 db_conn = DBConnection('tcp://localhost:1234')
 db_conn.connect()
 data = db_conn.query('select * from foo')
+
+async def async_calling():
+    await db_conn.query.aio('select * from foo')  # .aio works on methods too
 ```
+
+Context managers
+----------------
+
+You can synchronize context manager classes just like any other class and the special methods will be handled properly.
+
 
 Returning futures
 -----------------
@@ -138,23 +149,23 @@ async def f(x):
     await asyncio.sleep(1.0)
     return x**2
 
-futures = [f(i, _future=True) for i in range(10)]  # This returns immediately
+futures = [f(i, _future=True) for i in range(10)]  # This returns immediately, but starts running all calls in the background
 rets = [fut.result() for fut in futures]  # This should take ~1s to run, resolving all futures in parallel
 print('first ten squares:', rets)
 ```
 
-Using with with other asynchronous code
+
+Using synchronicity with other asynchronous code
 ---------------------------------------
 
-This library can also be useful in purely asynchronous settings, if you have multiple event loops, or if you have some section that is CPU-bound, or some critical code that you want to run on a separate thread for safety. All calls to synchronized functions/generators are thread-safe by design. This makes it a useful alternative to [loop.run_in_executor](https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.run_in_executor) for simple things. Note however that each synchronizer only runs one thread.
+This library can also be useful in purely asynchronous settings, if you have multiple event loops, if you have some section that is CPU-bound, or some critical code that you want to run on a separate thread for safety. All calls to synchronized functions/generators are thread-safe by design. This makes it a useful alternative to [loop.run_in_executor](https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.run_in_executor) for simple things. Note however that each synchronizer only runs one thread.
 
-Context managers
-----------------
+A common pitfall in asynchronous programming is to accidentally lock up an event loop by making non-async long-running calls within the event loop. If your async library shares an event loop with a user's own async code, a synchronous call (bug) in either the library or the user code would prevent the other from running concurrent tasks. Using synchronicity wrappers on your library functions, you avoid this pitfall by isolating the library execution to its own event loop and thread automatically.  
 
-You can synchronize context manager classes just like any other class and the special methods will be handled properly.
 
-There's also a function decorator `@synchronizer.asynccontextmanager` which behaves just like [https://docs.python.org/3/library/contextlib.html#contextlib.asynccontextmanager](contextlib.asynccontextmanager) but works in both synchronous and asynchronous contexts.
+# Static typing
 
+One issue with the wrapper functions and classes is that they will have different argument and return value types than the wrapped originals. This type transformation can't easily be expressed statically in Python's typing system.
 
 Gotchas
 =======
@@ -165,23 +176,17 @@ Gotchas
 * If a class is "synchronized", it wraps all the methods on the class, but this typically means you can't reach into attributes and run asynchronous code on it: you might get errors such as "attached to a different loop"
 * Note that all synchronized code will run on a different thread, and a different event loop, so calling the code might have some minor extra overhead
 
-TODOs
+Future ideas
 =====
-
+* Use type annotations instead of runtime type inspection to determine the wrapping logic. This would prevent overly zealous argument/return value inspection when it isn't needed.
+* Use (optional?) code generation (using type annotations) for instead of runtime wrappers + type stub generation. This would make it easier to navigate error tracebacks, and lead to simpler/better static types for wrappers. 
 * Support the opposite case, i.e. you have a blocking function/generator/class/object, and you want to call it asynchronously (this is relatively simple to do for plain functions using [loop.run_in_executor](https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.run_in_executor), but Python has no built-in support for generators, and it would be nice to transform a whole class
 * More documentation
 * Make it possible to annotate methods selectively to return futures
-* Maybe make it possible to synchronize objects on the fly, not just classes
-
-This library is limb-amputating edge
-====================================
-
-This is code I broke out of a personal projects, and it's not been battle-tested. There is a small test suite that you can run using pytest.
-
 
 Release process
 ===============
-Should automate this...
+TODO: We should automate this in CI/CD
 
 * Make a new branch `release-X.Y.Z` from main
 * Bump version in pyproject.toml to `X.Y.Z`
@@ -190,4 +195,4 @@ Should automate this...
 * Checkout main
 * `git tag -a vX.Y.Z -m "* release bullets"`
 * git push --tags
-* `TWINE_USERNAME=__token__ TWINE_PASSWORD="$PYPI_TOKEN_SYNCHRONICITY" make publish`
+* `UV_PUBLISH_TOKEN="$PYPI_TOKEN_SYNCHRONICITY" make publish`
