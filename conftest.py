@@ -1,5 +1,6 @@
 import asyncio
 import pytest
+import typing
 
 from synchronicity import Synchronizer
 
@@ -23,6 +24,7 @@ def quicksleep(monkeypatch):
 def pytest_markdown_docs_globals():
     synchronizer = Synchronizer()
     return {
+        "typing": typing,
         "synchronizer": synchronizer,
         "asyncio": asyncio,
         "connect_to_database": dummy_connect_to_db,

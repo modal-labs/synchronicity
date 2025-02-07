@@ -255,7 +255,7 @@ Gotchas
 
     ```py
     @synchronizer.wrap
-    def foo() -> typing.AsyncContextManager[str]
+    def foo() -> typing.AsyncContextManager[str]:
         return make_context_manager() 
     ```
 * If a class is "synchronized", any instance of that class will be a proxy for an instance of the original class. Methods on the class will delegate to methods of the underlying class, but *attributes* of the original class aren't directly reachable and would need getter methods or @properties to be reachable on the wrapper.
