@@ -24,6 +24,7 @@ See https://github.com/modal-labs/synchronicity/pull/165 for more details.
 
 import asyncio
 import concurrent
+import functools
 import inspect
 import pytest
 import time
@@ -164,3 +165,27 @@ async def test_function_raises_with_cause_async_syncwrap(synchronizer):
         await coro
     assert SLEEP_DELAY < time.monotonic() - t0 < 2 * SLEEP_DELAY
     assert isinstance(exc.value.__cause__, CustomExceptionCause)
+
+
+def decorator(f):
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        return f(*args, **kwargs)
+
+    return wrapper
+
+
+f_raises_wrapped = decorator(f_raises)
+
+
+@pytest.mark.asyncio
+async def test_wrapped_function_raises_async(synchronizer):
+    t0 = time.monotonic()
+    f_raises_s = synchronizer.create_blocking(f_raises_wrapped)
+    coro = f_raises_s.aio()
+    assert inspect.iscoroutine(coro)
+    assert time.monotonic() - t0 < SLEEP_DELAY
+    with pytest.raises(CustomException) as exc:
+        await coro
+    assert SLEEP_DELAY < time.monotonic() - t0 < 2 * SLEEP_DELAY
+    assert exc.value.__suppress_context__ or exc.value.__context__ is None

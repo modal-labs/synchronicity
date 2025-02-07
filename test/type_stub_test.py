@@ -178,6 +178,16 @@ def test_wrapped_function_with_new_annotations():
     assert _function_source(wrapper) == "def orig(extra_arg: int, arg: float):\n    ...\n"
 
 
+def test_wrapped_async_func_remains_async():
+    async def orig(arg: str): ...
+
+    @functools.wraps(orig)
+    def wrapper(*args, **kwargs):
+        return orig(*args, **kwargs)
+
+    assert _function_source(wrapper) == "async def orig(arg: str):\n    ...\n"
+
+
 class Base:
     def base_method(self) -> str:
         return ""
@@ -319,14 +329,14 @@ def test_synchronicity_class():
 
     assert (
         """
-    class __meth_spec(typing_extensions.Protocol):
+    class __meth_spec(typing_extensions.Protocol[SUPERSELF]):
         def __call__(self, arg: bool) -> int:
             ...
 
         async def aio(self, arg: bool) -> int:
             ...
 
-    meth: __meth_spec
+    meth: __meth_spec[typing_extensions.Self]
 """
         in src
     )
@@ -361,7 +371,7 @@ def test_custom_generic():
 
 
 class ParamSpecGeneric(typing.Generic[P, T]):
-    async def meth(self, *args: P.args, **kwargs: P.kwargs): ...
+    async def meth(self, *args: P.args, **kwargs: P.kwargs) -> typing_extensions.Self: ...
 
     def syncfunc(self) -> T: ...
 
@@ -373,10 +383,10 @@ def test_paramspec_generic():
     src = _class_source(BlockingParamSpecGeneric)
     assert "class BlockingParamSpecGeneric(typing.Generic[Translated_P, Translated_T])" in src
 
-    assert "class __meth_spec(typing_extensions.Protocol[Translated_P_INNER]):" in src
-    assert "def __call__(self, *args: Translated_P_INNER.args, **kwargs: Translated_P_INNER.kwargs)" in src
-    assert "def aio(self, *args: Translated_P_INNER.args, **kwargs: Translated_P_INNER.kwargs)" in src
-    assert "meth: __meth_spec[Translated_P]" in src
+    assert "class __meth_spec(typing_extensions.Protocol[Translated_P_INNER, SUPERSELF]):" in src
+    assert "def __call__(self, *args: Translated_P_INNER.args, **kwargs: Translated_P_INNER.kwargs) -> SUPERSELF" in src
+    assert "def aio(self, *args: Translated_P_INNER.args, **kwargs: Translated_P_INNER.kwargs) -> SUPERSELF" in src
+    assert "meth: __meth_spec[Translated_P, typing_extensions.Self]" in src
     assert "def syncfunc(self) -> Translated_T:" in src
 
 
@@ -447,29 +457,29 @@ def test_literal_alias(tmp_path):
 
 
 def test_callable():
-    def foo() -> typing.Callable[[str], float]:
+    def foo() -> collections.abc.Callable[[str], float]:
         return lambda x: 0.0
 
     src = _function_source(foo)
-    assert "-> typing.Callable[[str], float]" in src
+    assert "-> collections.abc.Callable[[str], float]" in src
 
 
 def test_ellipsis():
-    def foo() -> typing.Callable[..., typing.Any]:
+    def foo() -> collections.abc.Callable[..., typing.Any]:
         return lambda x: 0
 
     src = _function_source(foo)
-    assert "-> typing.Callable[..., typing.Any]" in src
+    assert "-> collections.abc.Callable[..., typing.Any]" in src
 
 
 def test_param_spec():
     P = typing_extensions.ParamSpec("P")
 
-    def foo() -> typing.Callable[P, typing.Any]:
+    def foo() -> collections.abc.Callable[P, typing.Any]:
         return lambda x: 0
 
     src = _function_source(foo)
-    assert "-> typing.Callable[P, typing.Any]" in src
+    assert "-> collections.abc.Callable[P, typing.Any]" in src
 
 
 def test_typing_literal():
@@ -561,9 +571,9 @@ def test_returns_forward_wrapped_generic():
     # base class should be generic in the (potentially) translated type var (could have wrapped bounds spec)
     assert "class Container(typing.Generic[Translated_T]):" in src
     assert "Translated_T_INNER = typing.TypeVar" in src  # distinct "inner copy" of Translated_T needs to be declared
-    assert "typing_extensions.Protocol[Translated_T_INNER]" in src
+    assert "typing_extensions.Protocol[Translated_T_INNER, SUPERSELF]" in src
     assert "def __call__(self) -> ReturnVal[Translated_T_INNER]:" in src
-    assert "fun: __fun_spec[Translated_T]" in src
+    assert "fun: __fun_spec[Translated_T, typing_extensions.Self]" in src
 
 
 def custom_field():  # needs to be in global scope
@@ -595,27 +605,43 @@ def test_contextvar():
 
 
 @pytest.mark.skipif(
-    sys.version_info < (3, 10), reason="typing.Callable strips Concatenate wrappers at runtime before Python 3.10 :("
+    sys.version_info < (3, 10),
+    reason="collections.abc.Callable strips Concatenate wrappers at runtime before Python 3.10 :(",
 )
 def test_concatenate_origin_module():
     s = StubEmitter(__name__)
     P = typing_extensions.ParamSpec("P")
     R = typing.TypeVar("R")
-    s.add_variable(typing.Callable[typing_extensions.Concatenate[typing.Any, P], R], "f")
+    s.add_variable(collections.abc.Callable[typing_extensions.Concatenate[typing.Any, P], R], "f")
     src = s.get_source()
     print(src)
-    assert "f: typing.Callable[typing_extensions.Concatenate[typing.Any, P], R]" in src
+    assert "f: collections.abc.Callable[typing_extensions.Concatenate[typing.Any, P], R]" in src
 
 
 def test_paramspec_args():
     from .type_stub_helpers.some_mod import P
 
-    def foo(fn: typing.Callable[P, None], *args: P.args, **kwargs: P.kwargs) -> str:
+    def foo(fn: collections.abc.Callable[P, None], *args: P.args, **kwargs: P.kwargs) -> str:
         return "Hello World!"
 
     src = _function_source(foo)
     assert "import test.type_stub_helpers.some_mod" in src
     assert (
-        "def foo(fn: typing.Callable[test.type_stub_helpers.some_mod.P, None], *args: test.type_stub_helpers.some_mod.P.args, **kwargs: test.type_stub_helpers.some_mod.P.kwargs) -> str:"  # noqa
+        "def foo(fn: collections.abc.Callable[test.type_stub_helpers.some_mod.P, None], *args: test.type_stub_helpers.some_mod.P.args, **kwargs: test.type_stub_helpers.some_mod.P.kwargs) -> str:"  # noqa
         in src
     )  # noqa: E501
+
+
+if typing.TYPE_CHECKING:
+    import _typeshed
+
+
+def test_typeshed():
+    """Test that _typeshed annotations are preserved in stubs."""
+
+    def foo() -> "_typeshed.OpenTextMode":
+        return "r"
+
+    src = _function_source(foo)
+    assert "import _typeshed" in src
+    assert "def foo() -> _typeshed.OpenTextMode:" in src

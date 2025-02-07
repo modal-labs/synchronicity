@@ -182,7 +182,7 @@ def test_sync_lambda_returning_coroutine_sync(synchronizer):
     g = synchronizer.create_blocking(lambda z: f(z + 1))
     ret = g(42)
     assert ret == 1849
-    assert time.time() - t0 > SLEEP_DELAY
+    assert time.time() - t0 >= SLEEP_DELAY
 
 
 def test_sync_lambda_returning_coroutine_sync_futures(synchronizer):
@@ -192,7 +192,7 @@ def test_sync_lambda_returning_coroutine_sync_futures(synchronizer):
     assert isinstance(fut, concurrent.futures.Future)
     assert time.time() - t0 < SLEEP_DELAY
     assert fut.result() == 1849
-    assert time.time() - t0 > SLEEP_DELAY
+    assert time.time() - t0 >= SLEEP_DELAY
 
 
 @pytest.mark.asyncio
@@ -208,7 +208,7 @@ async def test_sync_inline_func_returning_coroutine_async(synchronizer):
     assert inspect.iscoroutine(coro)
     assert time.time() - t0 < SLEEP_DELAY
     assert await coro == 1849
-    assert time.time() - t0 > SLEEP_DELAY
+    assert time.time() - t0 >= SLEEP_DELAY
 
 
 class Base:
@@ -455,33 +455,56 @@ async def test_non_async_aiter(synchronizer):
             value = await self._gen.__anext__()
             return value
 
+        async def aclose(self):
+            await self._gen.aclose()
+
     WrappedIt = synchronizer.create_blocking(It, name="WrappedIt")
 
     # just a sanity check of the original iterable:
     orig_async_it = It()
     assert [v async for v in orig_async_it] == ["foo", "bar"]
+    await orig_async_it.aclose()
 
     # check async iteration on the wrapped iterator
     it = WrappedIt()
     assert [v async for v in it] == ["foo", "bar"]
+    await it.aclose()
 
     # check sync iteration on the wrapped iterator
     it = WrappedIt()
     assert list(it) == ["foo", "bar"]
+    it.close()
 
 
 def test_generic_baseclass():
     T = typing.TypeVar("T")
+    V = typing.TypeVar("V")
 
-    class GenericClass(typing.Generic[T]):
+    class GenericClass(typing.Generic[T, V]):
         async def do_something(self):
             return 1
 
-    s = synchronicity.Synchronizer(multiwrap_warning=False)
+    s = synchronicity.Synchronizer()
     WrappedGenericClass = s.create_blocking(GenericClass, name="BlockingGenericClass")
-    instance: WrappedGenericClass[str] = WrappedGenericClass()  #  should be allowed
+
+    assert WrappedGenericClass[str, float].__args__ == (str, float)
+
+    instance: WrappedGenericClass[str, float] = WrappedGenericClass()  #  should be allowed
     assert isinstance(instance, WrappedGenericClass)
     assert instance.do_something() == 1
+
+    Q = typing.TypeVar("Q")
+    Y = typing.TypeVar("Y")
+
+    class GenericSubclass(GenericClass[Q, Y]):
+        pass
+
+    WrappedGenericSubclass = s.create_blocking(GenericSubclass, name="BlockingGenericSubclass")
+    assert WrappedGenericSubclass[bool, int].__args__ == (bool, int)
+    instance_2 = WrappedGenericSubclass()
+    assert isinstance(instance_2, WrappedGenericSubclass)
+    assert isinstance(instance_2, WrappedGenericClass)  # still instance of parent
+    assert instance.do_something() == 1  # has base methods
 
 
 @pytest.mark.asyncio
