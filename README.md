@@ -51,8 +51,9 @@ How to use this library
 
 This library offers a simple `Synchronizer` class that creates an event loop on a separate thread, and wraps functions/generators/classes so that execution happens on that thread.
 
-* In the synchronous case, wrapped functions will simply block until the result is available (note that you can make it return a future as well, [see below](#returning-futures))
-* In the asynchronous case, you use a special `.aio` member *on the wrapper function itself* which works just like the usual business of calling asynchronous code (`await`, `async for` etc.), except that async code is executed on the `Synchronizer`'s own event loop ([more on why this matters below](#using-synchronicity-with-other-asynchronous-code)).
+Wrapped functions expose two interfaces:
+* For synchronous (non-async) use, the wrapper function itself will simply block until the result of the wrapped function is available (note that you can make it return a future as well, [see below](#returning-futures))
+* For async use, you use a special `.aio` member *on the wrapper function itself* which works just like the usual business of calling asynchronous code (`await`, `async for` etc.) - except that async code is executed on the `Synchronizer`'s own event loop ([more on why this matters below](#using-synchronicity-with-other-asynchronous-code)).
 
 ```python fixture:quicksleep
 import asyncio
@@ -146,9 +147,6 @@ async def async_main():
 
 asyncio.run(async_main())
 ```
-async def async_calling():
-    await db_conn.query.aio('select * from foo')  # .aio works on methods too
-
 
 Context managers
 ----------------
@@ -191,20 +189,37 @@ print('first ten squares:', rets)
 
 
 Using synchronicity with other asynchronous code
----------------------------------------
+------------------------------------------------
+
+Why does synchronicity expose a separate async interface (`.aio`) when you could just use the original unwrapped function that is already async? It solves two issues:
+* Intercompatibility with the non-async interface - you can pass wrapped class instances to the wrapper and those will be "unwrapped" so that the implementation code only needs to deal with unwrapped objects.
+* Separate event loops of the library and the user of the library adds safeguards from event loop blockers for both
+
+A common pitfall in asynchronous programming is to accidentally lock up an event loop by making non-async long-running calls within the event loop. If your async library shares an event loop with a user's own async code, a synchronous call (typically a bug) in either the library or the user code would prevent the other from running concurrent tasks. Using synchronicity wrappers on your library functions, you avoid this pitfall by isolating the library execution to its own event loop and thread automatically.
+
+
+```python
+import time
+
+@synchronizer.wrap()
+async def buggy_library():
+    time.sleep(0.1)  #non-async sleep, this locks the library's event loop for the duration
+    
+async def async_user_code():
+    await buggy_library.aio()  # this will not lock the "user's" event loop
+```
 
 This library can also be useful in purely asynchronous settings, if you have multiple event loops, if you have some section that is CPU-bound, or some critical code that you want to run on a separate thread for safety. All calls to synchronized functions/generators are thread-safe by design. This makes it a useful alternative to [loop.run_in_executor](https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.run_in_executor) for simple things. Note however that each synchronizer only runs one thread.
 
-A common pitfall in asynchronous programming is to accidentally lock up an event loop by making non-async long-running calls within the event loop. If your async library shares an event loop with a user's own async code, a synchronous call (bug) in either the library or the user code would prevent the other from running concurrent tasks. Using synchronicity wrappers on your library functions, you avoid this pitfall by isolating the library execution to its own event loop and thread automatically.  
 
+Static type support for wrappers
+----------------------------------
 
-# Static type support for wrappers
-
-One issue with the wrapper functions and classes is that they will have different argument and return value types than the wrapped originals. This type transformation can't easily be expressed statically in Python's typing system.
+One issue with the wrapper functions and classes is that they will have different argument and return value types than the wrapped originals (e.g. an AsyncGenerator becomes a Generator after being wrapped). This type transformation can't easily be expressed statically in Python's typing system.
 
 For this reason, synchronicity includes a basic type stub (.pyi) generation tool (`python -m synchronicity.type_stubs`) that takes Python modules names as inputs and emits a `.pyi` file for each module with static types translating any synchronicity-wrapped classes or functions.
 
-The tool will to the best of its ability also emit type stubs for non-synchronicity entities, since type checkers would otherwise not detect those anymore when the `.pyi` file is present. To avoid that, it can be a good idea to put wrappers in a separate module, qualifying their name and home module manually:
+Since the `.pyi` file will sometimes "shadow" the original file, which you still might want to type check for issues in the implementation code, a good practice is to separate wrappers and wrapped implementation code into separate modules and only emit type stubs for the "wrapper modules".  
 
 A recommended structure would be something like this:
 
@@ -230,7 +245,7 @@ You can then emit type stubs for the public module, as part of your build proces
 ```shell
 python -m synchronicity.type_stubs my_module
 ```
-The automatically generated type stub would then look something like:
+The automatically generated type stub `my_library.pyi` would then look something like:
 ```py
 import typing
 import typing_extensions
@@ -251,7 +266,7 @@ The special `*_spec` protocol types here make sure that both calling the wrapped
 Gotchas
 =======
 
-* If you have a non-async function that *returns* an awaitable or other async entity, but isn't itself defined with the `async` keyword, you have to *type annotate* that function with the correct async return type - otherwise it will not get wrapped correctly.
+* If you have a non-async function that *returns* an awaitable or other async entity, but isn't itself defined with the `async` keyword, you have to *type annotate* that function with the correct async return type - otherwise it will not get wrapped correctly by `synchronizer.wrap`:
 
     ```py
     @synchronizer.wrap
@@ -266,10 +281,10 @@ Gotchas
 Future ideas
 =====
 * Use type annotations instead of runtime type inspection to determine the wrapping logic. This would prevent overly zealous argument/return value inspection when it isn't needed.
-* Use (optional?) code generation (using type annotations) for instead of runtime wrappers + type stub generation. This would make it easier to navigate error tracebacks, and lead to simpler/better static types for wrappers. 
+* Use (optional?) code generation (using type annotations) instead of runtime wrappers + type stub generation. This could make it easier to navigate exception tracebacks, and lead to simpler/better static types for wrappers. 
 * Support the opposite case, i.e. you have a blocking function/generator/class/object, and you want to call it asynchronously (this is relatively simple to do for plain functions using [loop.run_in_executor](https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.run_in_executor), but Python has no built-in support for generators, and it would be nice to transform a whole class.
 * More/better documentation
-* Make it possible to annotate methods selectively to return futures?
+* A cleaner way to return futures from sync code (instead of the `_future=True` argument)
 
 
 Release process
