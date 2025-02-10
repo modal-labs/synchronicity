@@ -201,7 +201,7 @@ A common pitfall in asynchronous programming is to accidentally lock up an event
 ```python
 import time
 
-@synchronizer.wrap()
+@synchronizer.wrap
 async def buggy_library():
     time.sleep(0.1)  #non-async sleep, this locks the library's event loop for the duration
     
