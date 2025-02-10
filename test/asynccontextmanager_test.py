@@ -1,3 +1,4 @@
+import contextlib
 import pytest
 import typing
 
@@ -116,4 +117,21 @@ async def test_asynccontextmanager_with_in_async(synchronizer):
     # err_cls = AttributeError if sys.version_info < (3, 11) else TypeError
     # with pytest.raises(err_cls):
     with r.wrap.aio():  # TODO: this *should* not be allowed, but works for stupid reasons
+        pass
+
+
+@pytest.mark.asyncio
+async def test_returning_context_manager(synchronizer):
+    @contextlib.asynccontextmanager
+    async def foo():
+        yield "hello"
+
+    @synchronizer.wrap
+    def returner() -> typing.AsyncContextManager[str]:
+        return foo()
+
+    with returner():
+        pass
+
+    async with returner.aio():
         pass

@@ -821,6 +821,10 @@ class Synchronizer:
 
     # New interface that (almost) doesn't mutate objects
     def create_blocking(self, obj, name: Optional[str] = None, target_module: Optional[str] = None):
+        # TODO: deprecate this alias method
+        return self.wrap(obj, name, target_module)
+
+    def wrap(self, obj, name: Optional[str] = None, target_module: Optional[str] = None):
         wrapped = self._wrap(obj, Interface.BLOCKING, name, target_module=target_module)
         return wrapped
 
