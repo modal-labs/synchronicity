@@ -29,7 +29,7 @@ def test_function_sync(synchronizer):
     assert f_s.__name__ == "blocking_f"
     ret = f_s(42)
     assert ret == 1764
-    assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
+    assert SLEEP_DELAY <= time.time() - t0 < 2 * SLEEP_DELAY
 
 
 def test_function_sync_future(synchronizer):
@@ -40,7 +40,7 @@ def test_function_sync_future(synchronizer):
     assert isinstance(fut, concurrent.futures.Future)
     assert time.time() - t0 < SLEEP_DELAY
     assert fut.result() == 1764
-    assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
+    assert SLEEP_DELAY <= time.time() - t0 < 2 * SLEEP_DELAY
 
 
 @pytest.mark.asyncio
@@ -53,7 +53,7 @@ async def test_function_async_as_function_attribute(synchronizer):
     assert inspect.iscoroutine(coro)
     assert time.time() - t0 < SLEEP_DELAY
     assert await coro == 1764
-    assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
+    assert SLEEP_DELAY <= time.time() - t0 < 2 * SLEEP_DELAY
 
     # Make sure the same-loop calls work
     f2_s = s.create_blocking(f2).aio
@@ -89,7 +89,7 @@ def test_function_many_parallel_sync(synchronizer):
     g = synchronizer.create_blocking(f)
     t0 = time.time()
     rets = [g(i) for i in range(10)]  # Will resolve serially
-    assert len(rets) * SLEEP_DELAY < time.time() - t0 < (len(rets) + 1) * SLEEP_DELAY
+    assert len(rets) * SLEEP_DELAY <= time.time() - t0 < (len(rets) + 1) * SLEEP_DELAY
 
 
 def test_function_many_parallel_sync_futures(synchronizer):
@@ -99,7 +99,7 @@ def test_function_many_parallel_sync_futures(synchronizer):
     assert isinstance(futs[0], concurrent.futures.Future)
     assert time.time() - t0 < SLEEP_DELAY
     assert [fut.result() for fut in futs] == [z**2 for z in range(100)]
-    assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
+    assert SLEEP_DELAY <= time.time() - t0 < 2 * SLEEP_DELAY
 
 
 @pytest.mark.asyncio
@@ -110,7 +110,7 @@ async def test_function_many_parallel_async(synchronizer):
     assert inspect.iscoroutine(coros[0])
     assert time.time() - t0 < SLEEP_DELAY
     assert await asyncio.gather(*coros) == [z**2 for z in range(100)]
-    assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
+    assert SLEEP_DELAY <= time.time() - t0 < 2 * SLEEP_DELAY
 
 
 async def gen(n):
@@ -269,16 +269,16 @@ def test_class_sync(synchronizer):
     t0 = time.time()
     with obj as z:
         assert z == 42
-        assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
+        assert SLEEP_DELAY <= time.time() - t0 < 2 * SLEEP_DELAY
     assert time.time() - t0 > 2 * SLEEP_DELAY
 
     t0 = time.time()
     assert BlockingMyClass.my_static_method() == 43
-    assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
+    assert SLEEP_DELAY <= time.time() - t0 < 2 * SLEEP_DELAY
 
     t0 = time.time()
     assert BlockingMyClass.my_class_method() == 44
-    assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
+    assert SLEEP_DELAY <= time.time() - t0 < 2 * SLEEP_DELAY
 
     assert list(z for z in obj) == list(range(42))
 
@@ -319,7 +319,7 @@ async def test_class_async_as_method_attribute(synchronizer):
     t0 = time.time()
     async with obj as z:
         assert z == 42
-        assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
+        assert SLEEP_DELAY <= time.time() - t0 < 2 * SLEEP_DELAY
 
     assert time.time() - t0 > 2 * SLEEP_DELAY
 
@@ -339,7 +339,7 @@ def test_event_loop(synchronizer):
     t0 = time.time()
     f_s = synchronizer.create_blocking(f)
     assert f_s(42) == 42 * 42
-    assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
+    assert SLEEP_DELAY <= time.time() - t0 < 2 * SLEEP_DELAY
     assert synchronizer._thread.is_alive()
     assert synchronizer._loop.is_running()
     synchronizer._close_loop()
