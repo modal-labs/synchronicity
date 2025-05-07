@@ -83,7 +83,7 @@ def add_prefix_arg(arg_name, remove_args=0):
         parameters = list(sig.parameters.values())
         return sig.replace(
             parameters=[
-                UpgradedParameter(arg_name, inspect.Parameter.POSITIONAL_OR_KEYWORD),
+                UpgradedParameter(arg_name, inspect.Parameter.POSITIONAL_ONLY),
                 *parameters[remove_args:],
             ]
         )

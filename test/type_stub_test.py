@@ -645,3 +645,13 @@ def test_typeshed():
     src = _function_source(foo)
     assert "import _typeshed" in src
     assert "def foo() -> _typeshed.OpenTextMode:" in src
+
+
+def test_positional_only_wrapped_function(synchronizer):
+    @synchronizer.wrap
+    async def f(pos_only=None, /, **kwargs): ...
+
+    # The following used to crash because the injected `self` in the generated Protocol
+    # didn't use the positional-only qualifier
+    src = _function_source(f)
+    assert "def __call__(self, pos_only=None, /, **kwargs):" in src
