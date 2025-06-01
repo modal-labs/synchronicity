@@ -389,12 +389,11 @@ class Synchronizer:
                     raise  # cancellation came from within c_fut
                 loop.call_soon_threadsafe(coro_task.cancel)  # cancel task on synchronizer event loop
                 # wait for cancellation logic in the underlying coro to complete
-                # this should typically raise CancelledError, but in case of either
-                # cancellation prevention in the coro OR if the underlying task
-                # has already completed, it could return a value. In the latter
-                # case this could lead to unexpected aborted cancellations in the
-                # caller
-                await a_fut  # wait for cancellation logic to complete - this typically raises CancelledError
+                # this should typically raise CancelledError, but in case of either:
+                # * cancellation prevention in the coro (catching the cancellederror)
+                # * coro_task resolves before the call_soon_threadsafe above is scheduled
+                # the cancellation in a_fut would be cancelled
+                await a_fut  # wait for cancellation logic to complete - this *normally* raises CancelledError
                 raise  # re-raise the CancelledError regardless - preventing unintended cancellation aborts
 
         if getattr(original_func, self._output_translation_attr, True):
