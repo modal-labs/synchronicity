@@ -2,6 +2,7 @@ import asyncio
 import concurrent.futures
 import inspect
 import pytest
+import threading
 import time
 import typing
 from typing import Coroutine
@@ -533,7 +534,7 @@ async def test_async_cancellation(synchronizer):
             wrapped_foo.aio(abort_cancellation=abort_cancellation, cancel_self=cancel_self)
         )
         while "ready" not in states:
-            await asyncio.sleep(0.01)  # do't cancel before the task even starts
+            await asyncio.sleep(0.01)  # don't cancel before the task even starts
         return calling_task
 
     # Case 1: cancel in parent goes into the coroutine and comes back out:
@@ -544,10 +545,13 @@ async def test_async_cancellation(synchronizer):
     assert states == ["ready", "cancelled", "handled cancellation"]
 
     # Case 2: cancel in parent goes into the coroutine and is "aborted" by the coroutine:
-    calling_task = await start_task(abort_cancellation=True)
-    calling_task.cancel()
-    assert await calling_task == "done"
-    assert states == ["ready", "cancelled", "handled cancellation"]
+    # Note: This is explicitly not allowed anymore, since we can't distinguish it from the task
+    # finishing successfully before a cancellation takes place, and no cancellation
+    # getting raised - causing unintended aborted cancellations in the calling event loop
+    # calling_task = await start_task(abort_cancellation=True)
+    # calling_task.cancel()
+    # assert await calling_task == "done"
+    # assert states == ["ready", "cancelled", "handled cancellation"]
 
     # Case 3: cancellation from within the coroutine itself comes back out:
     calling_task = await start_task(abort_cancellation=False, cancel_self=True)
@@ -561,3 +565,30 @@ async def test_async_cancellation(synchronizer):
     assert await calling_task == "done"
     assert "ready" in states
     assert states == ["ready", "cancelled", "handled cancellation"]
+
+
+@pytest.mark.asyncio
+async def test_async_cancel_completes_successfully_still_cancels(synchronizer):
+    # Reproduces a race where the synchronizer event loop finishes a task
+    # before a cancellation has a chance to get scheduled, and as such
+    # never bubbles up the cancellation, even though it was never
+    # caught
+    e = threading.Event()
+
+    @synchronizer.wrap
+    async def well_behaved_coro():
+        e.wait()
+        return 1
+
+    local_task = asyncio.create_task(well_behaved_coro.aio())
+    await asyncio.sleep(0.1)  # let other event loop block at e2.wait above
+    # well_behaved_coro has not exited at this point, and local_task is not resolved
+    assert not local_task.done()
+    local_task.cancel()  # this schedules cancellation on other thread
+    await asyncio.sleep(0.1)
+    assert not local_task.cancelled()  # not yet fully cancelled!
+    e.set()  # release other event loop at resolve point, simulating a race
+    # users would typically assume that a cancellation of a non-done well behaved
+    # task would race a cancellation error in the next await of that task:
+    with pytest.raises(asyncio.CancelledError):
+        await local_task
