@@ -592,3 +592,21 @@ async def test_async_cancel_completes_successfully_still_cancels(synchronizer):
     # task would race a cancellation error in the next await of that task:
     with pytest.raises(asyncio.CancelledError):
         await local_task
+
+
+def test_async_inner_still_translates(synchronizer):
+    class _V:
+        pass
+
+    V = synchronizer.wrap(_V)
+
+    @synchronizer.wrap
+    async def inner():
+        return _V()
+
+    @synchronizer.wrap
+    async def outer():
+        v = await inner.aio()
+        assert isinstance(v, V)
+
+    outer()
