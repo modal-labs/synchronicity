@@ -372,14 +372,21 @@ class Synchronizer:
             a_fut = asyncio.wrap_future(c_fut)
 
             try:
-                # The shield here prevents a cancelled caller from cancelling c_fut directly
-                # so that we can instead cancel the underlying coro_task and wait for it
-                # to bubble up.
-                # the loop + wait_for timeout is for windows ctrl-C compatibility since
-                # windows doesn't truly interrupt the event loop on sigint
                 while 1:
+                    # the loop + wait_for timeout is for windows ctrl-C compatibility since
+                    # windows doesn't truly interrupt the event loop on sigint
                     try:
-                        value = await asyncio.wait_for(asyncio.shield(a_fut), timeout=0.1)
+                        # The outer shield prevents a cancelled caller from cancelling a_fut directly
+                        # so that we can instead cancel the underlying coro_task and wait for it
+                        # to bubble back up as a CancelledError gracefully between threads
+                        # in order to run any cancellation logic in the coroutine
+                        value = await asyncio.shield(
+                            asyncio.wait_for(
+                                # inner shield prevents wait_for from cancelling a_fut on timeout
+                                asyncio.shield(a_fut),
+                                timeout=0.1,
+                            )
+                        )
                         break
                     except asyncio.TimeoutError:
                         continue
@@ -390,7 +397,7 @@ class Synchronizer:
                 loop.call_soon_threadsafe(coro_task.cancel)  # cancel task on synchronizer event loop
                 # wait for cancellation logic in the underlying coro to complete
                 # this should typically raise CancelledError, but in case of either:
-                # * cancellation prevention in the coro (catching the cancellederror)
+                # * cancellation prevention in the coro (catching the CancelledError)
                 # * coro_task resolves before the call_soon_threadsafe above is scheduled
                 # the cancellation in a_fut would be cancelled
                 await a_fut  # wait for cancellation logic to complete - this *normally* raises CancelledError
