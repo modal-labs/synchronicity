@@ -371,22 +371,27 @@ class Synchronizer:
             c_fut = asyncio.run_coroutine_threadsafe(run_coro(), loop)
             a_fut = asyncio.wrap_future(c_fut)
 
+            shielded_task = None
             try:
                 while 1:
                     # the loop + wait_for timeout is for windows ctrl-C compatibility since
                     # windows doesn't truly interrupt the event loop on sigint
                     try:
-                        # The outer shield prevents a cancelled caller from cancelling a_fut directly
-                        # so that we can instead cancel the underlying coro_task and wait for it
-                        # to bubble back up as a CancelledError gracefully between threads
-                        # in order to run any cancellation logic in the coroutine
-                        value = await asyncio.shield(
+                        # We create a task here to prevent an anonymous task inside asyncio.wait_for that could
+                        # get an unresolved timeout during cancellation handling below, resulting in a warning
+                        # traceback.
+                        shielded_task = asyncio.create_task(
                             asyncio.wait_for(
                                 # inner shield prevents wait_for from cancelling a_fut on timeout
                                 asyncio.shield(a_fut),
                                 timeout=0.1,
                             )
                         )
+                        # The outer shield prevents a cancelled caller from cancelling a_fut directly
+                        # so that we can instead cancel the underlying coro_task and wait for it
+                        # to bubble back up as a CancelledError gracefully between threads
+                        # in order to run any cancellation logic in the coroutine
+                        value = await asyncio.shield(shielded_task)
                         break
                     except asyncio.TimeoutError:
                         continue
@@ -402,6 +407,9 @@ class Synchronizer:
                 # the cancellation in a_fut would be cancelled
                 await a_fut  # wait for cancellation logic to complete - this *normally* raises CancelledError
                 raise  # re-raise the CancelledError regardless - preventing unintended cancellation aborts
+            finally:
+                if shielded_task:
+                    shielded_task.cancel()  # cancel the shielded task, preventing timeouts
 
         if getattr(original_func, self._output_translation_attr, True):
             return self._translate_out(value)
