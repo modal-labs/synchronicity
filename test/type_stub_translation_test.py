@@ -12,6 +12,13 @@ class ImplType:
 
 synchronizer = Synchronizer()
 
+
+@pytest.fixture(autouse=True, scope="module")
+def synchronizer_teardown():
+    yield
+    synchronizer._close_loop()  # prevent "unclosed event loop" warnings
+
+
 BlockingType = synchronizer.create_blocking(ImplType, "BlockingType", __name__)
 
 
@@ -57,4 +64,3 @@ def test_wrapped_class_keeps_class_annotations():
 def test_annotation_mapping(t, interface, expected):
     stub_emitter = StubEmitter(__name__)
     assert stub_emitter._translate_annotation(t, synchronizer, interface, __name__) == expected
-    synchronizer._close_loop()

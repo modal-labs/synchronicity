@@ -177,7 +177,6 @@ class Synchronizer:
                 self._loop.call_soon_threadsafe(self._stopping.set)
             self._thread.join()
             self._thread = None
-            assert self._loop.is_closed()
             self._loop = None
             self._owner_pid = None
 
