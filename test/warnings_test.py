@@ -9,13 +9,15 @@ def f(x):
 
 def test_multiwrap_warning(recwarn):
     s = Synchronizer(multiwrap_warning=True)
-    f_s = s.create_blocking(f)
-    assert f_s(42) == 1764
-    assert len(recwarn) == 0
-    f_s_s = s.create_blocking(f_s)
-    assert f_s_s(42) == 1764
-    assert len(recwarn) == 1
-    s._close_loop()  # clean up
+    try:
+        f_s = s.create_blocking(f)
+        assert f_s(42) == 1764
+        assert len(recwarn) == 0
+        f_s_s = s.create_blocking(f_s)
+        assert f_s_s(42) == 1764
+        assert len(recwarn) == 1
+    finally:
+        s._close_loop()  # clean up
 
 
 def test_multiwrap_no_warning(recwarn, synchronizer):
