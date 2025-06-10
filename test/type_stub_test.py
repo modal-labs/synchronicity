@@ -8,6 +8,7 @@ from textwrap import dedent
 
 import typing_extensions
 
+import synchronicity
 from synchronicity import overload_tracking
 from synchronicity.async_wrap import asynccontextmanager
 from synchronicity.type_stubs import StubEmitter
@@ -278,8 +279,16 @@ class _Foo:
         return foo
 
 
-# synchronizer = synchronicity.Synchronizer()
-# Foo = synchronizer.create_blocking(_Foo, "Foo", __name__)
+synchronizer = synchronicity.Synchronizer()
+
+
+@pytest.fixture(autouse=True, scope="module")
+def synchronizer_teardown():
+    yield
+    synchronizer._close_loop()  # prevent "unclosed event loop" warnings
+
+
+Foo = synchronizer.create_blocking(_Foo, "Foo", __name__)
 
 
 def test_synchronicity_type_translation():
@@ -318,7 +327,7 @@ class _WithClassMethod:
         return 0
 
 
-# WithClassMethod = synchronizer.create_blocking(_WithClassMethod, "WithClassMethod", __name__)
+WithClassMethod = synchronizer.create_blocking(_WithClassMethod, "WithClassMethod", __name__)
 
 
 def test_synchronicity_class():
@@ -347,18 +356,18 @@ T = typing.TypeVar("T")
 P = typing_extensions.ParamSpec("P")
 
 
-# Translated_T = synchronizer.create_blocking(T, "Translated_T", __name__)
-# Translated_P = synchronizer.create_blocking(P, "Translated_P", __name__)
+Translated_T = synchronizer.create_blocking(T, "Translated_T", __name__)
+Translated_P = synchronizer.create_blocking(P, "Translated_P", __name__)
 
 
 class MyGeneric(typing.Generic[T]): ...
 
 
-# BlockingMyGeneric = synchronizer.create_blocking(
-#     MyGeneric,
-#     "BlockingMyGeneric",
-#     __name__,
-# )
+BlockingMyGeneric = synchronizer.create_blocking(
+    MyGeneric,
+    "BlockingMyGeneric",
+    __name__,
+)
 
 
 def test_custom_generic():
@@ -377,7 +386,7 @@ class ParamSpecGeneric(typing.Generic[P, T]):
     def syncfunc(self) -> T: ...
 
 
-# BlockingParamSpecGeneric = synchronizer.create_blocking(ParamSpecGeneric, "BlockingParamSpecGeneric", __name__)
+BlockingParamSpecGeneric = synchronizer.create_blocking(ParamSpecGeneric, "BlockingParamSpecGeneric", __name__)
 
 
 def test_paramspec_generic():
@@ -416,16 +425,16 @@ def test_synchronicity_generic_subclass():
 
 _B = typing.TypeVar("_B", bound="str")
 
-# B = synchronizer.create_blocking(
-#     _B, "B", __name__
-# )  # only strictly needed if the bound is a synchronicity implementation type
+B = synchronizer.create_blocking(
+    _B, "B", __name__
+)  # only strictly needed if the bound is a synchronicity implementation type
 
 
 def _ident(b: _B) -> _B:
     return b
 
 
-# ident = synchronizer.create_blocking(_ident, "ident", __name__)
+ident = synchronizer.create_blocking(_ident, "ident", __name__)
 
 
 def test_translated_bound_type_vars():
@@ -555,7 +564,7 @@ class _ReturnVal(typing.Generic[U]):
     pass
 
 
-# ReturnVal = synchronizer.create_blocking(_ReturnVal, "ReturnVal", __name__)
+ReturnVal = synchronizer.create_blocking(_ReturnVal, "ReturnVal", __name__)
 
 
 def test_returns_forward_wrapped_generic():
