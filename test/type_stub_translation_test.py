@@ -12,6 +12,13 @@ class ImplType:
 
 synchronizer = Synchronizer()
 
+
+@pytest.fixture(autouse=True, scope="module")
+def synchronizer_teardown():
+    yield
+    synchronizer._close_loop()  # prevent "unclosed event loop" warnings
+
+
 BlockingType = synchronizer.create_blocking(ImplType, "BlockingType", __name__)
 
 

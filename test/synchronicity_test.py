@@ -8,7 +8,6 @@ import typing
 from typing import Coroutine
 from unittest.mock import MagicMock
 
-import synchronicity
 from synchronicity import Synchronizer
 
 SLEEP_DELAY = 0.5
@@ -477,7 +476,7 @@ async def test_non_async_aiter(synchronizer):
     it.close()
 
 
-def test_generic_baseclass():
+def test_generic_baseclass(synchronizer):
     T = typing.TypeVar("T")
     V = typing.TypeVar("V")
 
@@ -485,8 +484,7 @@ def test_generic_baseclass():
         async def do_something(self):
             return 1
 
-    s = synchronicity.Synchronizer()
-    WrappedGenericClass = s.create_blocking(GenericClass, name="BlockingGenericClass")
+    WrappedGenericClass = synchronizer.create_blocking(GenericClass, name="BlockingGenericClass")
 
     assert WrappedGenericClass[str, float].__args__ == (str, float)
 
@@ -500,7 +498,7 @@ def test_generic_baseclass():
     class GenericSubclass(GenericClass[Q, Y]):
         pass
 
-    WrappedGenericSubclass = s.create_blocking(GenericSubclass, name="BlockingGenericSubclass")
+    WrappedGenericSubclass = synchronizer.create_blocking(GenericSubclass, name="BlockingGenericSubclass")
     assert WrappedGenericSubclass[bool, int].__args__ == (bool, int)
     instance_2 = WrappedGenericSubclass()
     assert isinstance(instance_2, WrappedGenericSubclass)

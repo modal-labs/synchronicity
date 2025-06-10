@@ -280,6 +280,14 @@ class _Foo:
 
 
 synchronizer = synchronicity.Synchronizer()
+
+
+@pytest.fixture(autouse=True, scope="module")
+def synchronizer_teardown():
+    yield
+    synchronizer._close_loop()  # prevent "unclosed event loop" warnings
+
+
 Foo = synchronizer.create_blocking(_Foo, "Foo", __name__)
 
 

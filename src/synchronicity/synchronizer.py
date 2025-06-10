@@ -124,7 +124,6 @@ class Synchronizer:
         # Prep a synchronized context manager in case one is returned and needs translation
         self._ctx_mgr_cls = contextlib._AsyncGeneratorContextManager
         self.create_blocking(self._ctx_mgr_cls)
-
         atexit.register(self._close_loop)
 
     _PICKLE_ATTRS = [
@@ -182,6 +181,8 @@ class Synchronizer:
             self._owner_pid = None
 
     def __del__(self):
+        # TODO: this isn't actually called, because self.create_blocking(self._ctx_mgr_cls)
+        #  creates a global reference to this Synchronizer which makes it never get gced
         self._close_loop()
 
     def _get_loop(self, start=False) -> asyncio.AbstractEventLoop:
@@ -371,30 +372,48 @@ class Synchronizer:
             c_fut = asyncio.run_coroutine_threadsafe(run_coro(), loop)
             a_fut = asyncio.wrap_future(c_fut)
 
+            shielded_task = None
             try:
-                # The shield here prevents a cancelled caller from cancelling c_fut directly
-                # so that we can instead cancel the underlying coro_task and wait for it
-                # to bubble up.
-                # the loop + wait_for timeout is for windows ctrl-C compatibility since
-                # windows doesn't truly interrupt the event loop on sigint
                 while 1:
+                    # the loop + wait_for timeout is for windows ctrl-C compatibility since
+                    # windows doesn't truly interrupt the event loop on sigint
                     try:
-                        value = await asyncio.wait_for(asyncio.shield(a_fut), timeout=0.1)
+                        # We create a task here to prevent an anonymous task inside asyncio.wait_for that could
+                        # get an unresolved timeout during cancellation handling below, resulting in a warning
+                        # traceback.
+                        shielded_task = asyncio.create_task(
+                            asyncio.wait_for(
+                                # inner shield prevents wait_for from cancelling a_fut on timeout
+                                asyncio.shield(a_fut),
+                                timeout=0.1,
+                            )
+                        )
+                        # The outer shield prevents a cancelled caller from cancelling a_fut directly
+                        # so that we can instead cancel the underlying coro_task and wait for it
+                        # to bubble back up as a CancelledError gracefully between threads
+                        # in order to run any cancellation logic in the coroutine
+                        value = await asyncio.shield(shielded_task)
                         break
                     except asyncio.TimeoutError:
                         continue
 
             except asyncio.CancelledError:
-                if a_fut.cancelled():
-                    raise  # cancellation came from within c_fut
-                loop.call_soon_threadsafe(coro_task.cancel)  # cancel task on synchronizer event loop
-                # wait for cancellation logic in the underlying coro to complete
-                # this should typically raise CancelledError, but in case of either:
-                # * cancellation prevention in the coro (catching the cancellederror)
-                # * coro_task resolves before the call_soon_threadsafe above is scheduled
-                # the cancellation in a_fut would be cancelled
-                await a_fut  # wait for cancellation logic to complete - this *normally* raises CancelledError
-                raise  # re-raise the CancelledError regardless - preventing unintended cancellation aborts
+                try:
+                    if a_fut.cancelled():
+                        raise  # cancellation came from within c_fut
+
+                    loop.call_soon_threadsafe(coro_task.cancel)  # cancel task on synchronizer event loop
+                    # wait for cancellation logic in the underlying coro to complete
+                    # this should typically raise CancelledError, but in case of either:
+                    # * cancellation prevention in the coro (catching the CancelledError)
+                    # * coro_task resolves before the call_soon_threadsafe above is scheduled
+                    # the cancellation in a_fut would be cancelled
+
+                    await a_fut  # wait for cancellation logic to complete - this *normally* raises CancelledError
+                    raise  # re-raise the CancelledError regardless - preventing unintended cancellation aborts
+                finally:
+                    if shielded_task:
+                        shielded_task.cancel()  # cancel the shielded task, preventing timeouts
 
         if getattr(original_func, self._output_translation_attr, True):
             return self._translate_out(value)
