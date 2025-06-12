@@ -1,7 +1,7 @@
 import asyncio
 import pytest
 from typing import Any, Dict
-
+from synchronicity.synchronizer import classproperty
 
 def test_getattr(synchronizer):
     class Foo:
@@ -29,12 +29,17 @@ def test_getattr(synchronizer):
         def make_foo():
             return Foo()
 
+        @classproperty
+        def my_cls_prop(cls):
+            return "abc"
+
     foo = Foo()
     foo.x = 42
     assert asyncio.run(foo.x) == 42
     with pytest.raises(KeyError):
         asyncio.run(foo.y)
     assert foo.z == 42
+    assert Foo.my_cls_prop == "abc"
 
     BlockingFoo = synchronizer.create_blocking(Foo)
 
@@ -44,6 +49,7 @@ def test_getattr(synchronizer):
     with pytest.raises(KeyError):
         blocking_foo.y
     assert blocking_foo.z == 43
+    assert BlockingFoo.my_cls_prop == "abc"
 
     blocking_foo = BlockingFoo.make_foo()
     blocking_foo.x = 44
