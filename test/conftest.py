@@ -13,7 +13,8 @@ def synchronizer(request):
 
     def get_loop(self, start=False):
         loop = orig_get_loop(start)
-        loop.get_debug = custom_repr.__get__(loop)  # haxx
+        if loop:
+            loop.get_debug = custom_repr.__get__(loop)  # haxx
         return loop
 
     s._get_loop = get_loop.__get__(s)
