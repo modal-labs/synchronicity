@@ -171,7 +171,8 @@ class Synchronizer:
             return self._loop
 
     def _close_loop(self):
-        if self._thread is not None:
+        # Use getattr to protect against weird gc races when we get here via __del__
+        if getattr(self, "_thread", None) is not None:
             if not self._loop.is_closed():
                 # This also serves the purpose of waking up an idle loop
                 self._loop.call_soon_threadsafe(self._stopping.set)
@@ -181,7 +182,7 @@ class Synchronizer:
             self._owner_pid = None
 
     def __del__(self):
-        # TODO: this isn't actually called, because self.create_blocking(self._ctx_mgr_cls)
+        # TODO: this isn't reliably called, because self.create_blocking(self._ctx_mgr_cls)
         #  creates a global reference to this Synchronizer which makes it never get gced
         self._close_loop()
 
