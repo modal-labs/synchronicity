@@ -1,7 +1,9 @@
 import asyncio
 import pytest
 from typing import Any, Dict
+
 from synchronicity.synchronizer import classproperty
+
 
 def test_getattr(synchronizer):
     class Foo:
