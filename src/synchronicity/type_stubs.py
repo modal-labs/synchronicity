@@ -16,6 +16,7 @@ import inspect
 import sys
 import textwrap
 import typing
+import warnings
 from logging import getLogger
 from pathlib import Path
 from typing import TypeVar
@@ -508,8 +509,16 @@ class StubEmitter:
         docstring = inspect.getdoc(obj) or ""
         if docstring:
             end = "\n" if len(docstring.split("\n")) > 1 else ""
-            trips = "'''" if '"""' in docstring else '"""'
-            docstring = textwrap.indent(f"{trips}{docstring}{end}{trips}", indentation)
+            if '"""' in docstring:
+                if "'''" in docstring:
+                    warnings.warn(
+                        f"Docstring for {obj} contains both \"\"\" and ''' quote blocks; suppressing from type stubs."
+                    )
+                    return ""
+                quotes = "'''"
+            else:
+                quotes = '"""'
+            docstring = textwrap.indent(f"{quotes}{docstring}{end}{quotes}", indentation)
         return docstring
 
     def _ensure_import(self, typ):

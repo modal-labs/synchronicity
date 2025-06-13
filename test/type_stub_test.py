@@ -54,6 +54,10 @@ def nested_docstring_func():
     """
 
 
+def deranged_docstring_func():
+    """I have \""" and also ''' for some reason"""
+
+
 class SingleLineDocstringClass:
     """I have a single line docstring"""
 
@@ -732,3 +736,7 @@ def test_docstrings():
     src = _class_source(ClassWithMethodsWithDocstrings)
     assert '        """I have a docstring"""\n' in src
     assert '        """I have a docstring\n\n        with multiple lines\n        """\n' in src
+
+    with pytest.warns(UserWarning, match="both \"\"\" and ''' quote blocks"):
+        src = _function_source(deranged_docstring_func)
+        assert '"""' not in src
