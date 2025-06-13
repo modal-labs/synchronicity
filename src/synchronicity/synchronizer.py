@@ -56,6 +56,16 @@ ASYNC_GENERIC_ORIGINS = (
 )
 
 
+class classproperty:
+    """Read-only class property recognized by Synchronizer."""
+
+    def __init__(self, fget):
+        self.fget = fget
+
+    def __get__(self, obj, owner):
+        return self.fget(owner)
+
+
 def _type_requires_aio_usage(annotation, declaration_module):
     if isinstance(annotation, ForwardRef):
         annotation = annotation.__forward_arg__
@@ -655,6 +665,10 @@ class Synchronizer:
                 )
         return property(**kwargs)
 
+    def _wrap_proxy_classproperty(self, prop, interface):
+        wrapped_func = self._wrap_proxy_method(prop.fget, interface, allow_futures=False, include_aio_interface=False)
+        return classproperty(fget=wrapped_func)
+
     def _wrap_proxy_constructor(synchronizer_self, cls, interface):
         """Returns a custom __init__ for the subclass."""
 
@@ -720,6 +734,8 @@ class Synchronizer:
                 new_dict[k] = self._wrap_proxy_classmethod(v, Interface.BLOCKING)
             elif isinstance(v, property):
                 new_dict[k] = self._wrap_proxy_property(v, Interface.BLOCKING)
+            elif isinstance(v, classproperty):
+                new_dict[k] = self._wrap_proxy_classproperty(v, Interface.BLOCKING)
             elif isinstance(v, MethodWithAio):
                 # if library defines its own MethodWithAio descriptor we transfer it "as is" to the wrapper
                 # without wrapping it again
