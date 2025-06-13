@@ -156,11 +156,12 @@ async def test_generator_async(synchronizer):
     assert lst == [0, 1, 2]
 
     # Make sure cross-loop calls work
-    s2 = synchronizer
+    s2 = Synchronizer()
     gen2_s2 = s2.create_blocking(gen2).aio
     asyncgen = gen2_s2(gen_s, 3)
     lst = [z async for z in asyncgen]
     assert lst == [0, 1, 2]
+    s2._close_loop()
 
 
 @pytest.mark.asyncio
@@ -630,5 +631,4 @@ def test_gc(monkeypatch):
 
     foo()
     gc.collect()
-
     assert mock_close_loop.call_count == 1

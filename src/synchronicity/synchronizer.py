@@ -124,7 +124,7 @@ class Synchronizer:
 
         # Prep a synchronized context manager in case one is returned and needs translation
         self._ctx_mgr_cls = contextlib._AsyncGeneratorContextManager
-        self.create_blocking(self._ctx_mgr_cls)
+        self._blocking_ctx_mgr_cls = self.create_blocking(self._ctx_mgr_cls)  # keep a reference to prevent gc
         atexit.register(self._close_loop)
 
     _PICKLE_ATTRS = [
@@ -237,11 +237,19 @@ class Synchronizer:
 
         return coro_wrapped()
 
-    def _wrap_instance(self, obj):
+    def _wrap_instance(
+        self,
+        obj,
+    ):
         # Takes an object and creates a new proxy object for it
         cls = obj.__class__
         cls_dct = cls.__dict__
         wrapper_cls = cls_dct[self._wrapped_attr][Interface.BLOCKING]()
+        if wrapper_cls is None:
+            # weakref of the class expired - this is bad since we don't know the
+            # name and target module that the wrappers should have
+            raise Exception("Can't wrap instance")
+
         new_obj = wrapper_cls.__new__(wrapper_cls)
         # Store a reference to the original object
         new_obj.__dict__[self._original_attr] = obj
@@ -767,9 +775,11 @@ class Synchronizer:
 
         # If this is already wrapped, return the existing interface
         if interface in interfaces:
-            if self._multiwrap_warning:
-                warnings.warn(f"Object {obj} is already wrapped, but getting wrapped again")
-            return interfaces[interface]()
+            existing_wrap = interfaces[interface]()  # weakref could have expired
+            if existing_wrap:
+                if self._multiwrap_warning:
+                    warnings.warn(f"Object {obj} is already wrapped, but getting wrapped again")
+                return existing_wrap
 
         if require_already_wrapped:
             # This happens if a class has a custom name but its base class doesn't
