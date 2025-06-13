@@ -14,6 +14,7 @@ import enum
 import importlib
 import inspect
 import sys
+import textwrap
 import typing
 from logging import getLogger
 from pathlib import Path
@@ -266,6 +267,9 @@ class StubEmitter:
             self.parts.append(inspect.getsource(cls))
             return
 
+        body_indent_level = 1
+        body_indent = self._indent(body_indent_level)
+
         bases = []
         generic_type_vars: typing.Set[type] = set()
         for b in self._get_translated_class_bases(cls):
@@ -276,14 +280,13 @@ class StubEmitter:
 
         bases_str = "" if not bases else "(" + ", ".join(bases) + ")"
         decl = f"class {name}{bases_str}:"
+        class_docstring = self._get_docstring(cls, body_indent)
+
         var_annotations = []
         methods = []
 
         annotations = cls.__dict__.get("__annotations__", {})
         annotations = {k: self._translate_global_annotation(annotation, cls) for k, annotation in annotations.items()}
-
-        body_indent_level = 1
-        body_indent = self._indent(body_indent_level)
 
         for varname, annotation in annotations.items():
             var_annotations.append(f"{body_indent}{self._get_var_annotation(varname, annotation)}")
@@ -339,6 +342,7 @@ class StubEmitter:
             "\n".join(
                 [
                     decl,
+                    class_docstring,
                     *var_annotations,
                     *methods,
                     *padding,
@@ -499,6 +503,14 @@ class StubEmitter:
         import_src = "\n".join(sorted(f"import {mod}" for mod in self.imports))
         stubs = "\n\n".join(self.parts)
         return f"{import_src}\n\n{stubs}".lstrip()
+
+    def _get_docstring(self, obj: object, indentation: str) -> str:
+        docstring = inspect.getdoc(obj) or ""
+        if docstring:
+            end = "\n" if len(docstring.split("\n")) > 1 else ""
+            trips = "'''" if '"""' in docstring else '"""'
+            docstring = textwrap.indent(f"{trips}{docstring}{end}{trips}", indentation)
+        return docstring
 
     def _ensure_import(self, typ):
         # add import for a single type, non-recursive (See _register_imports)
@@ -846,6 +858,7 @@ class StubEmitter:
                 signature_indent,
                 body_indent,
                 transform_signature=transform_signature,
+                add_docstring=False,
             )
             parts.append(overload_src)
 
@@ -869,6 +882,7 @@ class StubEmitter:
         signature_indent: str,
         body_indent: str,
         transform_signature=None,
+        add_docstring=True,
     ) -> str:
         maybe_decorators = ""
         if hasattr(func, "__dataclass_transform__"):
@@ -901,10 +915,12 @@ class StubEmitter:
             async_prefix = "async "
 
         signature = self._custom_signature(func, transform_signature)
+        maybe_docstring = self._get_docstring(func, body_indent) if add_docstring else ""
 
         return "\n".join(
             [
                 f"{maybe_decorators}{signature_indent}{async_prefix}def {name}{signature}:",
+                *([maybe_docstring] if maybe_docstring else []),
                 f"{body_indent}...",
                 "",
             ]

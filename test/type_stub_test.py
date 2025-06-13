@@ -33,6 +33,49 @@ async def async_func() -> str:
     return "hello"
 
 
+def single_line_docstring_func():
+    """I have a single line docstring"""
+
+
+def multi_line_docstring_func():
+    """I have a docstring
+
+    with multiple lines
+    """
+
+
+def nested_docstring_func():
+    """I have a docstring
+
+    ```
+    def example():
+        \"""SUPRISE! SO DO I!\"""
+    ```
+    """
+
+
+class SingleLineDocstringClass:
+    """I have a single line docstring"""
+
+
+class MultiLineDocstringClass:
+    """I have a docstring
+
+    with multiple lines
+    """
+
+
+class ClassWithMethodsWithDocstrings:
+    def method_with_single_line_docstring(self):
+        """I have a docstring"""
+
+    def method_with_multi_line_docstring(self):
+        """I have a docstring
+
+        with multiple lines
+        """
+
+
 def _function_source(func, target_module=__name__):
     stub_emitter = StubEmitter(target_module)
     stub_emitter.add_function(func, func.__name__)
@@ -667,3 +710,25 @@ def test_positional_only_wrapped_function(synchronizer):
     # didn't use the positional-only qualifier
     src = _function_source(f)
     assert "def __call__(self, pos_only=None, /, **kwargs):" in src
+
+
+def test_docstrings():
+    src = _function_source(single_line_docstring_func)
+    assert '    """I have a single line docstring"""' in src
+
+    src = _function_source(multi_line_docstring_func)
+    assert '    """I have a docstring\n\n    with multiple lines\n    """\n' in src
+
+    src = _function_source(nested_docstring_func)
+    assert "'''I have a docstring" in src
+    assert '"""SUPRISE! SO DO I!"""' in src
+
+    src = _class_source(SingleLineDocstringClass)
+    assert '    """I have a single line docstring"""\n' in src
+
+    src = _class_source(MultiLineDocstringClass)
+    assert '    """I have a docstring\n\n    with multiple lines\n    """\n' in src
+
+    src = _class_source(ClassWithMethodsWithDocstrings)
+    assert '        """I have a docstring"""\n' in src
+    assert '        """I have a docstring\n\n        with multiple lines\n        """\n' in src
