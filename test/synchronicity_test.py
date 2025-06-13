@@ -6,6 +6,7 @@ import threading
 import time
 import typing
 from typing import Coroutine
+from unittest import mock
 from unittest.mock import MagicMock
 
 from synchronicity import Synchronizer
@@ -608,3 +609,19 @@ def test_async_inner_still_translates(synchronizer):
         assert isinstance(v, V)
 
     outer()
+
+
+def test_gc(monkeypatch):
+    import gc
+
+    mock_close_loop = mock.MagicMock()
+    monkeypatch.setattr(Synchronizer, "_close_loop", mock_close_loop)
+
+    def foo():
+        s = Synchronizer()
+        del s
+
+    foo()
+    gc.collect()
+
+    assert mock_close_loop.call_count == 1
