@@ -508,7 +508,7 @@ class StubEmitter:
     def _get_docstring(self, obj: object, indentation: str) -> str:
         docstring = inspect.getdoc(obj) or ""
         if docstring:
-            end = "\n" if len(docstring.split("\n")) > 1 else ""
+            end = "\n" if "\n" in docstring else ""  # Place end-quotes appropriately
             if '"""' in docstring:
                 if "'''" in docstring:
                     warnings.warn(
