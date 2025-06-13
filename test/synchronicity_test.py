@@ -619,7 +619,14 @@ def test_gc(monkeypatch):
 
     def foo():
         s = Synchronizer()
-        del s
+
+        @s.wrap
+        class A:
+            def __init__(self):
+                pass
+
+            async def f(self):
+                pass
 
     foo()
     gc.collect()
