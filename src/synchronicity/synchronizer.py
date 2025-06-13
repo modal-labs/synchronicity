@@ -183,8 +183,6 @@ class Synchronizer:
             self._owner_pid = None
 
     def __del__(self):
-        # TODO: this isn't reliably called, because self.create_blocking(self._ctx_mgr_cls)
-        #  creates a global reference to this Synchronizer which makes it never get gced
         self._close_loop()
 
     def _get_loop(self, start=False) -> asyncio.AbstractEventLoop:
