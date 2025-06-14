@@ -138,7 +138,7 @@ def test_generator_sync(synchronizer):
     assert time.monotonic() - t0 < SLEEP_DELAY
     lst = list(it)
     assert lst == [0, 1, 2]
-    assert time.monotonic() - t0 > len(lst) * SLEEP_DELAY
+    assert time.monotonic() - t0 + WINDOWS_TIME_RESOLUTION_FIX >= len(lst) * SLEEP_DELAY
 
 
 @pytest.mark.asyncio
@@ -151,7 +151,7 @@ async def test_generator_async(synchronizer):
     assert time.monotonic() - t0 < SLEEP_DELAY
     lst = [z async for z in asyncgen]
     assert lst == [0, 1, 2]
-    assert time.monotonic() - t0 > len(lst) * SLEEP_DELAY
+    assert time.monotonic() - t0 + WINDOWS_TIME_RESOLUTION_FIX >= len(lst) * SLEEP_DELAY
 
     # Make sure same-loop calls work
     gen2_s = synchronizer.create_blocking(gen2).aio
