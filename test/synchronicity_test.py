@@ -275,7 +275,7 @@ def test_class_sync(synchronizer):
     with obj as z:
         assert z == 42
         assert SLEEP_DELAY - WINDOWS_TIME_RESOLUTION_FIX <= time.monotonic() - t0 < 2 * SLEEP_DELAY
-    assert time.monotonic() - t0 > 2 * SLEEP_DELAY
+    assert time.monotonic() - t0 + WINDOWS_TIME_RESOLUTION_FIX >= 2 * SLEEP_DELAY
 
     t0 = time.monotonic()
     assert BlockingMyClass.my_static_method() == 43
@@ -305,7 +305,7 @@ def test_class_sync_futures(synchronizer):
         assert z == 42
         assert SLEEP_DELAY - WINDOWS_TIME_RESOLUTION_FIX <= time.monotonic() - t0 < 2 * SLEEP_DELAY
 
-    assert time.monotonic() - t0 >= 2 * SLEEP_DELAY
+    assert time.monotonic() - t0 + WINDOWS_TIME_RESOLUTION_FIX >= 2 * SLEEP_DELAY
 
 
 @pytest.mark.asyncio
@@ -326,7 +326,7 @@ async def test_class_async_as_method_attribute(synchronizer):
         assert z == 42
         assert SLEEP_DELAY - WINDOWS_TIME_RESOLUTION_FIX <= time.monotonic() - t0 < 2 * SLEEP_DELAY
 
-    assert time.monotonic() - t0 > 2 * SLEEP_DELAY
+    assert time.monotonic() - t0 + WINDOWS_TIME_RESOLUTION_FIX >= 2 * SLEEP_DELAY
 
     lst = []
 
