@@ -22,3 +22,9 @@ def synchronizer(request):
     yield s
     print("closing synchronizer for test", request.node.name)
     s._close_loop()  # avoid "unclosed event loop" warnings in tests when garbage collecting synchronizers
+
+
+@pytest.fixture(autouse=True)
+def nowarns(recwarn):
+    yield
+    assert len(recwarn) == 0
