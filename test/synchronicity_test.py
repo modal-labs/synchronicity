@@ -85,7 +85,7 @@ async def test_function_async_block_event_loop(synchronizer):
     t0 = time.monotonic()
     await asyncio.gather(spinlock_coro, sleep_coro)
     duration = time.monotonic() - t0
-    assert SLEEP_DELAY - WINDOWS_TIME_RESOLUTION_FIX <= duration < 2 * SLEEP_DELAY
+    assert SLEEP_DELAY - WINDOWS_TIME_RESOLUTION_FIX <= duration < 1.5 * SLEEP_DELAY
 
 
 def test_function_many_parallel_sync(synchronizer):
