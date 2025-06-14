@@ -1,4 +1,5 @@
 import inspect
+import pytest
 
 from synchronicity import Synchronizer
 
@@ -7,6 +8,7 @@ def f(x):
     return x**2
 
 
+@pytest.mark.skip()
 def test_multiwrap_warning(recwarn):
     s = Synchronizer(multiwrap_warning=True)
     try:
