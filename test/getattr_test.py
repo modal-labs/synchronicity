@@ -2,7 +2,7 @@ import asyncio
 import pytest
 from typing import Any, Dict
 
-from synchronicity.synchronizer import classproperty
+from synchronicity import classproperty
 
 
 @pytest.mark.asyncio
