@@ -36,7 +36,11 @@ async def test_getattr(synchronizer):
         def my_cls_prop(cls):
             return "abc"
 
-    # original type tests:
+        @classproperty
+        async def another_cls_prop(cls):
+            await asyncio.sleep(0.01)
+            return "another-cls-prop"
+
     foo = Foo()
     foo.x = 42
     assert await foo.x == 42
@@ -44,6 +48,7 @@ async def test_getattr(synchronizer):
         await foo.y
     assert foo.z == 42
     assert Foo.my_cls_prop == "abc"
+    assert asyncio.run(Foo.another_cls_prop) == "another-cls-prop"
 
     BlockingFoo = synchronizer.create_blocking(Foo)
 
@@ -54,6 +59,7 @@ async def test_getattr(synchronizer):
         blocking_foo.y
     assert blocking_foo.z == 43
     assert BlockingFoo.my_cls_prop == "abc"
+    assert BlockingFoo.another_cls_prop == "another-cls-prop"
 
     blocking_foo = BlockingFoo.make_foo()
     blocking_foo.x = 44
