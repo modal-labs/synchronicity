@@ -48,7 +48,7 @@ async def test_getattr(synchronizer):
         await foo.y
     assert foo.z == 42
     assert Foo.my_cls_prop == "abc"
-    assert asyncio.run(Foo.another_cls_prop) == "another-cls-prop"
+    assert await Foo.another_cls_prop == "another-cls-prop"
 
     BlockingFoo = synchronizer.create_blocking(Foo)
 
