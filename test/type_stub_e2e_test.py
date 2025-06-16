@@ -19,13 +19,13 @@ class FailedMyPyCheck(Exception):
 
 
 def run_mypy(input_file, print_errors=True):
-    p = subprocess.Popen(["mypy", input_file], stderr=subprocess.STDOUT, stdout=subprocess.PIPE)
-    result_code = p.wait()
-    if result_code != 0:
-        mypy_report = p.stdout.read().decode("utf8")
-        if print_errors:
-            print(mypy_report, file=sys.stderr)
-        raise FailedMyPyCheck(mypy_report)
+    with subprocess.Popen(["mypy", input_file], stderr=subprocess.STDOUT, stdout=subprocess.PIPE) as p:
+        result_code = p.wait()
+        if result_code != 0:
+            mypy_report = p.stdout.read().decode("utf8")
+            if print_errors:
+                print(mypy_report, file=sys.stderr)
+            raise FailedMyPyCheck(mypy_report)
 
 
 @contextmanager
