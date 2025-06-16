@@ -57,7 +57,7 @@ ASYNC_GENERIC_ORIGINS = (
 
 
 class classproperty:
-    """Read-only class property recognized by Synchronizer."""
+    """Read-only class property recognized by Synchronizer's wrap method."""
 
     def __init__(self, fget):
         self.fget = fget
