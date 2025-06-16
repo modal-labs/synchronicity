@@ -389,7 +389,7 @@ class Synchronizer:
                             asyncio.wait_for(
                                 # inner shield prevents wait_for from cancelling a_fut on timeout
                                 asyncio.shield(a_fut),
-                                timeout=0.1,
+                                timeout=self._future_poll_interval,
                             )
                         )
                         # The outer shield prevents a cancelled caller from cancelling a_fut directly
