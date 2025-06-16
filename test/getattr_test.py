@@ -3,7 +3,8 @@ import pytest
 from typing import Any, Dict
 
 
-def test_getattr(synchronizer):
+@pytest.mark.asyncio
+async def test_getattr(synchronizer):
     class Foo:
         _attrs: Dict[str, Any]
 
@@ -29,11 +30,12 @@ def test_getattr(synchronizer):
         def make_foo():
             return Foo()
 
+    # original type tests:
     foo = Foo()
     foo.x = 42
-    assert asyncio.run(foo.x) == 42
+    assert await foo.x == 42
     with pytest.raises(KeyError):
-        asyncio.run(foo.y)
+        await foo.y
     assert foo.z == 42
 
     BlockingFoo = synchronizer.create_blocking(Foo)
@@ -50,4 +52,4 @@ def test_getattr(synchronizer):
     assert isinstance(blocking_foo, BlockingFoo)
 
     # TODO: there is no longer a way to make async properties, but there is this w/ async __getattr__:
-    assert asyncio.run(blocking_foo.__getattr__.aio("x")) == 44
+    assert await blocking_foo.__getattr__.aio("x") == 44
