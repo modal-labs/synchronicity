@@ -98,6 +98,7 @@ class Synchronizer:
         multiwrap_warning=False,
         async_leakage_warning=True,
     ):
+        self._future_poll_interval = 0.1
         self._multiwrap_warning = multiwrap_warning
         self._async_leakage_warning = async_leakage_warning
         self._loop = None
@@ -312,19 +313,20 @@ class Synchronizer:
         coro = self._wrap_check_async_leakage(coro)
         loop = self._get_loop(start=True)
 
-        coro_task = asyncio.ensure_future(coro, loop=loop)
+        inner_task_fut = concurrent.futures.Future()
 
         async def wrapper_coro():
             # this wrapper is needed since run_coroutine_threadsafe *only* accepts coroutines
-            return await coro_task
+            inner_task = loop.create_task(coro)
+            inner_task_fut.set_result(inner_task)  # sends the task itself to the origin thread
+            return await inner_task
 
         fut = asyncio.run_coroutine_threadsafe(wrapper_coro(), loop)
         try:
             while 1:
                 try:
-                    # poll every second to give Windows a chance to abort on Ctrl-C
-                    #
-                    value = fut.result(timeout=0.1)
+                    # repeated poll to give Windows a chance to abort on Ctrl-C
+                    value = fut.result(timeout=self._future_poll_interval)
                     break
                 except concurrent.futures.TimeoutError:
                     pass
@@ -333,7 +335,9 @@ class Synchronizer:
             # we cancel the *underlying* coro_task (unlike what fut.cancel() would do)
             # and then wait for the *wrapper* coroutine to get a result back, which
             # happens after the cancellation resolves
-            loop.call_soon_threadsafe(coro_task.cancel)
+            if inner_task_fut.done():
+                inner_task: asyncio.Task = inner_task_fut.result()
+                loop.call_soon_threadsafe(inner_task.cancel)
             try:
                 value = fut.result()
             except concurrent.futures.CancelledError as expected_cancellation:
@@ -362,15 +366,14 @@ class Synchronizer:
         if self._is_inside_loop():
             value = await coro
         else:
-            coro_task = asyncio.ensure_future(coro, loop=loop)
+            inner_task_fut = concurrent.futures.Future()
 
-            async def run_coro():
-                # this lets us cancel coro_task without cancelling
-                # the c_fut directly, which would
-                # to a_fut, regardless if `coro` handles the cancellation
-                return await coro_task
+            async def wrapper_coro():
+                inner_task = loop.create_task(coro)
+                inner_task_fut.set_result(inner_task)  # sends the task itself to the origin thread
+                return await inner_task
 
-            c_fut = asyncio.run_coroutine_threadsafe(run_coro(), loop)
+            c_fut = asyncio.run_coroutine_threadsafe(wrapper_coro(), loop)
             a_fut = asyncio.wrap_future(c_fut)
 
             shielded_task = None
@@ -402,15 +405,16 @@ class Synchronizer:
                 try:
                     if a_fut.cancelled():
                         raise  # cancellation came from within c_fut
+                    if inner_task_fut.done():
+                        inner_task: asyncio.Task = inner_task_fut.result()
+                        loop.call_soon_threadsafe(inner_task.cancel)  # cancel task on synchronizer event loop
+                        # wait for cancellation logic in the underlying coro to complete
+                        # this should typically raise CancelledError, but in case of either:
+                        # * cancellation prevention in the coro (catching the CancelledError)
+                        # * coro_task resolves before the call_soon_threadsafe above is scheduled
+                        # the cancellation in a_fut would be cancelled
 
-                    loop.call_soon_threadsafe(coro_task.cancel)  # cancel task on synchronizer event loop
-                    # wait for cancellation logic in the underlying coro to complete
-                    # this should typically raise CancelledError, but in case of either:
-                    # * cancellation prevention in the coro (catching the CancelledError)
-                    # * coro_task resolves before the call_soon_threadsafe above is scheduled
-                    # the cancellation in a_fut would be cancelled
-
-                    await a_fut  # wait for cancellation logic to complete - this *normally* raises CancelledError
+                        await a_fut  # wait for cancellation logic to complete - this *normally* raises CancelledError
                     raise  # re-raise the CancelledError regardless - preventing unintended cancellation aborts
                 finally:
                     if shielded_task:
