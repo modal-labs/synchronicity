@@ -33,6 +33,53 @@ async def async_func() -> str:
     return "hello"
 
 
+def single_line_docstring_func():
+    """I have a single line docstring"""
+
+
+def multi_line_docstring_func():
+    """I have a docstring
+
+    with multiple lines
+    """
+
+
+def nested_docstring_func():
+    """I have a docstring
+
+    ```
+    def example():
+        \"""SUPRISE! SO DO I!\"""
+    ```
+    """
+
+
+def deranged_docstring_func():
+    """I have \""" and also ''' for some reason"""
+
+
+class SingleLineDocstringClass:
+    """I have a single line docstring"""
+
+
+class MultiLineDocstringClass:
+    """I have a docstring
+
+    with multiple lines
+    """
+
+
+class ClassWithMethodsWithDocstrings:
+    def method_with_single_line_docstring(self):
+        """I have a docstring"""
+
+    def method_with_multi_line_docstring(self):
+        """I have a docstring
+
+        with multiple lines
+        """
+
+
 def _function_source(func, target_module=__name__):
     stub_emitter = StubEmitter(target_module)
     stub_emitter.add_function(func, func.__name__)
@@ -280,6 +327,14 @@ class _Foo:
 
 
 synchronizer = synchronicity.Synchronizer()
+
+
+@pytest.fixture(autouse=True, scope="module")
+def synchronizer_teardown():
+    yield
+    synchronizer._close_loop()  # prevent "unclosed event loop" warnings
+
+
 Foo = synchronizer.create_blocking(_Foo, "Foo", __name__)
 
 
@@ -292,10 +347,12 @@ def test_synchronicity_type_translation():
 
     print(src)
     assert "class __get_foo_spec(typing_extensions.Protocol):" in src
-    assert "    def __call__(self, foo: Foo) -> synchronicity.combined_types.AsyncAndBlockingContextManager[Foo]" in src
+    assert (
+        "    def __call__(self, /, foo: Foo) -> synchronicity.combined_types.AsyncAndBlockingContextManager[Foo]" in src
+    )
     # python 3.13 has an exit type generic argument, e.g. typing.AsyncContextManager[Foo, bool | None]
     # but we want the type stubs to work on older versions of python too (without conditionals everywhere):
-    assert "    async def aio(self, foo: Foo) -> typing.AsyncContextManager[Foo]" in src
+    assert "    async def aio(self, /, foo: Foo) -> typing.AsyncContextManager[Foo]" in src
     assert "get_foo: __get_foo_spec"
 
 
@@ -304,8 +361,8 @@ def test_synchronicity_wrapped_class():
     print(src)
     # assert "__init__" not in Foo
     assert "class __clone_spec(typing_extensions.Protocol):" in src
-    assert "    def __call__(self, foo: Foo) -> Foo" in src
-    assert "    async def aio(self, foo: Foo) -> Foo" in src
+    assert "    def __call__(self, /, foo: Foo) -> Foo" in src
+    assert "    async def aio(self, /, foo: Foo) -> Foo" in src
     assert "clone: __clone_spec" in src
 
 
@@ -330,10 +387,10 @@ def test_synchronicity_class():
     assert (
         """
     class __meth_spec(typing_extensions.Protocol[SUPERSELF]):
-        def __call__(self, arg: bool) -> int:
+        def __call__(self, /, arg: bool) -> int:
             ...
 
-        async def aio(self, arg: bool) -> int:
+        async def aio(self, /, arg: bool) -> int:
             ...
 
     meth: __meth_spec[typing_extensions.Self]
@@ -384,8 +441,10 @@ def test_paramspec_generic():
     assert "class BlockingParamSpecGeneric(typing.Generic[Translated_P, Translated_T])" in src
 
     assert "class __meth_spec(typing_extensions.Protocol[Translated_P_INNER, SUPERSELF]):" in src
-    assert "def __call__(self, *args: Translated_P_INNER.args, **kwargs: Translated_P_INNER.kwargs) -> SUPERSELF" in src
-    assert "def aio(self, *args: Translated_P_INNER.args, **kwargs: Translated_P_INNER.kwargs) -> SUPERSELF" in src
+    assert (
+        "def __call__(self, /, *args: Translated_P_INNER.args, **kwargs: Translated_P_INNER.kwargs) -> SUPERSELF" in src
+    )
+    assert "def aio(self, /, *args: Translated_P_INNER.args, **kwargs: Translated_P_INNER.kwargs) -> SUPERSELF" in src
     assert "meth: __meth_spec[Translated_P, typing_extensions.Self]" in src
     assert "def syncfunc(self) -> Translated_T:" in src
 
@@ -407,8 +466,8 @@ def test_synchronicity_generic_subclass():
 
     foo = synchronizer.create_blocking(foo_impl, "foo")
     src = _function_source(foo)
-    assert "def __call__(self, bar: BlockingMyGeneric[str]):" in src
-    assert "async def aio(self, bar: BlockingMyGeneric[str]):" in src
+    assert "def __call__(self, /, bar: BlockingMyGeneric[str]):" in src
+    assert "async def aio(self, /, bar: BlockingMyGeneric[str]):" in src
 
 
 _B = typing.TypeVar("_B", bound="str")
@@ -523,7 +582,7 @@ def test_wrapped_context_manager_is_both_blocking_and_async():
     wrapped_foo_src = _function_source(wrapped_foo)
 
     assert (
-        "def __call__(self, arg: int) -> synchronicity.combined_types.AsyncAndBlockingContextManager[str]:"
+        "def __call__(self, /, arg: int) -> synchronicity.combined_types.AsyncAndBlockingContextManager[str]:"
         in wrapped_foo_src
     )
     assert "AbstractAsyncContextManager" not in wrapped_foo_src
@@ -572,7 +631,7 @@ def test_returns_forward_wrapped_generic():
     assert "class Container(typing.Generic[Translated_T]):" in src
     assert "Translated_T_INNER = typing.TypeVar" in src  # distinct "inner copy" of Translated_T needs to be declared
     assert "typing_extensions.Protocol[Translated_T_INNER, SUPERSELF]" in src
-    assert "def __call__(self) -> ReturnVal[Translated_T_INNER]:" in src
+    assert "def __call__(self, /) -> ReturnVal[Translated_T_INNER]:" in src
     assert "fun: __fun_spec[Translated_T, typing_extensions.Self]" in src
 
 
@@ -645,3 +704,39 @@ def test_typeshed():
     src = _function_source(foo)
     assert "import _typeshed" in src
     assert "def foo() -> _typeshed.OpenTextMode:" in src
+
+
+def test_positional_only_wrapped_function(synchronizer):
+    @synchronizer.wrap
+    async def f(pos_only=None, /, **kwargs): ...
+
+    # The following used to crash because the injected `self` in the generated Protocol
+    # didn't use the positional-only qualifier
+    src = _function_source(f)
+    assert "def __call__(self, pos_only=None, /, **kwargs):" in src
+
+
+def test_docstrings():
+    src = _function_source(single_line_docstring_func)
+    assert '    """I have a single line docstring"""' in src
+
+    src = _function_source(multi_line_docstring_func)
+    assert '    """I have a docstring\n\n    with multiple lines\n    """\n' in src
+
+    src = _function_source(nested_docstring_func)
+    assert "'''I have a docstring" in src
+    assert '"""SUPRISE! SO DO I!"""' in src
+
+    src = _class_source(SingleLineDocstringClass)
+    assert '    """I have a single line docstring"""\n' in src
+
+    src = _class_source(MultiLineDocstringClass)
+    assert '    """I have a docstring\n\n    with multiple lines\n    """\n' in src
+
+    src = _class_source(ClassWithMethodsWithDocstrings)
+    assert '        """I have a docstring"""\n' in src
+    assert '        """I have a docstring\n\n        with multiple lines\n        """\n' in src
+
+    with pytest.warns(UserWarning, match="both \"\"\" and ''' quote blocks"):
+        src = _function_source(deranged_docstring_func)
+        assert '"""' not in src

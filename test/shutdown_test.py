@@ -34,7 +34,13 @@ def test_shutdown():
     for i in range(2):  # this number doesn't matter, it's a while loop
         assert p.stdout.readline() == "running\n"
     p.send_ctrl_c()
-    assert p.stdout.readline() == "cancelled\n"
+    for i in range(2):
+        # in some extreme cases there is a risk of a race where the "running" still appears here
+        if p.stdout.readline() == "cancelled\n":
+            break
+    else:
+        assert False
+
     assert p.stdout.readline() == "handled cancellation\n"
     assert p.stdout.readline() == "exit async\n"
     assert (

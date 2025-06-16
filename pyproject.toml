@@ -1,6 +1,6 @@
 [project]
 name = "synchronicity"
-version = "0.9.10"
+version = "0.9.15"
 description = "Export blocking and async library versions from a single async implementation"
 readme = "README.md"
 authors = [
@@ -56,4 +56,5 @@ test = [
     "gevent>=24.2.1; python_version < '3.13'",
     "pytest>=8.3.3",
     "pytest-asyncio>=0.24.0",
+    "pytest-markdown-docs>=0.7.1",
 ]

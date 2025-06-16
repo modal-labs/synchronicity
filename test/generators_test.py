@@ -78,6 +78,7 @@ async def test_athrow_async(synchronizer):
     assert v == "hello"
     v = await gen.athrow(ZeroDivisionError)
     assert v == "world"
+    await gen.aclose()
 
 
 def test_athrow_sync(synchronizer):

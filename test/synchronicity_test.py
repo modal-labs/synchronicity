@@ -2,15 +2,17 @@ import asyncio
 import concurrent.futures
 import inspect
 import pytest
+import sys
+import threading
 import time
 import typing
 from typing import Coroutine
 from unittest.mock import MagicMock
 
-import synchronicity
 from synchronicity import Synchronizer
 
 SLEEP_DELAY = 0.5
+WINDOWS_TIME_RESOLUTION_FIX = 0.01 if sys.platform == "win32" else 0.0
 
 
 async def f(x):
@@ -24,36 +26,36 @@ async def f2(fn, x):
 
 def test_function_sync(synchronizer):
     s = synchronizer
-    t0 = time.time()
+    t0 = time.monotonic()
     f_s = s.create_blocking(f)
     assert f_s.__name__ == "blocking_f"
     ret = f_s(42)
     assert ret == 1764
-    assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
+    assert SLEEP_DELAY - WINDOWS_TIME_RESOLUTION_FIX <= time.monotonic() - t0 < 2 * SLEEP_DELAY
 
 
 def test_function_sync_future(synchronizer):
-    t0 = time.time()
+    t0 = time.monotonic()
     f_s = synchronizer.create_blocking(f)
     assert f_s.__name__ == "blocking_f"
     fut = f_s(42, _future=True)
     assert isinstance(fut, concurrent.futures.Future)
-    assert time.time() - t0 < SLEEP_DELAY
+    assert time.monotonic() - t0 < SLEEP_DELAY
     assert fut.result() == 1764
-    assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
+    assert SLEEP_DELAY - WINDOWS_TIME_RESOLUTION_FIX <= time.monotonic() - t0 < 2 * SLEEP_DELAY
 
 
 @pytest.mark.asyncio
 async def test_function_async_as_function_attribute(synchronizer):
     s = synchronizer
-    t0 = time.time()
+    t0 = time.monotonic()
     f_s = s.create_blocking(f).aio
     assert f_s.__name__ == "aio_f"
     coro = f_s(42)
     assert inspect.iscoroutine(coro)
-    assert time.time() - t0 < SLEEP_DELAY
+    assert time.monotonic() - t0 < SLEEP_DELAY
     assert await coro == 1764
-    assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
+    assert SLEEP_DELAY - WINDOWS_TIME_RESOLUTION_FIX <= time.monotonic() - t0 < 2 * SLEEP_DELAY
 
     # Make sure the same-loop calls work
     f2_s = s.create_blocking(f2).aio
@@ -80,37 +82,40 @@ async def test_function_async_block_event_loop(synchronizer):
     spinlock_coro = spinlock_s.aio()
     sleep_coro = asyncio.sleep(SLEEP_DELAY)
 
-    t0 = time.time()
+    t0 = time.monotonic()
     await asyncio.gather(spinlock_coro, sleep_coro)
-    assert SLEEP_DELAY <= time.time() - t0 < 2 * SLEEP_DELAY
+    duration = time.monotonic() - t0
+    assert SLEEP_DELAY - WINDOWS_TIME_RESOLUTION_FIX <= duration < 1.5 * SLEEP_DELAY
 
 
 def test_function_many_parallel_sync(synchronizer):
     g = synchronizer.create_blocking(f)
-    t0 = time.time()
+    t0 = time.monotonic()
     rets = [g(i) for i in range(10)]  # Will resolve serially
-    assert len(rets) * SLEEP_DELAY < time.time() - t0 < (len(rets) + 1) * SLEEP_DELAY
+    assert (
+        len(rets) * SLEEP_DELAY - WINDOWS_TIME_RESOLUTION_FIX <= time.monotonic() - t0 < (len(rets) + 1) * SLEEP_DELAY
+    )
 
 
 def test_function_many_parallel_sync_futures(synchronizer):
     g = synchronizer.create_blocking(f)
-    t0 = time.time()
+    t0 = time.monotonic()
     futs = [g(i, _future=True) for i in range(100)]
     assert isinstance(futs[0], concurrent.futures.Future)
-    assert time.time() - t0 < SLEEP_DELAY
+    assert time.monotonic() - t0 < SLEEP_DELAY
     assert [fut.result() for fut in futs] == [z**2 for z in range(100)]
-    assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
+    assert SLEEP_DELAY - WINDOWS_TIME_RESOLUTION_FIX <= time.monotonic() - t0 < 2 * SLEEP_DELAY
 
 
 @pytest.mark.asyncio
 async def test_function_many_parallel_async(synchronizer):
     g = synchronizer.create_blocking(f)
-    t0 = time.time()
+    t0 = time.monotonic()
     coros = [g.aio(i) for i in range(100)]
     assert inspect.iscoroutine(coros[0])
-    assert time.time() - t0 < SLEEP_DELAY
+    assert time.monotonic() - t0 < SLEEP_DELAY
     assert await asyncio.gather(*coros) == [z**2 for z in range(100)]
-    assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
+    assert SLEEP_DELAY - WINDOWS_TIME_RESOLUTION_FIX <= time.monotonic() - t0 < 2 * SLEEP_DELAY
 
 
 async def gen(n):
@@ -126,27 +131,27 @@ async def gen2(generator, n):
 
 def test_generator_sync(synchronizer):
     synchronizer = synchronizer
-    t0 = time.time()
+    t0 = time.monotonic()
     gen_s = synchronizer.create_blocking(gen)
     it = gen_s(3)
     assert inspect.isgenerator(it)
-    assert time.time() - t0 < SLEEP_DELAY
+    assert time.monotonic() - t0 < SLEEP_DELAY
     lst = list(it)
     assert lst == [0, 1, 2]
-    assert time.time() - t0 > len(lst) * SLEEP_DELAY
+    assert time.monotonic() - t0 + WINDOWS_TIME_RESOLUTION_FIX >= len(lst) * SLEEP_DELAY
 
 
 @pytest.mark.asyncio
 async def test_generator_async(synchronizer):
-    t0 = time.time()
+    t0 = time.monotonic()
     gen_s = synchronizer.create_blocking(gen).aio
 
     asyncgen = gen_s(3)
     assert inspect.isasyncgen(asyncgen)
-    assert time.time() - t0 < SLEEP_DELAY
+    assert time.monotonic() - t0 < SLEEP_DELAY
     lst = [z async for z in asyncgen]
     assert lst == [0, 1, 2]
-    assert time.time() - t0 > len(lst) * SLEEP_DELAY
+    assert time.monotonic() - t0 + WINDOWS_TIME_RESOLUTION_FIX >= len(lst) * SLEEP_DELAY
 
     # Make sure same-loop calls work
     gen2_s = synchronizer.create_blocking(gen2).aio
@@ -178,26 +183,26 @@ async def test_function_returning_coroutine(synchronizer):
 
 
 def test_sync_lambda_returning_coroutine_sync(synchronizer):
-    t0 = time.time()
+    t0 = time.monotonic()
     g = synchronizer.create_blocking(lambda z: f(z + 1))
     ret = g(42)
     assert ret == 1849
-    assert time.time() - t0 >= SLEEP_DELAY
+    assert time.monotonic() - t0 >= SLEEP_DELAY
 
 
 def test_sync_lambda_returning_coroutine_sync_futures(synchronizer):
-    t0 = time.time()
+    t0 = time.monotonic()
     g = synchronizer.create_blocking(lambda z: f(z + 1))
     fut = g(42, _future=True)
     assert isinstance(fut, concurrent.futures.Future)
-    assert time.time() - t0 < SLEEP_DELAY
+    assert time.monotonic() - t0 < SLEEP_DELAY
     assert fut.result() == 1849
-    assert time.time() - t0 >= SLEEP_DELAY
+    assert time.monotonic() - t0 >= SLEEP_DELAY
 
 
 @pytest.mark.asyncio
 async def test_sync_inline_func_returning_coroutine_async(synchronizer):
-    t0 = time.time()
+    t0 = time.monotonic()
 
     # NOTE: we don't create the async variant unless we know the function returns a coroutine
     def func(z) -> Coroutine:
@@ -206,9 +211,9 @@ async def test_sync_inline_func_returning_coroutine_async(synchronizer):
     g = synchronizer.create_blocking(func)
     coro = g.aio(42)
     assert inspect.iscoroutine(coro)
-    assert time.time() - t0 < SLEEP_DELAY
+    assert time.monotonic() - t0 < SLEEP_DELAY
     assert await coro == 1849
-    assert time.time() - t0 >= SLEEP_DELAY
+    assert time.monotonic() - t0 >= SLEEP_DELAY
 
 
 class Base:
@@ -266,19 +271,19 @@ def test_class_sync(synchronizer):
     ret = obj.get_result()
     assert ret == 1764
 
-    t0 = time.time()
+    t0 = time.monotonic()
     with obj as z:
         assert z == 42
-        assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
-    assert time.time() - t0 > 2 * SLEEP_DELAY
+        assert SLEEP_DELAY - WINDOWS_TIME_RESOLUTION_FIX <= time.monotonic() - t0 < 2 * SLEEP_DELAY
+    assert time.monotonic() - t0 + WINDOWS_TIME_RESOLUTION_FIX >= 2 * SLEEP_DELAY
 
-    t0 = time.time()
+    t0 = time.monotonic()
     assert BlockingMyClass.my_static_method() == 43
-    assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
+    assert SLEEP_DELAY - WINDOWS_TIME_RESOLUTION_FIX <= time.monotonic() - t0 < 2 * SLEEP_DELAY
 
-    t0 = time.time()
+    t0 = time.monotonic()
     assert BlockingMyClass.my_class_method() == 44
-    assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
+    assert SLEEP_DELAY - WINDOWS_TIME_RESOLUTION_FIX <= time.monotonic() - t0 < 2 * SLEEP_DELAY
 
     assert list(z for z in obj) == list(range(42))
 
@@ -298,9 +303,9 @@ def test_class_sync_futures(synchronizer):
     t0 = time.monotonic()
     with obj as z:
         assert z == 42
-        assert SLEEP_DELAY <= time.monotonic() - t0 < 2 * SLEEP_DELAY
+        assert SLEEP_DELAY - WINDOWS_TIME_RESOLUTION_FIX <= time.monotonic() - t0 < 2 * SLEEP_DELAY
 
-    assert time.monotonic() - t0 >= 2 * SLEEP_DELAY
+    assert time.monotonic() - t0 + WINDOWS_TIME_RESOLUTION_FIX >= 2 * SLEEP_DELAY
 
 
 @pytest.mark.asyncio
@@ -316,12 +321,12 @@ async def test_class_async_as_method_attribute(synchronizer):
     assert inspect.iscoroutine(coro)
     assert await coro == 1764
 
-    t0 = time.time()
+    t0 = time.monotonic()
     async with obj as z:
         assert z == 42
-        assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
+        assert SLEEP_DELAY - WINDOWS_TIME_RESOLUTION_FIX <= time.monotonic() - t0 < 2 * SLEEP_DELAY
 
-    assert time.time() - t0 > 2 * SLEEP_DELAY
+    assert time.monotonic() - t0 + WINDOWS_TIME_RESOLUTION_FIX >= 2 * SLEEP_DELAY
 
     lst = []
 
@@ -336,10 +341,10 @@ async def test_class_async_as_method_attribute(synchronizer):
 
 @pytest.mark.skip(reason="Skip this until we've made it impossible to re-synchronize objects")
 def test_event_loop(synchronizer):
-    t0 = time.time()
+    t0 = time.monotonic()
     f_s = synchronizer.create_blocking(f)
     assert f_s(42) == 42 * 42
-    assert SLEEP_DELAY < time.time() - t0 < 2 * SLEEP_DELAY
+    assert SLEEP_DELAY - WINDOWS_TIME_RESOLUTION_FIX <= time.monotonic() - t0 < 2 * SLEEP_DELAY
     assert synchronizer._thread.is_alive()
     assert synchronizer._loop.is_running()
     synchronizer._close_loop()
@@ -476,7 +481,7 @@ async def test_non_async_aiter(synchronizer):
     it.close()
 
 
-def test_generic_baseclass():
+def test_generic_baseclass(synchronizer):
     T = typing.TypeVar("T")
     V = typing.TypeVar("V")
 
@@ -484,8 +489,7 @@ def test_generic_baseclass():
         async def do_something(self):
             return 1
 
-    s = synchronicity.Synchronizer()
-    WrappedGenericClass = s.create_blocking(GenericClass, name="BlockingGenericClass")
+    WrappedGenericClass = synchronizer.create_blocking(GenericClass, name="BlockingGenericClass")
 
     assert WrappedGenericClass[str, float].__args__ == (str, float)
 
@@ -499,7 +503,7 @@ def test_generic_baseclass():
     class GenericSubclass(GenericClass[Q, Y]):
         pass
 
-    WrappedGenericSubclass = s.create_blocking(GenericSubclass, name="BlockingGenericSubclass")
+    WrappedGenericSubclass = synchronizer.create_blocking(GenericSubclass, name="BlockingGenericSubclass")
     assert WrappedGenericSubclass[bool, int].__args__ == (bool, int)
     instance_2 = WrappedGenericSubclass()
     assert isinstance(instance_2, WrappedGenericSubclass)
@@ -533,7 +537,7 @@ async def test_async_cancellation(synchronizer):
             wrapped_foo.aio(abort_cancellation=abort_cancellation, cancel_self=cancel_self)
         )
         while "ready" not in states:
-            await asyncio.sleep(0.01)  # do't cancel before the task even starts
+            await asyncio.sleep(0.01)  # don't cancel before the task even starts
         return calling_task
 
     # Case 1: cancel in parent goes into the coroutine and comes back out:
@@ -544,10 +548,13 @@ async def test_async_cancellation(synchronizer):
     assert states == ["ready", "cancelled", "handled cancellation"]
 
     # Case 2: cancel in parent goes into the coroutine and is "aborted" by the coroutine:
-    calling_task = await start_task(abort_cancellation=True)
-    calling_task.cancel()
-    assert await calling_task == "done"
-    assert states == ["ready", "cancelled", "handled cancellation"]
+    # Note: This is explicitly not allowed anymore, since we can't distinguish it from the task
+    # finishing successfully before a cancellation takes place, and no cancellation
+    # getting raised - causing unintended aborted cancellations in the calling event loop
+    # calling_task = await start_task(abort_cancellation=True)
+    # calling_task.cancel()
+    # assert await calling_task == "done"
+    # assert states == ["ready", "cancelled", "handled cancellation"]
 
     # Case 3: cancellation from within the coroutine itself comes back out:
     calling_task = await start_task(abort_cancellation=False, cancel_self=True)
@@ -561,3 +568,48 @@ async def test_async_cancellation(synchronizer):
     assert await calling_task == "done"
     assert "ready" in states
     assert states == ["ready", "cancelled", "handled cancellation"]
+
+
+@pytest.mark.asyncio
+async def test_async_cancel_completes_successfully_still_cancels(synchronizer):
+    # Reproduces a race where the synchronizer event loop finishes a task
+    # before a cancellation has a chance to get scheduled, and as such
+    # never bubbles up the cancellation, even though it was never
+    # caught
+    e = threading.Event()
+
+    @synchronizer.wrap
+    async def well_behaved_coro():
+        e.wait()
+        return 1
+
+    local_task = asyncio.create_task(well_behaved_coro.aio())
+    await asyncio.sleep(0.1)  # let other event loop block at e2.wait above
+    # well_behaved_coro has not exited at this point, and local_task is not resolved
+    assert not local_task.done()
+    local_task.cancel()  # this schedules cancellation on other thread
+    await asyncio.sleep(0.1)
+    assert not local_task.cancelled()  # not yet fully cancelled!
+    e.set()  # release other event loop at resolve point, simulating a race
+    # users would typically assume that a cancellation of a non-done well behaved
+    # task would race a cancellation error in the next await of that task:
+    with pytest.raises(asyncio.CancelledError):
+        await local_task
+
+
+def test_async_inner_still_translates(synchronizer):
+    class _V:
+        pass
+
+    V = synchronizer.wrap(_V)
+
+    @synchronizer.wrap
+    async def inner():
+        return _V()
+
+    @synchronizer.wrap
+    async def outer():
+        v = await inner.aio()
+        assert isinstance(v, V)
+
+    outer()

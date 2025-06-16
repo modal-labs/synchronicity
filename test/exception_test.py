@@ -27,10 +27,12 @@ import concurrent
 import functools
 import inspect
 import pytest
+import sys
 import time
 import typing
 
 SLEEP_DELAY = 0.1
+WINDOWS_TIME_RESOLUTION_FIX = 0.01 if sys.platform == "win32" else 0.0
 
 
 class CustomExceptionCause(Exception):
@@ -42,12 +44,12 @@ class CustomException(Exception):
 
 
 async def f_raises():
-    await asyncio.sleep(0.1)
+    await asyncio.sleep(SLEEP_DELAY)
     raise CustomException("something failed")
 
 
 async def f_raises_with_cause():
-    await asyncio.sleep(0.1)
+    await asyncio.sleep(SLEEP_DELAY)
     raise CustomException("something failed") from CustomExceptionCause("exception cause")
 
 
@@ -56,7 +58,7 @@ def test_function_raises_sync(synchronizer):
     with pytest.raises(CustomException) as exc:
         f_raises_s = synchronizer.create_blocking(f_raises)
         f_raises_s()
-    assert SLEEP_DELAY < time.monotonic() - t0 < 2 * SLEEP_DELAY
+    assert SLEEP_DELAY - WINDOWS_TIME_RESOLUTION_FIX <= time.monotonic() - t0 < 2 * SLEEP_DELAY
     assert exc.value.__suppress_context__ or exc.value.__context__ is None
 
 
@@ -65,7 +67,7 @@ def test_function_raises_with_cause_sync(synchronizer):
     with pytest.raises(CustomException) as exc:
         f_raises_s = synchronizer.create_blocking(f_raises_with_cause)
         f_raises_s()
-    assert SLEEP_DELAY < time.monotonic() - t0 < 2 * SLEEP_DELAY
+    assert SLEEP_DELAY - WINDOWS_TIME_RESOLUTION_FIX <= time.monotonic() - t0 < 2 * SLEEP_DELAY
     assert isinstance(exc.value.__cause__, CustomExceptionCause)
 
 
@@ -77,7 +79,7 @@ def test_function_raises_sync_futures(synchronizer):
     assert time.monotonic() - t0 < SLEEP_DELAY
     with pytest.raises(CustomException) as exc:
         fut.result()
-    assert SLEEP_DELAY < time.monotonic() - t0 < 2 * SLEEP_DELAY
+    assert SLEEP_DELAY - WINDOWS_TIME_RESOLUTION_FIX <= time.monotonic() - t0 < 2 * SLEEP_DELAY
     assert exc.value.__suppress_context__ or exc.value.__context__ is None
 
 
@@ -89,7 +91,7 @@ def test_function_raises_with_cause_sync_futures(synchronizer):
     assert time.monotonic() - t0 < SLEEP_DELAY
     with pytest.raises(CustomException) as exc:
         fut.result()
-    assert SLEEP_DELAY < time.monotonic() - t0 < 2 * SLEEP_DELAY
+    assert SLEEP_DELAY - WINDOWS_TIME_RESOLUTION_FIX <= time.monotonic() - t0 < 2 * SLEEP_DELAY
     assert isinstance(exc.value.__cause__, CustomExceptionCause)
 
 
@@ -102,7 +104,7 @@ async def test_function_raises_async(synchronizer):
     assert time.monotonic() - t0 < SLEEP_DELAY
     with pytest.raises(CustomException) as exc:
         await coro
-    assert SLEEP_DELAY < time.monotonic() - t0 < 2 * SLEEP_DELAY
+    assert SLEEP_DELAY - WINDOWS_TIME_RESOLUTION_FIX <= time.monotonic() - t0 < 2 * SLEEP_DELAY
     assert exc.value.__suppress_context__ or exc.value.__context__ is None
 
 
@@ -115,12 +117,13 @@ async def test_function_raises_with_cause_async(synchronizer):
     assert time.monotonic() - t0 < SLEEP_DELAY
     with pytest.raises(CustomException) as exc:
         await coro
-    assert SLEEP_DELAY < time.monotonic() - t0 < 2 * SLEEP_DELAY
+    dur = time.monotonic() - t0
+    assert SLEEP_DELAY - WINDOWS_TIME_RESOLUTION_FIX <= dur < 2 * SLEEP_DELAY
     assert isinstance(exc.value.__cause__, CustomExceptionCause)
 
 
 async def f_raises_baseexc():
-    await asyncio.sleep(0.1)
+    await asyncio.sleep(SLEEP_DELAY)
     raise KeyboardInterrupt
 
 
@@ -129,7 +132,7 @@ def test_function_raises_baseexc_sync(synchronizer):
     with pytest.raises(BaseException) as exc:
         f_raises_baseexc_s = synchronizer.create_blocking(f_raises_baseexc)
         f_raises_baseexc_s()
-    assert SLEEP_DELAY < time.monotonic() - t0 < 2 * SLEEP_DELAY
+    assert SLEEP_DELAY - WINDOWS_TIME_RESOLUTION_FIX <= time.monotonic() - t0 < 2 * SLEEP_DELAY
     assert exc.value.__suppress_context__ or exc.value.__context__ is None
 
 
@@ -146,7 +149,7 @@ async def test_function_raises_async_syncwrap(synchronizer):
     assert time.monotonic() - t0 < SLEEP_DELAY
     with pytest.raises(CustomException) as exc:
         await coro
-    assert SLEEP_DELAY < time.monotonic() - t0 < 2 * SLEEP_DELAY
+    assert SLEEP_DELAY - WINDOWS_TIME_RESOLUTION_FIX <= time.monotonic() - t0 < 2 * SLEEP_DELAY
     assert exc.value.__suppress_context__ or exc.value.__context__ is None
 
 
@@ -163,7 +166,7 @@ async def test_function_raises_with_cause_async_syncwrap(synchronizer):
     assert time.monotonic() - t0 < SLEEP_DELAY
     with pytest.raises(CustomException) as exc:
         await coro
-    assert SLEEP_DELAY < time.monotonic() - t0 < 2 * SLEEP_DELAY
+    assert SLEEP_DELAY - WINDOWS_TIME_RESOLUTION_FIX <= time.monotonic() - t0 < 2 * SLEEP_DELAY
     assert isinstance(exc.value.__cause__, CustomExceptionCause)
 
 
@@ -187,5 +190,5 @@ async def test_wrapped_function_raises_async(synchronizer):
     assert time.monotonic() - t0 < SLEEP_DELAY
     with pytest.raises(CustomException) as exc:
         await coro
-    assert SLEEP_DELAY < time.monotonic() - t0 < 2 * SLEEP_DELAY
+    assert SLEEP_DELAY - WINDOWS_TIME_RESOLUTION_FIX <= time.monotonic() - t0 < 2 * SLEEP_DELAY
     assert exc.value.__suppress_context__ or exc.value.__context__ is None
