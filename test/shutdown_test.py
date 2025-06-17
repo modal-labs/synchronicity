@@ -30,24 +30,26 @@ class PopenWithCtrlC(subprocess.Popen):
 def test_shutdown():
     # We run it in a separate process so we can simulate interrupting it
     fn = Path(__file__).parent / "support" / "_shutdown.py"
-    p = PopenWithCtrlC([sys.executable, "-u", fn], stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf8")
-    for i in range(2):  # this number doesn't matter, it's a while loop
-        assert p.stdout.readline() == "running\n"
-    p.send_ctrl_c()
-    for i in range(2):
-        # in some extreme cases there is a risk of a race where the "running" still appears here
-        if p.stdout.readline() == "cancelled\n":
-            break
-    else:
-        assert False
+    with PopenWithCtrlC(
+        [sys.executable, "-u", fn], stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf8"
+    ) as p:
+        for i in range(2):  # this number doesn't matter, it's a while loop
+            assert p.stdout.readline() == "running\n"
+        p.send_ctrl_c()
+        for i in range(2):
+            # in some extreme cases there is a risk of a race where the "running" still appears here
+            if p.stdout.readline() == "cancelled\n":
+                break
+        else:
+            assert False
 
-    assert p.stdout.readline() == "handled cancellation\n"
-    assert p.stdout.readline() == "exit async\n"
-    assert (
-        p.stdout.readline() == "keyboard interrupt\n"
-    )  # we want the keyboard interrupt to come *after* the running function has been cancelled!
+        assert p.stdout.readline() == "handled cancellation\n"
+        assert p.stdout.readline() == "exit async\n"
+        assert (
+            p.stdout.readline() == "keyboard interrupt\n"
+        )  # we want the keyboard interrupt to come *after* the running function has been cancelled!
 
-    assert p.stderr.read().strip() == ""
+        assert p.stderr.read().strip() == ""
 
 
 def test_keyboard_interrupt_reraised_as_is(synchronizer):
@@ -62,63 +64,57 @@ def test_keyboard_interrupt_reraised_as_is(synchronizer):
 def test_shutdown_during_ctx_mgr_setup():
     # We run it in a separate process so we can simulate interrupting it
     fn = Path(__file__).parent / "support" / "_shutdown_ctx_mgr.py"
-    p = PopenWithCtrlC(
+    with PopenWithCtrlC(
         [sys.executable, "-u", fn, "enter"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         encoding="utf8",
-    )
-    for i in range(2):  # this number doesn't matter, it's a while loop
-        assert p.stdout.readline() == "enter\n"
-    p.send_ctrl_c()
-    assert p.stdout.readline() == "exit\n"
-    assert p.stdout.readline() == "keyboard interrupt\n"
-    assert p.stderr.read() == ""
+    ) as p:
+        for i in range(2):  # this number doesn't matter, it's a while loop
+            assert p.stdout.readline() == "enter\n"
+        p.send_ctrl_c()
+        assert p.stdout.readline() == "exit\n"
+        assert p.stdout.readline() == "keyboard interrupt\n"
+        assert p.stderr.read() == ""
 
 
 def test_shutdown_during_ctx_mgr_yield():
     # We run it in a separate process so we can simulate interrupting it
     fn = Path(__file__).parent / "support" / "_shutdown_ctx_mgr.py"
-    p = PopenWithCtrlC(
+    with PopenWithCtrlC(
         [sys.executable, "-u", fn, "yield"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf8"
-    )
-    for i in range(2):  # this number doesn't matter, it's a while loop
-        assert p.stdout.readline() == "in ctx\n"
-    p.send_ctrl_c()
-    assert p.stdout.readline() == "exit\n"
-    assert p.stdout.readline() == "keyboard interrupt\n"
-    assert p.stderr.read() == ""
+    ) as p:
+        for i in range(2):  # this number doesn't matter, it's a while loop
+            assert p.stdout.readline() == "in ctx\n"
+        p.send_ctrl_c()
+        assert p.stdout.readline() == "exit\n"
+        assert p.stdout.readline() == "keyboard interrupt\n"
+        assert p.stderr.read() == ""
 
 
 @pytest.mark.parametrize("run_number", range(10))  # don't allow this to flake!
 def test_shutdown_during_async_run(run_number):
     fn = Path(__file__).parent / "support" / "_shutdown_async_run.py"
-    p = PopenWithCtrlC(
+    with PopenWithCtrlC(
         [sys.executable, "-u", fn],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         encoding="utf-8",
-    )
+    ) as p:
 
-    def line():
-        # debugging help
-        line_data = p.stdout.readline()
-        print(line_data)
-        return line_data
+        def line():
+            # debugging help
+            line_data = p.stdout.readline()
+            print(line_data)
+            return line_data
 
-    assert line() == "running\n"
-    p.send_ctrl_c()
-    print("sigint sent")
-    while (next_line := line()) == "running\n":
-        pass
-    assert next_line == "cancelled\n"
-    stdout, stderr = p.communicate(timeout=5)
-    print(stderr)
-    assert (
-        stdout
-        == """handled cancellation
-exit async
-keyboard interrupt
-"""
-    )
-    assert stderr == ""
+        assert line() == "running\n"
+        p.send_ctrl_c()
+        print("sigint sent")
+        while (next_line := line()) == "running\n":
+            pass
+        assert next_line == "cancelled\n"
+        stdout, stderr = p.communicate(timeout=5)
+        print(stderr)
+        assert stdout == ("handled cancellation\nexit async\nkeyboard interrupt\n")
+        assert stderr == ""
