@@ -465,7 +465,7 @@ class Synchronizer:
                 break
             except BaseException as exc:
                 exc.with_traceback(clean_traceback(exc.__traceback__))
-                raise exc
+                raise
 
             try:
                 value = yield value

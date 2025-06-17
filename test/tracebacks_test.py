@@ -1,11 +1,9 @@
-import asyncio
-import concurrent.futures
 import contextlib
 import pytest
+import sys
 import traceback
 from pathlib import Path
-
-import synchronicity
+from types import TracebackType
 
 
 class CustomException(Exception):
@@ -25,19 +23,18 @@ async def gen():
     yield
 
 
-def check_traceback(exc):
-    tb = exc.__traceback__
+def check_traceback(tb: TracebackType, allowed_outside_frames=0):
+    traceback_string = "\n".join(traceback.format_tb(tb))
+    assert str(Path(__file__)) in traceback_string  # this file should be in traceback
     n_outside = 0
     for frame in traceback.extract_tb(tb):
         if frame.filename != __file__:
             n_outside += 1
 
-    # Let's allow for at most 1 entry outside of this file
-    if n_outside > 1:
-        for frame in traceback.extract_tb(tb):
-            print(frame.filename, frame.lineno, frame.line)
-        traceback.print_tb(tb)
-        raise Exception(f"Got {n_outside} frames outside user code, expected 1")
+    # don't allow more than allowed_outside_frames from outside of this file
+    if n_outside > allowed_outside_frames:
+        print(traceback_string)
+        raise Exception(f"Got {n_outside} frames outside user code, expected 0")
 
 
 def test_sync_to_async(synchronizer):
@@ -45,14 +42,10 @@ def test_sync_to_async(synchronizer):
     try:
         f_s()
     except CustomException:
+        check_traceback(sys.exc_info()[2])
         traceback_string = traceback.format_exc()
-        assert str(Path(__file__)) in traceback_string  # this file should be in traceback
         assert "f_s()" in traceback_string
         assert 'raise CustomException("boom!")' in traceback_string
-        assert str(Path(synchronicity.__file__).parent) not in traceback_string
-        assert str(Path(asyncio.__file__).parent) not in traceback_string
-        assert str(Path(concurrent.futures.__file__).parent) not in traceback_string
-        print(traceback_string)
     else:
         assert False  # there should be an exception
 
@@ -60,43 +53,62 @@ def test_sync_to_async(synchronizer):
 @pytest.mark.asyncio
 async def test_async_to_async(synchronizer):
     f_s = synchronizer.create_blocking(f)
-    with pytest.raises(CustomException) as excinfo:
+    try:
         await f_s.aio()
-    check_traceback(excinfo.value)
+    except CustomException:
+        check_traceback(sys.exc_info()[2])
+    else:
+        assert False
 
 
 def test_sync_to_async_gen(synchronizer):
     gen_s = synchronizer.create_blocking(gen)
-    with pytest.raises(CustomException) as excinfo:
+    try:
         for x in gen_s():
             pass
-    check_traceback(excinfo.value)
+    except CustomException:
+        check_traceback(sys.exc_info()[2])
+    else:
+        assert False
 
 
 @pytest.mark.asyncio
 async def test_async_to_async_gen(synchronizer):
     gen_s = synchronizer.create_blocking(gen)
-    with pytest.raises(CustomException) as excinfo:
+    try:
         async for x in gen_s.aio():
             pass
-    check_traceback(excinfo.value)
+    except CustomException:
+        check_traceback(sys.exc_info()[2])
+    else:
+        raise
 
 
 def test_sync_to_async_ctx_mgr(synchronizer):
     ctx_mgr = synchronizer.create_blocking(contextlib.asynccontextmanager(gen))
-    with pytest.raises(CustomException) as excinfo:
+    try:
         with ctx_mgr():
             pass
-    check_traceback(excinfo.value)
+    except CustomException:
+        # arguably contextlib's own next() call should be part of the trace
+        # so allow for 1 frame outside
+        check_traceback(sys.exc_info()[2], allowed_outside_frames=1)
+    else:
+        assert False
 
 
 @pytest.mark.asyncio
 async def test_async_to_async_ctx_mgr(synchronizer):
     ctx_mgr = synchronizer.create_blocking(contextlib.asynccontextmanager(gen))
-    with pytest.raises(CustomException) as excinfo:
+    try:
         async with ctx_mgr():
             pass
-    check_traceback(excinfo.value)
+    except CustomException:
+        # arguably contextlib's own next() call should be part of the trace
+        # so allow for 1 frame outside
+        check_traceback(sys.exc_info()[2], allowed_outside_frames=1)
+    else:
+        assert False
 
 
 def test_recursive(synchronizer):
@@ -108,7 +120,9 @@ def test_recursive(synchronizer):
 
     f_blocking = synchronizer.create_blocking(f)
 
-    with pytest.raises(CustomException) as excinfo:
+    try:
         f_blocking(10)
-
-    check_traceback(excinfo.value)
+    except CustomException:
+        check_traceback(sys.exc_info()[2])
+    else:
+        assert False
