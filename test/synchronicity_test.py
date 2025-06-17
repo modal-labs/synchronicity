@@ -34,6 +34,16 @@ def test_function_sync(synchronizer):
     assert SLEEP_DELAY - WINDOWS_TIME_RESOLUTION_FIX <= time.monotonic() - t0 < 2 * SLEEP_DELAY
 
 
+@pytest.mark.asyncio
+async def test_function_async(synchronizer):
+    s = synchronizer
+    f_s = s.wrap(f)
+    t0 = time.monotonic()
+    ret = await f_s.aio(42)
+    assert ret == 1764
+    assert SLEEP_DELAY - WINDOWS_TIME_RESOLUTION_FIX <= time.monotonic() - t0 < 2 * SLEEP_DELAY
+
+
 def test_function_sync_future(synchronizer):
     t0 = time.monotonic()
     f_s = synchronizer.create_blocking(f)
