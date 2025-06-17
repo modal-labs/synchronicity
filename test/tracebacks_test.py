@@ -1,6 +1,11 @@
+import asyncio
+import concurrent.futures
 import contextlib
 import pytest
 import traceback
+from pathlib import Path
+
+import synchronicity
 
 
 class CustomException(Exception):
@@ -37,9 +42,19 @@ def check_traceback(exc):
 
 def test_sync_to_async(synchronizer):
     f_s = synchronizer.create_blocking(f)
-    with pytest.raises(CustomException) as excinfo:
+    try:
         f_s()
-    check_traceback(excinfo.value)
+    except CustomException:
+        traceback_string = traceback.format_exc()
+        assert str(Path(__file__)) in traceback_string  # this file should be in traceback
+        assert "f_s()" in traceback_string
+        assert 'raise CustomException("boom!")' in traceback_string
+        assert str(Path(synchronicity.__file__).parent) not in traceback_string
+        assert str(Path(asyncio.__file__).parent) not in traceback_string
+        assert str(Path(concurrent.futures.__file__).parent) not in traceback_string
+        print(traceback_string)
+    else:
+        assert False  # there should be an exception
 
 
 @pytest.mark.asyncio
