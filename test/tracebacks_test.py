@@ -23,7 +23,7 @@ async def gen():
     yield
 
 
-def check_traceback(tb: TracebackType, allowed_outside_frames=0):
+def check_traceback(tb: TracebackType, outside_frames=0, outside_frames_old_python=1):
     traceback_string = "\n".join(traceback.format_tb(tb))
     assert str(Path(__file__)) in traceback_string  # this file should be in traceback
     n_outside = 0
@@ -32,9 +32,10 @@ def check_traceback(tb: TracebackType, allowed_outside_frames=0):
             n_outside += 1
 
     # don't allow more than allowed_outside_frames from outside of this file
-    if n_outside > allowed_outside_frames:
+    limit = outside_frames_old_python if sys.version_info < (3, 11) else outside_frames
+    if n_outside != limit:
         print(traceback_string)
-        raise Exception(f"Got {n_outside} frames outside user code, expected 0")
+        raise Exception(f"Got {n_outside} frames outside user code, expected {limit}")
 
 
 def test_sync_to_async(synchronizer):
@@ -43,6 +44,20 @@ def test_sync_to_async(synchronizer):
         f_s()
     except CustomException:
         check_traceback(sys.exc_info()[2])
+        traceback_string = traceback.format_exc()
+        assert "f_s()" in traceback_string
+        assert 'raise CustomException("boom!")' in traceback_string
+    else:
+        assert False  # there should be an exception
+
+
+def test_full_traceback_env_var(synchronizer, monkeypatch):
+    monkeypatch.setenv("SYNCHRONICITY_TRACEBACK", "1")
+    f_s = synchronizer.create_blocking(f)
+    try:
+        f_s()
+    except CustomException:
+        check_traceback(sys.exc_info()[2], outside_frames=8, outside_frames_old_python=8)
         traceback_string = traceback.format_exc()
         assert "f_s()" in traceback_string
         assert 'raise CustomException("boom!")' in traceback_string
@@ -90,9 +105,10 @@ def test_sync_to_async_ctx_mgr(synchronizer):
         with ctx_mgr():
             pass
     except CustomException:
-        # arguably contextlib's own next() call should be part of the trace
-        # so allow for 1 frame outside
-        check_traceback(sys.exc_info()[2], allowed_outside_frames=1)
+        # we allow one frame from contextlib which would be expected in non-synchronicity code
+        # in old pythons we have to live with more synchronicity frames here due to multi
+        # wrapping
+        check_traceback(sys.exc_info()[2], outside_frames=1, outside_frames_old_python=3)
     else:
         assert False
 
@@ -104,9 +120,10 @@ async def test_async_to_async_ctx_mgr(synchronizer):
         async with ctx_mgr():
             pass
     except CustomException:
-        # arguably contextlib's own next() call should be part of the trace
-        # so allow for 1 frame outside
-        check_traceback(sys.exc_info()[2], allowed_outside_frames=1)
+        # we allow one frame from contextlib which would be expected in non-synchronicity code
+        # in old pythons we have to live with more synchronicity frames here due to multi
+        # wrapping
+        check_traceback(sys.exc_info()[2], outside_frames=1, outside_frames_old_python=3)
     else:
         assert False
 

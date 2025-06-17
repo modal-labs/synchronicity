@@ -1,5 +1,6 @@
 import asyncio
 import concurrent.futures
+import os
 import sys
 from pathlib import Path
 from types import TracebackType
@@ -34,7 +35,7 @@ def wrap_coro_exception(coro):
         except UserCodeException:
             raise  # Pass-through in case it got double-wrapped
         except BaseException as exc:
-            if sys.version_info < (3, 11):
+            if sys.version_info < (3, 11) and os.getenv("SYNCHRONICITY_TRACEBACK", "0") != "1":
                 exc.with_traceback(exc.__traceback__.tb_next)
                 raise UserCodeException(exc)
             raise
@@ -55,6 +56,9 @@ class NestedEventLoops(Exception):
 
 
 def clean_traceback(tb: TracebackType):
+    if os.getenv("SYNCHRONICITY_TRACEBACK", "0") == "1":
+        return tb
+
     def should_hide_file(fn: str):
         skip_modules = [synchronicity, concurrent.futures, asyncio]
         res = any(Path(fn).is_relative_to(Path(mod.__file__).parent) for mod in skip_modules)
