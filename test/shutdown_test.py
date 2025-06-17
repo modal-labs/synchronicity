@@ -49,7 +49,7 @@ def test_shutdown():
             p.stdout.readline() == "keyboard interrupt\n"
         )  # we want the keyboard interrupt to come *after* the running function has been cancelled!
 
-    assert p.stderr.read().strip() == ""
+        assert p.stderr.read().strip() == ""
 
 
 def test_keyboard_interrupt_reraised_as_is(synchronizer):
