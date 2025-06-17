@@ -1,3 +1,3 @@
-from .synchronizer import Synchronizer
+from .synchronizer import Synchronizer, classproperty
 
-__all__ = ["Synchronizer"]
+__all__ = ["Synchronizer", "classproperty"]
