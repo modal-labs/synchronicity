@@ -118,5 +118,5 @@ def test_shutdown_during_async_run(run_number):
         assert next_line == "cancelled\n"
         stdout, stderr = p.communicate(timeout=5)
         print(stderr)
-        assert stdout == ("handled cancellation\n" "exit async\n" "keyboard interrupt\n")
+        assert stdout == ("handled cancellation\nexit async\nkeyboard interrupt\n")
         assert stderr == ""
