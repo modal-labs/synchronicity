@@ -1,3 +1,4 @@
+import contextlib
 import pytest
 import traceback
 
@@ -66,19 +67,17 @@ async def test_async_to_async_gen(synchronizer):
     check_traceback(excinfo.value)
 
 
-@pytest.mark.skip(reason="This one will be much easier to fix once AUTODETECT is gone")
 def test_sync_to_async_ctx_mgr(synchronizer):
-    ctx_mgr = synchronizer.create_blocking(synchronizer.asynccontextmanager(gen))
+    ctx_mgr = synchronizer.create_blocking(contextlib.asynccontextmanager(gen))
     with pytest.raises(CustomException) as excinfo:
         with ctx_mgr():
             pass
     check_traceback(excinfo.value)
 
 
-@pytest.mark.skip(reason="This one will be much easier to fix once AUTODETECT is gone")
 @pytest.mark.asyncio
 async def test_async_to_async_ctx_mgr(synchronizer):
-    ctx_mgr = synchronizer.create_blocking(synchronizer.asynccontextmanager(gen))
+    ctx_mgr = synchronizer.create_blocking(contextlib.asynccontextmanager(gen))
     with pytest.raises(CustomException) as excinfo:
         async with ctx_mgr():
             pass
@@ -92,7 +91,9 @@ def test_recursive(synchronizer):
         else:
             return await f(n - 1)
 
+    f_blocking = synchronizer.create_blocking(f)
+
     with pytest.raises(CustomException) as excinfo:
-        f_blocking = synchronizer.create_blocking(f)
         f_blocking(10)
+
     check_traceback(excinfo.value)

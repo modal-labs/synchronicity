@@ -4,7 +4,7 @@ import typing
 import typing_extensions
 
 from synchronicity.async_wrap import wraps_by_interface
-from synchronicity.exceptions import UserCodeException
+from synchronicity.exceptions import UserCodeException, clean_traceback
 from synchronicity.interface import Interface
 
 if typing.TYPE_CHECKING:
@@ -14,7 +14,7 @@ if typing.TYPE_CHECKING:
 class FunctionWithAio:
     def __init__(self, func, aio_func, synchronizer):
         self._func = func
-        self._aio_func = self.aio = aio_func
+        self.aio = self._aio_func = aio_func
         self._synchronizer = synchronizer
 
     def __call__(self, *args, **kwargs):
@@ -25,8 +25,16 @@ class FunctionWithAio:
         try:
             return self._func(*args, **kwargs)
         except UserCodeException as uc_exc:
+            # For Pythoon < 3.11 we use UserCodeException as an exception wrapper
+            # to remove some internal frames from tracebacks, but it can't remove
+            # all frames
             uc_exc.exc.__suppress_context__ = True
             raise uc_exc.exc
+        except BaseException as exc:
+            # from Python 3.11, you can edit the live traceback object on the
+            # exception and have that reflect when tracebacks are printed
+            exc.with_traceback(clean_traceback(exc.__traceback__))
+            raise
 
 
 class MethodWithAio:

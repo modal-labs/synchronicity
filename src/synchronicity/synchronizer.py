@@ -21,7 +21,7 @@ from synchronicity.combined_types import FunctionWithAio, MethodWithAio
 
 from .async_wrap import is_async_gen_function_follow_wrapped, is_coroutine_function_follow_wrapped, wraps_by_interface
 from .callback import Callback
-from .exceptions import UserCodeException, unwrap_coro_exception, wrap_coro_exception
+from .exceptions import UserCodeException, clean_traceback, unwrap_coro_exception, wrap_coro_exception
 from .interface import DEFAULT_CLASS_PREFIX, DEFAULT_FUNCTION_PREFIXES, Interface
 
 _BUILTIN_ASYNC_METHODS = {
@@ -440,6 +440,9 @@ class Synchronizer:
                 raise uc_exc.exc
             except StopAsyncIteration:
                 break
+            except BaseException as exc:
+                exc.with_traceback(clean_traceback(exc.__traceback__))
+                raise
             try:
                 value = yield value
                 is_exc = False
@@ -460,6 +463,10 @@ class Synchronizer:
                 raise uc_exc.exc
             except StopAsyncIteration:
                 break
+            except BaseException as exc:
+                exc.with_traceback(clean_traceback(exc.__traceback__))
+                raise exc
+
             try:
                 value = yield value
                 is_exc = False
@@ -626,6 +633,9 @@ class Synchronizer:
             except UserCodeException as uc_exc:
                 uc_exc.exc.__suppress_context__ = True
                 raise uc_exc.exc
+            except BaseException as exc:
+                exc.with_traceback(clean_traceback(exc.__traceback__))
+                raise
 
         if interface == Interface.BLOCKING and include_aio_interface and should_have_aio_interface(method):
             async_proxy_method = synchronizer_self._wrap_proxy_method(

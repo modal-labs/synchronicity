@@ -1,4 +1,11 @@
 import asyncio
+import concurrent.futures
+import sys
+from pathlib import Path
+from types import TracebackType
+from typing import Optional
+
+import synchronicity
 
 
 class UserCodeException(Exception):
@@ -27,8 +34,10 @@ def wrap_coro_exception(coro):
         except UserCodeException:
             raise  # Pass-through in case it got double-wrapped
         except BaseException as exc:
-            exc = exc.with_traceback(exc.__traceback__.tb_next)
-            raise UserCodeException(exc)
+            if sys.version_info < (3, 11):
+                exc.with_traceback(exc.__traceback__.tb_next)
+                raise UserCodeException(exc)
+            raise
 
     return coro_wrapped()
 
@@ -43,3 +52,25 @@ async def unwrap_coro_exception(coro):
 
 class NestedEventLoops(Exception):
     pass
+
+
+def clean_traceback(tb: TracebackType):
+    def should_hide_file(fn: str):
+        skip_modules = [synchronicity, concurrent.futures, asyncio]
+        res = any(Path(fn).is_relative_to(Path(mod.__file__).parent) for mod in skip_modules)
+        return res
+
+    def get_next_valid(tb: TracebackType) -> Optional[TracebackType]:
+        while tb is not None and should_hide_file(tb.tb_frame.f_code.co_filename):
+            # print("skipping", tb.tb_frame)
+            tb = tb.tb_next
+        return tb
+
+    root_tb = get_next_valid(tb)
+    current = root_tb
+
+    while current.tb_next is not None:
+        current.tb_next = get_next_valid(current.tb_next)
+        current = current.tb_next
+
+    return root_tb

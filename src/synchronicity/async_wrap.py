@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager as _asynccontextmanager
 
 import typing_extensions
 
-from .exceptions import UserCodeException
+from .exceptions import UserCodeException, clean_traceback
 from .interface import Interface
 
 
@@ -30,6 +30,9 @@ def wraps_by_interface(interface: Interface, func):
                 except UserCodeException as uc_exc:
                     uc_exc.exc.__suppress_context__ = True
                     raise uc_exc.exc
+                except BaseException as exc:
+                    exc.with_traceback(clean_traceback(exc.__traceback__))
+                    raise
 
             return wrapper
 
