@@ -34,11 +34,19 @@ def wrap_coro_exception(coro):
             raise
         except UserCodeException:
             raise  # Pass-through in case it got double-wrapped
-        except BaseException as exc:
+        except Exception as exc:
             if sys.version_info < (3, 11) and os.getenv("SYNCHRONICITY_TRACEBACK", "0") != "1":
+                # We do some wrap/unwrap hacks on exceptions in <Python 3.11 which
+                # cleans up *some* of the internal traceback frames
                 exc.with_traceback(exc.__traceback__.tb_next)
                 raise UserCodeException(exc)
             raise
+        except BaseException as exc:
+            # special case if a coroutine raises a KeyboardInterrupt or similar
+            # exception that would otherwise kill the event loop.
+            # Not sure if this is wise tbh, but there is a unit test that checks
+            # for KeyboardInterrupt getting propagated, which would require this
+            raise UserCodeException(exc)
 
     return coro_wrapped()
 
