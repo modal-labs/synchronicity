@@ -67,25 +67,28 @@ def clean_traceback(exc: BaseException):
     if os.getenv("SYNCHRONICITY_TRACEBACK", "0") == "1":
         return
     tb = exc.__traceback__
+    if tb is None:
+        return
 
     def should_hide_file(fn: str):
         skip_modules = [synchronicity, concurrent.futures, asyncio]
-        res = any(Path(fn).is_relative_to(Path(mod.__file__).parent) for mod in skip_modules)
+        module_roots = [Path(mod.__file__).parent for mod in skip_modules if mod.__file__]
+        res = any(Path(fn).is_relative_to(modroot) for modroot in module_roots)
         return res
 
     def get_next_valid(tb: TracebackType) -> Optional[TracebackType]:
-        while tb is not None and should_hide_file(tb.tb_frame.f_code.co_filename):
-            # print("skipping", tb.tb_frame)
-            tb = tb.tb_next
-        return tb
+        next_valid: Optional[TracebackType] = tb
+        while next_valid is not None and should_hide_file(next_valid.tb_frame.f_code.co_filename or ""):
+            next_valid = next_valid.tb_next
+        return next_valid
 
-    cleaned = get_next_valid(tb)
-    if cleaned is None:
+    cleaned_root = get_next_valid(tb)
+    if cleaned_root is None:
         # no frames outside of skip_modules - return original error
         return tb
-    current = cleaned
-    while current.tb_next is not None:
+    current: Optional[TracebackType] = cleaned_root
+    while current and current.tb_next is not None:
         current.tb_next = get_next_valid(current.tb_next)
         current = current.tb_next
 
-    exc.with_traceback(cleaned)  # side effect
+    exc.with_traceback(cleaned_root)  # side effect
