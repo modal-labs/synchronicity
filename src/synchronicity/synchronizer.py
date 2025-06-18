@@ -440,9 +440,10 @@ class Synchronizer:
                 raise uc_exc.exc
             except StopAsyncIteration:
                 break
-            except BaseException as exc:
-                exc.with_traceback(clean_traceback(exc.__traceback__))
+            except Exception as exc:
+                clean_traceback(exc)
                 raise
+
             try:
                 value = yield value
                 is_exc = False
@@ -463,8 +464,8 @@ class Synchronizer:
                 raise uc_exc.exc
             except StopAsyncIteration:
                 break
-            except BaseException as exc:
-                exc.with_traceback(clean_traceback(exc.__traceback__))
+            except Exception as exc:
+                clean_traceback(exc)
                 raise
 
             try:
@@ -548,10 +549,10 @@ class Synchronizer:
                     # This is the exit point, so we need to unwrap the exception here
                     try:
                         return self._run_function_sync(res, f)
-                    except StopAsyncIteration:
+                    except StopAsyncIteration as exc:
                         # this is a special case for handling __next__ wrappers around
                         # __anext__ that raises StopAsyncIteration
-                        raise StopIteration()
+                        raise StopIteration().with_traceback(exc.__traceback__)
                     except UserCodeException as uc_exc:
                         # Used to skip a frame when called from `proxy_method`.
                         if unwrap_user_excs and not (Interface.BLOCKING and include_aio_interface):
@@ -633,8 +634,8 @@ class Synchronizer:
             except UserCodeException as uc_exc:
                 uc_exc.exc.__suppress_context__ = True
                 raise uc_exc.exc
-            except BaseException as exc:
-                exc.with_traceback(clean_traceback(exc.__traceback__))
+            except Exception as exc:
+                clean_traceback(exc)
                 raise
 
         if interface == Interface.BLOCKING and include_aio_interface and should_have_aio_interface(method):

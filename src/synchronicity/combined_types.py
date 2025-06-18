@@ -31,9 +31,7 @@ class FunctionWithAio:
             uc_exc.exc.__suppress_context__ = True
             raise uc_exc.exc
         except BaseException as exc:
-            # from Python 3.11, you can edit the live traceback object on the
-            # exception and have that reflect when tracebacks are printed
-            exc.with_traceback(clean_traceback(exc.__traceback__))
+            clean_traceback(exc)
             raise
 
 

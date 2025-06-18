@@ -30,8 +30,8 @@ def wraps_by_interface(interface: Interface, func):
                 except UserCodeException as uc_exc:
                     uc_exc.exc.__suppress_context__ = True
                     raise uc_exc.exc
-                except BaseException as exc:
-                    exc.with_traceback(clean_traceback(exc.__traceback__))
+                except Exception as exc:
+                    clean_traceback(exc)
                     raise
 
             return wrapper

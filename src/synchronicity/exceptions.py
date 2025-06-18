@@ -55,9 +55,10 @@ class NestedEventLoops(Exception):
     pass
 
 
-def clean_traceback(tb: TracebackType):
+def clean_traceback(exc: BaseException):
     if os.getenv("SYNCHRONICITY_TRACEBACK", "0") == "1":
-        return tb
+        return
+    tb = exc.__traceback__
 
     def should_hide_file(fn: str):
         skip_modules = [synchronicity, concurrent.futures, asyncio]
@@ -70,11 +71,13 @@ def clean_traceback(tb: TracebackType):
             tb = tb.tb_next
         return tb
 
-    root_tb = get_next_valid(tb)
-    current = root_tb
-
+    cleaned = get_next_valid(tb)
+    if cleaned is None:
+        # no frames outside of skip_modules - return original error
+        return tb
+    current = cleaned
     while current.tb_next is not None:
         current.tb_next = get_next_valid(current.tb_next)
         current = current.tb_next
 
-    return root_tb
+    exc.with_traceback(cleaned)  # side effect
