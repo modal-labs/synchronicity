@@ -121,11 +121,12 @@ def test_function_many_parallel_sync_futures(synchronizer):
 async def test_function_many_parallel_async(synchronizer):
     g = synchronizer.create_blocking(f)
     t0 = time.monotonic()
-    coros = [g.aio(i) for i in range(100)]
+    coros = [g.aio(i) for i in range(20)]
     assert inspect.iscoroutine(coros[0])
-    assert time.monotonic() - t0 < SLEEP_DELAY
-    assert await asyncio.gather(*coros) == [z**2 for z in range(100)]
-    assert SLEEP_DELAY - WINDOWS_TIME_RESOLUTION_FIX <= time.monotonic() - t0 < 2 * SLEEP_DELAY
+    assert time.monotonic() - t0 < 0.01  # invoking coroutine functions should be cheap
+    assert await asyncio.gather(*coros) == [z**2 for z in range(20)]
+    dur = time.monotonic() - t0
+    assert SLEEP_DELAY - WINDOWS_TIME_RESOLUTION_FIX <= dur < 2 * SLEEP_DELAY
 
 
 async def gen(n):

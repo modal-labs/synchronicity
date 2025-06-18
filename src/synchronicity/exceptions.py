@@ -1,4 +1,12 @@
 import asyncio
+import concurrent.futures
+import os
+import sys
+from pathlib import Path
+from types import TracebackType
+from typing import Optional
+
+import synchronicity
 
 
 class UserCodeException(Exception):
@@ -26,8 +34,18 @@ def wrap_coro_exception(coro):
             raise
         except UserCodeException:
             raise  # Pass-through in case it got double-wrapped
+        except Exception as exc:
+            if sys.version_info < (3, 11) and os.getenv("SYNCHRONICITY_TRACEBACK", "0") != "1":
+                # We do some wrap/unwrap hacks on exceptions in <Python 3.11 which
+                # cleans up *some* of the internal traceback frames
+                exc.with_traceback(exc.__traceback__.tb_next)
+                raise UserCodeException(exc)
+            raise
         except BaseException as exc:
-            exc = exc.with_traceback(exc.__traceback__.tb_next)
+            # special case if a coroutine raises a KeyboardInterrupt or similar
+            # exception that would otherwise kill the event loop.
+            # Not sure if this is wise tbh, but there is a unit test that checks
+            # for KeyboardInterrupt getting propagated, which would require this
             raise UserCodeException(exc)
 
     return coro_wrapped()
@@ -43,3 +61,34 @@ async def unwrap_coro_exception(coro):
 
 class NestedEventLoops(Exception):
     pass
+
+
+def clean_traceback(exc: BaseException):
+    if os.getenv("SYNCHRONICITY_TRACEBACK", "0") == "1":
+        return
+    tb = exc.__traceback__
+    if tb is None:
+        return
+
+    def should_hide_file(fn: str):
+        skip_modules = [synchronicity, concurrent.futures, asyncio]
+        module_roots = [Path(mod.__file__).parent for mod in skip_modules if mod.__file__]
+        res = any(Path(fn).is_relative_to(modroot) for modroot in module_roots)
+        return res
+
+    def get_next_valid(tb: TracebackType) -> Optional[TracebackType]:
+        next_valid: Optional[TracebackType] = tb
+        while next_valid is not None and should_hide_file(next_valid.tb_frame.f_code.co_filename or ""):
+            next_valid = next_valid.tb_next
+        return next_valid
+
+    cleaned_root = get_next_valid(tb)
+    if cleaned_root is None:
+        # no frames outside of skip_modules - return original error
+        return tb
+    current: Optional[TracebackType] = cleaned_root
+    while current and current.tb_next is not None:
+        current.tb_next = get_next_valid(current.tb_next)
+        current = current.tb_next
+
+    exc.with_traceback(cleaned_root)  # side effect

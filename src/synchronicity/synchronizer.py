@@ -21,7 +21,7 @@ from synchronicity.combined_types import FunctionWithAio, MethodWithAio
 
 from .async_wrap import is_async_gen_function_follow_wrapped, is_coroutine_function_follow_wrapped, wraps_by_interface
 from .callback import Callback
-from .exceptions import UserCodeException, unwrap_coro_exception, wrap_coro_exception
+from .exceptions import UserCodeException, clean_traceback, unwrap_coro_exception, wrap_coro_exception
 from .interface import DEFAULT_CLASS_PREFIX, DEFAULT_FUNCTION_PREFIXES, Interface
 
 _BUILTIN_ASYNC_METHODS = {
@@ -440,6 +440,10 @@ class Synchronizer:
                 raise uc_exc.exc
             except StopAsyncIteration:
                 break
+            except Exception as exc:
+                clean_traceback(exc)
+                raise
+
             try:
                 value = yield value
                 is_exc = False
@@ -460,6 +464,10 @@ class Synchronizer:
                 raise uc_exc.exc
             except StopAsyncIteration:
                 break
+            except Exception as exc:
+                clean_traceback(exc)
+                raise
+
             try:
                 value = yield value
                 is_exc = False
@@ -541,10 +549,10 @@ class Synchronizer:
                     # This is the exit point, so we need to unwrap the exception here
                     try:
                         return self._run_function_sync(res, f)
-                    except StopAsyncIteration:
+                    except StopAsyncIteration as exc:
                         # this is a special case for handling __next__ wrappers around
                         # __anext__ that raises StopAsyncIteration
-                        raise StopIteration()
+                        raise StopIteration().with_traceback(exc.__traceback__)
                     except UserCodeException as uc_exc:
                         # Used to skip a frame when called from `proxy_method`.
                         if unwrap_user_excs and not (Interface.BLOCKING and include_aio_interface):
@@ -626,6 +634,9 @@ class Synchronizer:
             except UserCodeException as uc_exc:
                 uc_exc.exc.__suppress_context__ = True
                 raise uc_exc.exc
+            except Exception as exc:
+                clean_traceback(exc)
+                raise
 
         if interface == Interface.BLOCKING and include_aio_interface and should_have_aio_interface(method):
             async_proxy_method = synchronizer_self._wrap_proxy_method(
