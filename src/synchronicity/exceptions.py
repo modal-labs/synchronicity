@@ -34,6 +34,12 @@ def wrap_coro_exception(coro):
             raise
         except UserCodeException:
             raise  # Pass-through in case it got double-wrapped
+        except TimeoutError as exc:
+            # user-raised TimeoutError always needs to be wrapped, or they would interact
+            # with synchronicity's own timeout handling
+            # TODO: if we want to get rid of UserCodeException at some point
+            #  we could use a custom version of `asyncio.wait_for` to get around this
+            raise UserCodeException(exc)
         except Exception as exc:
             if sys.version_info < (3, 11) and os.getenv("SYNCHRONICITY_TRACEBACK", "0") != "1":
                 # We do some wrap/unwrap hacks on exceptions in <Python 3.11 which

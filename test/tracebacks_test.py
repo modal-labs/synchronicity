@@ -10,12 +10,8 @@ class CustomException(Exception):
     pass
 
 
-async def f():
-    raise CustomException("boom!")
-
-
-async def f_baseexc():
-    raise KeyboardInterrupt
+async def raise_something(exc):
+    raise exc
 
 
 async def gen():
@@ -39,93 +35,80 @@ def check_traceback(tb: TracebackType, outside_frames=0, outside_frames_old_pyth
 
 
 def test_sync_to_async(synchronizer):
-    f_s = synchronizer.create_blocking(f)
-    try:
-        f_s()
-    except CustomException:
-        check_traceback(sys.exc_info()[2])
-        traceback_string = traceback.format_exc()
-        assert "f_s()" in traceback_string
-        assert 'raise CustomException("boom!")' in traceback_string
-    else:
-        assert False  # there should be an exception
+    raise_something_blocking = synchronizer.create_blocking(raise_something)
+    with pytest.raises(CustomException) as exc_info:
+        raise_something_blocking(CustomException("boom!"))
+
+    check_traceback(exc_info.tb)
+    traceback_string = "\n".join(traceback.format_tb(exc_info.tb))
+    assert 'raise_something_blocking(CustomException("boom!"))' in traceback_string
+    assert "raise exc" in traceback_string
 
 
 def test_full_traceback_env_var(synchronizer, monkeypatch):
     monkeypatch.setenv("SYNCHRONICITY_TRACEBACK", "1")
-    f_s = synchronizer.create_blocking(f)
-    try:
-        f_s()
-    except CustomException:
-        check_traceback(sys.exc_info()[2], outside_frames=8, outside_frames_old_python=8)
-        traceback_string = traceback.format_exc()
-        assert "f_s()" in traceback_string
-        assert 'raise CustomException("boom!")' in traceback_string
-    else:
-        assert False  # there should be an exception
+    raise_something_blocking = synchronizer.create_blocking(raise_something)
+    with pytest.raises(CustomException) as exc_info:
+        raise_something_blocking(CustomException("boom!"))
+
+    check_traceback(exc_info.tb, outside_frames=8, outside_frames_old_python=8)
+    traceback_string = "\n".join(traceback.format_tb(exc_info.tb))
+
+    assert 'raise_something_blocking(CustomException("boom!"))' in traceback_string
+    assert "raise exc" in traceback_string
 
 
 @pytest.mark.asyncio
 async def test_async_to_async(synchronizer):
-    f_s = synchronizer.create_blocking(f)
-    try:
-        await f_s.aio()
-    except CustomException:
-        check_traceback(sys.exc_info()[2])
-    else:
-        assert False
+    raise_something_wrapped = synchronizer.create_blocking(raise_something)
+    with pytest.raises(CustomException) as exc_info:
+        await raise_something_wrapped.aio(CustomException("boom!"))
+
+    check_traceback(exc_info.tb)
 
 
 def test_sync_to_async_gen(synchronizer):
     gen_s = synchronizer.create_blocking(gen)
-    try:
+    with pytest.raises(CustomException) as exc_info:
         for x in gen_s():
             pass
-    except CustomException:
-        check_traceback(sys.exc_info()[2])
-    else:
-        assert False
+
+    check_traceback(exc_info.tb)
 
 
 @pytest.mark.asyncio
 async def test_async_to_async_gen(synchronizer):
     gen_s = synchronizer.create_blocking(gen)
-    try:
+    with pytest.raises(CustomException) as exc_info:
         async for x in gen_s.aio():
             pass
-    except CustomException:
-        check_traceback(sys.exc_info()[2])
-    else:
-        raise
+
+    check_traceback(exc_info.tb)
 
 
 def test_sync_to_async_ctx_mgr(synchronizer):
     ctx_mgr = synchronizer.create_blocking(contextlib.asynccontextmanager(gen))
-    try:
+    with pytest.raises(CustomException) as exc_info:
         with ctx_mgr():
             pass
-    except CustomException:
-        # we allow one frame from contextlib which would be expected in non-synchronicity code
-        # in old pythons we have to live with more synchronicity frames here due to multi
-        # wrapping
-        check_traceback(sys.exc_info()[2], outside_frames=1, outside_frames_old_python=3)
-    else:
-        assert False
+
+    # we allow one frame from contextlib which would be expected in non-synchronicity code
+    # in old pythons we have to live with more synchronicity frames here due to multi
+    # wrapping
+    check_traceback(exc_info.tb, outside_frames=1, outside_frames_old_python=3)
 
 
 @pytest.mark.asyncio
 async def test_async_to_async_ctx_mgr(synchronizer):
     ctx_mgr = synchronizer.create_blocking(contextlib.asynccontextmanager(gen))
-    try:
+    with pytest.raises(CustomException) as exc_info:
         async with ctx_mgr():
             pass
-    except CustomException:
-        # we allow one frame from contextlib which would be expected in non-synchronicity code
-        # in old pythons we have to live with more synchronicity frames here due to multi
-        # wrapping
-        check_traceback(sys.exc_info()[2], outside_frames=1, outside_frames_old_python=3)
-    else:
-        assert False
+
+    # we allow one frame from contextlib which would be expected in non-synchronicity code
+    # in old pythons we have to live with more synchronicity frames here due to multi
+    # wrapping
+    check_traceback(exc_info.tb, outside_frames=1, outside_frames_old_python=3)
 
 
 def test_recursive(synchronizer):
@@ -137,9 +120,7 @@ def test_recursive(synchronizer):
 
     f_blocking = synchronizer.create_blocking(f)
 
-    try:
+    with pytest.raises(CustomException) as exc_info:
         f_blocking(10)
-    except CustomException:
-        check_traceback(sys.exc_info()[2])
-    else:
-        assert False
+
+    check_traceback(exc_info.tb)
