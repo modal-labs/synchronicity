@@ -31,6 +31,7 @@ import sys
 import time
 import traceback
 import typing
+from pathlib import Path
 
 SLEEP_DELAY = 0.1
 WINDOWS_TIME_RESOLUTION_FIX = 0.01 if sys.platform == "win32" else 0.0
@@ -214,5 +215,9 @@ def test_raising_various_exceptions(exc, synchronizer):
     f_raises_s = synchronizer.wrap(f_raises)
     with pytest.raises(type(exc)) as exc_info:
         f_raises_s(exc)
+    full_tb = "\n".join(traceback.format_tb(exc_info.tb))
+    import synchronicity
 
-    print("\n".join(traceback.format_tb(exc_info.tb)))
+    if sys.version_info >= (3, 11):
+        # basic traceback improvement tests - there are more tests in traceback_test.py
+        assert str(Path(synchronicity.__file__).parent) not in full_tb
