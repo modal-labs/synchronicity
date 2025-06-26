@@ -3,8 +3,8 @@ import typing
 
 import typing_extensions
 
-from synchronicity.async_wrap import suppress_tb_frames, wraps_by_interface
-from synchronicity.exceptions import UserCodeException, clean_traceback
+from synchronicity.async_wrap import wraps_by_interface
+from synchronicity.exceptions import UserCodeException, clean_traceback, suppress_tb_frames
 from synchronicity.interface import Interface
 
 if typing.TYPE_CHECKING:

@@ -98,3 +98,42 @@ def clean_traceback(exc: BaseException):
         current = current.tb_next
 
     return exc.with_traceback(cleaned_root)  # side effect
+
+
+class suppress_tb_frames:
+    """Utility context manager which can be used to suppress individual traceback frames
+
+    E.g.
+    This hides the `raise Exception("foo")` line itself from the traceback:
+
+    ```py
+    with supress_tb_frames(1):
+        raise Exception("foo")
+    ```
+
+    Only works on Python 3.11+ where `exc.with_traceback()` actually has effect on
+    what's printed by the global traceback printer.
+    """
+
+    def __init__(self, n: int):
+        self.n = n
+
+    def __enter__(self):
+        pass
+
+    def __exit__(
+        self, exc_type: Optional[type[BaseException]], exc: Optional[BaseException], tb: Optional[TracebackType]
+    ) -> bool:
+        if exc_type is None:
+            return False
+
+        # modify traceback on exception object
+        try:
+            final_tb = tb
+            for _ in range(self.n):
+                final_tb = final_tb.tb_next
+        except AttributeError:
+            return False  # tried to remove too many frames - unexpected, so just return the full traceback
+
+        exc.with_traceback(final_tb)
+        return False
