@@ -97,4 +97,4 @@ def clean_traceback(exc: BaseException):
         current.tb_next = get_next_valid(current.tb_next)
         current = current.tb_next
 
-    exc.with_traceback(cleaned_root)  # side effect
+    return exc.with_traceback(cleaned_root)  # side effect

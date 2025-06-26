@@ -3,7 +3,7 @@ import typing
 
 import typing_extensions
 
-from synchronicity.async_wrap import wraps_by_interface
+from synchronicity.async_wrap import suppress_tb_frames, wraps_by_interface
 from synchronicity.exceptions import UserCodeException, clean_traceback
 from synchronicity.interface import Interface
 
@@ -25,11 +25,12 @@ class FunctionWithAio:
         try:
             return self._func(*args, **kwargs)
         except UserCodeException as uc_exc:
-            # For Pythoon < 3.11 we use UserCodeException as an exception wrapper
+            # For Python < 3.11 we use UserCodeException as an exception wrapper
             # to remove some internal frames from tracebacks, but it can't remove
             # all frames
             uc_exc.exc.__suppress_context__ = True
-            raise uc_exc.exc
+            with suppress_tb_frames(1):  # hide this frame
+                raise clean_traceback(uc_exc.exc)  # hide any synchronicity frames
         except BaseException as exc:
             clean_traceback(exc)
             raise

@@ -29,6 +29,7 @@ import inspect
 import pytest
 import sys
 import time
+import traceback
 import typing
 
 SLEEP_DELAY = 0.1
@@ -211,5 +212,7 @@ class CustomBaseException(BaseException):
 )
 def test_raising_various_exceptions(exc, synchronizer):
     f_raises_s = synchronizer.wrap(f_raises)
-    with pytest.raises(type(exc)):
+    with pytest.raises(type(exc)) as exc_info:
         f_raises_s(exc)
+
+    print("\n".join(traceback.format_tb(exc_info.tb)))

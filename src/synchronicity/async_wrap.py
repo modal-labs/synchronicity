@@ -4,11 +4,52 @@ import functools
 import inspect
 import typing
 from contextlib import asynccontextmanager as _asynccontextmanager
+from types import TracebackType
+from typing import Optional
 
 import typing_extensions
 
 from .exceptions import UserCodeException, clean_traceback
 from .interface import Interface
+
+
+class suppress_tb_frames:
+    """Utility context manager which can be used to suppress individual traceback frames
+
+    E.g.
+    This hides the `raise Exception("foo")` line itself from the traceback:
+
+    ```py
+    with supress_tb_frames(1):
+        raise Exception("foo")
+    ```
+
+    Only works on Python 3.11+ where `exc.with_traceback()` actually has effect on
+    what's printed by the global traceback printer.
+    """
+
+    def __init__(self, n: int):
+        self.n = n
+
+    def __enter__(self):
+        pass
+
+    def __exit__(
+        self, exc_type: Optional[type[BaseException]], exc: Optional[BaseException], tb: Optional[TracebackType]
+    ) -> bool:
+        if exc_type is None:
+            return False
+
+        # modify traceback on exception object
+        try:
+            final_tb = tb
+            for _ in range(self.n):
+                final_tb = final_tb.tb_next
+        except AttributeError:
+            return False  # tried to remove too many frames - unexpected, so just return the full traceback
+
+        exc.with_traceback(final_tb)
+        return False
 
 
 def wraps_by_interface(interface: Interface, func):
