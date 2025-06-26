@@ -69,7 +69,12 @@ class NestedEventLoops(Exception):
     pass
 
 
+_skip_modules = [synchronicity, concurrent.futures, asyncio]
+_skip_module_roots = [Path(mod.__file__).parent for mod in _skip_modules if mod.__file__]
+
+
 def clean_traceback(exc: BaseException):
+    """Modifies an exception, removing all traceback frames from synchronicity internals."""
     if os.getenv("SYNCHRONICITY_TRACEBACK", "0") == "1":
         return
     tb = exc.__traceback__
@@ -77,10 +82,7 @@ def clean_traceback(exc: BaseException):
         return
 
     def should_hide_file(fn: str):
-        skip_modules = [synchronicity, concurrent.futures, asyncio]
-        module_roots = [Path(mod.__file__).parent for mod in skip_modules if mod.__file__]
-        res = any(Path(fn).is_relative_to(modroot) for modroot in module_roots)
-        return res
+        return any(Path(fn).is_relative_to(modroot) for modroot in _skip_module_roots)
 
     def get_next_valid(tb: TracebackType) -> Optional[TracebackType]:
         next_valid: Optional[TracebackType] = tb
@@ -125,15 +127,16 @@ class suppress_tb_frames:
         self, exc_type: Optional[type[BaseException]], exc: Optional[BaseException], tb: Optional[TracebackType]
     ) -> bool:
         if exc_type is None:
+            # no exception - don't do anything
             return False
 
-        # modify traceback on exception object
-        try:
-            final_tb = tb
-            for _ in range(self.n):
-                final_tb = final_tb.tb_next
-        except AttributeError:
-            return False  # tried to remove too many frames - unexpected, so just return the full traceback
-
-        exc.with_traceback(final_tb)
+        final_tb = tb
+        if os.getenv("SYNCHRONICITY_TRACEBACK", "0") != "1":
+            try:
+                for _ in range(self.n):
+                    final_tb = final_tb.tb_next
+            except AttributeError:
+                return False  # tried to remove too many frames - unexpected, so just return the full traceback
+            # modify traceback on exception object
+            exc.with_traceback(final_tb)
         return False

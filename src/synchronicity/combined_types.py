@@ -29,7 +29,7 @@ class FunctionWithAio:
             # to remove some internal frames from tracebacks, but it can't remove
             # all frames
             uc_exc.exc.__suppress_context__ = True
-            with suppress_tb_frames(1):  # hide this frame
+            with suppress_tb_frames(1):  # hide this "raise" frame from the traceback
                 raise clean_traceback(uc_exc.exc)  # hide any synchronicity frames
         except BaseException as exc:
             clean_traceback(exc)
