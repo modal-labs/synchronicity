@@ -429,51 +429,47 @@ class Synchronizer:
 
     def _run_generator_sync(self, gen, original_func):
         value, is_exc = None, False
-        while True:
-            try:
-                if is_exc:
-                    value = self._run_function_sync(gen.athrow(value), original_func)
-                else:
-                    value = self._run_function_sync(gen.asend(value), original_func)
-            except UserCodeException as uc_exc:
-                uc_exc.exc.__suppress_context__ = True
-                raise uc_exc.exc
-            except StopAsyncIteration:
-                break
-            except Exception as exc:
-                suppress_synchronicity_tb_frames(exc)
-                raise
+        with suppress_synchronicity_tb_frames():
+            while True:
+                try:
+                    if is_exc:
+                        value = self._run_function_sync(gen.athrow(value), original_func)
+                    else:
+                        value = self._run_function_sync(gen.asend(value), original_func)
+                except UserCodeException as uc_exc:
+                    uc_exc.exc.__suppress_context__ = True
+                    raise uc_exc.exc
+                except StopAsyncIteration:
+                    break
 
-            try:
-                value = yield value
-                is_exc = False
-            except BaseException as exc:
-                value = exc
-                is_exc = True
+                try:
+                    value = yield value
+                    is_exc = False
+                except BaseException as exc:
+                    value = exc
+                    is_exc = True
 
     async def _run_generator_async(self, gen, original_func):
         value, is_exc = None, False
-        while True:
-            try:
-                if is_exc:
-                    value = await self._run_function_async(gen.athrow(value), original_func)
-                else:
-                    value = await self._run_function_async(gen.asend(value), original_func)
-            except UserCodeException as uc_exc:
-                uc_exc.exc.__suppress_context__ = True
-                raise uc_exc.exc
-            except StopAsyncIteration:
-                break
-            except Exception as exc:
-                suppress_synchronicity_tb_frames(exc)
-                raise
+        with suppress_synchronicity_tb_frames():
+            while True:
+                try:
+                    if is_exc:
+                        value = await self._run_function_async(gen.athrow(value), original_func)
+                    else:
+                        value = await self._run_function_async(gen.asend(value), original_func)
+                except UserCodeException as uc_exc:
+                    uc_exc.exc.__suppress_context__ = True
+                    raise uc_exc.exc
+                except StopAsyncIteration:
+                    break
 
-            try:
-                value = yield value
-                is_exc = False
-            except BaseException as exc:
-                value = exc
-                is_exc = True
+                try:
+                    value = yield value
+                    is_exc = False
+                except BaseException as exc:
+                    value = exc
+                    is_exc = True
 
     def create_callback(self, f):
         return Callback(self, f)
@@ -629,14 +625,12 @@ class Synchronizer:
         @wraps_by_interface(interface, wrapped_method)
         def proxy_method(self, *args, **kwargs):
             instance = self.__dict__[synchronizer_self._original_attr]
-            try:
-                return wrapped_method(instance, *args, **kwargs)
-            except UserCodeException as uc_exc:
-                uc_exc.exc.__suppress_context__ = True
-                raise uc_exc.exc
-            except Exception as exc:
-                suppress_synchronicity_tb_frames(exc)
-                raise
+            with suppress_synchronicity_tb_frames():
+                try:
+                    return wrapped_method(instance, *args, **kwargs)
+                except UserCodeException as uc_exc:
+                    uc_exc.exc.__suppress_context__ = True
+                    raise uc_exc.exc
 
         if interface == Interface.BLOCKING and include_aio_interface and should_have_aio_interface(method):
             async_proxy_method = synchronizer_self._wrap_proxy_method(

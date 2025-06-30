@@ -4,7 +4,7 @@ import typing
 import typing_extensions
 
 from synchronicity.async_wrap import wraps_by_interface
-from synchronicity.exceptions import UserCodeException, suppress_synchronicity_tb_frames, suppress_tb_frames
+from synchronicity.exceptions import UserCodeException, suppress_synchronicity_tb_frames
 from synchronicity.interface import Interface
 
 if typing.TYPE_CHECKING:
@@ -22,18 +22,15 @@ class FunctionWithAio:
         # so setting the magic method from the constructor is not possible
         # https://stackoverflow.com/questions/22390532/object-is-not-callable-after-adding-call-method-to-instance
         # so we need to use an explicit wrapper function here
-        try:
-            return self._func(*args, **kwargs)
-        except UserCodeException as uc_exc:
-            # For Python < 3.11 we use UserCodeException as an exception wrapper
-            # to remove some internal frames from tracebacks, but it can't remove
-            # all frames
-            uc_exc.exc.__suppress_context__ = True
-            with suppress_tb_frames(1):  # hide this "raise" frame from the traceback
-                raise suppress_synchronicity_tb_frames(uc_exc.exc)  # hide any synchronicity frames
-        except BaseException as exc:
-            suppress_synchronicity_tb_frames(exc)
-            raise
+        with suppress_synchronicity_tb_frames():
+            try:
+                return self._func(*args, **kwargs)
+            except UserCodeException as uc_exc:
+                # For Python < 3.11 we use UserCodeException as an exception wrapper
+                # to remove some internal frames from tracebacks, but it can't remove
+                # all frames
+                uc_exc.exc.__suppress_context__ = True
+                raise uc_exc.exc
 
 
 class MethodWithAio:

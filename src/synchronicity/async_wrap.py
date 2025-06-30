@@ -25,14 +25,12 @@ def wraps_by_interface(interface: Interface, func):
         def asyncfunc_deco(user_wrapper):
             @functools.wraps(func)
             async def wrapper(*args, **kwargs):
-                try:
-                    return await user_wrapper(*args, **kwargs)
-                except UserCodeException as uc_exc:
-                    uc_exc.exc.__suppress_context__ = True
-                    raise uc_exc.exc
-                except Exception as exc:
-                    suppress_synchronicity_tb_frames(exc)
-                    raise
+                with suppress_synchronicity_tb_frames():
+                    try:
+                        return await user_wrapper(*args, **kwargs)
+                    except UserCodeException as uc_exc:
+                        uc_exc.exc.__suppress_context__ = True
+                        raise uc_exc.exc
 
             return wrapper
 
