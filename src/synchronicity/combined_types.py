@@ -4,7 +4,7 @@ import typing
 import typing_extensions
 
 from synchronicity.async_wrap import wraps_by_interface
-from synchronicity.exceptions import UserCodeException, clean_traceback, suppress_tb_frames
+from synchronicity.exceptions import UserCodeException, suppress_synchronicity_tb_frames, suppress_tb_frames
 from synchronicity.interface import Interface
 
 if typing.TYPE_CHECKING:
@@ -30,9 +30,9 @@ class FunctionWithAio:
             # all frames
             uc_exc.exc.__suppress_context__ = True
             with suppress_tb_frames(1):  # hide this "raise" frame from the traceback
-                raise clean_traceback(uc_exc.exc)  # hide any synchronicity frames
+                raise suppress_synchronicity_tb_frames(uc_exc.exc)  # hide any synchronicity frames
         except BaseException as exc:
-            clean_traceback(exc)
+            suppress_synchronicity_tb_frames(exc)
             raise
 
 

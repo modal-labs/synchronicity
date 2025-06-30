@@ -73,8 +73,7 @@ _skip_modules = [synchronicity, concurrent.futures, asyncio]
 _skip_module_roots = [Path(mod.__file__).parent for mod in _skip_modules if mod.__file__]
 
 
-def clean_traceback(exc: BaseException):
-    """Modifies an exception, removing all traceback frames from synchronicity internals."""
+def suppress_synchronicity_tb_frames(exc: BaseException):
     if os.getenv("SYNCHRONICITY_TRACEBACK", "0") == "1":
         return
     tb = exc.__traceback__
@@ -84,20 +83,21 @@ def clean_traceback(exc: BaseException):
     def should_hide_file(fn: str):
         return any(Path(fn).is_relative_to(modroot) for modroot in _skip_module_roots)
 
+    skipped_frames_collection = []
+
     def get_next_valid(tb: TracebackType) -> Optional[TracebackType]:
+        skipped_frames = 0
         next_valid: Optional[TracebackType] = tb
         while next_valid is not None and should_hide_file(next_valid.tb_frame.f_code.co_filename or ""):
             next_valid = next_valid.tb_next
+            skipped_frames += 1
+        skipped_frames_collection.append(skipped_frames)
         return next_valid
 
     cleaned_root = get_next_valid(tb)
     if cleaned_root is None:
         # no frames outside of skip_modules - return original error
         return tb
-    current: Optional[TracebackType] = cleaned_root
-    while current and current.tb_next is not None:
-        current.tb_next = get_next_valid(current.tb_next)
-        current = current.tb_next
 
     return exc.with_traceback(cleaned_root)  # side effect
 
