@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager as _asynccontextmanager
 
 import typing_extensions
 
-from .exceptions import UserCodeException
+from .exceptions import UserCodeException, suppress_synchronicity_tb_frames
 from .interface import Interface
 
 
@@ -25,11 +25,12 @@ def wraps_by_interface(interface: Interface, func):
         def asyncfunc_deco(user_wrapper):
             @functools.wraps(func)
             async def wrapper(*args, **kwargs):
-                try:
-                    return await user_wrapper(*args, **kwargs)
-                except UserCodeException as uc_exc:
-                    uc_exc.exc.__suppress_context__ = True
-                    raise uc_exc.exc
+                with suppress_synchronicity_tb_frames():
+                    try:
+                        return await user_wrapper(*args, **kwargs)
+                    except UserCodeException as uc_exc:
+                        uc_exc.exc.__suppress_context__ = True
+                        raise uc_exc.exc
 
             return wrapper
 

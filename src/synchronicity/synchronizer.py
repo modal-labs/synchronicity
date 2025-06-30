@@ -21,7 +21,7 @@ from synchronicity.combined_types import FunctionWithAio, MethodWithAio
 
 from .async_wrap import is_async_gen_function_follow_wrapped, is_coroutine_function_follow_wrapped, wraps_by_interface
 from .callback import Callback
-from .exceptions import UserCodeException, unwrap_coro_exception, wrap_coro_exception
+from .exceptions import UserCodeException, suppress_synchronicity_tb_frames, unwrap_coro_exception, wrap_coro_exception
 from .interface import DEFAULT_CLASS_PREFIX, DEFAULT_FUNCTION_PREFIXES, Interface
 
 _BUILTIN_ASYNC_METHODS = {
@@ -429,43 +429,47 @@ class Synchronizer:
 
     def _run_generator_sync(self, gen, original_func):
         value, is_exc = None, False
-        while True:
-            try:
-                if is_exc:
-                    value = self._run_function_sync(gen.athrow(value), original_func)
-                else:
-                    value = self._run_function_sync(gen.asend(value), original_func)
-            except UserCodeException as uc_exc:
-                uc_exc.exc.__suppress_context__ = True
-                raise uc_exc.exc
-            except StopAsyncIteration:
-                break
-            try:
-                value = yield value
-                is_exc = False
-            except BaseException as exc:
-                value = exc
-                is_exc = True
+        with suppress_synchronicity_tb_frames():
+            while True:
+                try:
+                    if is_exc:
+                        value = self._run_function_sync(gen.athrow(value), original_func)
+                    else:
+                        value = self._run_function_sync(gen.asend(value), original_func)
+                except UserCodeException as uc_exc:
+                    uc_exc.exc.__suppress_context__ = True
+                    raise uc_exc.exc
+                except StopAsyncIteration:
+                    break
+
+                try:
+                    value = yield value
+                    is_exc = False
+                except BaseException as exc:
+                    value = exc
+                    is_exc = True
 
     async def _run_generator_async(self, gen, original_func):
         value, is_exc = None, False
-        while True:
-            try:
-                if is_exc:
-                    value = await self._run_function_async(gen.athrow(value), original_func)
-                else:
-                    value = await self._run_function_async(gen.asend(value), original_func)
-            except UserCodeException as uc_exc:
-                uc_exc.exc.__suppress_context__ = True
-                raise uc_exc.exc
-            except StopAsyncIteration:
-                break
-            try:
-                value = yield value
-                is_exc = False
-            except BaseException as exc:
-                value = exc
-                is_exc = True
+        with suppress_synchronicity_tb_frames():
+            while True:
+                try:
+                    if is_exc:
+                        value = await self._run_function_async(gen.athrow(value), original_func)
+                    else:
+                        value = await self._run_function_async(gen.asend(value), original_func)
+                except UserCodeException as uc_exc:
+                    uc_exc.exc.__suppress_context__ = True
+                    raise uc_exc.exc
+                except StopAsyncIteration:
+                    break
+
+                try:
+                    value = yield value
+                    is_exc = False
+                except BaseException as exc:
+                    value = exc
+                    is_exc = True
 
     def create_callback(self, f):
         return Callback(self, f)
@@ -541,10 +545,10 @@ class Synchronizer:
                     # This is the exit point, so we need to unwrap the exception here
                     try:
                         return self._run_function_sync(res, f)
-                    except StopAsyncIteration:
+                    except StopAsyncIteration as exc:
                         # this is a special case for handling __next__ wrappers around
                         # __anext__ that raises StopAsyncIteration
-                        raise StopIteration()
+                        raise StopIteration().with_traceback(exc.__traceback__)
                     except UserCodeException as uc_exc:
                         # Used to skip a frame when called from `proxy_method`.
                         if unwrap_user_excs and not (Interface.BLOCKING and include_aio_interface):
@@ -621,11 +625,12 @@ class Synchronizer:
         @wraps_by_interface(interface, wrapped_method)
         def proxy_method(self, *args, **kwargs):
             instance = self.__dict__[synchronizer_self._original_attr]
-            try:
-                return wrapped_method(instance, *args, **kwargs)
-            except UserCodeException as uc_exc:
-                uc_exc.exc.__suppress_context__ = True
-                raise uc_exc.exc
+            with suppress_synchronicity_tb_frames():
+                try:
+                    return wrapped_method(instance, *args, **kwargs)
+                except UserCodeException as uc_exc:
+                    uc_exc.exc.__suppress_context__ = True
+                    raise uc_exc.exc
 
         if interface == Interface.BLOCKING and include_aio_interface and should_have_aio_interface(method):
             async_proxy_method = synchronizer_self._wrap_proxy_method(

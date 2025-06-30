@@ -29,7 +29,9 @@ import inspect
 import pytest
 import sys
 import time
+import traceback
 import typing
+from pathlib import Path
 
 SLEEP_DELAY = 0.1
 WINDOWS_TIME_RESOLUTION_FIX = 0.01 if sys.platform == "win32" else 0.0
@@ -43,9 +45,9 @@ class CustomException(Exception):
     pass
 
 
-async def f_raises():
+async def f_raises(exc):
     await asyncio.sleep(SLEEP_DELAY)
-    raise CustomException("something failed")
+    raise exc
 
 
 async def f_raises_with_cause():
@@ -57,7 +59,7 @@ def test_function_raises_sync(synchronizer):
     t0 = time.monotonic()
     with pytest.raises(CustomException) as exc:
         f_raises_s = synchronizer.create_blocking(f_raises)
-        f_raises_s()
+        f_raises_s(CustomException("something failed"))
     assert SLEEP_DELAY - WINDOWS_TIME_RESOLUTION_FIX <= time.monotonic() - t0 < 2 * SLEEP_DELAY
     assert exc.value.__suppress_context__ or exc.value.__context__ is None
 
@@ -74,7 +76,7 @@ def test_function_raises_with_cause_sync(synchronizer):
 def test_function_raises_sync_futures(synchronizer):
     t0 = time.monotonic()
     f_raises_s = synchronizer.create_blocking(f_raises)
-    fut = f_raises_s(_future=True)
+    fut = f_raises_s(CustomException("something failed"), _future=True)
     assert isinstance(fut, concurrent.futures.Future)
     assert time.monotonic() - t0 < SLEEP_DELAY
     with pytest.raises(CustomException) as exc:
@@ -99,7 +101,7 @@ def test_function_raises_with_cause_sync_futures(synchronizer):
 async def test_function_raises_async(synchronizer):
     t0 = time.monotonic()
     f_raises_s = synchronizer.create_blocking(f_raises)
-    coro = f_raises_s.aio()
+    coro = f_raises_s.aio(CustomException("something failed"))
     assert inspect.iscoroutine(coro)
     assert time.monotonic() - t0 < SLEEP_DELAY
     with pytest.raises(CustomException) as exc:
@@ -137,7 +139,7 @@ def test_function_raises_baseexc_sync(synchronizer):
 
 
 def f_raises_syncwrap() -> typing.Coroutine[typing.Any, typing.Any, None]:
-    return f_raises()  # returns a coro
+    return f_raises(CustomException("something failed"))  # returns a coro
 
 
 @pytest.mark.asyncio
@@ -185,10 +187,37 @@ f_raises_wrapped = decorator(f_raises)
 async def test_wrapped_function_raises_async(synchronizer):
     t0 = time.monotonic()
     f_raises_s = synchronizer.create_blocking(f_raises_wrapped)
-    coro = f_raises_s.aio()
+    coro = f_raises_s.aio(CustomException("something failed"))
     assert inspect.iscoroutine(coro)
     assert time.monotonic() - t0 < SLEEP_DELAY
     with pytest.raises(CustomException) as exc:
         await coro
     assert SLEEP_DELAY - WINDOWS_TIME_RESOLUTION_FIX <= time.monotonic() - t0 < 2 * SLEEP_DELAY
     assert exc.value.__suppress_context__ or exc.value.__context__ is None
+
+
+class CustomBaseException(BaseException):
+    pass
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        Exception("foo"),
+        CustomException("bar"),
+        KeyboardInterrupt(),
+        SystemExit(),
+        CustomBaseException(),
+        TimeoutError(),
+    ],
+)
+def test_raising_various_exceptions(exc, synchronizer):
+    f_raises_s = synchronizer.wrap(f_raises)
+    with pytest.raises(type(exc)) as exc_info:
+        f_raises_s(exc)
+    full_tb = "\n".join(traceback.format_tb(exc_info.tb))
+    import synchronicity
+
+    if sys.version_info >= (3, 11):
+        # basic traceback improvement tests - there are more tests in traceback_test.py
+        assert str(Path(synchronicity.__file__).parent) not in full_tb
