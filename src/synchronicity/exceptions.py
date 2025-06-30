@@ -4,7 +4,7 @@ import os
 import sys
 from pathlib import Path
 from types import TracebackType
-from typing import Optional
+from typing import Literal, Optional
 
 import synchronicity
 
@@ -81,7 +81,7 @@ class suppress_synchronicity_tb_frames:
 
     def __exit__(
         self, exc_type: Optional[type[BaseException]], exc: Optional[BaseException], tb: Optional[TracebackType]
-    ) -> bool:
+    ) -> Literal[False]:
         if tb is None or exc_type is None or exc is None or SYNCHRONICITY_TRACEBACK:
             # no exception, or enabled full tracebacks - don't do anything
             return False
