@@ -45,8 +45,8 @@ def test_sync_to_async(synchronizer):
     assert "raise exc" in traceback_string
 
 
-def test_full_traceback_env_var(synchronizer, monkeypatch):
-    monkeypatch.setenv("SYNCHRONICITY_TRACEBACK", "1")
+def test_full_traceback_flag(synchronizer, monkeypatch):
+    monkeypatch.setattr("synchronicity.exceptions.SYNCHRONICITY_TRACEBACK", True)
     raise_something_blocking = synchronizer.create_blocking(raise_something)
     with pytest.raises(CustomException) as exc_info:
         raise_something_blocking(CustomException("boom!"))

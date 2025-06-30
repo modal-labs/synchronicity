@@ -8,6 +8,10 @@ from typing import Optional
 
 import synchronicity
 
+SYNCHRONICITY_TRACEBACK = os.getenv("SYNCHRONICITY_TRACEBACK", "0") == "1"
+# note to insert into exception.__notes__ if a traceback frame is hidden
+SYNCHRONICITY_TRACEBACK_NOTE = None
+
 
 class UserCodeException(Exception):
     """This is used to wrap and unwrap exceptions in "user code".
@@ -41,12 +45,10 @@ def wrap_coro_exception(coro):
             #  we could use a custom version of `asyncio.wait_for` to get around this
             raise UserCodeException(exc)
         except Exception as exc:
-            if sys.version_info < (3, 11) and os.getenv("SYNCHRONICITY_TRACEBACK", "0") != "1":
-                # We do some wrap/unwrap hacks on exceptions in <Python 3.11 which
-                # cleans up *some* of the internal traceback frames
-                exc.with_traceback(exc.__traceback__.tb_next)
+            if sys.version_info < (3, 11) and not SYNCHRONICITY_TRACEBACK:
+                exc.with_traceback(exc.__traceback__.tb_next)  # skip the `await coro` frame from above
                 raise UserCodeException(exc)
-            raise
+            raise  # raise as is on Python 3.11 - we hide things later
         except BaseException as exc:
             # special case if a coroutine raises a KeyboardInterrupt or similar
             # exception that would otherwise kill the event loop.
@@ -80,11 +82,9 @@ class suppress_synchronicity_tb_frames:
     def __exit__(
         self, exc_type: Optional[type[BaseException]], exc: Optional[BaseException], tb: Optional[TracebackType]
     ) -> bool:
-        if tb is None or exc_type is None or os.getenv("SYNCHRONICITY_TRACEBACK", "0") == "1":
+        if tb is None or exc_type is None or exc is None or SYNCHRONICITY_TRACEBACK:
             # no exception, or enabled full tracebacks - don't do anything
             return False
-
-        tb = exc.__traceback__
 
         def should_hide_file(fn: str):
             return any(Path(fn).is_relative_to(modroot) for modroot in _skip_module_roots)
@@ -101,3 +101,8 @@ class suppress_synchronicity_tb_frames:
             return False
 
         exc.with_traceback(cleaned_root)  # side effect modification of exception object
+        exc_notes = getattr(exc, "__notes__", [])
+        if SYNCHRONICITY_TRACEBACK_NOTE is not None and SYNCHRONICITY_TRACEBACK_NOTE not in exc_notes:
+            exc_notes.append(exc_notes)
+
+        return False
