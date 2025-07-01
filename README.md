@@ -217,7 +217,9 @@ Static type support for wrappers
 
 One issue with the wrapper functions and classes is that they will have different argument and return value types than the wrapped originals (e.g. an AsyncGenerator becomes a Generator after being wrapped). This type transformation can't easily be expressed statically in Python's typing system.
 
-For this reason, synchronicity includes a basic type stub (.pyi) generation tool (`python -m synchronicity.type_stubs`) that takes Python modules names as inputs and emits a `.pyi` file for each module with static types translating any synchronicity-wrapped classes or functions.
+For this reason, synchronicity includes a basic type stub (.pyi) compilation tool. This cli tool has some additional dependencies that you can install via `pip install synchronicity[compile]` (the `compile` extra is only needed for *generating* the type stubs, not using them - so you don't have to include it in distributed libraries using synchroncity).
+
+The cli tool `python -m synchronicity.type_stubs` takes Python modules names as inputs and emits `.pyi` files for each module. The type stubs have static types translating any synchronicity-wrapped classes or functions.
 
 Since the `.pyi` file will sometimes "shadow" the original file, which you still might want to type check for issues in the implementation code, a good practice is to separate wrappers and wrapped implementation code into separate modules and only emit type stubs for the "wrapper modules".  
 
