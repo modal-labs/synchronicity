@@ -1,0 +1,210 @@
+import asyncio
+import concurrent.futures
+import types
+import typing
+from typing import Callable, Optional
+
+T = typing.TypeVar("T", bound=typing.Union[type, Callable])
+
+
+class Synchronizer:
+    def _run_function_sync(self, coro):
+        if self._is_inside_loop():
+            raise Exception("Deadlock detected: calling a sync function from the synchronizer loop")
+
+        loop = self._get_loop(start=True)
+
+        inner_task_fut = concurrent.futures.Future()
+
+        async def wrapper_coro():
+            # this wrapper is needed since run_coroutine_threadsafe *only* accepts coroutines
+            inner_task = loop.create_task(coro)
+            inner_task_fut.set_result(inner_task)  # sends the task itself to the origin thread
+            return await inner_task
+
+        fut = asyncio.run_coroutine_threadsafe(wrapper_coro(), loop)
+        try:
+            while 1:
+                try:
+                    # repeated poll to give Windows a chance to abort on Ctrl-C
+                    value = fut.result(timeout=self._future_poll_interval)
+                    break
+                except concurrent.futures.TimeoutError:
+                    pass
+        except KeyboardInterrupt as exc:
+            # in case there is a keyboard interrupt while we are waiting
+            # we cancel the *underlying* coro_task (unlike what fut.cancel() would do)
+            # and then wait for the *wrapper* coroutine to get a result back, which
+            # happens after the cancellation resolves
+            if inner_task_fut.done():
+                inner_task: asyncio.Task = inner_task_fut.result()
+                loop.call_soon_threadsafe(inner_task.cancel)
+            try:
+                value = fut.result()
+            except concurrent.futures.CancelledError as expected_cancellation:
+                # we *expect* this cancellation, but defer to the passed coro to potentially
+                # intercept and treat the cancellation some other way
+                expected_cancellation.__suppress_context__ = True
+                raise exc  # if cancel - re-raise the original KeyboardInterrupt again
+
+        return value
+
+    async def _run_function_async(self, coro):
+        loop = self._get_loop(start=True)
+        if self._is_inside_loop():
+            value = await coro
+        else:
+            inner_task_fut = concurrent.futures.Future()
+
+            async def wrapper_coro():
+                inner_task = loop.create_task(coro)
+                inner_task_fut.set_result(inner_task)  # sends the task itself to the origin thread
+                return await inner_task
+
+            c_fut = asyncio.run_coroutine_threadsafe(wrapper_coro(), loop)
+            a_fut = asyncio.wrap_future(c_fut)
+
+            shielded_task = None
+            try:
+                while 1:
+                    # the loop + wait_for timeout is for windows ctrl-C compatibility since
+                    # windows doesn't truly interrupt the event loop on sigint
+                    try:
+                        # We create a task here to prevent an anonymous task inside asyncio.wait_for that could
+                        # get an unresolved timeout during cancellation handling below, resulting in a warning
+                        # traceback.
+                        shielded_task = asyncio.create_task(
+                            asyncio.wait_for(
+                                # inner shield prevents wait_for from cancelling a_fut on timeout
+                                asyncio.shield(a_fut),
+                                timeout=self._future_poll_interval,
+                            )
+                        )
+                        # The outer shield prevents a cancelled caller from cancelling a_fut directly
+                        # so that we can instead cancel the underlying coro_task and wait for it
+                        # to bubble back up as a CancelledError gracefully between threads
+                        # in order to run any cancellation logic in the coroutine
+                        value = await asyncio.shield(shielded_task)
+                        break
+                    except asyncio.TimeoutError:
+                        continue
+
+            except asyncio.CancelledError:
+                try:
+                    if a_fut.cancelled():
+                        raise  # cancellation came from within c_fut
+                    if inner_task_fut.done():
+                        inner_task: asyncio.Task = inner_task_fut.result()
+                        loop.call_soon_threadsafe(inner_task.cancel)  # cancel task on synchronizer event loop
+                        # wait for cancellation logic in the underlying coro to complete
+                        # this should typically raise CancelledError, but in case of either:
+                        # * cancellation prevention in the coro (catching the CancelledError)
+                        # * coro_task resolves before the call_soon_threadsafe above is scheduled
+                        # the cancellation in a_fut would be cancelled
+
+                        await a_fut  # wait for cancellation logic to complete - this *normally* raises CancelledError
+                    raise  # re-raise the CancelledError regardless - preventing unintended cancellation aborts
+                finally:
+                    if shielded_task:
+                        shielded_task.cancel()  # cancel the shielded task, preventing timeouts
+
+        return value
+
+    def _run_generator_sync(self, gen):
+        value, is_exc = None, False
+        while True:
+            try:
+                if is_exc:
+                    value = self._run_function_sync(gen.athrow(value))
+                else:
+                    value = self._run_function_sync(gen.asend(value))
+            except StopAsyncIteration:
+                break
+
+            try:
+                value = yield value
+                is_exc = False
+            except BaseException as exc:
+                value = exc
+                is_exc = True
+
+    async def _run_generator_async(self, gen):
+        value, is_exc = None, False
+        while True:
+            try:
+                if is_exc:
+                    value = await self._run_function_async(gen.athrow(value))
+                else:
+                    value = await self._run_function_async(gen.asend(value))
+            except StopAsyncIteration:
+                break
+
+            try:
+                value = yield value
+                is_exc = False
+            except BaseException as exc:
+                value = exc
+                is_exc = True
+
+
+class Library:
+    def __init__(self, synchronizer_name: str):
+        self._synchronizer_name = synchronizer_name
+        self._wrapped = {}
+
+    def wrap(self, *, target_module: Optional[str] = None) -> typing.Callable[[T], T]:
+        def decorator(class_or_function: T) -> T:
+            if target_module is None:
+                current_module = class_or_function.__module__.split(".")
+                assert current_module[-1].startswith("_")
+                output_module = current_module[:-1] + [current_module[-1].removeprefix("_")]
+                output_module = ".".join(output_module)
+            else:
+                output_module = target_module
+
+            self._wrapped[class_or_function] = (output_module, class_or_function.__name__)
+
+        return decorator
+
+    def _compile_function(self, f: types.FunctionType, target_module: str) -> str:
+        import inspect
+        import typing
+
+        # Get function signature and annotations
+        sig = inspect.signature(f)
+        return_annotation = sig.return_annotation
+
+        # Check if it's an async generator
+        is_async_generator = (
+            hasattr(return_annotation, "__origin__") and return_annotation.__origin__ is typing.AsyncGenerator
+        )
+
+        # Build the function signature
+        params = []
+        for name, param in sig.parameters.items():
+            if param.default is param.empty:
+                params.append(name)
+            else:
+                default_val = repr(param.default)
+                params.append(f"{name}={default_val}")
+
+        param_str = ", ".join(params)
+
+        # Determine which method to use based on return type
+        if is_async_generator:
+            method_name = "_run_generator_sync"
+        else:
+            method_name = "_run_function_sync"
+
+        # Generate the sync function source code
+        sync_func_name = f.__name__
+        sync_code = f"""def {sync_func_name}({param_str}):
+    return _synchronizer.{method_name}({f.__name__}({param_str}), {f.__name__})"""
+
+        return sync_code
+
+    def compile(self) -> str:
+        for o, (target_module, target_name) in self._wrapped.items():
+            print(target_module, target_name, o)
+            if isinstance(o, types.FunctionType):
+                print(self._compile_function(o, target_module))
