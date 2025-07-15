@@ -303,8 +303,12 @@ class Library:
         for name, param in sig.parameters.items():
             param_str = name
             if param.annotation != param.empty:
-                # Format annotation properly
-                if hasattr(param.annotation, "__module__") and hasattr(param.annotation, "__name__"):
+                # Format annotation properly - handle generic types
+                if hasattr(param.annotation, "__origin__"):
+                    # This is a generic type like list[str], dict[str, int], etc.
+                    # Use repr() to get the full generic type signature
+                    annotation_str = repr(param.annotation)
+                elif hasattr(param.annotation, "__module__") and hasattr(param.annotation, "__name__"):
                     if param.annotation.__module__ in ("builtins", "__builtin__"):
                         annotation_str = param.annotation.__name__
                     else:
@@ -323,7 +327,11 @@ class Library:
 
         # Format return annotation
         if return_annotation != sig.empty:
-            if hasattr(return_annotation, "__module__") and hasattr(return_annotation, "__name__"):
+            if hasattr(return_annotation, "__origin__"):
+                # This is a generic type like list[str], dict[str, int], etc.
+                # Use repr() to get the full generic type signature
+                return_annotation_str = repr(return_annotation)
+            elif hasattr(return_annotation, "__module__") and hasattr(return_annotation, "__name__"):
                 if return_annotation.__module__ in ("builtins", "__builtin__"):
                     return_annotation_str = return_annotation.__name__
                 else:
