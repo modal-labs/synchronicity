@@ -6,7 +6,7 @@ readme = "README.md"
 authors = [
     { name = "Modal Labs" }
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 dependencies = [
     "sigtools>=4.0.1",
     "typing-extensions>=4.12.2",
