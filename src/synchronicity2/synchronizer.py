@@ -280,10 +280,12 @@ class Library:
                 output_module = target_module
 
             self._wrapped[class_or_function] = (output_module, class_or_function.__name__)
+            return class_or_function
 
         return decorator
 
     def _compile_function(self, f: types.FunctionType, target_module: str) -> str:
+        import collections.abc
         import inspect
         import typing
 
@@ -293,7 +295,7 @@ class Library:
 
         # Check if it's an async generator
         is_async_generator = (
-            hasattr(return_annotation, "__origin__") and return_annotation.__origin__ is typing.AsyncGenerator
+            hasattr(return_annotation, "__origin__") and return_annotation.__origin__ is collections.abc.AsyncGenerator
         )
 
         # Build the function signature with type annotations
@@ -329,9 +331,27 @@ class Library:
             else:
                 return_annotation_str = repr(return_annotation)
 
-            # For async functions, remove the Awaitable wrapper for the sync version
-            if return_annotation_str.startswith("typing.Awaitable[") and return_annotation_str.endswith("]"):
+            # Handle different return types
+            if is_async_generator:
+                # For async generators, sync version returns Iterator[T], async version returns AsyncGenerator[T, None]
+                if hasattr(return_annotation, "__args__") and return_annotation.__args__:
+                    # Extract the yielded type from AsyncGenerator[T, Send]
+                    yield_type = return_annotation.__args__[0]
+                    if hasattr(yield_type, "__module__") and hasattr(yield_type, "__name__"):
+                        if yield_type.__module__ in ("builtins", "__builtin__"):
+                            yield_type_str = yield_type.__name__
+                        else:
+                            yield_type_str = f"{yield_type.__module__}.{yield_type.__name__}"
+                    else:
+                        yield_type_str = repr(yield_type)
+                    sync_return_annotation = f"typing.Iterator[{yield_type_str}]"
+                else:
+                    sync_return_annotation = "typing.Iterator"
+                async_return_annotation = return_annotation_str
+            elif return_annotation_str.startswith("typing.Awaitable[") and return_annotation_str.endswith("]"):
+                # For async functions, remove the Awaitable wrapper for the sync version
                 sync_return_annotation = return_annotation_str[17:-1]  # Remove "typing.Awaitable[" and "]"
+                async_return_annotation = return_annotation_str
             elif hasattr(return_annotation, "__origin__") and return_annotation.__origin__ is typing.Awaitable:
                 # Extract the inner type from Awaitable[T]
                 if return_annotation.__args__:
@@ -345,11 +365,13 @@ class Library:
                         sync_return_annotation = repr(inner_type)
                 else:
                     sync_return_annotation = return_annotation_str
+                async_return_annotation = return_annotation_str
             else:
                 sync_return_annotation = return_annotation_str
+                async_return_annotation = return_annotation_str
 
             sync_return_str = f" -> {sync_return_annotation}"
-            async_return_str = f" -> {return_annotation_str}"
+            async_return_str = f" -> {async_return_annotation}"
         else:
             sync_return_str = ""
             async_return_str = ""
@@ -370,19 +392,31 @@ class Library:
 
         # Generate the class-based wrapper code
         class_name = f"_{f.__name__}Wrapper"
+
+        # For async generators, we need to yield from the result instead of returning it
+        if is_async_generator:
+            sync_body = f"""        gen = self.impl_function({call_args_str})
+        yield from self.synchronizer.{method_name}(gen)"""
+            async_body = f"""        gen = self.impl_function({call_args_str})
+        async for item in self.synchronizer.{async_method_name}(gen):
+            yield item"""
+        else:
+            sync_body = f"""        coro = self.impl_function({call_args_str})
+        raw_result = self.synchronizer.{method_name}(coro)
+        return raw_result"""
+            async_body = f"""        coro = self.impl_function({call_args_str})
+        raw_result = await self.synchronizer.{async_method_name}(coro)
+        return raw_result"""
+
         sync_code = f"""class {class_name}:
     synchronizer = get_synchronizer('{self._synchronizer_name}')
     impl_function = {target_module}.{f.__name__}  # reference to original function
 
     def __call__(self, {param_str}){sync_return_str}:
-        coro = self.impl_function({call_args_str})
-        raw_result = self.synchronizer.{method_name}(coro)
-        return raw_result
+{sync_body}
 
     async def aio(self, {param_str}){async_return_str}:
-        coro = self.impl_function({call_args_str})
-        raw_result = await self.synchronizer.{async_method_name}(coro)
-        return raw_result
+{async_body}
 
 {f.__name__} = {class_name}()"""
 
