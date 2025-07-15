@@ -345,9 +345,23 @@ class Library:
                     else:
                         yield_type_str = repr(yield_type)
                     sync_return_annotation = f"typing.Iterator[{yield_type_str}]"
+
+                    # For async generators, also extract the send type (usually None) for proper typing
+                    if len(return_annotation.__args__) > 1:
+                        send_type = return_annotation.__args__[1]
+                        if hasattr(send_type, "__module__") and hasattr(send_type, "__name__"):
+                            if send_type.__module__ in ("builtins", "__builtin__"):
+                                send_type_str = send_type.__name__
+                            else:
+                                send_type_str = f"{send_type.__module__}.{send_type.__name__}"
+                        else:
+                            send_type_str = repr(send_type)
+                        async_return_annotation = f"typing.AsyncGenerator[{yield_type_str}, {send_type_str}]"
+                    else:
+                        async_return_annotation = f"typing.AsyncGenerator[{yield_type_str}]"
                 else:
                     sync_return_annotation = "typing.Iterator"
-                async_return_annotation = return_annotation_str
+                    async_return_annotation = "typing.AsyncGenerator"
             elif return_annotation_str.startswith("typing.Awaitable[") and return_annotation_str.endswith("]"):
                 # For async functions, remove the Awaitable wrapper for the sync version
                 sync_return_annotation = return_annotation_str[17:-1]  # Remove "typing.Awaitable[" and "]"
