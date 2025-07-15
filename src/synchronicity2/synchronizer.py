@@ -296,27 +296,95 @@ class Library:
             hasattr(return_annotation, "__origin__") and return_annotation.__origin__ is typing.AsyncGenerator
         )
 
-        # Build the function signature
+        # Build the function signature with type annotations
         params = []
         for name, param in sig.parameters.items():
-            if param.default is param.empty:
-                params.append(name)
-            else:
+            param_str = name
+            if param.annotation != param.empty:
+                # Format annotation properly
+                if hasattr(param.annotation, "__module__") and hasattr(param.annotation, "__name__"):
+                    if param.annotation.__module__ in ("builtins", "__builtin__"):
+                        annotation_str = param.annotation.__name__
+                    else:
+                        annotation_str = f"{param.annotation.__module__}.{param.annotation.__name__}"
+                else:
+                    annotation_str = repr(param.annotation)
+                param_str += f": {annotation_str}"
+
+            if param.default is not param.empty:
                 default_val = repr(param.default)
-                params.append(f"{name}={default_val}")
+                param_str += f" = {default_val}"
+
+            params.append(param_str)
 
         param_str = ", ".join(params)
+
+        # Format return annotation
+        if return_annotation != sig.empty:
+            if hasattr(return_annotation, "__module__") and hasattr(return_annotation, "__name__"):
+                if return_annotation.__module__ in ("builtins", "__builtin__"):
+                    return_annotation_str = return_annotation.__name__
+                else:
+                    return_annotation_str = f"{return_annotation.__module__}.{return_annotation.__name__}"
+            else:
+                return_annotation_str = repr(return_annotation)
+
+            # For async functions, remove the Awaitable wrapper for the sync version
+            if return_annotation_str.startswith("typing.Awaitable[") and return_annotation_str.endswith("]"):
+                sync_return_annotation = return_annotation_str[17:-1]  # Remove "typing.Awaitable[" and "]"
+            elif hasattr(return_annotation, "__origin__") and return_annotation.__origin__ is typing.Awaitable:
+                # Extract the inner type from Awaitable[T]
+                if return_annotation.__args__:
+                    inner_type = return_annotation.__args__[0]
+                    if hasattr(inner_type, "__module__") and hasattr(inner_type, "__name__"):
+                        if inner_type.__module__ in ("builtins", "__builtin__"):
+                            sync_return_annotation = inner_type.__name__
+                        else:
+                            sync_return_annotation = f"{inner_type.__module__}.{inner_type.__name__}"
+                    else:
+                        sync_return_annotation = repr(inner_type)
+                else:
+                    sync_return_annotation = return_annotation_str
+            else:
+                sync_return_annotation = return_annotation_str
+
+            sync_return_str = f" -> {sync_return_annotation}"
+            async_return_str = f" -> {return_annotation_str}"
+        else:
+            sync_return_str = ""
+            async_return_str = ""
 
         # Determine which method to use based on return type
         if is_async_generator:
             method_name = "_run_generator_sync"
+            async_method_name = "_run_generator_async"
         else:
             method_name = "_run_function_sync"
+            async_method_name = "_run_function_async"
 
-        # Generate the sync function source code
-        sync_func_name = f.__name__
-        sync_code = f"""def {sync_func_name}({param_str}):
-    return get_synchronizer('{self._synchronizer_name}').{method_name}({f.__name__}({param_str}), {f.__name__})"""
+        # Get the function arguments for calling the original function
+        call_args = []
+        for name, param in sig.parameters.items():
+            call_args.append(name)
+        call_args_str = ", ".join(call_args)
+
+        # Generate the class-based wrapper code
+        class_name = f"_{f.__name__}Wrapper"
+        sync_code = f"""class {class_name}:
+    synchronizer = get_synchronizer('{self._synchronizer_name}')
+    impl_function = {target_module}.{f.__name__}  # reference to original function
+
+    def __call__(self, {param_str}){sync_return_str}:
+        coro = self.impl_function({call_args_str})
+        raw_result = self.synchronizer.{method_name}(coro)
+        return raw_result
+
+    async def aio(self, {param_str}){async_return_str}:
+        coro = self.impl_function({call_args_str})
+        raw_result = await self.synchronizer.{async_method_name}(coro)
+        return raw_result
+
+{f.__name__} = {class_name}()"""
 
         return sync_code
 
