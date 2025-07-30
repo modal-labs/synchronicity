@@ -9,7 +9,7 @@ from textwrap import dedent
 import typing_extensions
 
 import synchronicity
-from synchronicity import overload_tracking
+from synchronicity import classproperty, overload_tracking
 from synchronicity.async_wrap import asynccontextmanager
 from synchronicity.type_stubs import StubEmitter
 
@@ -172,6 +172,10 @@ class MixedClass:
     def some_property(self, val):
         print(val)
 
+    @classproperty
+    def class_property(cls):
+        return 1
+
 
 def test_class_generation():
     emitter = StubEmitter(__name__)
@@ -188,6 +192,7 @@ def test_class_generation():
             last_assertion_location = new_location
 
     indent = "    "
+    assert_in_after_last("import synchronicity")
     assert_in_after_last("class MixedClass:")
     assert_in_after_last(f"{indent}class_var: str")
     assert_in_after_last(f"{indent}class_var: str")
@@ -197,6 +202,7 @@ def test_class_generation():
     assert_in_after_last(f"{indent}@property\n{indent}def some_property(self) -> str:")
     assert_in_after_last(f"{indent}@some_property.setter\n{indent}def some_property(self, val):")
     assert_in_after_last(f"{indent}@some_property.deleter\n{indent}def some_property(self, val):")
+    assert_in_after_last(f"{indent}@synchronicity.classproperty\n{indent}def class_property(cls):\n{indent * 2}...")
 
 
 def merged_signature(*sigs):
