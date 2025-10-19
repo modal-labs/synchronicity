@@ -12,7 +12,11 @@ async def foo() -> typing.AsyncGenerator[int, None]:
 
 @lib.wrap()
 class Bar:
-    a: str = "hello"
+    a: str
 
-    async def moo(self, s: str) -> typing.AsyncGenerator[bool, None]:
-        yield False
+    def __init__(self, a: str):
+        self.a = a
+
+    async def moo(self, s: str) -> typing.AsyncGenerator[str, None]:
+        for c1, c2 in zip(self.a, s):
+            yield f"{c1}{c2}"

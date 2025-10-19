@@ -88,9 +88,10 @@ class Bar:
 
     _synchronizer = get_synchronizer("my_library")
 
-    def __init__(self, *args, **kwargs):
-        self._impl_instance = _my_library.Bar(*args, **kwargs)
+    def __init__(self, a: str):
+        self._impl_instance = _my_library.Bar(a=a)
 
+    # Generated properties
     @property
     def a(self) -> str:
         return self._impl_instance.a
@@ -114,12 +115,12 @@ class Bar:
 
 
 ### Test code:
-for res in Bar().moo("123"):
+for res in Bar("hello").moo("123"):
     print(res)
 
 
 async def test_iter():
-    async for res in Bar().moo.aio("123"):
+    async for res in Bar("hello").moo.aio("123"):
         print(res)
 
 
