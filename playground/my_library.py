@@ -1,3 +1,4 @@
+import asyncio
 import typing
 
 import _my_library
@@ -71,12 +72,13 @@ class Bar_moo:
         self._impl_instance = wrapper_instance._impl_instance
         self._unbound_sync_wrapper_method = unbound_sync_wrapper_method
 
-    def __call__(self, s: str) -> typing.Iterator[bool]:
+    def __call__(self, s: str) -> typing.Generator[bool, None, None]:
         # This is what actually gets called when doing Bar().moo(...)
         return self._unbound_sync_wrapper_method(self._wrapper_instance, s)
 
     async def aio(self, s: str) -> typing.AsyncGenerator[bool, NoneType]:
         gen = _my_library.Bar.moo(self._impl_instance, s)
+        # TODO: two-way generators...
         async for item in self._synchronizer._run_generator_async(gen):
             yield item
 
@@ -86,13 +88,19 @@ class Bar:
 
     _synchronizer = get_synchronizer("my_library")
 
-    a: str
-
     def __init__(self, *args, **kwargs):
         self._impl_instance = _my_library.Bar(*args, **kwargs)
 
+    @property
+    def a(self) -> str:
+        return self._impl_instance.a
+
+    @a.setter
+    def a(self, value: str):
+        self._impl_instance.a = value
+
     @wrapped_method(_my_library.Bar.moo, Bar_moo)  # this adds the .aio variant
-    def moo(self, s: str) -> typing.Iterator[str]:
+    def moo(self, s: str) -> typing.Generator[bool, None, None]:
         # This is where language servers will navigate when going to definition for Bar().moo
         # For that reason, we put the generated *sync* proxy implementation here with the
         # sync method signature.
@@ -108,3 +116,11 @@ class Bar:
 ### Test code:
 for res in Bar().moo("123"):
     print(res)
+
+
+async def test_iter():
+    async for res in Bar().moo.aio("123"):
+        print(res)
+
+
+asyncio.run(test_iter())

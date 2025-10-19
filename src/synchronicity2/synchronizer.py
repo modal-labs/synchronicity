@@ -244,7 +244,7 @@ class Synchronizer:
                 value = exc
                 is_exc = True
 
-    async def _run_generator_async(self, gen):
+    async def _run_generator_async(self, gen: typing.AsyncGenerator):
         value, is_exc = None, False
         while True:
             try:
