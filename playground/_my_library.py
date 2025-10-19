@@ -20,3 +20,9 @@ class Bar:
     async def moo(self, s: str) -> typing.AsyncGenerator[str, None]:
         for c1, c2 in zip(self.a, s):
             yield f"{c1}{c2}"
+
+
+@lib.wrap()
+def accepts_bar(b: Bar) -> Bar:
+    assert isinstance(b, Bar)
+    return b

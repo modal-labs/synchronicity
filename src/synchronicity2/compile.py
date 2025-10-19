@@ -21,6 +21,118 @@ def _format_type_annotation(annotation) -> str:
         return repr(annotation)
 
 
+def _parse_parameters(sig: inspect.Signature, skip_self: bool = False) -> tuple[str, str, list[str]]:
+    """
+    Parse function/method parameters into formatted strings.
+
+    Args:
+        sig: The function signature
+        skip_self: If True, skip 'self' parameter (for methods)
+
+    Returns:
+        Tuple of (params_str, call_args_str, call_args_list):
+        - params_str: Comma-separated parameter declarations with types
+        - call_args_str: Comma-separated parameter names for calls
+        - call_args_list: List of parameter names
+    """
+    params = []
+    call_args = []
+
+    for name, param in sig.parameters.items():
+        if skip_self and name == "self":
+            continue
+
+        param_str = name
+        if param.annotation != param.empty:
+            annotation_str = _format_type_annotation(param.annotation)
+            param_str += f": {annotation_str}"
+
+        if param.default is not param.empty:
+            default_val = repr(param.default)
+            param_str += f" = {default_val}"
+
+        params.append(param_str)
+        call_args.append(name)
+
+    params_str = ", ".join(params)
+    call_args_str = ", ".join(call_args)
+
+    return params_str, call_args_str, call_args
+
+
+def _is_async_generator(func_or_method, return_annotation) -> bool:
+    """
+    Check if a callable is an async generator.
+
+    Args:
+        func_or_method: The function or method to check
+        return_annotation: The return type annotation
+
+    Returns:
+        True if the callable is an async generator
+    """
+    # First check using inspect
+    if inspect.isasyncgenfunction(func_or_method):
+        return True
+
+    # Also check return annotation
+    if return_annotation != inspect.Signature.empty:
+        return (
+            hasattr(return_annotation, "__origin__") and return_annotation.__origin__ is collections.abc.AsyncGenerator
+        )
+
+    return False
+
+
+def _format_return_types(return_annotation, is_async_generator: bool) -> tuple[str, str]:
+    """
+    Format sync and async return type strings.
+
+    Args:
+        return_annotation: The return type annotation from the function signature
+        is_async_generator: Whether the function is an async generator
+
+    Returns:
+        Tuple of (sync_return_str, async_return_str) including " -> " prefix,
+        or empty strings if no return annotation
+    """
+    if return_annotation == inspect.Signature.empty:
+        if is_async_generator:
+            return " -> typing.Generator", " -> typing.AsyncGenerator"
+        else:
+            return "", ""
+
+    # Handle different return types
+    if is_async_generator:
+        # For async generators, sync version returns Generator[T, None, None],
+        # async version returns AsyncGenerator[T, None]
+        if hasattr(return_annotation, "__args__") and return_annotation.__args__:
+            # Extract the yielded type from AsyncGenerator[T, Send]
+            yield_type = return_annotation.__args__[0]
+            yield_type_str = _format_type_annotation(yield_type)
+            sync_return_annotation = f"typing.Generator[{yield_type_str}, None, None]"
+
+            # For async generators, also extract the send type (usually None) for proper typing
+            if len(return_annotation.__args__) > 1:
+                send_type = return_annotation.__args__[1]
+                send_type_str = _format_type_annotation(send_type)
+                async_return_annotation = f"typing.AsyncGenerator[{yield_type_str}, {send_type_str}]"
+            else:
+                async_return_annotation = f"typing.AsyncGenerator[{yield_type_str}]"
+        else:
+            sync_return_annotation = "typing.Generator"
+            async_return_annotation = "typing.AsyncGenerator"
+    else:
+        # For regular async functions
+        sync_return_annotation = _format_type_annotation(return_annotation)
+        async_return_annotation = sync_return_annotation
+
+    sync_return_str = f" -> {sync_return_annotation}"
+    async_return_str = f" -> {async_return_annotation}"
+
+    return sync_return_str, async_return_str
+
+
 def compile_function(f: types.FunctionType, target_module: str, synchronizer_name: str) -> str:
     """
     Compile a function into a wrapper class that provides both sync and async versions.
@@ -38,62 +150,10 @@ def compile_function(f: types.FunctionType, target_module: str, synchronizer_nam
     sig = inspect.signature(f)
     return_annotation = sig.return_annotation
 
-    # Check if it's an async generator
-    is_async_generator = (
-        hasattr(return_annotation, "__origin__") and return_annotation.__origin__ is collections.abc.AsyncGenerator
-    )
-
-    # Build the function signature with type annotations
-    params = []
-    call_args = []
-    for name, param in sig.parameters.items():
-        param_str = name
-        if param.annotation != param.empty:
-            annotation_str = _format_type_annotation(param.annotation)
-            param_str += f": {annotation_str}"
-
-        if param.default is not param.empty:
-            default_val = repr(param.default)
-            param_str += f" = {default_val}"
-
-        params.append(param_str)
-        call_args.append(name)
-
-    param_str = ", ".join(params)
-    call_args_str = ", ".join(call_args)
-
-    # Format return annotation
-    if return_annotation != sig.empty:
-        # Handle different return types
-        if is_async_generator:
-            # For async generators, sync version returns Generator[T, None, None],
-            # async version returns AsyncGenerator[T, None]
-            if hasattr(return_annotation, "__args__") and return_annotation.__args__:
-                # Extract the yielded type from AsyncGenerator[T, Send]
-                yield_type = return_annotation.__args__[0]
-                yield_type_str = _format_type_annotation(yield_type)
-                sync_return_annotation = f"typing.Generator[{yield_type_str}, None, None]"
-
-                # For async generators, also extract the send type (usually None) for proper typing
-                if len(return_annotation.__args__) > 1:
-                    send_type = return_annotation.__args__[1]
-                    send_type_str = _format_type_annotation(send_type)
-                    async_return_annotation = f"typing.AsyncGenerator[{yield_type_str}, {send_type_str}]"
-                else:
-                    async_return_annotation = f"typing.AsyncGenerator[{yield_type_str}]"
-            else:
-                sync_return_annotation = "typing.Generator"
-                async_return_annotation = "typing.AsyncGenerator"
-        else:
-            # For regular async functions
-            sync_return_annotation = _format_type_annotation(return_annotation)
-            async_return_annotation = sync_return_annotation
-
-        sync_return_str = f" -> {sync_return_annotation}"
-        async_return_str = f" -> {async_return_annotation}"
-    else:
-        sync_return_str = ""
-        async_return_str = ""
+    # Parse parameters and check if it's an async generator
+    param_str, call_args_str, call_args = _parse_parameters(sig, skip_self=False)
+    is_async_generator = _is_async_generator(f, return_annotation)
+    sync_return_str, async_return_str = _format_return_types(return_annotation, is_async_generator)
 
     # Generate the wrapper class
     wrapper_class_name = f"_{f.__name__}"
@@ -152,69 +212,10 @@ def compile_method_wrapper(
     sig = inspect.signature(method)
     return_annotation = sig.return_annotation
 
-    # Check if it's an async generator using inspect.isasyncgenfunction
-    is_async_generator = inspect.isasyncgenfunction(method)
-
-    # Also check return annotation for additional type information
-    if not is_async_generator and return_annotation != sig.empty:
-        is_async_generator = (
-            hasattr(return_annotation, "__origin__") and return_annotation.__origin__ is collections.abc.AsyncGenerator
-        )
-
-    # Build the method signature with type annotations (excluding 'self')
-    params = []
-    call_args = []
-    for name, param in sig.parameters.items():
-        if name == "self":
-            continue  # Skip 'self' parameter
-
-        param_str = name
-        if param.annotation != param.empty:
-            annotation_str = _format_type_annotation(param.annotation)
-            param_str += f": {annotation_str}"
-
-        if param.default is not param.empty:
-            default_val = repr(param.default)
-            param_str += f" = {default_val}"
-
-        params.append(param_str)
-        call_args.append(name)
-
-    param_str = ", ".join(params)
-    call_args_str = ", ".join(call_args)
-
-    # Format return annotation
-    if return_annotation != sig.empty:
-        # Handle different return types
-        if is_async_generator:
-            if hasattr(return_annotation, "__args__") and return_annotation.__args__:
-                yield_type = return_annotation.__args__[0]
-                yield_type_str = _format_type_annotation(yield_type)
-                sync_return_annotation = f"typing.Generator[{yield_type_str}, None, None]"
-
-                if len(return_annotation.__args__) > 1:
-                    send_type = return_annotation.__args__[1]
-                    send_type_str = _format_type_annotation(send_type)
-                    async_return_annotation = f"typing.AsyncGenerator[{yield_type_str}, {send_type_str}]"
-                else:
-                    async_return_annotation = f"typing.AsyncGenerator[{yield_type_str}]"
-            else:
-                sync_return_annotation = "typing.Generator"
-                async_return_annotation = "typing.AsyncGenerator"
-        else:
-            # For regular async functions
-            sync_return_annotation = _format_type_annotation(return_annotation)
-            async_return_annotation = sync_return_annotation
-
-        sync_return_str = f" -> {sync_return_annotation}"
-        async_return_str = f" -> {async_return_annotation}"
-    else:
-        if is_async_generator:
-            sync_return_str = " -> typing.Generator"
-            async_return_str = " -> typing.AsyncGenerator"
-        else:
-            sync_return_str = ""
-            async_return_str = ""
+    # Parse parameters and check if it's an async generator
+    param_str, call_args_str, _ = _parse_parameters(sig, skip_self=True)
+    is_async_generator = _is_async_generator(method, return_annotation)
+    sync_return_str, async_return_str = _format_return_types(return_annotation, is_async_generator)
 
     # Generate the method wrapper class code
     wrapper_class_name = f"{class_name}_{method_name}"
@@ -297,22 +298,9 @@ def compile_class(cls: type, target_module: str, synchronizer_name: str) -> str:
     init_method = getattr(cls, "__init__", None)
     if init_method and init_method is not object.__init__:
         sig = inspect.signature(init_method)
-        init_params = []
-        init_call_args = []
-        for name, param in sig.parameters.items():
-            if name == "self":
-                continue
-            param_str = name
-            if param.annotation != param.empty:
-                annotation_str = _format_type_annotation(param.annotation)
-                param_str += f": {annotation_str}"
-            if param.default is not param.empty:
-                param_str += f" = {repr(param.default)}"
-            init_params.append(param_str)
-            init_call_args.append(f"{name}={name}")
-
-        init_signature = ", ".join(init_params)
-        init_call = ", ".join(init_call_args)
+        init_signature, _, init_call_args_list = _parse_parameters(sig, skip_self=True)
+        # For __init__, we want keyword arguments in the call
+        init_call = ", ".join(f"{name}={name}" for name in init_call_args_list)
     else:
         init_signature = "*args, **kwargs"
         init_call = "*args, **kwargs"
