@@ -6,6 +6,39 @@ from synchronicity2.synchronizer import get_synchronizer
 
 NoneType = None
 
+### Generic code - put in synchronicity itself:
+
+T = typing.TypeVar("T")
+
+
+class WrappedMethodDescriptor(typing.Generic[T]):
+    method_wrapper_type: type[T]
+    unbound_impl_method: typing.Callable[..., typing.Any]
+    sync_wrapper_method: typing.Callable[..., typing.Any]
+
+    def __init__(self, method_wrapper_type, unbound_impl_method, sync_wrapper_method):
+        self.method_wrapper_type = method_wrapper_type
+        self.unbound_impl_method = unbound_impl_method
+        self.sync_wrapper_method = sync_wrapper_method
+
+    def __get__(self, wrapper_instance, owner) -> T:
+        if wrapper_instance is None:
+            return self
+
+        return self.method_wrapper_type(wrapper_instance, self.sync_wrapper_method)
+
+
+def wrapped_method(unbound_impl_method, method_wrapper_type: type[T]):
+    def decorator(sync_wrapper_method) -> WrappedMethodDescriptor[T]:
+        return WrappedMethodDescriptor(method_wrapper_type, unbound_impl_method, sync_wrapper_method)
+
+    return decorator
+
+
+### End of generic code
+
+### Generated code
+
 
 class _fooWrapper:
     synchronizer = get_synchronizer("my_library")
@@ -30,47 +63,22 @@ foo = _fooWrapper()
 
 class Bar_moo:
     _synchronizer = get_synchronizer("my_library")
+    _impl_instance: _my_library.Bar
+    _sync_wrapper_method: typing.Callable[..., typing.Any]
+
+    def __init__(self, wrapper_instance: "Bar", unbound_sync_wrapper_method: typing.Callable[..., typing.Any]):
+        self._wrapper_instance = wrapper_instance
+        self._impl_instance = wrapper_instance._impl_instance
+        self._unbound_sync_wrapper_method = unbound_sync_wrapper_method
 
     def __call__(self, s: str) -> typing.Iterator[bool]:
         # This is what actually gets called when doing Bar().moo(...)
-        return self.sync_wrapper_method(s)
+        return self._unbound_sync_wrapper_method(self._wrapper_instance, s)
 
     async def aio(self, s: str) -> typing.AsyncGenerator[bool, NoneType]:
-        gen = _my_library.Bar.moo(self.instance, s)
+        gen = _my_library.Bar.moo(self._impl_instance, s)
         async for item in self._synchronizer._run_generator_async(gen):
             yield item
-
-
-T = typing.TypeVar("T")
-
-
-class WrappedMethodDescriptor(typing.Generic[T]):
-    unbound_impl_method: typing.Callable[...]
-    method_wrapper_type: type[T]
-    sync_wrapper_method: typing.Callable[...]
-
-    def __init__(self, sync_wrapper_method):
-        self.sync_wrapper_method = sync_wrapper_method
-
-    def __get__(self, wrapper_instance, owner) -> T:
-        if wrapper_instance is None:
-            return self
-
-        return self.method_wrapper_type(
-            wrapper_instance._impl_instance, self.synchronizer, self.unbound_impl_method, self.sync_wrapper_method
-        )
-
-
-def wrapped_method(unbound_impl_method, method_wrapper_type: type[T]):
-    def decorator(sync_wrapper_method) -> WrappedMethodDescriptor[T]:
-        descriptor = WrappedMethodDescriptor(unbound_impl_method, method_wrapper_type)
-
-        descriptor.unbound_impl_method = unbound_impl_method
-        descriptor.method_wrapper_type = method_wrapper_type
-        descriptor.sync_wrapper_method = sync_wrapper_method
-        return descriptor
-
-    return decorator
 
 
 class Bar:
@@ -93,11 +101,10 @@ class Bar:
         # This complicated control flow is done in order to maximize code navigation usability.
         # This sync method implementation should be really short for that reason and just delegate
         # calls to the original instance + input/output translation
-        gen = _my_library.Bar.moo(self._original_instance, s)
+        gen = _my_library.Bar.moo(self._impl_instance, s)
         yield from self._synchronizer._run_generator_sync(gen)
 
 
-Bar().moo.aio
-# d = wrapped_method(_my_library.Bar.moo, Bar_moo)
-# m = d.__get__(Bar(), Bar)
-# m.aio()
+### Test code:
+for res in Bar().moo("123"):
+    print(res)

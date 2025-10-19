@@ -14,5 +14,5 @@ async def foo() -> typing.AsyncGenerator[int, None]:
 class Bar:
     a: str = "hello"
 
-    async def moo(s: str) -> typing.AsyncGenerator[bool, None]:
+    async def moo(self, s: str) -> typing.AsyncGenerator[bool, None]:
         yield False
