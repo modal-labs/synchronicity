@@ -1,44 +1,11 @@
-import asyncio
 import typing
 
 import _my_library
 
+from synchronicity2.descriptor import wrapped_method
 from synchronicity2.synchronizer import get_synchronizer
 
 NoneType = None
-
-### Generic code - put in synchronicity itself:
-
-T = typing.TypeVar("T")
-
-
-class WrappedMethodDescriptor(typing.Generic[T]):
-    method_wrapper_type: type[T]
-    unbound_impl_method: typing.Callable[..., typing.Any]
-    sync_wrapper_method: typing.Callable[..., typing.Any]
-
-    def __init__(self, method_wrapper_type, unbound_impl_method, sync_wrapper_method):
-        self.method_wrapper_type = method_wrapper_type
-        self.unbound_impl_method = unbound_impl_method
-        self.sync_wrapper_method = sync_wrapper_method
-
-    def __get__(self, wrapper_instance, owner) -> T:
-        if wrapper_instance is None:
-            return self
-
-        return self.method_wrapper_type(wrapper_instance, self.sync_wrapper_method)
-
-
-def wrapped_method(unbound_impl_method, method_wrapper_type: type[T]):
-    def decorator(sync_wrapper_method) -> WrappedMethodDescriptor[T]:
-        return WrappedMethodDescriptor(method_wrapper_type, unbound_impl_method, sync_wrapper_method)
-
-    return decorator
-
-
-### End of generic code
-
-### Generated code
 
 
 class _fooWrapper:
@@ -112,16 +79,3 @@ class Bar:
         # calls to the original instance + input/output translation
         gen = _my_library.Bar.moo(self._impl_instance, s)
         yield from self._synchronizer._run_generator_sync(gen)
-
-
-### Test code:
-for res in Bar("hello").moo("123"):
-    print(res)
-
-
-async def test_iter():
-    async for res in Bar("hello").moo.aio("123"):
-        print(res)
-
-
-asyncio.run(test_iter())

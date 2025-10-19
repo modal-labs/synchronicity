@@ -72,7 +72,7 @@ def main() -> None:
 
     print("Compilation completed successfully!", file=sys.stderr)
     if result is not None:
-        print(f"Result: {result}", file=sys.stderr)
+        print(result)
 
 
 if __name__ == "__main__":
