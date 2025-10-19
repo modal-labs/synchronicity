@@ -55,7 +55,7 @@ class Bar_moo:
 
 
 class Bar:
-    """Wrapper class for my_library.Bar with sync/async method support"""
+    """Wrapper class for _my_library.Bar with sync/async method support"""
 
     _synchronizer = get_synchronizer("my_library")
 
@@ -75,3 +75,26 @@ class Bar:
     def moo(self, s: str) -> typing.Generator[str, None, None]:
         gen = _my_library.Bar.moo(self._impl_instance, s)
         yield from self._synchronizer._run_generator_sync(gen)
+
+
+class _accepts_bar:
+    _synchronizer = get_synchronizer("my_library")
+    _impl_function = _my_library.accepts_bar
+    _sync_wrapper_function: typing.Callable[..., typing.Any]
+
+    def __init__(self, sync_wrapper_function: typing.Callable[..., typing.Any]):
+        self._sync_wrapper_function = sync_wrapper_function
+
+    def __call__(self, b: _my_library.Bar) -> _my_library.Bar:
+        return self._sync_wrapper_function(b)
+
+    async def aio(self, b: _my_library.Bar) -> _my_library.Bar:
+        gen = _my_library.accepts_bar(b)
+        async for item in self._synchronizer._run_generator_async(gen):
+            yield item
+
+
+@wrapped_function(_accepts_bar)
+def accepts_bar(b: _my_library.Bar) -> _my_library.Bar:
+    coro = _my_library.accepts_bar(b)
+    return get_synchronizer("my_library")._run_function_sync(coro)

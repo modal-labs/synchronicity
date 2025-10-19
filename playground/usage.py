@@ -1,6 +1,4 @@
-from my_library import Bar, foo
+from my_library import Bar, accepts_bar
 
-foo.aio()
-
-
-Bar().a
+b = Bar("hello")
+accepts_bar(b)
