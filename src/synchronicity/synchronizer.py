@@ -106,10 +106,12 @@ class Synchronizer:
         self,
         multiwrap_warning=False,
         async_leakage_warning=True,
+        sync_in_async_warning_callback=None,
     ):
         self._future_poll_interval = 0.1
         self._multiwrap_warning = multiwrap_warning
         self._async_leakage_warning = async_leakage_warning
+        self._sync_in_async_warning_callback = sync_in_async_warning_callback
         self._loop = None
         self._loop_creation_lock = threading.Lock()
         self._thread = None
@@ -133,6 +135,7 @@ class Synchronizer:
     _PICKLE_ATTRS = [
         "_multiwrap_warning",
         "_async_leakage_warning",
+        "_sync_in_async_warning_callback",
     ]
 
     def __getstate__(self):
@@ -312,6 +315,36 @@ class Synchronizer:
         if self._is_inside_loop():
             raise Exception("Deadlock detected: calling a sync function from the synchronizer loop")
 
+        # Check if we're being called from within a foreign event loop
+        if self._sync_in_async_warning_callback is not None:
+            try:
+                foreign_loop = asyncio.get_running_loop()
+                # If we got here, we're in an event loop that's not the synchronizer's loop
+                if foreign_loop is not None:
+                    # Extract call site information from the stack
+                    import traceback
+
+                    stack = traceback.extract_stack()
+                    # Find the first frame outside of synchronicity, asyncio, and testing frameworks
+                    call_frame = None
+                    for frame in reversed(stack[:-1]):  # Exclude current frame
+                        filename = frame.filename
+                        if (
+                            "synchronicity" not in filename
+                            and "asyncio" not in filename
+                            and "_pytest" not in filename
+                            and "pytest" not in filename
+                            and "pluggy" not in filename
+                            and "/site-packages/" not in filename
+                        ):
+                            call_frame = frame
+                            break
+
+                    self._sync_in_async_warning_callback(original_func, call_frame)
+            except RuntimeError:
+                # No running loop, this is the expected case
+                pass
+
         coro = wrap_coro_exception(coro)
         coro = self._wrap_check_async_leakage(coro)
         loop = self._get_loop(start=True)
@@ -428,6 +461,7 @@ class Synchronizer:
         return value
 
     def _run_generator_sync(self, gen, original_func):
+        print("Run generator sync", original_func, vars(original_func))
         value, is_exc = None, False
         with suppress_synchronicity_tb_frames():
             while True:

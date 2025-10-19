@@ -5,6 +5,7 @@ Command line interface for synchronicity2 compilation.
 
 import argparse
 import importlib.util
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -66,12 +67,12 @@ def main() -> None:
         raise TypeError(f"Object '{args.object_ref}' is not a synchronicity2.Library instance. Got: {type(obj)}")
 
     # Call compile() on the object
-    print(f"Compiling Library: {args.object_ref}")
+    print(f"Compiling Library: {args.object_ref}", file=sys.stderr)
     result = obj.compile()
 
-    print("Compilation completed successfully!")
+    print("Compilation completed successfully!", file=sys.stderr)
     if result is not None:
-        print(f"Result: {result}")
+        print(f"Result: {result}", file=sys.stderr)
 
 
 if __name__ == "__main__":
