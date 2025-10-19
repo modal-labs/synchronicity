@@ -19,28 +19,18 @@ class _foo:
     def __call__(
         self,
     ) -> typing.Generator[int, None, None]:
-        # This is what actually gets called when doing foo(...)
         return self._sync_wrapper_function()
 
     async def aio(
         self,
     ) -> typing.AsyncGenerator[int, NoneType]:
         gen = _my_library.foo()
-        # TODO: two-way generators...
         async for item in self._synchronizer._run_generator_async(gen):
             yield item
 
 
-@wrapped_function(_my_library.foo, _foo)
+@wrapped_function(_foo)
 def foo() -> typing.Generator[int, None, None]:
-    # This is where language servers will navigate when going to definition for foo()
-    # For that reason, we put the generated *sync* proxy implementation here with the
-    # sync function signature.
-    # However, this is *not* what gets immediately called when foo() is called -
-    # that goes via the wrapper that in turn calls back to this.
-    # This complicated control flow is done in order to maximize code navigation usability.
-    # This sync function implementation should be really short for that reason and just delegate
-    # calls to the original function + input/output translation
     gen = _my_library.foo()
     yield from get_synchronizer("my_library")._run_generator_sync(gen)
 
@@ -56,12 +46,10 @@ class Bar_moo:
         self._unbound_sync_wrapper_method = unbound_sync_wrapper_method
 
     def __call__(self, s: str) -> typing.Generator[str, None, None]:
-        # This is what actually gets called when doing Bar().moo(...)
         return self._unbound_sync_wrapper_method(self._wrapper_instance, s)
 
     async def aio(self, s: str) -> typing.AsyncGenerator[str, NoneType]:
         gen = _my_library.Bar.moo(self._impl_instance, s)
-        # TODO: two-way generators...
         async for item in self._synchronizer._run_generator_async(gen):
             yield item
 
@@ -83,15 +71,7 @@ class Bar:
     def a(self, value: str):
         self._impl_instance.a = value
 
-    @wrapped_method(_my_library.Bar.moo, Bar_moo)  # this adds the .aio variant
+    @wrapped_method(Bar_moo)
     def moo(self, s: str) -> typing.Generator[str, None, None]:
-        # This is where language servers will navigate when going to definition for Bar().moo
-        # For that reason, we put the generated *sync* proxy implementation here with the
-        # sync method signature.
-        # However, this is *not* the method that gets immediately called when
-        # Bar().moo() is called - that goes via the descriptor that in turn calls back to this
-        # This complicated control flow is done in order to maximize code navigation usability.
-        # This sync method implementation should be really short for that reason and just delegate
-        # calls to the original instance + input/output translation
         gen = _my_library.Bar.moo(self._impl_instance, s)
         yield from self._synchronizer._run_generator_sync(gen)

@@ -107,12 +107,10 @@ def compile_function(f: types.FunctionType, target_module: str, synchronizer_nam
         self._sync_wrapper_function = sync_wrapper_function
 
     def __call__(self, {param_str}){sync_return_str}:
-        # This is what actually gets called when doing {f.__name__}(...)
         return self._sync_wrapper_function({call_args_str})
 
     async def aio(self, {param_str}){async_return_str}:
         gen = {target_module}.{f.__name__}({call_args_str})
-        # TODO: two-way generators...
         async for item in self._synchronizer._run_generator_async(gen):
             yield item
 """
@@ -125,16 +123,8 @@ def compile_function(f: types.FunctionType, target_module: str, synchronizer_nam
         sync_function_body = f"""    coro = {target_module}.{f.__name__}({call_args_str})
     return get_synchronizer('{synchronizer_name}')._run_function_sync(coro)"""
 
-    sync_function_code = f"""@wrapped_function({target_module}.{f.__name__}, {wrapper_class_name})
+    sync_function_code = f"""@wrapped_function({wrapper_class_name})
 def {f.__name__}({param_str}){sync_return_str}:
-    # This is where language servers will navigate when going to definition for {f.__name__}()
-    # For that reason, we put the generated *sync* proxy implementation here with the
-    # sync function signature.
-    # However, this is *not* what gets immediately called when {f.__name__}() is called -
-    # that goes via the wrapper that in turn calls back to this.
-    # This complicated control flow is done in order to maximize code navigation usability.
-    # This sync function implementation should be really short for that reason and just delegate
-    # calls to the original function + input/output translation
 {sync_function_body}"""
 
     return f"{wrapper_class_code}\n{sync_function_code}"
@@ -241,12 +231,10 @@ def compile_method_wrapper(
         self._unbound_sync_wrapper_method = unbound_sync_wrapper_method
 
     def __call__(self, {param_str}){sync_return_str}:
-        # This is what actually gets called when doing {class_name}().{method_name}(...)
         return self._unbound_sync_wrapper_method(self._wrapper_instance, {call_args_str})
 
     async def aio(self, {param_str}){async_return_str}:
         gen = {target_module}.{class_name}.{method_name}(self._impl_instance{', ' + call_args_str if call_args_str else ''})
-        # TODO: two-way generators...
         async for item in self._synchronizer._run_generator_async(gen):
             yield item
 """
@@ -259,16 +247,8 @@ def compile_method_wrapper(
         sync_method_body = f"""        coro = {target_module}.{class_name}.{method_name}(self._impl_instance{', ' + call_args_str if call_args_str else ''})
         return self._synchronizer._run_function_sync(coro)"""
 
-    sync_method_code = f"""    @wrapped_method({target_module}.{class_name}.{method_name}, {wrapper_class_name})  # this adds the .aio variant
+    sync_method_code = f"""    @wrapped_method({wrapper_class_name})
     def {method_name}(self, {param_str}){sync_return_str}:
-        # This is where language servers will navigate when going to definition for {class_name}().{method_name}
-        # For that reason, we put the generated *sync* proxy implementation here with the
-        # sync method signature.
-        # However, this is *not* the method that gets immediately called when
-        # {class_name}().{method_name}() is called - that goes via the descriptor that in turn calls back to this
-        # This complicated control flow is done in order to maximize code navigation usability.
-        # This sync method implementation should be really short for that reason and just delegate
-        # calls to the original instance + input/output translation
 {sync_method_body}"""
 
     return wrapper_class_code, sync_method_code
