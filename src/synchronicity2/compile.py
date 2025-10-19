@@ -24,6 +24,7 @@ def _format_type_annotation(annotation) -> str:
 def compile_function(f: types.FunctionType, target_module: str, synchronizer_name: str) -> str:
     """
     Compile a function into a wrapper class that provides both sync and async versions.
+    Uses the decorator pattern similar to method wrapping.
 
     Args:
         f: The function to compile
@@ -31,7 +32,7 @@ def compile_function(f: types.FunctionType, target_module: str, synchronizer_nam
         synchronizer_name: The name of the synchronizer to use
 
     Returns:
-        String containing the generated wrapper class code
+        String containing the generated wrapper class and decorated function code
     """
     # Get function signature and annotations
     sig = inspect.signature(f)
@@ -44,6 +45,7 @@ def compile_function(f: types.FunctionType, target_module: str, synchronizer_nam
 
     # Build the function signature with type annotations
     params = []
+    call_args = []
     for name, param in sig.parameters.items():
         param_str = name
         if param.annotation != param.empty:
@@ -55,19 +57,22 @@ def compile_function(f: types.FunctionType, target_module: str, synchronizer_nam
             param_str += f" = {default_val}"
 
         params.append(param_str)
+        call_args.append(name)
 
     param_str = ", ".join(params)
+    call_args_str = ", ".join(call_args)
 
     # Format return annotation
     if return_annotation != sig.empty:
         # Handle different return types
         if is_async_generator:
-            # For async generators, sync version returns Iterator[T], async version returns AsyncGenerator[T, None]
+            # For async generators, sync version returns Generator[T, None, None],
+            # async version returns AsyncGenerator[T, None]
             if hasattr(return_annotation, "__args__") and return_annotation.__args__:
                 # Extract the yielded type from AsyncGenerator[T, Send]
                 yield_type = return_annotation.__args__[0]
                 yield_type_str = _format_type_annotation(yield_type)
-                sync_return_annotation = f"typing.Iterator[{yield_type_str}]"
+                sync_return_annotation = f"typing.Generator[{yield_type_str}, None, None]"
 
                 # For async generators, also extract the send type (usually None) for proper typing
                 if len(return_annotation.__args__) > 1:
@@ -77,7 +82,7 @@ def compile_function(f: types.FunctionType, target_module: str, synchronizer_nam
                 else:
                     async_return_annotation = f"typing.AsyncGenerator[{yield_type_str}]"
             else:
-                sync_return_annotation = "typing.Iterator"
+                sync_return_annotation = "typing.Generator"
                 async_return_annotation = "typing.AsyncGenerator"
         else:
             # For regular async functions
@@ -90,58 +95,49 @@ def compile_function(f: types.FunctionType, target_module: str, synchronizer_nam
         sync_return_str = ""
         async_return_str = ""
 
-    # Get the function arguments for calling the original function
-    call_args = []
-    for name, param in sig.parameters.items():
-        call_args.append(name)
-    call_args_str = ", ".join(call_args)
+    # Generate the wrapper class
+    wrapper_class_name = f"_{f.__name__}"
 
-    # Generate the class-based wrapper code
-    class_name = f"_{f.__name__}Wrapper"
+    wrapper_class_code = f"""class {wrapper_class_name}:
+    _synchronizer = get_synchronizer('{synchronizer_name}')
+    _impl_function = {target_module}.{f.__name__}
+    _sync_wrapper_function: typing.Callable[..., typing.Any]
 
-    # For async generators, we need to yield from the result instead of returning it
+    def __init__(self, sync_wrapper_function: typing.Callable[..., typing.Any]):
+        self._sync_wrapper_function = sync_wrapper_function
+
+    def __call__(self, {param_str}){sync_return_str}:
+        # This is what actually gets called when doing {f.__name__}(...)
+        return self._sync_wrapper_function({call_args_str})
+
+    async def aio(self, {param_str}){async_return_str}:
+        gen = {target_module}.{f.__name__}({call_args_str})
+        # TODO: two-way generators...
+        async for item in self._synchronizer._run_generator_async(gen):
+            yield item
+"""
+
+    # Build the sync wrapper function code
     if is_async_generator:
-        sync_body = f"""        gen = self.impl_function({call_args_str})
-        yield from self.synchronizer._run_generator_sync(gen)"""
-        async_body = f"""        gen = self.impl_function({call_args_str})
-        async for item in self.synchronizer._run_generator_async(gen):
-            yield item"""
+        sync_function_body = f"""    gen = {target_module}.{f.__name__}({call_args_str})
+    yield from get_synchronizer('{synchronizer_name}')._run_generator_sync(gen)"""
     else:
-        sync_body = f"""        coro = self.impl_function({call_args_str})
-        raw_result = self.synchronizer._run_function_sync(coro)
-        return raw_result"""
-        async_body = f"""        coro = self.impl_function({call_args_str})
-        raw_result = await self.synchronizer._run_function_async(coro)
-        return raw_result"""
+        sync_function_body = f"""    coro = {target_module}.{f.__name__}({call_args_str})
+    return get_synchronizer('{synchronizer_name}')._run_function_sync(coro)"""
 
-    # Format the parameters for function signature
-    if param_str:
-        call_signature = f"""
-        self,
-    ){sync_return_str}:"""
-        aio_signature = f"""
-        self,
-    ){async_return_str}:"""
-    else:
-        call_signature = f"""self,
-    ){sync_return_str}:"""
-        aio_signature = f"""self,
-    ){async_return_str}:"""
+    sync_function_code = f"""@wrapped_function({target_module}.{f.__name__}, {wrapper_class_name})
+def {f.__name__}({param_str}){sync_return_str}:
+    # This is where language servers will navigate when going to definition for {f.__name__}()
+    # For that reason, we put the generated *sync* proxy implementation here with the
+    # sync function signature.
+    # However, this is *not* what gets immediately called when {f.__name__}() is called -
+    # that goes via the wrapper that in turn calls back to this.
+    # This complicated control flow is done in order to maximize code navigation usability.
+    # This sync function implementation should be really short for that reason and just delegate
+    # calls to the original function + input/output translation
+{sync_function_body}"""
 
-    sync_code = f"""class {class_name}:
-    synchronizer = get_synchronizer('{synchronizer_name}')
-    impl_function = {target_module}.{f.__name__}  # reference to original function
-
-    def __call__({call_signature}
-{sync_body}
-
-    async def aio({aio_signature}
-{async_body}
-
-
-{f.__name__} = {class_name}()"""
-
-    return sync_code
+    return f"{wrapper_class_code}\n{sync_function_code}"
 
 
 def compile_method_wrapper(
@@ -413,7 +409,7 @@ def compile_library(wrapped_items: dict, synchronizer_name: str) -> str:
 
 import {impl_module}
 
-from synchronicity2.descriptor import wrapped_method
+from synchronicity2.descriptor import wrapped_function, wrapped_method
 from synchronicity2.synchronizer import get_synchronizer
 
 NoneType = None
