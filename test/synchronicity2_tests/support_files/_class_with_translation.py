@@ -20,7 +20,7 @@ class Node:
         """Create a child node."""
         return Node(child_value)
 
-    async def get_children(self, count: int) -> typing.AsyncGenerator["Node", None]:
+    async def get_children(self, count: int) -> "typing.AsyncGenerator[Node, None]":
         """Generate child nodes."""
         for i in range(count):
             yield Node(self.value + i)

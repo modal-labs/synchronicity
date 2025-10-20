@@ -298,30 +298,34 @@ class TestEdgeCases:
         assert "._impl_instance" in expr
 
 
-class TestForwardReferences:
-    """Tests for handling forward references (ForwardRef objects)."""
+class TestForwardReferenceErrors:
+    """Tests that ForwardRef objects raise helpful errors."""
 
-    def test_forward_ref_detection(self, test_synchronizer):
-        """Test that ForwardRef objects referring to wrapped classes are detected."""
-        # Create a ForwardRef to Foo
+    def test_forward_ref_raises_error(self, test_synchronizer):
+        """Test that ForwardRef raises a TypeError with helpful message."""
+        # Create a ForwardRef (simulating what happens with quoted generic args)
         forward_ref = typing.ForwardRef("Foo")
-        # Since we can't easily resolve it in tests, we'll test the logic handles it
-        # The actual ForwardRef handling is tested in integration tests
-        # Here we just verify the function doesn't crash
-        try:
+
+        # Should raise TypeError with helpful message
+        with pytest.raises(TypeError) as exc_info:
             needs_translation(forward_ref, test_synchronizer)
-            # Should not raise
-        except Exception as e:
-            pytest.fail(f"ForwardRef handling raised unexpected exception: {e}")
 
-    def test_format_forward_ref(self, test_synchronizer):
-        """Test formatting a ForwardRef that refers to a wrapped class."""
+        error_msg = str(exc_info.value)
+        assert "unresolved forward reference" in error_msg
+        assert "Foo" in error_msg
+        assert "quote the entire type annotation" in error_msg
 
-        # Manually create a ForwardRef with __forward_arg__
+    def test_forward_ref_in_format_raises_error(self, test_synchronizer):
+        """Test that ForwardRef in format_type_for_annotation raises error."""
+
         class MockForwardRef:
-            __forward_arg__ = "Foo"
+            __forward_arg__ = "MyClass"
 
         forward_ref = MockForwardRef()
-        result = format_type_for_annotation(forward_ref, test_synchronizer, "test_module")
-        # Should return the wrapper name
-        assert result == "Foo"
+
+        with pytest.raises(TypeError) as exc_info:
+            format_type_for_annotation(forward_ref, test_synchronizer, "test_module")
+
+        error_msg = str(exc_info.value)
+        assert "MyClass" in error_msg
+        assert "unresolved forward reference" in error_msg

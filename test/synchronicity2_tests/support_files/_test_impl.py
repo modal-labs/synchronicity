@@ -17,7 +17,7 @@ class _ImplPerson:
     async def greet(self, other: "_ImplPerson") -> str:
         return f"{self.name} greets {other.name}"
 
-    async def get_friends(self) -> typing.List["_ImplPerson"]:
+    async def get_friends(self) -> "typing.List[_ImplPerson]":
         return [_ImplPerson("Alice"), _ImplPerson("Bob")]
 
 

@@ -403,17 +403,8 @@ def compile_method_wrapper(
                 wrapper_yield_type = format_type_for_annotation(yield_type, synchronizer, current_target_module)
 
                 # Quote wrapped class names in generic types for forward references
-                # Check both direct types and ForwardRef
-                should_quote = False
-                if isinstance(yield_type, type) and yield_type in synchronizer._wrapped:
-                    should_quote = True
-                elif hasattr(yield_type, "__forward_arg__"):
-                    # ForwardRef - check if it refers to a wrapped class
-                    forward_str = yield_type.__forward_arg__
-                    for obj in synchronizer._wrapped.keys():
-                        if isinstance(obj, type) and obj.__name__ == forward_str:
-                            should_quote = True
-                            break
+                # Check if the yield type is a wrapped type that needs quoting
+                should_quote = isinstance(yield_type, type) and yield_type in synchronizer._wrapped
 
                 if should_quote:
                     quoted_yield_type = f'"{wrapper_yield_type}"'

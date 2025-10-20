@@ -12,6 +12,31 @@ if TYPE_CHECKING:
     from ..synchronizer import Synchronizer
 
 
+def _check_no_forward_ref(annotation) -> None:
+    """
+    Validate that an annotation is not a ForwardRef.
+
+    ForwardRef objects indicate that get_annotations(eval_str=True) failed to resolve
+    a type annotation, which prevents object-based type checking. This usually happens
+    when users quote individual type arguments inside generics.
+
+    Args:
+        annotation: The type annotation to check
+
+    Raises:
+        TypeError: If annotation is a ForwardRef, with guidance on how to fix it
+    """
+    if hasattr(annotation, "__forward_arg__"):
+        forward_str = annotation.__forward_arg__
+        raise TypeError(
+            f"Found unresolved forward reference '{forward_str}' in type annotation. "
+            f"This usually happens when you quote a type inside a generic annotation like "
+            f'typing.AsyncGenerator["{forward_str}", None]. Instead, quote the entire type annotation: '
+            f'"typing.AsyncGenerator[{forward_str}, None]". This allows proper type resolution for '
+            f"object-based type checking."
+        )
+
+
 def format_type_annotation(annotation) -> str:
     """
     Format a type annotation for code generation (simple version without translation).
@@ -86,13 +111,8 @@ def needs_translation(annotation, synchronizer: "Synchronizer") -> bool:
     if annotation == inspect.Signature.empty:
         return False
 
-    # Handle ForwardRef - check if it refers to a wrapped class
-    if hasattr(annotation, "__forward_arg__"):
-        forward_str = annotation.__forward_arg__
-        for obj in synchronizer._wrapped.keys():
-            if isinstance(obj, type) and obj.__name__ == forward_str:
-                return True
-        return False
+    # Validate no ForwardRef (would prevent object-based checks)
+    _check_no_forward_ref(annotation)
 
     # Direct type check - most common case
     if isinstance(annotation, type) and annotation in synchronizer._wrapped:
@@ -131,10 +151,9 @@ def build_unwrap_expr(annotation, synchronizer: "Synchronizer", var_name: str = 
     if not needs_translation(annotation, synchronizer):
         return var_name
 
-    # Handle ForwardRef
-    if hasattr(annotation, "__forward_arg__"):
-        # ForwardRef to a wrapped class
-        return f"{var_name}._impl_instance"
+    # ForwardRef should have been caught by needs_translation
+    # If we get here, something is wrong - validate again to provide clear error
+    _check_no_forward_ref(annotation)
 
     # Get the origin and args for generic types
     origin = typing.get_origin(annotation)
@@ -226,14 +245,9 @@ def build_wrap_expr(
         # Should not reach here if needs_translation returned True
         return value
 
-    # Handle ForwardRef
-    if hasattr(annotation, "__forward_arg__"):
-        forward_str = annotation.__forward_arg__
-        # Find the wrapped class by name
-        for obj in synchronizer._wrapped.keys():
-            if isinstance(obj, type) and obj.__name__ == forward_str:
-                return _get_wrap_call(obj, var_name)
-        return var_name
+    # ForwardRef should have been caught by needs_translation
+    # If we get here, something is wrong - validate again to provide clear error
+    _check_no_forward_ref(annotation)
 
     # Get the origin and args for generic types
     origin = typing.get_origin(annotation)
@@ -306,20 +320,8 @@ def format_type_for_annotation(annotation, synchronizer: "Synchronizer", current
     if annotation == inspect.Signature.empty:
         return ""
 
-    # Handle ForwardRef - get the string and check if it's a wrapped type
-    if hasattr(annotation, "__forward_arg__"):
-        forward_str = annotation.__forward_arg__
-        # Check if this forward reference refers to a wrapped class
-        # by looking for a class with this name in the synchronizer
-        for obj in synchronizer._wrapped.keys():
-            if isinstance(obj, type) and obj.__name__ == forward_str:
-                target_module, wrapper_name = synchronizer._wrapped[obj]
-                if target_module == current_target_module:
-                    return wrapper_name
-                else:
-                    return f"{target_module}.{wrapper_name}"
-        # Not a wrapped type, return the forward ref string as-is
-        return forward_str
+    # Validate no ForwardRef (would prevent object-based checks)
+    _check_no_forward_ref(annotation)
 
     # Handle generic types
     origin = typing.get_origin(annotation)
