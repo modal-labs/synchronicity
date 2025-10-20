@@ -109,15 +109,16 @@ def test_class_with_translation_generation():
     modules = compile_modules(_class_with_translation.lib._wrapped, "translation_lib")
     generated_code = list(modules.values())[0]  # Extract the single module
 
-    # Verify wrapper cache generation
+    # Verify weakref import
     assert "import weakref" in generated_code
-    assert "_cache_Node: weakref.WeakValueDictionary" in generated_code
 
-    # Verify _from_impl classmethod generation
+    # Verify _from_impl classmethod generation with class-level cache
     assert "def _from_impl(cls, impl_instance: _class_with_translation.Node)" in generated_code
+    assert "_instance_cache: weakref.WeakValueDictionary" in generated_code
+    assert "if cache_key in cls._instance_cache:" in generated_code
     assert "wrapper = cls.__new__(cls)" in generated_code
     assert "wrapper._impl_instance = impl_instance" in generated_code
-    assert "_cache_Node[cache_key] = wrapper" in generated_code
+    assert "cls._instance_cache[cache_key] = wrapper" in generated_code
 
     # Verify translation in function signatures
     assert "def create_node(value: int) -> Node:" in generated_code

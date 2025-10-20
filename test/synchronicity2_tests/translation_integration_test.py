@@ -22,7 +22,7 @@ def test_compile_with_translation():
 
     # Check that the code contains the expected elements
     assert "import weakref" in compiled_code
-    assert "_cache__ImplPerson" in compiled_code
+    assert "_instance_cache" in compiled_code
     assert "def _from_impl(cls, impl_instance" in compiled_code
     assert "p_impl = p._impl_instance" in compiled_code
     assert "_ImplPerson._from_impl(" in compiled_code
@@ -47,16 +47,16 @@ def test_wrapper_helpers_generated():
     modules = compile_modules(_test_impl.lib._wrapped, "test_lib")
     compiled_code = list(modules.values())[0]  # Extract the single module
 
-    # Check the _from_impl classmethod structure
-    assert "_cache__ImplPerson: weakref.WeakValueDictionary = weakref.WeakValueDictionary()" in compiled_code
+    # Check the _from_impl classmethod structure with class-level cache
+    assert "_instance_cache: weakref.WeakValueDictionary = weakref.WeakValueDictionary()" in compiled_code
     assert "def _from_impl(cls, impl_instance: _test_impl._ImplPerson)" in compiled_code
     assert "cache_key = id(impl_instance)" in compiled_code
-    assert "if cache_key in _cache__ImplPerson:" in compiled_code
+    assert "if cache_key in cls._instance_cache:" in compiled_code
     assert "wrapper = cls.__new__(cls)" in compiled_code
     assert "wrapper._impl_instance = impl_instance" in compiled_code
-    assert "_cache__ImplPerson[cache_key] = wrapper" in compiled_code
+    assert "cls._instance_cache[cache_key] = wrapper" in compiled_code
 
-    print("✓ _from_impl classmethod generated correctly")
+    print("✓ _from_impl classmethod with class-level cache generated correctly")
 
 
 def test_unwrap_expressions_in_functions():

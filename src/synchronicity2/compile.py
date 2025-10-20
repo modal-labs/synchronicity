@@ -16,37 +16,20 @@ from .codegen import (
 )
 
 
-def _generate_wrapper_caches(wrapped_classes: dict[str, str]) -> str:
+def _generate_weakref_import(wrapped_classes: dict[str, str]) -> str:
     """
-    Generate module-level cache declarations for wrapped classes.
-
-    Each cache is a WeakValueDictionary to preserve identity
-    (same impl instance always returns the same wrapper instance).
+    Generate weakref import if there are any wrapped classes.
 
     Args:
         wrapped_classes: Mapping of wrapper names to impl qualified names
 
     Returns:
-        String containing cache declarations
+        String containing weakref import, or empty string if no wrapped classes
     """
     if not wrapped_classes:
         return ""
 
-    caches = []
-
-    # Import weakref
-    caches.append("import weakref")
-    caches.append("")
-
-    # Generate a cache for each wrapped class
-    for wrapper_name in wrapped_classes.keys():
-        cache_code = (
-            f"# Cache for {wrapper_name} to preserve wrapper identity\n"
-            f"_cache_{wrapper_name}: weakref.WeakValueDictionary = weakref.WeakValueDictionary()"
-        )
-        caches.append(cache_code)
-
-    return "\n\n".join(caches)
+    return "import weakref"
 
 
 def _qualify_type_for_annotation(
@@ -672,15 +655,15 @@ def compile_class(
         cache_key = id(impl_instance)
 
         # Check cache first
-        if cache_key in _cache_{cls.__name__}:
-            return _cache_{cls.__name__}[cache_key]
+        if cache_key in cls._instance_cache:
+            return cls._instance_cache[cache_key]
 
         # Create new wrapper using __new__ to bypass __init__
         wrapper = cls.__new__(cls)
         wrapper._impl_instance = impl_instance
 
         # Cache it
-        _cache_{cls.__name__}[cache_key] = wrapper
+        cls._instance_cache[cache_key] = wrapper
 
         return wrapper"""
 
@@ -688,6 +671,7 @@ def compile_class(
     \"\"\"Wrapper class for {target_module}.{cls.__name__} with sync/async method support\"\"\"
 
     _synchronizer = get_synchronizer('{synchronizer_name}')
+    _instance_cache: weakref.WeakValueDictionary = weakref.WeakValueDictionary()
 
     def __init__(self, {init_signature}):
         self._impl_instance = {target_module}.{cls.__name__}({init_call})
@@ -839,9 +823,6 @@ def compile_module(
     for o, (target_module, target_name) in module_items.items():
         impl_modules.add(o.__module__)
 
-    # Use the first module as the primary impl_module (for backward compatibility)
-    impl_module = sorted(impl_modules)[0]
-
     # Extract wrapped classes for this module (subset of all_wrapped_classes)
     wrapped_classes = {
         name: qual_name
@@ -894,11 +875,11 @@ def _wrap_{class_name}(impl_instance):
         compiled_code.append("".join(lazy_helpers))
         compiled_code.append("")  # Add blank line after lazy helpers
 
-    # Generate wrapper caches if there are wrapped classes
+    # Generate weakref import if there are wrapped classes
     if wrapped_classes:
-        wrapper_caches = _generate_wrapper_caches(wrapped_classes)
-        compiled_code.append(wrapper_caches)
-        compiled_code.append("")  # Add blank line after caches
+        weakref_import = _generate_weakref_import(wrapped_classes)
+        compiled_code.append(weakref_import)
+        compiled_code.append("")  # Add blank line after import
 
     # Separate classes and functions to ensure correct ordering
     # Classes must be compiled before functions to avoid forward reference issues
