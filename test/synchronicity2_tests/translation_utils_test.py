@@ -1,18 +1,23 @@
-"""Tests for type translation utilities in synchronicity2.codegen."""
+"""Tests for type translation utilities in synchronicity2.codegen.
 
+These tests verify the object-based type translation system that uses
+inspect.get_annotations(eval_str=True) and object identity checks.
+"""
+
+import inspect
 import pytest
 import typing
 
 from synchronicity2.codegen import (
     build_unwrap_expr,
     build_wrap_expr,
-    get_wrapped_classes,
+    format_type_for_annotation,
     needs_translation,
-    translate_type_annotation,
 )
+from synchronicity2.synchronizer import Synchronizer
 
 
-# Mock wrapped items for testing
+# Mock implementation classes
 class _impl_Foo:
     """Mock implementation class."""
 
@@ -25,267 +30,298 @@ class _impl_Bar:
     pass
 
 
-# Simulate what Library.wrap() produces
-MOCK_WRAPPED_ITEMS = {
-    _impl_Foo: ("test_module", "Foo"),
-    _impl_Bar: ("test_module", "Bar"),
-}
-
-
 @pytest.fixture
-def wrapped_classes():
-    """Fixture providing wrapped classes mapping."""
-    return get_wrapped_classes(MOCK_WRAPPED_ITEMS)
-
-
-class TestGetWrappedClasses:
-    """Tests for get_wrapped_classes()."""
-
-    def test_extracts_class_names(self):
-        """Test that it extracts wrapper name -> impl qualified name mapping."""
-        result = get_wrapped_classes(MOCK_WRAPPED_ITEMS)
-        assert isinstance(result, dict)
-        assert "Foo" in result
-        assert "Bar" in result
-
-    def test_builds_qualified_names(self):
-        """Test that implementation names are fully qualified."""
-        result = get_wrapped_classes(MOCK_WRAPPED_ITEMS)
-        # Should be module.ClassName format
-        assert "." in result["Foo"]
-        assert "_impl_Foo" in result["Foo"]
-
-    def test_ignores_non_classes(self):
-        """Test that non-class objects are ignored."""
-
-        def some_function():
-            pass
-
-        items_with_function = {
-            _impl_Foo: ("test_module", "Foo"),
-            some_function: ("test_module", "some_function"),
-        }
-        result = get_wrapped_classes(items_with_function)
-        assert "Foo" in result
-        assert "some_function" not in result
-
-
-class TestTranslateTypeAnnotation:
-    """Tests for translate_type_annotation()."""
-
-    def test_direct_wrapped_type(self, wrapped_classes):
-        """Test translating a direct wrapped class type."""
-        wrapper_str, impl_str = translate_type_annotation(_impl_Foo, wrapped_classes, "test_translation_utils_test")
-        assert "Foo" == wrapper_str
-        assert "_impl_Foo" in impl_str
-
-    def test_list_of_wrapped_type(self, wrapped_classes):
-        """Test translating list[WrappedClass]."""
-        annotation = typing.List[_impl_Foo]
-        wrapper_str, impl_str = translate_type_annotation(annotation, wrapped_classes, "test_translation_utils_test")
-        assert "Foo" in wrapper_str
-        assert "_impl_Foo" in impl_str
-        assert "list" in wrapper_str.lower()
-
-    def test_dict_with_wrapped_values(self, wrapped_classes):
-        """Test translating dict[str, WrappedClass]."""
-        annotation = typing.Dict[str, _impl_Bar]
-        wrapper_str, impl_str = translate_type_annotation(annotation, wrapped_classes, "test_translation_utils_test")
-        assert "Bar" in wrapper_str
-        assert "_impl_Bar" in impl_str
-        assert "dict" in wrapper_str.lower()
-
-    def test_optional_wrapped_type(self, wrapped_classes):
-        """Test translating Optional[WrappedClass]."""
-        annotation = typing.Optional[_impl_Foo]
-        wrapper_str, impl_str = translate_type_annotation(annotation, wrapped_classes, "test_translation_utils_test")
-        assert "Foo" in wrapper_str
-        assert "_impl_Foo" in impl_str
-
-    def test_primitive_type_unchanged(self, wrapped_classes):
-        """Test that primitive types are not translated."""
-        wrapper_str, impl_str = translate_type_annotation(str, wrapped_classes, "test_translation_utils_test")
-        assert wrapper_str == impl_str
-        assert "str" in wrapper_str
-
-    def test_any_type_unchanged(self, wrapped_classes):
-        """Test that typing.Any is not translated."""
-        wrapper_str, impl_str = translate_type_annotation(typing.Any, wrapped_classes, "test_translation_utils_test")
-        assert wrapper_str == impl_str
-        assert "Any" in wrapper_str
+def test_synchronizer():
+    """Create a test synchronizer with wrapped classes."""
+    sync = Synchronizer("test_lib")
+    # Register the mock classes as wrapped
+    sync._wrapped[_impl_Foo] = ("test_module", "Foo")
+    sync._wrapped[_impl_Bar] = ("test_module", "Bar")
+    return sync
 
 
 class TestNeedsTranslation:
-    """Tests for needs_translation()."""
+    """Tests for needs_translation() using object identity checks."""
 
-    def test_wrapped_typeneeds_translation(self, wrapped_classes):
+    def test_wrapped_type_needs_translation(self, test_synchronizer):
         """Test that wrapped types are detected."""
-        assert needs_translation(_impl_Foo, wrapped_classes) is True
+        assert needs_translation(_impl_Foo, test_synchronizer) is True
 
-    def test_list_of_wrappedneeds_translation(self, wrapped_classes):
+    def test_list_of_wrapped_needs_translation(self, test_synchronizer):
         """Test that list[WrappedClass] needs translation."""
         annotation = typing.List[_impl_Bar]
-        assert needs_translation(annotation, wrapped_classes) is True
+        assert needs_translation(annotation, test_synchronizer) is True
 
-    def test_primitive_no_translation(self, wrapped_classes):
+    def test_primitive_no_translation(self, test_synchronizer):
         """Test that primitives don't need translation."""
-        assert needs_translation(str, wrapped_classes) is False
-        assert needs_translation(int, wrapped_classes) is False
+        assert needs_translation(str, test_synchronizer) is False
+        assert needs_translation(int, test_synchronizer) is False
 
-    def test_any_no_translation(self, wrapped_classes):
+    def test_any_no_translation(self, test_synchronizer):
         """Test that typing.Any doesn't need translation."""
-        assert needs_translation(typing.Any, wrapped_classes) is False
+        assert needs_translation(typing.Any, test_synchronizer) is False
 
-    def test_empty_annotation_no_translation(self, wrapped_classes):
+    def test_empty_annotation_no_translation(self, test_synchronizer):
         """Test that Signature.empty doesn't need translation."""
-        import inspect
+        assert needs_translation(inspect.Signature.empty, test_synchronizer) is False
 
-        assert needs_translation(inspect.Signature.empty, wrapped_classes) is False
+    def test_dict_with_wrapped_values_needs_translation(self, test_synchronizer):
+        """Test that dict[str, WrappedClass] needs translation."""
+        annotation = typing.Dict[str, _impl_Foo]
+        assert needs_translation(annotation, test_synchronizer) is True
+
+    def test_optional_wrapped_needs_translation(self, test_synchronizer):
+        """Test that Optional[WrappedClass] needs translation."""
+        annotation = typing.Optional[_impl_Foo]
+        assert needs_translation(annotation, test_synchronizer) is True
+
+    def test_nested_wrapped_needs_translation(self, test_synchronizer):
+        """Test that nested structures with wrapped types need translation."""
+        annotation = typing.List[typing.Dict[str, _impl_Bar]]
+        assert needs_translation(annotation, test_synchronizer) is True
+
+
+class TestFormatTypeForAnnotation:
+    """Tests for format_type_for_annotation() with object-based type resolution."""
+
+    def test_wrapped_type_local_module(self, test_synchronizer):
+        """Test formatting a wrapped type in the same target module."""
+        result = format_type_for_annotation(_impl_Foo, test_synchronizer, "test_module")
+        assert result == "Foo"
+
+    def test_wrapped_type_cross_module(self, test_synchronizer):
+        """Test formatting a wrapped type from a different module."""
+        result = format_type_for_annotation(_impl_Foo, test_synchronizer, "other_module")
+        assert result == "test_module.Foo"
+
+    def test_list_of_wrapped(self, test_synchronizer):
+        """Test formatting list[WrappedClass]."""
+        annotation = typing.List[_impl_Foo]
+        result = format_type_for_annotation(annotation, test_synchronizer, "test_module")
+        assert "list[Foo]" in result
+
+    def test_dict_with_wrapped_values(self, test_synchronizer):
+        """Test formatting dict[str, WrappedClass]."""
+        annotation = typing.Dict[str, _impl_Bar]
+        result = format_type_for_annotation(annotation, test_synchronizer, "test_module")
+        assert "dict[str, Bar]" in result
+
+    def test_optional_wrapped(self, test_synchronizer):
+        """Test formatting Optional[WrappedClass]."""
+        annotation = typing.Optional[_impl_Foo]
+        result = format_type_for_annotation(annotation, test_synchronizer, "test_module")
+        assert "Union" in result or "Optional" in result
+        assert "Foo" in result
+
+    def test_primitive_type(self, test_synchronizer):
+        """Test that primitive types are formatted correctly."""
+        result = format_type_for_annotation(str, test_synchronizer, "test_module")
+        assert result == "str"
+
+    def test_none_type(self, test_synchronizer):
+        """Test that None type is formatted correctly."""
+        result = format_type_for_annotation(type(None), test_synchronizer, "test_module")
+        assert result == "None"
 
 
 class TestBuildUnwrapExpr:
-    """Tests for build_unwrap_expr()."""
+    """Tests for build_unwrap_expr() with object-based type checks."""
 
-    def test_direct_wrapped_type(self, wrapped_classes):
+    def test_direct_wrapped_type(self, test_synchronizer):
         """Test unwrapping a direct wrapped type."""
-        expr = build_unwrap_expr(_impl_Foo, wrapped_classes, "my_var")
+        expr = build_unwrap_expr(_impl_Foo, test_synchronizer, "my_var")
         assert expr == "my_var._impl_instance"
 
-    def test_list_of_wrapped(self, wrapped_classes):
+    def test_list_of_wrapped(self, test_synchronizer):
         """Test unwrapping list[WrappedClass]."""
         annotation = typing.List[_impl_Foo]
-        expr = build_unwrap_expr(annotation, wrapped_classes, "items")
+        expr = build_unwrap_expr(annotation, test_synchronizer, "items")
         assert "for x in items" in expr
         assert "._impl_instance" in expr
         assert expr.startswith("[")
         assert expr.endswith("]")
 
-    def test_dict_with_wrapped_values(self, wrapped_classes):
+    def test_dict_with_wrapped_values(self, test_synchronizer):
         """Test unwrapping dict[str, WrappedClass]."""
         annotation = typing.Dict[str, _impl_Bar]
-        expr = build_unwrap_expr(annotation, wrapped_classes, "mapping")
+        expr = build_unwrap_expr(annotation, test_synchronizer, "mapping")
         assert ".items()" in expr
         assert "._impl_instance" in expr
         assert "{" in expr
 
-    def test_optional_wrapped_type(self, wrapped_classes):
+    def test_optional_wrapped_type(self, test_synchronizer):
         """Test unwrapping Optional[WrappedClass]."""
         annotation = typing.Optional[_impl_Foo]
-        expr = build_unwrap_expr(annotation, wrapped_classes, "maybe_val")
+        expr = build_unwrap_expr(annotation, test_synchronizer, "maybe_val")
         assert "if maybe_val is not None else None" in expr
         assert "._impl_instance" in expr
 
-    def test_tuple_of_wrapped(self, wrapped_classes):
+    def test_tuple_of_wrapped(self, test_synchronizer):
         """Test unwrapping tuple[WrappedClass, ...]."""
         annotation = typing.Tuple[_impl_Foo, ...]
-        expr = build_unwrap_expr(annotation, wrapped_classes, "tup")
+        expr = build_unwrap_expr(annotation, test_synchronizer, "tup")
         assert "tuple(" in expr
         assert "for x in tup" in expr
         assert "._impl_instance" in expr
 
-    def test_nested_list_dict(self, wrapped_classes):
+    def test_nested_list_dict(self, test_synchronizer):
         """Test unwrapping nested list[dict[str, WrappedClass]]."""
         annotation = typing.List[typing.Dict[str, _impl_Foo]]
-        expr = build_unwrap_expr(annotation, wrapped_classes, "data")
+        expr = build_unwrap_expr(annotation, test_synchronizer, "data")
         # Should have nested comprehensions
         assert "for x in data" in expr
         assert ".items()" in expr
         assert "._impl_instance" in expr
 
-    def test_primitive_no_unwrap(self, wrapped_classes):
+    def test_primitive_no_unwrap(self, test_synchronizer):
         """Test that primitives are returned as-is."""
-        expr = build_unwrap_expr(str, wrapped_classes, "text")
+        expr = build_unwrap_expr(str, test_synchronizer, "text")
         assert expr == "text"
 
-    def test_any_no_unwrap(self, wrapped_classes):
+    def test_any_no_unwrap(self, test_synchronizer):
         """Test that typing.Any is not unwrapped."""
-        expr = build_unwrap_expr(typing.Any, wrapped_classes, "anything")
+        expr = build_unwrap_expr(typing.Any, test_synchronizer, "anything")
         assert expr == "anything"
+
+    def test_empty_annotation_no_unwrap(self, test_synchronizer):
+        """Test that Signature.empty is not unwrapped."""
+        expr = build_unwrap_expr(inspect.Signature.empty, test_synchronizer, "val")
+        assert expr == "val"
 
 
 class TestBuildWrapExpr:
-    """Tests for build_wrap_expr()."""
+    """Tests for build_wrap_expr() with object-based type checks and module awareness."""
 
-    def test_direct_wrapped_type(self, wrapped_classes):
-        """Test wrapping a direct wrapped type."""
-        expr = build_wrap_expr(_impl_Foo, wrapped_classes, "result")
+    def test_direct_wrapped_type_local(self, test_synchronizer):
+        """Test wrapping a direct wrapped type in the same module."""
+        expr = build_wrap_expr(_impl_Foo, test_synchronizer, "test_module", "result")
         assert expr == "Foo._from_impl(result)"
 
-    def test_list_of_wrapped(self, wrapped_classes):
+    def test_direct_wrapped_type_cross_module(self, test_synchronizer):
+        """Test wrapping a direct wrapped type from a different module."""
+        expr = build_wrap_expr(_impl_Foo, test_synchronizer, "other_module", "result")
+        assert expr == "test_module.Foo._from_impl(result)"
+
+    def test_list_of_wrapped(self, test_synchronizer):
         """Test wrapping list[WrappedClass]."""
         annotation = typing.List[_impl_Bar]
-        expr = build_wrap_expr(annotation, wrapped_classes, "items")
+        expr = build_wrap_expr(annotation, test_synchronizer, "test_module", "items")
         assert "Bar._from_impl(x)" in expr
         assert "for x in items" in expr
         assert expr.startswith("[")
 
-    def test_dict_with_wrapped_values(self, wrapped_classes):
+    def test_dict_with_wrapped_values(self, test_synchronizer):
         """Test wrapping dict[str, WrappedClass]."""
         annotation = typing.Dict[str, _impl_Foo]
-        expr = build_wrap_expr(annotation, wrapped_classes, "mapping")
+        expr = build_wrap_expr(annotation, test_synchronizer, "test_module", "mapping")
         assert "Foo._from_impl(v)" in expr
         assert ".items()" in expr
         assert "{" in expr
 
-    def test_optional_wrapped_type(self, wrapped_classes):
+    def test_optional_wrapped_type(self, test_synchronizer):
         """Test wrapping Optional[WrappedClass]."""
         annotation = typing.Optional[_impl_Bar]
-        expr = build_wrap_expr(annotation, wrapped_classes, "maybe_val")
+        expr = build_wrap_expr(annotation, test_synchronizer, "test_module", "maybe_val")
         assert "Bar._from_impl(maybe_val)" in expr
         assert "if maybe_val is not None else None" in expr
 
-    def test_tuple_of_wrapped(self, wrapped_classes):
+    def test_tuple_of_wrapped(self, test_synchronizer):
         """Test wrapping tuple[WrappedClass, ...]."""
         annotation = typing.Tuple[_impl_Foo, ...]
-        expr = build_wrap_expr(annotation, wrapped_classes, "tup")
+        expr = build_wrap_expr(annotation, test_synchronizer, "test_module", "tup")
         assert "Foo._from_impl(x)" in expr
         assert "tuple(" in expr
         assert "for x in tup" in expr
 
-    def test_nested_list_dict(self, wrapped_classes):
+    def test_nested_list_dict(self, test_synchronizer):
         """Test wrapping nested list[dict[str, WrappedClass]]."""
         annotation = typing.List[typing.Dict[str, _impl_Bar]]
-        expr = build_wrap_expr(annotation, wrapped_classes, "data")
+        expr = build_wrap_expr(annotation, test_synchronizer, "test_module", "data")
         # Should have nested comprehensions
         assert "Bar._from_impl(v)" in expr
         assert "for x in data" in expr
         assert ".items()" in expr
 
-    def test_primitive_no_wrap(self, wrapped_classes):
+    def test_primitive_no_wrap(self, test_synchronizer):
         """Test that primitives are returned as-is."""
-        expr = build_wrap_expr(int, wrapped_classes, "number")
+        expr = build_wrap_expr(int, test_synchronizer, "test_module", "number")
         assert expr == "number"
 
-    def test_any_no_wrap(self, wrapped_classes):
+    def test_any_no_wrap(self, test_synchronizer):
         """Test that typing.Any is not wrapped."""
-        expr = build_wrap_expr(typing.Any, wrapped_classes, "anything")
+        expr = build_wrap_expr(typing.Any, test_synchronizer, "test_module", "anything")
         assert expr == "anything"
+
+    def test_cross_module_qualification(self, test_synchronizer):
+        """Test that cross-module types are fully qualified."""
+        # When wrapping in a different module, should use full path
+        expr = build_wrap_expr(_impl_Foo, test_synchronizer, "different_module", "result")
+        assert "test_module.Foo._from_impl(result)" == expr
 
 
 class TestEdgeCases:
     """Tests for edge cases and complex scenarios."""
 
-    def test_multiple_wrapped_classes_in_dict(self, wrapped_classes):
-        """Test dict with multiple wrapped classes doesn't break."""
-        # dict[Foo, Bar] would be unusual but should handle gracefully
+    def test_multiple_wrapped_classes_in_dict(self, test_synchronizer):
+        """Test dict with wrapped key and value types."""
         annotation = typing.Dict[_impl_Foo, _impl_Bar]
-        # This should at least not crash
-        needs_translation(annotation, wrapped_classes)
-        # Keys are not translated, only values
-        expr = build_wrap_expr(annotation, wrapped_classes, "data")
+        # Keys are not typically translated, only values
+        expr = build_wrap_expr(annotation, test_synchronizer, "test_module", "data")
         # Should still work but only translate values
         assert "._from_impl(" in expr or expr == "data"
 
-    def test_deeply_nested_structure(self, wrapped_classes):
+    def test_deeply_nested_structure(self, test_synchronizer):
         """Test deeply nested type structure."""
         annotation = typing.List[typing.Optional[typing.Dict[str, _impl_Foo]]]
-        expr = build_unwrap_expr(annotation, wrapped_classes, "deep")
+        expr = build_unwrap_expr(annotation, test_synchronizer, "deep")
         # Should handle deep nesting
         assert "._impl_instance" in expr
 
-    def test_empty_wrapped_classes(self):
+    def test_empty_synchronizer(self):
         """Test with no wrapped classes."""
-        empty_wrapped = {}
-        assert needs_translation(_impl_Foo, empty_wrapped) is False
-        expr = build_unwrap_expr(_impl_Foo, empty_wrapped, "val")
-        assert expr == "val"  # No translation without mapping
+        empty_sync = Synchronizer("empty")
+        assert needs_translation(_impl_Foo, empty_sync) is False
+        expr = build_unwrap_expr(_impl_Foo, empty_sync, "val")
+        assert expr == "val"  # No translation without registration
+
+    def test_union_with_multiple_wrapped_types(self, test_synchronizer):
+        """Test Union with multiple wrapped types."""
+        annotation = typing.Union[_impl_Foo, _impl_Bar]
+        # Should detect that translation is needed
+        assert needs_translation(annotation, test_synchronizer) is True
+
+    def test_generic_alias_with_wrapped_type(self, test_synchronizer):
+        """Test list generic alias with wrapped type."""
+        annotation = list[_impl_Foo]  # Python 3.9+ syntax
+        assert needs_translation(annotation, test_synchronizer) is True
+        expr = build_unwrap_expr(annotation, test_synchronizer, "items")
+        assert "._impl_instance" in expr
+
+
+class TestForwardReferences:
+    """Tests for handling forward references (ForwardRef objects)."""
+
+    def test_forward_ref_detection(self, test_synchronizer):
+        """Test that ForwardRef objects referring to wrapped classes are detected."""
+        # Create a ForwardRef to Foo
+        forward_ref = typing.ForwardRef("Foo")
+        # Since we can't easily resolve it in tests, we'll test the logic handles it
+        # The actual ForwardRef handling is tested in integration tests
+        # Here we just verify the function doesn't crash
+        try:
+            needs_translation(forward_ref, test_synchronizer)
+            # Should not raise
+        except Exception as e:
+            pytest.fail(f"ForwardRef handling raised unexpected exception: {e}")
+
+    def test_format_forward_ref(self, test_synchronizer):
+        """Test formatting a ForwardRef that refers to a wrapped class."""
+
+        # Manually create a ForwardRef with __forward_arg__
+        class MockForwardRef:
+            __forward_arg__ = "Foo"
+
+        forward_ref = MockForwardRef()
+        result = format_type_for_annotation(forward_ref, test_synchronizer, "test_module")
+        # Should return the wrapper name
+        assert result == "Foo"

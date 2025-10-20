@@ -598,19 +598,11 @@ def compile_class(
 
     # Get class attributes from annotations - use get_annotations to resolve types
     attributes = []
-    try:
-        class_annotations = inspect.get_annotations(cls, eval_str=True)
-        for name, annotation in class_annotations.items():
-            if not name.startswith("_"):
-                attr_type = format_type_for_annotation(annotation, synchronizer, current_target_module)
-                attributes.append((name, attr_type))
-    except (NameError, AttributeError):
-        # If get_annotations fails, fall back to raw __annotations__
-        if hasattr(cls, "__annotations__"):
-            for name, annotation in cls.__annotations__.items():
-                if not name.startswith("_"):
-                    attr_type = format_type_for_annotation(annotation, synchronizer, current_target_module)
-                    attributes.append((name, attr_type))
+    class_annotations = inspect.get_annotations(cls, eval_str=True)
+    for name, annotation in class_annotations.items():
+        if not name.startswith("_"):
+            attr_type = format_type_for_annotation(annotation, synchronizer, current_target_module)
+            attributes.append((name, attr_type))
 
     # Generate method wrapper classes and method code
     method_wrapper_classes = []
