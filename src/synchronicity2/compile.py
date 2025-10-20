@@ -152,11 +152,28 @@ def compile_function(
             else:
                 sync_return_str = " -> typing.Generator"
                 async_return_str = " -> typing.AsyncGenerator"
+            # For generators, descriptor and final function have the same return type
+            sync_return_str_descriptor = sync_return_str
+            async_return_str_descriptor = async_return_str
         else:
+            # For descriptor class methods, quote wrapped class names to handle forward references
+            # For final function, use unquoted names since all classes are defined by then
+            quoted_wrapper_type = wrapper_return_type
+            for wrapper_name in wrapped_classes.keys():
+                # Quote standalone wrapped class names in descriptor
+                if wrapper_name == wrapper_return_type:
+                    quoted_wrapper_type = f'"{wrapper_name}"'
+                    break
+            # Descriptor class methods use quoted types
+            sync_return_str_descriptor = f" -> {quoted_wrapper_type}"
+            async_return_str_descriptor = f" -> {quoted_wrapper_type}"
+            # Final function uses unquoted types
             sync_return_str = f" -> {wrapper_return_type}"
             async_return_str = f" -> {wrapper_return_type}"
     else:
         sync_return_str, async_return_str = format_return_types(return_annotation, is_async_gen)
+        sync_return_str_descriptor = sync_return_str
+        async_return_str_descriptor = async_return_str
 
     # Generate the wrapper class
     wrapper_class_name = f"_{f.__name__}"
@@ -210,10 +227,10 @@ def compile_function(
     def __init__(self, sync_wrapper_function: typing.Callable[..., typing.Any]):
         self._sync_wrapper_function = sync_wrapper_function
 
-    def __call__(self, {param_str}){sync_return_str}:
+    def __call__(self, {param_str}){sync_return_str_descriptor}:
         return self._sync_wrapper_function({", ".join([p.split(":")[0].split("=")[0].strip() for p in params])})
 
-    async def aio(self, {param_str}){async_return_str}:{aio_unwrap}
+    async def aio(self, {param_str}){async_return_str_descriptor}:{aio_unwrap}
 {aio_body}
 """
 
@@ -347,11 +364,28 @@ def compile_method_wrapper(
             else:
                 sync_return_str = " -> typing.Generator"
                 async_return_str = " -> typing.AsyncGenerator"
+            # For generators, descriptor and final function have the same return type
+            sync_return_str_descriptor = sync_return_str
+            async_return_str_descriptor = async_return_str
         else:
+            # For descriptor class methods, quote wrapped class names to handle forward references
+            # For final method, use unquoted names since all classes are defined by then
+            quoted_wrapper_type = wrapper_return_type
+            for wrapper_name in wrapped_classes.keys():
+                # Quote standalone wrapped class names in descriptor
+                if wrapper_name == wrapper_return_type:
+                    quoted_wrapper_type = f'"{wrapper_name}"'
+                    break
+            # Descriptor class methods use quoted types
+            sync_return_str_descriptor = f" -> {quoted_wrapper_type}"
+            async_return_str_descriptor = f" -> {quoted_wrapper_type}"
+            # Final method uses unquoted types
             sync_return_str = f" -> {wrapper_return_type}"
             async_return_str = f" -> {wrapper_return_type}"
     else:
         sync_return_str, async_return_str = format_return_types(return_annotation, is_async_gen)
+        sync_return_str_descriptor = sync_return_str
+        async_return_str_descriptor = async_return_str
 
     # Generate the method wrapper class code
     wrapper_class_name = f"{class_name}_{method_name}"
@@ -407,10 +441,10 @@ def compile_method_wrapper(
         self._impl_instance = wrapper_instance._impl_instance
         self._unbound_sync_wrapper_method = unbound_sync_wrapper_method
 
-    def __call__(self, {param_str}){sync_return_str}:
+    def __call__(self, {param_str}){sync_return_str_descriptor}:
         return self._unbound_sync_wrapper_method(self._wrapper_instance, {call_params})
 
-    async def aio(self, {param_str}){async_return_str}:{aio_unwrap}
+    async def aio(self, {param_str}){async_return_str_descriptor}:{aio_unwrap}
 {aio_body}
 """
 
@@ -564,22 +598,25 @@ def compile_library(wrapped_items: dict, synchronizer_name: str) -> str:
     Returns:
         String containing all compiled wrapper code
     """
-    # Determine the implementation module name from the first item's actual __module__
-    impl_module = None
+    # Collect all unique implementation modules
+    impl_modules = set()
     for o, (target_module, target_name) in wrapped_items.items():
-        impl_module = o.__module__
-        break
+        impl_modules.add(o.__module__)
 
-    if impl_module is None:
+    if not impl_modules:
         return ""
+
+    # Use the first module as the primary impl_module (for backward compatibility)
+    impl_module = sorted(impl_modules)[0]
 
     # Extract wrapped classes mapping for type translation
     wrapped_classes = get_wrapped_classes(wrapped_items)
 
-    # Generate header with imports
+    # Generate header with imports for all implementation modules
+    imports = "\n".join(f"import {mod}" for mod in sorted(impl_modules))
     header = f"""import typing
 
-import {impl_module}
+{imports}
 
 from synchronicity2.descriptor import wrapped_function, wrapped_method
 from synchronicity2.synchronizer import get_synchronizer
@@ -593,13 +630,27 @@ from synchronicity2.synchronizer import get_synchronizer
         compiled_code.append(wrapper_helpers)
         compiled_code.append("")  # Add blank line after helpers
 
+    # Separate classes and functions to ensure correct ordering
+    # Classes must be compiled before functions to avoid forward reference issues
+    classes = []
+    functions = []
+
     for o, (target_module, target_name) in wrapped_items.items():
-        if isinstance(o, types.FunctionType):
-            code = compile_function(o, impl_module, synchronizer_name, wrapped_classes)
-            compiled_code.append(code)
-            compiled_code.append("")  # Add blank line after function
-        elif isinstance(o, type):
-            code = compile_class(o, impl_module, synchronizer_name, wrapped_classes)
-            compiled_code.append(code)
+        obj_module = o.__module__
+        if isinstance(o, type):
+            classes.append((o, obj_module))
+        elif isinstance(o, types.FunctionType):
+            functions.append((o, obj_module))
+
+    # Compile all classes first
+    for cls, obj_module in classes:
+        code = compile_class(cls, obj_module, synchronizer_name, wrapped_classes)
+        compiled_code.append(code)
+
+    # Then compile all functions
+    for func, obj_module in functions:
+        code = compile_function(func, obj_module, synchronizer_name, wrapped_classes)
+        compiled_code.append(code)
+        compiled_code.append("")  # Add blank line after function
 
     return "\n".join(compiled_code)
