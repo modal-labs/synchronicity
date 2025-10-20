@@ -254,7 +254,10 @@ reveal_type(connect_nodes)  # Should be a callable returning tuple[Node, Node]
 
 # Test __call__ attribute
 reveal_type(create_node.__call__)  # Should show callable signature
-reveal_type(create_node.aio)  # Should show callable signature
+
+# Test .aio attribute types
+reveal_type(create_node.aio)  # Should be async callable returning Node
+reveal_type(connect_nodes.aio)  # Should be async callable returning tuple[Node, Node]
 
 # Test function return types
 node = create_node(42)
@@ -269,6 +272,23 @@ parent = Node(1)
 child_node = Node(2)
 result = connect_nodes(parent, child_node)
 reveal_type(result)  # Should be tuple[Node, Node]
+
+
+async def async_usage() -> None:
+    # Test async function return types
+    node2 = await create_node.aio(42)
+    reveal_type(node2)  # Should be Node
+
+    # Test async method types
+    child2 = await node2.create_child.aio(100)
+    reveal_type(child2)  # Should be Node
+
+    # Test async function with multiple args
+    parent2 = await create_node.aio(1)
+    child_node2 = await create_node.aio(2)
+    result2 = await connect_nodes.aio(parent2, child_node2)
+    reveal_type(result2)  # Should be tuple[Node, Node]
+
 """
 
     # Check if pyright is available
@@ -283,6 +303,11 @@ reveal_type(result)  # Should be tuple[Node, Node]
         # Write the generated module
         wrapper_file = tmppath / "translation_lib.py"
         wrapper_file.write_text(generated_code)
+
+        # Write a pyright config to disable reportFunctionMemberAccess errors
+        # (since .aio is added dynamically by the decorator)
+        pyright_config = tmppath / "pyrightconfig.json"
+        pyright_config.write_text('{"reportFunctionMemberAccess": false}')
 
         # Write the usage file
         usage_file = tmppath / "usage.py"
@@ -313,12 +338,26 @@ reveal_type(result)  # Should be tuple[Node, Node]
         assert (
             'Type of "create_node.__call__" is' in output
         ), f"Expected create_node.__call__ type to be revealed, got: {output}"
-        # Return value types
+        # .aio attribute types
+        assert (
+            'Type of "create_node.aio" is "(value: int) -> Coroutine[Any, Any, Node]"' in output
+        ), f"Expected create_node.aio to have proper coroutine type, got: {output}"
+        assert (
+            'Type of "connect_nodes.aio" is "(parent: Node, child: Node) -> Coroutine[Any, Any, tuple[Node, Node]]"'
+            in output
+        ), f"Expected connect_nodes.aio to have proper coroutine type, got: {output}"
+        # Sync return value types
         assert 'Type of "node" is "Node"' in output, f"Expected node type to be Node, got: {output}"
         assert 'Type of "child" is "Node"' in output, f"Expected child type to be Node, got: {output}"
         assert (
             'Type of "result" is "tuple[Node, Node]"' in output
         ), f"Expected result type to be tuple[Node, Node], got: {output}"
+        # Async return value types
+        assert 'Type of "node2" is "Node"' in output, f"Expected node2 type to be Node, got: {output}"
+        assert 'Type of "child2" is "Node"' in output, f"Expected child2 type to be Node, got: {output}"
+        assert (
+            'Type of "result2" is "tuple[Node, Node]"' in output
+        ), f"Expected result2 type to be tuple[Node, Node], got: {output}"
 
         print("✓ Pyright type checking: Passed")
 
