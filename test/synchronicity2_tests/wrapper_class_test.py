@@ -344,3 +344,15 @@ def test_compile_class_no_methods():
     assert f"class {EmptyClass.__name__}:" in generated_code
     assert "_impl_instance" in generated_code
     # Should not have any method wrapper assignments since no async methods
+
+
+def test_compile_unwrapped_class_raises_error(test_synchronizer):
+    """Test that compiling a class not in the wrapped dict raises an error."""
+
+    class UnwrappedClass:
+        async def method(self) -> int:
+            return 42
+
+    # This should raise a ValueError because the class is not wrapped
+    with pytest.raises(ValueError, match="Class UnwrappedClass.*not in the synchronizer's wrapped dict"):
+        compile_class(UnwrappedClass, test_synchronizer)

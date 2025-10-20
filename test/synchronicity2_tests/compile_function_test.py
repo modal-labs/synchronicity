@@ -341,3 +341,26 @@ def test_compile_function_generic_types(test_synchronizer, generic_types_functio
     assert f"impl_function = {wrapped_func.__module__}." in generated_code
     assert "def __call__(self" in generated_code
     assert "async def aio(self" in generated_code
+
+
+def test_compile_unwrapped_async_function_raises_error(test_synchronizer):
+    """Test that compiling an async function not in the wrapped dict raises an error."""
+
+    async def unwrapped_async_func(x: int) -> str:
+        await asyncio.sleep(0.01)
+        return f"Result: {x}"
+
+    # This should raise a ValueError because the function is async but not wrapped
+    with pytest.raises(ValueError, match="Function unwrapped_async_func.*not in the synchronizer's wrapped dict"):
+        compile_function(unwrapped_async_func, test_synchronizer)
+
+
+def test_compile_unwrapped_sync_function_raises_error(test_synchronizer):
+    """Test that compiling a sync function not in the wrapped dict raises an error."""
+
+    def unwrapped_sync_func(x: int) -> str:
+        return f"Result: {x}"
+
+    # This should raise a ValueError because the function is not wrapped
+    with pytest.raises(ValueError, match="Function unwrapped_sync_func.*not in the synchronizer's wrapped dict"):
+        compile_function(unwrapped_sync_func, test_synchronizer)

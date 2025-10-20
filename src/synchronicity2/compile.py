@@ -78,7 +78,6 @@ def _qualify_type_for_annotation(
 def compile_function(
     f: types.FunctionType,
     synchronizer: Synchronizer,
-    current_target_module: str | None = None,
 ) -> str:
     """
     Compile a function into a wrapper class that provides both sync and async versions.
@@ -87,7 +86,6 @@ def compile_function(
     Args:
         f: The function to compile
         synchronizer: The Synchronizer instance
-        current_target_module: The target module being compiled (for determining local vs cross-module classes)
 
     Returns:
         String containing the generated wrapper class and decorated function code
@@ -95,13 +93,13 @@ def compile_function(
     synchronizer_name = synchronizer._name
     origin_module = f.__module__  # The implementation module where f is defined
 
-    # Get the output module for this function if not provided
-    if current_target_module is None:
-        if f in synchronizer._wrapped:
-            current_target_module, _ = synchronizer._wrapped[f]
-        else:
-            # Not in wrapped dict - shouldn't happen, but handle gracefully
-            current_target_module = origin_module
+    # Get the target (output) module for this function from the synchronizer
+    if f not in synchronizer._wrapped:
+        raise ValueError(
+            f"Function {f.__name__} from module {origin_module} is not in the synchronizer's "
+            f"wrapped dict. Only functions registered with the synchronizer can be compiled."
+        )
+    current_target_module, _ = synchronizer._wrapped[f]
 
     # Compute wrapped_classes and related data from the synchronizer
     all_wrapped_classes = get_wrapped_classes(synchronizer._wrapped)
@@ -407,7 +405,7 @@ def compile_method_wrapper(
     synchronizer: Synchronizer,
     origin_module: str,
     class_name: str,
-    current_target_module: str | None = None,
+    current_target_module: str,
 ) -> tuple[str, str]:
     """
     Compile a method wrapper class that provides both sync and async versions.
@@ -420,7 +418,7 @@ def compile_method_wrapper(
         synchronizer: The Synchronizer instance
         origin_module: The module where the original class is defined
         class_name: The name of the class containing the method
-        current_target_module: The target module being compiled (for determining local vs cross-module classes)
+        current_target_module: The target module for the wrapper (provided by compile_class)
 
     Returns:
         Tuple of (wrapper_class_code, sync_method_code)
@@ -429,16 +427,6 @@ def compile_method_wrapper(
 
     # Compute wrapped_classes and related data from the synchronizer
     all_wrapped_classes = get_wrapped_classes(synchronizer._wrapped)
-
-    # If current_target_module not provided, try to infer from the class
-    if current_target_module is None:
-        # Find the class this method belongs to in the wrapped dict
-        for obj, (tgt_mod, _) in synchronizer._wrapped.items():
-            if isinstance(obj, type) and obj.__name__ == class_name and obj.__module__ == origin_module:
-                current_target_module = tgt_mod
-                break
-        if current_target_module is None:
-            current_target_module = origin_module
 
     # Determine local wrapped classes (those in the same target module)
     local_wrapped_classes = {
@@ -742,7 +730,6 @@ def compile_method_wrapper(
 def compile_class(
     cls: type,
     synchronizer: Synchronizer,
-    current_target_module: str | None = None,
 ) -> str:
     """
     Compile a class into a wrapper class where all methods are wrapped with sync/async versions.
@@ -750,7 +737,6 @@ def compile_class(
     Args:
         cls: The class to compile
         synchronizer: The Synchronizer instance
-        current_target_module: The target module being compiled (for determining local vs cross-module classes)
 
     Returns:
         String containing the generated wrapper class code
@@ -758,12 +744,13 @@ def compile_class(
     synchronizer_name = synchronizer._name
     origin_module = cls.__module__  # The implementation module where cls is defined
 
-    # Get the output module for this class if not provided
-    if current_target_module is None:
-        if cls in synchronizer._wrapped:
-            current_target_module, _ = synchronizer._wrapped[cls]
-        else:
-            current_target_module = origin_module
+    # Get the target (output) module for this class from the synchronizer
+    if cls not in synchronizer._wrapped:
+        raise ValueError(
+            f"Class {cls.__name__} from module {origin_module} is not in the synchronizer's "
+            f"wrapped dict. Only classes registered with the synchronizer can be compiled."
+        )
+    current_target_module, _ = synchronizer._wrapped[cls]
 
     # Get all methods from the class (both async and non-async)
     methods = []
@@ -791,7 +778,7 @@ def compile_class(
             synchronizer,
             origin_module,
             cls.__name__,
-            current_target_module=current_target_module,
+            current_target_module,
         )
         # Only add wrapper class if it's not empty (non-async methods return empty string)
         if wrapper_class_code:
@@ -1065,20 +1052,12 @@ from synchronicity2.synchronizer import get_synchronizer
 
     # Compile all classes first
     for cls in classes:
-        code = compile_class(
-            cls,
-            synchronizer,
-            current_target_module=module_name,
-        )
+        code = compile_class(cls, synchronizer)
         compiled_code.append(code)
 
     # Then compile all functions
     for func in functions:
-        code = compile_function(
-            func,
-            synchronizer,
-            current_target_module=module_name,
-        )
+        code = compile_function(func, synchronizer)
         compiled_code.append(code)
         compiled_code.append("")  # Add blank line after function
 

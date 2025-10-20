@@ -15,6 +15,7 @@ def test_synchronizer():
 def test_compile_sync_function_basic(test_synchronizer):
     """Test compiling a basic synchronous function without type translation."""
 
+    @test_synchronizer.wrap(target_module="test_module")
     def simple_add(a: int, b: int) -> int:
         return a + b
 
@@ -45,6 +46,7 @@ def test_compile_sync_function_with_wrapped_arg(test_synchronizer):
         def __init__(self, name: str):
             self.name = name
 
+    @test_synchronizer.wrap(target_module="test_module")
     def greet(person: Person) -> str:
         return f"Hello, {person.name}"
 
@@ -73,6 +75,7 @@ def test_compile_sync_function_with_wrapped_return(test_synchronizer):
         def __init__(self, name: str):
             self.name = name
 
+    @test_synchronizer.wrap(target_module="test_module")
     def create_person(name: str) -> Person:
         return Person(name)
 
@@ -83,7 +86,8 @@ def test_compile_sync_function_with_wrapped_return(test_synchronizer):
 
     # Check that it wraps the return value
     assert "result = impl_function(name)" in code
-    assert "return test_module.Person._from_impl(result)" in code
+    # Person is a local wrapped class in the same module, so no module prefix
+    assert "return Person._from_impl(result)" in code
 
     # Check that it calls impl_function directly (no synchronizer)
     assert "_run_function_sync" not in code
@@ -100,6 +104,7 @@ def test_compile_sync_function_with_list_wrapped_return(test_synchronizer):
         def __init__(self, name: str):
             self.name = name
 
+    @test_synchronizer.wrap(target_module="test_module")
     def create_people(names: list[str]) -> list[Person]:
         return [Person(name) for name in names]
 
@@ -110,7 +115,8 @@ def test_compile_sync_function_with_list_wrapped_return(test_synchronizer):
 
     # Check that it wraps the list items
     assert "result = impl_function(names)" in code
-    assert "[test_module.Person._from_impl(x) for x in result]" in code
+    # Person is a local wrapped class in the same module, so no module prefix
+    assert "[Person._from_impl(x) for x in result]" in code
 
     # Check that it calls impl_function directly (no synchronizer)
     assert "_run_function_sync" not in code
@@ -122,6 +128,7 @@ def test_compile_sync_function_with_list_wrapped_return(test_synchronizer):
 def test_compile_sync_function_no_annotations(test_synchronizer):
     """Test compiling a synchronous function without type annotations."""
 
+    @test_synchronizer.wrap(target_module="test_module")
     def no_types(x, y):
         return x + y
 
@@ -138,6 +145,7 @@ def test_compile_sync_function_no_annotations(test_synchronizer):
 def test_compile_sync_function_with_default_args(test_synchronizer):
     """Test compiling a synchronous function with default arguments."""
 
+    @test_synchronizer.wrap(target_module="test_module")
     def with_defaults(a: int, b: int = 10, c: str = "hello") -> str:
         return f"{a}, {b}, {c}"
 
