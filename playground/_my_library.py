@@ -1,8 +1,8 @@
 import typing
 
-from synchronicity2 import Library
+from synchronicity2 import get_synchronizer
 
-lib = Library("my_library")
+lib = get_synchronizer("my_library")
 
 
 @lib.wrap()
@@ -21,8 +21,17 @@ class Bar:
         for c1, c2 in zip(self.a, s):
             yield f"{c1}{c2}"
 
+    def sync_func(self, b: "Bar") -> "Bar":
+        return b
+
 
 @lib.wrap()
 async def accepts_bar(b: Bar) -> Bar:
+    assert isinstance(b, Bar)
+    return b
+
+
+@lib.wrap()
+def accepts_bar_sync(b: Bar) -> Bar:
     assert isinstance(b, Bar)
     return b

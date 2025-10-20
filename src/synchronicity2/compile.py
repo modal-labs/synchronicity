@@ -137,6 +137,39 @@ def compile_function(
     # Check if it's an async generator
     is_async_gen = is_async_generator(f, return_annotation)
 
+    # Check if it's an async function (coroutine or async generator)
+    is_async_func = inspect.iscoroutinefunction(f) or is_async_gen
+
+    # For non-async functions, generate simple wrapper without @wrapped_function decorator or .aio()
+    if not is_async_func:
+        # Build simple wrapper function
+        if needs_translation(return_annotation, wrapped_classes):
+            wrapper_return_type, _ = translate_type_annotation(return_annotation, wrapped_classes, target_module)
+            wrap_expr = build_wrap_expr(
+                return_annotation, wrapped_classes, "result", local_wrapped_classes, cross_module_imports
+            )
+            function_body = f"""    result = impl_function({call_args_str})
+    return {wrap_expr}"""
+            return_str = f" -> {wrapper_return_type}"
+        else:
+            # Format return type if available
+            if return_annotation != inspect.Signature.empty:
+                return_str = f" -> {format_type_annotation(return_annotation)}"
+            else:
+                return_str = ""
+            function_body = f"""    return impl_function({call_args_str})"""
+
+        # Add impl_function reference and unwrap statements
+        impl_ref = f"    impl_function = {target_module}.{f.__name__}"
+        if unwrap_code:
+            function_body = f"{impl_ref}\n{unwrap_code}\n{function_body}"
+        else:
+            function_body = f"{impl_ref}\n{function_body}"
+
+        # Generate simple function (no decorator, no wrapper class)
+        return f"""def {f.__name__}({param_str}){return_str}:
+{function_body}"""
+
     # Format return types - translate them
     if needs_translation(return_annotation, wrapped_classes):
         wrapper_return_type, impl_return_type = translate_type_annotation(
@@ -239,7 +272,7 @@ def compile_function(
             aio_body = f"""        gen = impl_function({call_args_str})
         async for item in self._synchronizer._run_generator_async(gen):
             yield item"""
-    else:
+    elif is_async_func:
         # For regular async functions
         if needs_return_wrap:
             wrap_expr = build_wrap_expr(
@@ -249,6 +282,16 @@ def compile_function(
         return {wrap_expr}"""
         else:
             aio_body = f"""        return await impl_function({call_args_str})"""
+    else:
+        # For non-async functions, call directly (no await, no synchronizer)
+        if needs_return_wrap:
+            wrap_expr = build_wrap_expr(
+                return_annotation, wrapped_classes, "result", local_wrapped_classes, cross_module_imports
+            )
+            aio_body = f"""        result = impl_function({call_args_str})
+        return {wrap_expr}"""
+        else:
+            aio_body = f"""        return impl_function({call_args_str})"""
 
     # Build unwrap section for aio() if needed
     aio_impl_ref = f"        impl_function = {target_module}.{f.__name__}"
@@ -296,8 +339,8 @@ def compile_function(
             sync_gen_body = f"""    gen = impl_function({call_args_str})
     yield from get_synchronizer('{synchronizer_name}')._run_generator_sync(gen)"""
         sync_function_body = sync_gen_body
-    else:
-        # For regular async functions
+    elif is_async_func:
+        # For regular async functions, use synchronizer
         sync_runner = f"get_synchronizer('{synchronizer_name}')._run_function_sync"
         if needs_return_wrap:
             wrap_expr = build_wrap_expr(
@@ -307,6 +350,16 @@ def compile_function(
     return {wrap_expr}"""
         else:
             sync_function_body = f"""    return {sync_runner}(impl_function({call_args_str}))"""
+    else:
+        # For non-async functions, call directly without synchronizer
+        if needs_return_wrap:
+            wrap_expr = build_wrap_expr(
+                return_annotation, wrapped_classes, "result", local_wrapped_classes, cross_module_imports
+            )
+            sync_function_body = f"""    result = impl_function({call_args_str})
+    return {wrap_expr}"""
+        else:
+            sync_function_body = f"""    return impl_function({call_args_str})"""
 
     # Add impl_function reference and unwrap statements to sync function if needed
     impl_ref = f"    impl_function = {target_module}.{f.__name__}"
@@ -363,6 +416,7 @@ def compile_method_wrapper(
 
     # Parse parameters - we'll need to translate types
     params = []
+    params_descriptor = []  # For wrapper class __call__, with quoted wrapped types
     call_args = []
     unwrap_stmts = []
 
@@ -375,6 +429,12 @@ def compile_method_wrapper(
             wrapper_type, impl_type = translate_type_annotation(param.annotation, wrapped_classes, target_module)
             param_str = f"{name}: {wrapper_type}"
 
+            # For descriptor __call__, quote wrapped class names for forward references
+            if wrapper_type in wrapped_classes:
+                param_str_descriptor = f'{name}: "{wrapper_type}"'
+            else:
+                param_str_descriptor = param_str
+
             # Generate unwrap code if needed
             if needs_translation(param.annotation, wrapped_classes):
                 unwrap_expr = build_unwrap_expr(param.annotation, wrapped_classes, name)
@@ -384,20 +444,64 @@ def compile_method_wrapper(
                 call_args.append(name)
         else:
             param_str = name
+            param_str_descriptor = name
             call_args.append(name)
 
         if param.default is not param.empty:
             default_val = repr(param.default)
             param_str += f" = {default_val}"
+            param_str_descriptor += f" = {default_val}"
 
         params.append(param_str)
+        params_descriptor.append(param_str_descriptor)
 
     param_str = ", ".join(params)
+    param_str_descriptor = ", ".join(params_descriptor)
     call_args_str = ", ".join(call_args)
     unwrap_code = "\n".join(unwrap_stmts) if unwrap_stmts else ""
 
     # Check if it's an async generator
     is_async_gen = is_async_generator(method, return_annotation)
+
+    # Check if it's an async method (coroutine or async generator)
+    is_async_method = inspect.iscoroutinefunction(method) or is_async_gen
+
+    # For non-async methods, generate simple proxy method without wrapper class
+    if not is_async_method:
+        # Build impl call arguments (with unwrapped values)
+        impl_call_args = f"self._impl_instance{', ' + call_args_str if call_args_str else ''}"
+
+        # Build method body
+        impl_ref = f"        impl_function = {target_module}.{class_name}.{method_name}"
+
+        if needs_translation(return_annotation, wrapped_classes):
+            wrapper_return_type, _ = translate_type_annotation(return_annotation, wrapped_classes, target_module)
+            wrap_expr = build_wrap_expr(
+                return_annotation, wrapped_classes, "result", local_wrapped_classes, cross_module_imports
+            )
+            method_body = f"""        result = impl_function({impl_call_args})
+        return {wrap_expr}"""
+            return_str = f" -> {wrapper_return_type}"
+        else:
+            # Format return type if available
+            if return_annotation != inspect.Signature.empty:
+                return_str = f" -> {format_type_annotation(return_annotation)}"
+            else:
+                return_str = ""
+            method_body = f"""        return impl_function({impl_call_args})"""
+
+        # Add unwrap statements if needed
+        if unwrap_code:
+            method_body = f"{impl_ref}\n{unwrap_code}\n{method_body}"
+        else:
+            method_body = f"{impl_ref}\n{method_body}"
+
+        # Generate simple method (no wrapper class, no decorator)
+        simple_method = f"""    def {method_name}(self, {param_str}){return_str}:
+{method_body}"""
+
+        # Return empty wrapper class code and the simple method
+        return "", simple_method
 
     # Format return types - translate them
     if needs_translation(return_annotation, wrapped_classes):
@@ -441,13 +545,17 @@ def compile_method_wrapper(
             async_return_str_descriptor = async_return_str
         else:
             # For descriptor class methods, quote wrapped class names to handle forward references
-            # For final method, also use quoted names since self-references need quotes in Python
+            # Handle both simple types (Node) and complex types (list[Node])
             quoted_wrapper_type = wrapper_return_type
             for wrapper_name in wrapped_classes.keys():
-                # Quote standalone wrapped class names
+                # Quote wrapped class names wherever they appear
+                # Handle standalone class names
                 if wrapper_name == wrapper_return_type:
                     quoted_wrapper_type = f'"{wrapper_name}"'
                     break
+                # Handle class names within generic types (e.g., list[Node] -> list["Node"])
+                elif wrapper_name in wrapper_return_type:
+                    quoted_wrapper_type = wrapper_return_type.replace(wrapper_name, f'"{wrapper_name}"')
             # Both descriptor and final methods use quoted types for forward references
             sync_return_str_descriptor = f" -> {quoted_wrapper_type}"
             async_return_str_descriptor = f" -> {quoted_wrapper_type}"
@@ -482,7 +590,7 @@ def compile_method_wrapper(
             aio_body = f"""        gen = impl_function({impl_call_args})
         async for item in self._synchronizer._run_generator_async(gen):
             yield item"""
-    else:
+    elif is_async_method:
         # For regular async methods
         if needs_return_wrap:
             wrap_expr = build_wrap_expr(
@@ -492,6 +600,16 @@ def compile_method_wrapper(
         return {wrap_expr}"""
         else:
             aio_body = f"""        return await impl_function({impl_call_args})"""
+    else:
+        # For non-async methods, call directly (no await, no synchronizer)
+        if needs_return_wrap:
+            wrap_expr = build_wrap_expr(
+                return_annotation, wrapped_classes, "result", local_wrapped_classes, cross_module_imports
+            )
+            aio_body = f"""        result = impl_function({impl_call_args})
+        return {wrap_expr}"""
+        else:
+            aio_body = f"""        return impl_function({impl_call_args})"""
 
     # Build unwrap section for aio() if needed
     aio_impl_ref = f"        impl_function = {target_module}.{class_name}.{method_name}"
@@ -516,10 +634,10 @@ def compile_method_wrapper(
         self._impl_instance = wrapper_instance._impl_instance
         self._unbound_sync_wrapper_method = unbound_sync_wrapper_method
 
-    def __call__(self, {param_str}){sync_return_str_descriptor}:
+    def __call__(self, {param_str_descriptor}){sync_return_str_descriptor}:
         return self._unbound_sync_wrapper_method(self._wrapper_instance, {call_params})
 
-    async def aio(self, {param_str}){async_return_str_descriptor}:{aio_unwrap}
+    async def aio(self, {param_str_descriptor}){async_return_str_descriptor}:{aio_unwrap}
 {aio_body}
 """
 
@@ -537,8 +655,8 @@ def compile_method_wrapper(
         else:
             sync_method_body = f"""        gen = impl_function({impl_call_args})
         yield from self._synchronizer._run_generator_sync(gen)"""
-    else:
-        # For regular async methods
+    elif is_async_method:
+        # For regular async methods, use synchronizer
         sync_runner = "self._synchronizer._run_function_sync"
         if needs_return_wrap:
             wrap_expr = build_wrap_expr(
@@ -548,6 +666,16 @@ def compile_method_wrapper(
         return {wrap_expr}"""
         else:
             sync_method_body = f"""        return {sync_runner}(impl_function({impl_call_args}))"""
+    else:
+        # For non-async methods, call directly without synchronizer
+        if needs_return_wrap:
+            wrap_expr = build_wrap_expr(
+                return_annotation, wrapped_classes, "result", local_wrapped_classes, cross_module_imports
+            )
+            sync_method_body = f"""        result = impl_function({impl_call_args})
+        return {wrap_expr}"""
+        else:
+            sync_method_body = f"""        return impl_function({impl_call_args})"""
 
     # Add impl_function reference and unwrap statements to sync method if needed
     impl_ref = f"        impl_function = {target_module}.{class_name}.{method_name}"
@@ -592,12 +720,11 @@ def compile_class(
     if cross_module_imports is None:
         cross_module_imports = {}
 
-    # Get all async methods from the class
+    # Get all methods from the class (both async and non-async)
     methods = []
     for name, method in inspect.getmembers(cls, predicate=inspect.isfunction):
-        if not name.startswith("_") and (
-            inspect.iscoroutinefunction(method) or inspect.isasyncgenfunction(method)
-        ):  # Only wrap async methods
+        if not name.startswith("_"):
+            # Wrap all public methods (async and non-async)
             methods.append((name, method))
 
     # Get class attributes from annotations
@@ -623,7 +750,9 @@ def compile_class(
             local_wrapped_classes,
             cross_module_imports,
         )
-        method_wrapper_classes.append(wrapper_class_code)
+        # Only add wrapper class if it's not empty (non-async methods return empty string)
+        if wrapper_class_code:
+            method_wrapper_classes.append(wrapper_class_code)
         method_definitions.append(sync_method_code)
 
     # Get __init__ signature
