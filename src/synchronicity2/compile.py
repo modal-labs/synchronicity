@@ -1,7 +1,6 @@
 """Main compilation module - imports from codegen package and provides compile_* functions."""
 
 import inspect
-import sys
 import types
 
 from .codegen import (
@@ -72,6 +71,7 @@ def compile_function(
     target_module: str,
     synchronizer_name: str,
     wrapped_classes: dict[str, str] = None,
+    local_wrapped_classes: dict[str, str] = None,
 ) -> str:
     """
     Compile a function into a wrapper class that provides both sync and async versions.
@@ -81,13 +81,16 @@ def compile_function(
         f: The function to compile
         target_module: The module name where the original function is located
         synchronizer_name: The name of the synchronizer to use
-        wrapped_classes: Mapping of wrapper names to impl qualified names for type translation
+        wrapped_classes: Mapping of ALL wrapper names to impl qualified names (across all modules)
+        local_wrapped_classes: Mapping of wrapper names defined in this module only
 
     Returns:
         String containing the generated wrapper class and decorated function code
     """
     if wrapped_classes is None:
         wrapped_classes = {}
+    if local_wrapped_classes is None:
+        local_wrapped_classes = wrapped_classes  # If not specified, assume all are local
 
     # Get function signature and annotations
     sig = inspect.signature(f)
@@ -101,9 +104,7 @@ def compile_function(
     for name, param in sig.parameters.items():
         # Translate the parameter type annotation
         if param.annotation != param.empty:
-            wrapper_type, impl_type = translate_type_annotation(
-                param.annotation, wrapped_classes, target_module
-            )
+            wrapper_type, impl_type = translate_type_annotation(param.annotation, wrapped_classes, target_module)
             param_str = f"{name}: {wrapper_type}"
 
             # Generate unwrap code if needed
@@ -156,20 +157,38 @@ def compile_function(
             sync_return_str_descriptor = sync_return_str
             async_return_str_descriptor = async_return_str
         else:
-            # For descriptor class methods, quote wrapped class names to handle forward references
-            # For final function, use unquoted names since all classes are defined by then
-            quoted_wrapper_type = wrapper_return_type
-            for wrapper_name in wrapped_classes.keys():
-                # Quote standalone wrapped class names in descriptor
-                if wrapper_name == wrapper_return_type:
-                    quoted_wrapper_type = f'"{wrapper_name}"'
-                    break
-            # Descriptor class methods use quoted types
-            sync_return_str_descriptor = f" -> {quoted_wrapper_type}"
-            async_return_str_descriptor = f" -> {quoted_wrapper_type}"
-            # Final function uses unquoted types
-            sync_return_str = f" -> {wrapper_return_type}"
-            async_return_str = f" -> {wrapper_return_type}"
+            # For descriptor class methods, always quote wrapped class names to handle forward references
+            # For final function, only quote if it's a cross-module type (in TYPE_CHECKING)
+
+            # Check if the return type contains any wrapped classes from other modules
+            has_cross_module_class = False
+            if needs_translation(return_annotation, wrapped_classes):
+                # Return type contains wrapped classes - check if they're cross-module
+                # Get all wrapped class names that appear in the return type
+                for class_name in wrapped_classes.keys():
+                    if class_name in wrapper_return_type and class_name not in local_wrapped_classes:
+                        # Found a cross-module class reference
+                        has_cross_module_class = True
+                        break
+
+            if has_cross_module_class:
+                # Has cross-module class - quote for both (TYPE_CHECKING import)
+                sync_return_str_descriptor = f' -> "{wrapper_return_type}"'
+                async_return_str_descriptor = f' -> "{wrapper_return_type}"'
+                sync_return_str = f' -> "{wrapper_return_type}"'
+                async_return_str = f' -> "{wrapper_return_type}"'
+            elif wrapper_return_type in local_wrapped_classes:
+                # Simple local class - quote only for descriptor (forward reference)
+                sync_return_str_descriptor = f' -> "{wrapper_return_type}"'
+                async_return_str_descriptor = f' -> "{wrapper_return_type}"'
+                sync_return_str = f" -> {wrapper_return_type}"
+                async_return_str = f" -> {wrapper_return_type}"
+            else:
+                # No wrapped classes or complex generic - don't quote
+                sync_return_str_descriptor = f" -> {wrapper_return_type}"
+                async_return_str_descriptor = f" -> {wrapper_return_type}"
+                sync_return_str = f" -> {wrapper_return_type}"
+                async_return_str = f" -> {wrapper_return_type}"
     else:
         sync_return_str, async_return_str = format_return_types(return_annotation, is_async_gen)
         sync_return_str_descriptor = sync_return_str
@@ -313,9 +332,7 @@ def compile_method_wrapper(
 
         # Translate the parameter type annotation
         if param.annotation != param.empty:
-            wrapper_type, impl_type = translate_type_annotation(
-                param.annotation, wrapped_classes, target_module
-            )
+            wrapper_type, impl_type = translate_type_annotation(param.annotation, wrapped_classes, target_module)
             param_str = f"{name}: {wrapper_type}"
 
             # Generate unwrap code if needed
@@ -484,9 +501,7 @@ def compile_method_wrapper(
     return wrapper_class_code, sync_method_code
 
 
-def compile_class(
-    cls: type, target_module: str, synchronizer_name: str, wrapped_classes: dict[str, str] = None
-) -> str:
+def compile_class(cls: type, target_module: str, synchronizer_name: str, wrapped_classes: dict[str, str] = None) -> str:
     """
     Compile a class into a wrapper class where all methods are wrapped with sync/async versions.
 
@@ -587,33 +602,163 @@ def compile_class(
     return "\n".join(all_code)
 
 
-def compile_library(wrapped_items: dict, synchronizer_name: str) -> str:
+def _get_cross_module_imports(
+    module_name: str,
+    module_items: dict,
+    wrapped_items: dict,
+    all_wrapped_classes: dict[str, str],
+) -> dict[str, set[str]]:
     """
-    Compile all wrapped items in a library.
+    Detect which wrapped classes from other modules are referenced in this module.
 
     Args:
-        wrapped_items: Dict mapping original objects to (target_module, target_name) tuples
-        synchronizer_name: The name of the synchronizer to use
+        module_name: The current module being compiled
+        module_items: Items in the current module
+        wrapped_items: All wrapped items across all modules
+        all_wrapped_classes: Global dict of all wrapped classes
 
     Returns:
-        String containing all compiled wrapper code
+        Dict mapping target module names to sets of wrapper class names
     """
-    # Collect all unique implementation modules
-    impl_modules = set()
-    for o, (target_module, target_name) in wrapped_items.items():
-        impl_modules.add(o.__module__)
+    cross_module_refs = {}  # target_module -> set of class names
 
-    if not impl_modules:
+    # Build a reverse mapping: impl_qualified_name -> (target_module, wrapper_name)
+    impl_to_wrapper = {}
+    for obj, (target_module, target_name) in wrapped_items.items():
+        if isinstance(obj, type):
+            impl_qualified_name = f"{obj.__module__}.{obj.__name__}"
+            impl_to_wrapper[impl_qualified_name] = (target_module, target_name)
+
+    # Check each item in this module for references to wrapped classes from other modules
+    for obj, (target_module, target_name) in module_items.items():
+        # Get signature if it's a function or class with methods
+        if isinstance(obj, types.FunctionType):
+            try:
+                # Use get_annotations to resolve string annotations
+                annotations = inspect.get_annotations(obj, eval_str=True)
+                for param_name, annotation in annotations.items():
+                    _check_annotation_for_cross_refs(annotation, module_name, impl_to_wrapper, cross_module_refs)
+            except (NameError, AttributeError, TypeError):
+                # Fall back to signature if get_annotations fails
+                sig = inspect.signature(obj)
+                for param in sig.parameters.values():
+                    if param.annotation != param.empty:
+                        _check_annotation_for_cross_refs(
+                            param.annotation, module_name, impl_to_wrapper, cross_module_refs
+                        )
+                if sig.return_annotation != sig.empty:
+                    _check_annotation_for_cross_refs(
+                        sig.return_annotation, module_name, impl_to_wrapper, cross_module_refs
+                    )
+        elif isinstance(obj, type):
+            # Check methods of the class
+            for method_name, method in inspect.getmembers(obj, predicate=inspect.isfunction):
+                if method_name.startswith("_"):
+                    continue
+                try:
+                    # Try to use get_annotations to resolve string annotations
+                    annotations = inspect.get_annotations(method, eval_str=True)
+                    for annotation in annotations.values():
+                        _check_annotation_for_cross_refs(annotation, module_name, impl_to_wrapper, cross_module_refs)
+                except (NameError, AttributeError, TypeError, ValueError):
+                    # Fall back to signature
+                    try:
+                        sig = inspect.signature(method)
+                        for param in sig.parameters.values():
+                            if param.annotation != param.empty:
+                                _check_annotation_for_cross_refs(
+                                    param.annotation, module_name, impl_to_wrapper, cross_module_refs
+                                )
+                        if sig.return_annotation != sig.empty:
+                            _check_annotation_for_cross_refs(
+                                sig.return_annotation, module_name, impl_to_wrapper, cross_module_refs
+                            )
+                    except (ValueError, TypeError):
+                        # Some built-in methods don't have signatures
+                        continue
+
+    return cross_module_refs
+
+
+def _check_annotation_for_cross_refs(
+    annotation,
+    current_module: str,
+    impl_to_wrapper: dict,
+    cross_module_refs: dict,
+) -> None:
+    """Check a type annotation for references to wrapped classes from other modules."""
+    # Handle direct class references
+    if isinstance(annotation, type):
+        impl_qualified_name = f"{annotation.__module__}.{annotation.__name__}"
+        if impl_qualified_name in impl_to_wrapper:
+            target_module, wrapper_name = impl_to_wrapper[impl_qualified_name]
+            if target_module != current_module:
+                if target_module not in cross_module_refs:
+                    cross_module_refs[target_module] = set()
+                cross_module_refs[target_module].add(wrapper_name)
+
+    # Handle generic types (e.g., List[WrapperClass], Optional[WrapperClass])
+    if hasattr(annotation, "__args__"):
+        for arg in annotation.__args__:
+            _check_annotation_for_cross_refs(arg, current_module, impl_to_wrapper, cross_module_refs)
+
+
+def compile_module(
+    module_name: str,
+    wrapped_items: dict,
+    synchronizer_name: str,
+    all_wrapped_classes: dict[str, str],
+) -> str:
+    """
+    Compile wrapped items for a single target module.
+
+    Args:
+        module_name: The target module name to generate (e.g., "multifile.a")
+        wrapped_items: Dict mapping original objects to (target_module, target_name) tuples
+        synchronizer_name: The name of the synchronizer to use
+        all_wrapped_classes: Global dict of all wrapped classes for type translation
+
+    Returns:
+        String containing compiled wrapper code for this module
+    """
+    # Filter items for this specific module
+    module_items = {
+        obj: (tgt_mod, tgt_name) for obj, (tgt_mod, tgt_name) in wrapped_items.items() if tgt_mod == module_name
+    }
+
+    if not module_items:
         return ""
+
+    # Collect unique implementation modules needed for this module
+    impl_modules = set()
+    for o, (target_module, target_name) in module_items.items():
+        impl_modules.add(o.__module__)
 
     # Use the first module as the primary impl_module (for backward compatibility)
     impl_module = sorted(impl_modules)[0]
 
-    # Extract wrapped classes mapping for type translation
-    wrapped_classes = get_wrapped_classes(wrapped_items)
+    # Extract wrapped classes for this module (subset of all_wrapped_classes)
+    wrapped_classes = {
+        name: qual_name
+        for name, qual_name in all_wrapped_classes.items()
+        if any(qual_name == f"{o.__module__}.{o.__name__}" for o, _ in module_items.items() if isinstance(o, type))
+    }
+
+    # Detect cross-module references
+    cross_module_imports = _get_cross_module_imports(module_name, module_items, wrapped_items, all_wrapped_classes)
 
     # Generate header with imports for all implementation modules
     imports = "\n".join(f"import {mod}" for mod in sorted(impl_modules))
+
+    # Generate cross-module imports
+    # Use TYPE_CHECKING for type hints to avoid circular imports
+    type_checking_imports = []
+    for target_module, class_names in sorted(cross_module_imports.items()):
+        class_list = ", ".join(sorted(class_names))
+        type_checking_imports.append(f"    from {target_module} import {class_list}")
+
+    type_checking_str = "\n".join(type_checking_imports) if type_checking_imports else ""
+
     header = f"""import typing
 
 {imports}
@@ -622,7 +767,24 @@ from synchronicity2.descriptor import wrapped_function, wrapped_method
 from synchronicity2.synchronizer import get_synchronizer
 """
 
+    if type_checking_str:
+        header += f"\nif typing.TYPE_CHECKING:\n{type_checking_str}\n"
+
     compiled_code = [header]
+
+    # Generate lazy import wrappers for cross-module dependencies
+    if cross_module_imports:
+        lazy_imports = []
+        for target_module, class_names in sorted(cross_module_imports.items()):
+            for class_name in sorted(class_names):
+                # Create a lazy wrapper function that imports on first call
+                lazy_imports.append(f"""
+def _wrap_{class_name}(obj):
+    from {target_module} import _wrap_{class_name} as _real_wrap_{class_name}
+    return _real_wrap_{class_name}(obj)
+""")
+        compiled_code.append("\n".join(lazy_imports))
+        compiled_code.append("")  # Add blank line after lazy imports
 
     # Generate wrapper helper functions if there are wrapped classes
     if wrapped_classes:
@@ -635,7 +797,7 @@ from synchronicity2.synchronizer import get_synchronizer
     classes = []
     functions = []
 
-    for o, (target_module, target_name) in wrapped_items.items():
+    for o, (target_module, target_name) in module_items.items():
         obj_module = o.__module__
         if isinstance(o, type):
             classes.append((o, obj_module))
@@ -644,13 +806,71 @@ from synchronicity2.synchronizer import get_synchronizer
 
     # Compile all classes first
     for cls, obj_module in classes:
-        code = compile_class(cls, obj_module, synchronizer_name, wrapped_classes)
+        code = compile_class(cls, obj_module, synchronizer_name, all_wrapped_classes)
         compiled_code.append(code)
 
     # Then compile all functions
     for func, obj_module in functions:
-        code = compile_function(func, obj_module, synchronizer_name, wrapped_classes)
+        code = compile_function(func, obj_module, synchronizer_name, all_wrapped_classes, wrapped_classes)
         compiled_code.append(code)
         compiled_code.append("")  # Add blank line after function
 
     return "\n".join(compiled_code)
+
+
+def compile_modules(wrapped_items: dict, synchronizer_name: str) -> dict[str, str]:
+    """
+    Compile wrapped items into separate module files.
+
+    Args:
+        wrapped_items: Dict mapping original objects to (target_module, target_name) tuples
+        synchronizer_name: The name of the synchronizer to use
+
+    Returns:
+        Dict mapping module names to their generated code
+    """
+    # Group items by target module
+    modules = {}
+    for obj, (target_module, target_name) in wrapped_items.items():
+        if target_module not in modules:
+            modules[target_module] = {}
+        modules[target_module][obj] = (target_module, target_name)
+
+    # Get global wrapped classes for type translation
+    all_wrapped_classes = get_wrapped_classes(wrapped_items)
+
+    # Compile each module
+    result = {}
+    for module_name in sorted(modules.keys()):
+        code = compile_module(module_name, wrapped_items, synchronizer_name, all_wrapped_classes)
+        if code:
+            result[module_name] = code
+
+    return result
+
+
+def compile_library(wrapped_items: dict, synchronizer_name: str) -> str:
+    """
+    Legacy function for backward compatibility.
+    Compiles all items into a single module.
+
+    Args:
+        wrapped_items: Dict mapping original objects to (target_module, target_name) tuples
+        synchronizer_name: The name of the synchronizer to use
+
+    Returns:
+        String containing all compiled wrapper code in a single module
+    """
+    modules = compile_modules(wrapped_items, synchronizer_name)
+    if not modules:
+        return ""
+    # If only one module, return it directly
+    if len(modules) == 1:
+        return list(modules.values())[0]
+    # Otherwise concatenate all modules with headers
+    result = []
+    for module_name, code in modules.items():
+        result.append(f"# Module: {module_name}\n")
+        result.append(code)
+        result.append("\n")
+    return "\n".join(result)

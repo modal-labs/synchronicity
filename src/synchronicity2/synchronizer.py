@@ -290,6 +290,12 @@ class Synchronizer:
         """
 
         def decorator(class_or_function: T) -> T:
+            # Skip registration if we're in a reload pass for type checking
+            import os
+
+            if os.environ.get("_SYNCHRONICITY_SKIP_REGISTRATION"):
+                return class_or_function
+
             if target_module is None:
                 current_module = class_or_function.__module__.split(".")
                 assert current_module[-1].startswith("_"), (
