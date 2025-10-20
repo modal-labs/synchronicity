@@ -1,397 +1,20 @@
-import collections.abc
+"""Main compilation module - imports from codegen package and provides compile_* functions."""
+
 import inspect
 import sys
 import types
-import typing
 
-
-def _format_type_annotation(annotation) -> str:
-    """Format a type annotation for code generation."""
-    if annotation is type(None):
-        return "NoneType"
-
-    # Handle ForwardRef specially
-    if hasattr(annotation, "__forward_arg__"):
-        # This is a ForwardRef - just return the string it contains
-        return f"'{annotation.__forward_arg__}'"
-
-    if hasattr(annotation, "__origin__"):
-        # This is a generic type like list[str], dict[str, int], etc.
-        # Need to recursively format args to handle ForwardRef within generics
-        origin = annotation.__origin__
-        args = typing.get_args(annotation)
-
-        if args:
-            # Format each argument recursively
-            formatted_args = [_format_type_annotation(arg) for arg in args]
-
-            # Get the origin name
-            if hasattr(origin, "__name__"):
-                origin_name = origin.__name__
-            else:
-                origin_name = str(origin)
-
-            # Check if we need typing prefix
-            if origin in (list, dict, tuple, set, frozenset):
-                # Built-in types
-                return f"{origin_name}[{', '.join(formatted_args)}]"
-            else:
-                # typing module types
-                origin_str = repr(origin)
-                if "typing." in origin_str:
-                    origin_name = origin_str.split(".")[-1].rstrip("'>")
-                return f"typing.{origin_name}[{', '.join(formatted_args)}]"
-        else:
-            return repr(annotation).replace("typing.", "typing.")
-    elif hasattr(annotation, "__module__") and hasattr(annotation, "__name__"):
-        if annotation.__module__ in ("builtins", "__builtin__"):
-            return annotation.__name__
-        else:
-            return f"{annotation.__module__}.{annotation.__name__}"
-    else:
-        return repr(annotation)
-
-
-def _parse_parameters(sig: inspect.Signature, skip_self: bool = False) -> tuple[str, str, list[str]]:
-    """
-    Parse function/method parameters into formatted strings.
-
-    Args:
-        sig: The function signature
-        skip_self: If True, skip 'self' parameter (for methods)
-
-    Returns:
-        Tuple of (params_str, call_args_str, call_args_list):
-        - params_str: Comma-separated parameter declarations with types
-        - call_args_str: Comma-separated parameter names for calls
-        - call_args_list: List of parameter names
-    """
-    params = []
-    call_args = []
-
-    for name, param in sig.parameters.items():
-        if skip_self and name == "self":
-            continue
-
-        param_str = name
-        if param.annotation != param.empty:
-            annotation_str = _format_type_annotation(param.annotation)
-            param_str += f": {annotation_str}"
-
-        if param.default is not param.empty:
-            default_val = repr(param.default)
-            param_str += f" = {default_val}"
-
-        params.append(param_str)
-        call_args.append(name)
-
-    params_str = ", ".join(params)
-    call_args_str = ", ".join(call_args)
-
-    return params_str, call_args_str, call_args
-
-
-def _is_async_generator(func_or_method, return_annotation) -> bool:
-    """
-    Check if a callable is an async generator.
-
-    Args:
-        func_or_method: The function or method to check
-        return_annotation: The return type annotation
-
-    Returns:
-        True if the callable is an async generator
-    """
-    # First check using inspect
-    if inspect.isasyncgenfunction(func_or_method):
-        return True
-
-    # Also check return annotation
-    if return_annotation != inspect.Signature.empty:
-        return (
-            hasattr(return_annotation, "__origin__") and return_annotation.__origin__ is collections.abc.AsyncGenerator
-        )
-
-    return False
-
-
-def _format_return_types(return_annotation, is_async_generator: bool) -> tuple[str, str]:
-    """
-    Format sync and async return type strings.
-
-    Args:
-        return_annotation: The return type annotation from the function signature
-        is_async_generator: Whether the function is an async generator
-
-    Returns:
-        Tuple of (sync_return_str, async_return_str) including " -> " prefix,
-        or empty strings if no return annotation
-    """
-    if return_annotation == inspect.Signature.empty:
-        if is_async_generator:
-            return " -> typing.Generator", " -> typing.AsyncGenerator"
-        else:
-            return "", ""
-
-    # Handle different return types
-    if is_async_generator:
-        # For async generators, sync version returns Generator[T, None, None],
-        # async version returns AsyncGenerator[T, None]
-        if hasattr(return_annotation, "__args__") and return_annotation.__args__:
-            # Extract the yielded type from AsyncGenerator[T, Send]
-            yield_type = return_annotation.__args__[0]
-            yield_type_str = _format_type_annotation(yield_type)
-            sync_return_annotation = f"typing.Generator[{yield_type_str}, None, None]"
-
-            # For async generators, also extract the send type (usually None) for proper typing
-            if len(return_annotation.__args__) > 1:
-                send_type = return_annotation.__args__[1]
-                send_type_str = _format_type_annotation(send_type)
-                async_return_annotation = f"typing.AsyncGenerator[{yield_type_str}, {send_type_str}]"
-            else:
-                async_return_annotation = f"typing.AsyncGenerator[{yield_type_str}]"
-        else:
-            sync_return_annotation = "typing.Generator"
-            async_return_annotation = "typing.AsyncGenerator"
-    else:
-        # For regular async functions
-        sync_return_annotation = _format_type_annotation(return_annotation)
-        async_return_annotation = sync_return_annotation
-
-    sync_return_str = f" -> {sync_return_annotation}"
-    async_return_str = f" -> {async_return_annotation}"
-
-    return sync_return_str, async_return_str
-
-
-# ============================================================================
-# Type Translation Utilities
-# ============================================================================
-
-
-def _get_wrapped_classes(wrapped_items: dict) -> dict[str, str]:
-    """
-    Extract mapping of wrapped class names to their fully-qualified implementation names.
-
-    Args:
-        wrapped_items: Dict mapping original objects to (target_module, target_name) tuples
-
-    Returns:
-        Dict mapping wrapper class name to implementation qualified name.
-        Example: {"Bar": "_my_library.Bar", "Baz": "_my_library.Baz"}
-    """
-    wrapped = {}
-    for obj, (target_module, target_name) in wrapped_items.items():
-        if isinstance(obj, type):  # It's a class
-            impl_qualified = f"{obj.__module__}.{obj.__name__}"
-            wrapped[target_name] = impl_qualified
-    return wrapped
-
-
-def _translate_type_annotation(annotation, wrapped_classes: dict[str, str], impl_module: str) -> tuple[str, str]:
-    """
-    Translate type annotation from implementation types to wrapper types.
-
-    Args:
-        annotation: The type annotation to translate
-        wrapped_classes: Mapping of wrapper names to impl qualified names
-        impl_module: The implementation module name (e.g., "_my_library")
-
-    Returns:
-        Tuple of (wrapper_type_str, impl_type_str) as formatted strings
-
-    Examples:
-        _my_library.Bar -> ("Bar", "_my_library.Bar")
-        list[_my_library.Bar] -> ("list[Bar]", "list[_my_library.Bar]")
-        str -> ("str", "str")  # no translation needed
-        typing.Any -> ("typing.Any", "typing.Any")  # no translation
-    """
-    # Format the annotation to get string representation
-    impl_str = _format_type_annotation(annotation)
-    wrapper_str = impl_str
-
-    # Replace each wrapped class reference
-    for wrapper_name, impl_qualified in wrapped_classes.items():
-        # Replace fully qualified name (e.g., "_my_library.Bar" -> "Bar")
-        wrapper_str = wrapper_str.replace(impl_qualified, wrapper_name)
-
-    return wrapper_str, impl_str
-
-
-def _needs_translation(annotation, wrapped_classes: dict[str, str]) -> bool:
-    """
-    Check if a type annotation contains any wrapped class types that need translation.
-
-    Args:
-        annotation: The type annotation to check
-        wrapped_classes: Mapping of wrapper names to impl qualified names
-
-    Returns:
-        True if the annotation contains at least one wrapped class type
-    """
-    if annotation == inspect.Signature.empty:
-        return False
-
-    # Handle string annotations (forward references)
-    if isinstance(annotation, str):
-        # Check if the string matches any wrapped class name
-        for wrapper_name in wrapped_classes.keys():
-            if wrapper_name in annotation:
-                return True
-        return False
-
-    impl_str = _format_type_annotation(annotation)
-
-    # Check if any wrapped class appears in the type string
-    # Need to check both wrapper names and impl qualified names
-    for wrapper_name, impl_qualified in wrapped_classes.items():
-        if impl_qualified in impl_str or wrapper_name in impl_str:
-            return True
-
-    return False
-
-
-def _build_unwrap_expr(annotation, wrapped_classes: dict[str, str], var_name: str = "value") -> str:
-    """
-    Build Python expression to unwrap a value from wrapper type to implementation type.
-
-    This generates annotation-driven unwrapping code that extracts ._impl_instance
-    from wrapper objects.
-
-    Args:
-        annotation: The type annotation
-        wrapped_classes: Mapping of wrapper names to impl qualified names
-        var_name: The variable name to unwrap (default: "value")
-
-    Returns:
-        Python expression string that unwraps the value
-
-    Examples:
-        Bar -> "value._impl_instance"
-        list[Bar] -> "[x._impl_instance for x in value]"
-        dict[str, Bar] -> "{k: v._impl_instance for k, v in value.items()}"
-        Optional[Bar] -> "value._impl_instance if value is not None else None"
-        str -> "value"  # no unwrapping needed
-    """
-    if not _needs_translation(annotation, wrapped_classes):
-        return var_name
-
-    # Get the origin and args for generic types
-    origin = typing.get_origin(annotation)
-    args = typing.get_args(annotation)
-
-    if origin is None:
-        # Direct wrapped class type
-        return f"{var_name}._impl_instance"
-
-    elif origin is list:
-        if args:
-            inner_expr = _build_unwrap_expr(args[0], wrapped_classes, "x")
-            return f"[{inner_expr} for x in {var_name}]"
-        return var_name
-
-    elif origin is dict:
-        if len(args) >= 2:
-            value_expr = _build_unwrap_expr(args[1], wrapped_classes, "v")
-            if value_expr != "v":
-                return f"{{k: {value_expr} for k, v in {var_name}.items()}}"
-        return var_name
-
-    elif origin is tuple:
-        if args:
-            inner_expr = _build_unwrap_expr(args[0], wrapped_classes, "x")
-            if inner_expr != "x":
-                return f"tuple({inner_expr} for x in {var_name})"
-        return var_name
-
-    elif origin is typing.Union:
-        # Handle Optional[T] which is Union[T, None]
-        non_none_args = [arg for arg in args if arg is not type(None)]
-        if len(non_none_args) == 1:
-            inner_expr = _build_unwrap_expr(non_none_args[0], wrapped_classes, var_name)
-            if inner_expr != var_name:
-                return f"{inner_expr} if {var_name} is not None else None"
-        return var_name
-
-    return var_name
-
-
-def _build_wrap_expr(annotation, wrapped_classes: dict[str, str], var_name: str = "value") -> str:
-    """
-    Build Python expression to wrap a value from implementation type to wrapper type.
-
-    This generates annotation-driven wrapping code that calls _wrap_ClassName()
-    helper functions (which will be generated separately).
-
-    Args:
-        annotation: The type annotation
-        wrapped_classes: Mapping of wrapper names to impl qualified names
-        var_name: The variable name to wrap (default: "value")
-
-    Returns:
-        Python expression string that wraps the value
-
-    Examples:
-        Bar -> "_wrap_Bar(value)"
-        list[Bar] -> "[_wrap_Bar(x) for x in value]"
-        dict[str, Bar] -> "{k: _wrap_Bar(v) for k, v in value.items()}"
-        Optional[Bar] -> "_wrap_Bar(value) if value is not None else None"
-        str -> "value"  # no wrapping needed
-    """
-    if not _needs_translation(annotation, wrapped_classes):
-        return var_name
-
-    # Handle string annotations (forward references)
-    if isinstance(annotation, str):
-        # Check if it matches a wrapped class name
-        for wrapper_name in wrapped_classes.keys():
-            if annotation == wrapper_name or annotation == f"'{wrapper_name}'":
-                return f"_wrap_{wrapper_name}({var_name})"
-        return var_name
-
-    # Get the origin and args for generic types
-    origin = typing.get_origin(annotation)
-    args = typing.get_args(annotation)
-
-    if origin is None:
-        # Direct wrapped class type - need to find the wrapper name
-        impl_str = _format_type_annotation(annotation)
-        for wrapper_name, impl_qualified in wrapped_classes.items():
-            if impl_str == impl_qualified or impl_str.strip("'\"") == wrapper_name:
-                return f"_wrap_{wrapper_name}({var_name})"
-        return var_name
-
-    elif origin is list:
-        if args:
-            inner_expr = _build_wrap_expr(args[0], wrapped_classes, "x")
-            if inner_expr != "x":
-                return f"[{inner_expr} for x in {var_name}]"
-        return var_name
-
-    elif origin is dict:
-        if len(args) >= 2:
-            value_expr = _build_wrap_expr(args[1], wrapped_classes, "v")
-            if value_expr != "v":
-                return f"{{k: {value_expr} for k, v in {var_name}.items()}}"
-        return var_name
-
-    elif origin is tuple:
-        if args:
-            inner_expr = _build_wrap_expr(args[0], wrapped_classes, "x")
-            if inner_expr != "x":
-                return f"tuple({inner_expr} for x in {var_name})"
-        return var_name
-
-    elif origin is typing.Union:
-        # Handle Optional[T] which is Union[T, None]
-        non_none_args = [arg for arg in args if arg is not type(None)]
-        if len(non_none_args) == 1:
-            inner_expr = _build_wrap_expr(non_none_args[0], wrapped_classes, var_name)
-            if inner_expr != var_name:
-                return f"{inner_expr} if {var_name} is not None else None"
-        return var_name
-
-    return var_name
+from .codegen import (
+    build_unwrap_expr,
+    build_wrap_expr,
+    format_return_types,
+    format_type_annotation,
+    get_wrapped_classes,
+    is_async_generator,
+    needs_translation,
+    parse_parameters,
+    translate_type_annotation,
+)
 
 
 def _generate_wrapper_helpers(wrapped_classes: dict[str, str], impl_module: str) -> str:
@@ -478,12 +101,14 @@ def compile_function(
     for name, param in sig.parameters.items():
         # Translate the parameter type annotation
         if param.annotation != param.empty:
-            wrapper_type, impl_type = _translate_type_annotation(param.annotation, wrapped_classes, target_module)
+            wrapper_type, impl_type = translate_type_annotation(
+                param.annotation, wrapped_classes, target_module
+            )
             param_str = f"{name}: {wrapper_type}"
 
             # Generate unwrap code if needed
-            if _needs_translation(param.annotation, wrapped_classes):
-                unwrap_expr = _build_unwrap_expr(param.annotation, wrapped_classes, name)
+            if needs_translation(param.annotation, wrapped_classes):
+                unwrap_expr = build_unwrap_expr(param.annotation, wrapped_classes, name)
                 unwrap_stmts.append(f"    {name}_impl = {unwrap_expr}")
                 call_args.append(f"{name}_impl")
             else:
@@ -503,24 +128,24 @@ def compile_function(
     unwrap_code = "\n".join(unwrap_stmts) if unwrap_stmts else ""
 
     # Check if it's an async generator
-    is_async_generator = _is_async_generator(f, return_annotation)
+    is_async_gen = is_async_generator(f, return_annotation)
 
     # Format return types - translate them
-    if _needs_translation(return_annotation, wrapped_classes):
-        wrapper_return_type, impl_return_type = _translate_type_annotation(
+    if needs_translation(return_annotation, wrapped_classes):
+        wrapper_return_type, impl_return_type = translate_type_annotation(
             return_annotation, wrapped_classes, target_module
         )
-        if is_async_generator:
+        if is_async_gen:
             # Extract yield type from AsyncGenerator
             if hasattr(return_annotation, "__args__") and return_annotation.__args__:
                 yield_type = return_annotation.__args__[0]
-                wrapper_yield_type, impl_yield_type = _translate_type_annotation(
+                wrapper_yield_type, impl_yield_type = translate_type_annotation(
                     yield_type, wrapped_classes, target_module
                 )
                 sync_return_str = f" -> typing.Generator[{wrapper_yield_type}, None, None]"
                 if len(return_annotation.__args__) > 1:
                     send_type = return_annotation.__args__[1]
-                    send_type_str = _format_type_annotation(send_type)
+                    send_type_str = format_type_annotation(send_type)
                     async_return_str = f" -> typing.AsyncGenerator[{wrapper_yield_type}, {send_type_str}]"
                 else:
                     async_return_str = f" -> typing.AsyncGenerator[{wrapper_yield_type}]"
@@ -531,20 +156,20 @@ def compile_function(
             sync_return_str = f" -> {wrapper_return_type}"
             async_return_str = f" -> {wrapper_return_type}"
     else:
-        sync_return_str, async_return_str = _format_return_types(return_annotation, is_async_generator)
+        sync_return_str, async_return_str = format_return_types(return_annotation, is_async_gen)
 
     # Generate the wrapper class
     wrapper_class_name = f"_{f.__name__}"
 
     # Determine if we need to wrap the return value
-    needs_return_wrap = _needs_translation(return_annotation, wrapped_classes)
+    needs_return_wrap = needs_translation(return_annotation, wrapped_classes)
 
     # Build the aio() method body
-    if is_async_generator:
+    if is_async_gen:
         # For generators, wrap each yielded item
         if needs_return_wrap and hasattr(return_annotation, "__args__"):
             yield_type = return_annotation.__args__[0]
-            wrap_expr = _build_wrap_expr(yield_type, wrapped_classes, "item")
+            wrap_expr = build_wrap_expr(yield_type, wrapped_classes, "item")
             aio_body = f"""        gen = {target_module}.{f.__name__}({call_args_str})
         async for item in self._synchronizer._run_generator_async(gen):
             yield {wrap_expr}"""
@@ -555,7 +180,7 @@ def compile_function(
     else:
         # For regular async functions
         if needs_return_wrap:
-            wrap_expr = _build_wrap_expr(return_annotation, wrapped_classes, "result")
+            wrap_expr = build_wrap_expr(return_annotation, wrapped_classes, "result")
             aio_body = f"""        result = await {target_module}.{f.__name__}({call_args_str})
         return {wrap_expr}"""
         else:
@@ -592,11 +217,11 @@ def compile_function(
 """
 
     # Build the sync wrapper function code
-    if is_async_generator:
+    if is_async_gen:
         # For generators, wrap each yielded item
         if needs_return_wrap and hasattr(return_annotation, "__args__"):
             yield_type = return_annotation.__args__[0]
-            wrap_expr = _build_wrap_expr(yield_type, wrapped_classes, "item")
+            wrap_expr = build_wrap_expr(yield_type, wrapped_classes, "item")
             sync_gen_body = f"""    gen = {target_module}.{f.__name__}({call_args_str})
     for item in get_synchronizer('{synchronizer_name}')._run_generator_sync(gen):
         yield {wrap_expr}"""
@@ -607,7 +232,7 @@ def compile_function(
     else:
         # For regular async functions
         if needs_return_wrap:
-            wrap_expr = _build_wrap_expr(return_annotation, wrapped_classes, "result")
+            wrap_expr = build_wrap_expr(return_annotation, wrapped_classes, "result")
             sync_function_body = f"""    result = get_synchronizer('{synchronizer_name}')._run_function_sync({target_module}.{f.__name__}({call_args_str}))
     return {wrap_expr}"""
         else:
@@ -666,12 +291,14 @@ def compile_method_wrapper(
 
         # Translate the parameter type annotation
         if param.annotation != param.empty:
-            wrapper_type, impl_type = _translate_type_annotation(param.annotation, wrapped_classes, target_module)
+            wrapper_type, impl_type = translate_type_annotation(
+                param.annotation, wrapped_classes, target_module
+            )
             param_str = f"{name}: {wrapper_type}"
 
             # Generate unwrap code if needed
-            if _needs_translation(param.annotation, wrapped_classes):
-                unwrap_expr = _build_unwrap_expr(param.annotation, wrapped_classes, name)
+            if needs_translation(param.annotation, wrapped_classes):
+                unwrap_expr = build_unwrap_expr(param.annotation, wrapped_classes, name)
                 unwrap_stmts.append(f"        {name}_impl = {unwrap_expr}")
                 call_args.append(f"{name}_impl")
             else:
@@ -691,24 +318,24 @@ def compile_method_wrapper(
     unwrap_code = "\n".join(unwrap_stmts) if unwrap_stmts else ""
 
     # Check if it's an async generator
-    is_async_generator = _is_async_generator(method, return_annotation)
+    is_async_gen = is_async_generator(method, return_annotation)
 
     # Format return types - translate them
-    if _needs_translation(return_annotation, wrapped_classes):
-        wrapper_return_type, impl_return_type = _translate_type_annotation(
+    if needs_translation(return_annotation, wrapped_classes):
+        wrapper_return_type, impl_return_type = translate_type_annotation(
             return_annotation, wrapped_classes, target_module
         )
-        if is_async_generator:
+        if is_async_gen:
             # Extract yield type from AsyncGenerator
             if hasattr(return_annotation, "__args__") and return_annotation.__args__:
                 yield_type = return_annotation.__args__[0]
-                wrapper_yield_type, impl_yield_type = _translate_type_annotation(
+                wrapper_yield_type, impl_yield_type = translate_type_annotation(
                     yield_type, wrapped_classes, target_module
                 )
                 sync_return_str = f" -> typing.Generator[{wrapper_yield_type}, None, None]"
                 if len(return_annotation.__args__) > 1:
                     send_type = return_annotation.__args__[1]
-                    send_type_str = _format_type_annotation(send_type)
+                    send_type_str = format_type_annotation(send_type)
                     async_return_str = f" -> typing.AsyncGenerator[{wrapper_yield_type}, {send_type_str}]"
                 else:
                     async_return_str = f" -> typing.AsyncGenerator[{wrapper_yield_type}]"
@@ -719,23 +346,23 @@ def compile_method_wrapper(
             sync_return_str = f" -> {wrapper_return_type}"
             async_return_str = f" -> {wrapper_return_type}"
     else:
-        sync_return_str, async_return_str = _format_return_types(return_annotation, is_async_generator)
+        sync_return_str, async_return_str = format_return_types(return_annotation, is_async_gen)
 
     # Generate the method wrapper class code
     wrapper_class_name = f"{class_name}_{method_name}"
 
     # Determine if we need to wrap the return value
-    needs_return_wrap = _needs_translation(return_annotation, wrapped_classes)
+    needs_return_wrap = needs_translation(return_annotation, wrapped_classes)
 
     # Build the impl call arguments (with unwrapped values)
     impl_call_args = f"self._impl_instance{', ' + call_args_str if call_args_str else ''}"
 
     # Build the aio() method body
-    if is_async_generator:
+    if is_async_gen:
         # For generators, wrap each yielded item
         if needs_return_wrap and hasattr(return_annotation, "__args__"):
             yield_type = return_annotation.__args__[0]
-            wrap_expr = _build_wrap_expr(yield_type, wrapped_classes, "item")
+            wrap_expr = build_wrap_expr(yield_type, wrapped_classes, "item")
             aio_body = f"""        gen = {target_module}.{class_name}.{method_name}({impl_call_args})
         async for item in self._synchronizer._run_generator_async(gen):
             yield {wrap_expr}"""
@@ -746,7 +373,7 @@ def compile_method_wrapper(
     else:
         # For regular async methods
         if needs_return_wrap:
-            wrap_expr = _build_wrap_expr(return_annotation, wrapped_classes, "result")
+            wrap_expr = build_wrap_expr(return_annotation, wrapped_classes, "result")
             aio_body = f"""        result = await {target_module}.{class_name}.{method_name}({impl_call_args})
         return {wrap_expr}"""
         else:
@@ -782,11 +409,11 @@ def compile_method_wrapper(
 """
 
     # Build the sync wrapper method code
-    if is_async_generator:
+    if is_async_gen:
         # For generators, wrap each yielded item
         if needs_return_wrap and hasattr(return_annotation, "__args__"):
             yield_type = return_annotation.__args__[0]
-            wrap_expr = _build_wrap_expr(yield_type, wrapped_classes, "item")
+            wrap_expr = build_wrap_expr(yield_type, wrapped_classes, "item")
             sync_method_body = f"""        gen = {target_module}.{class_name}.{method_name}({impl_call_args})
         for item in self._synchronizer._run_generator_sync(gen):
             yield {wrap_expr}"""
@@ -796,7 +423,7 @@ def compile_method_wrapper(
     else:
         # For regular async methods
         if needs_return_wrap:
-            wrap_expr = _build_wrap_expr(return_annotation, wrapped_classes, "result")
+            wrap_expr = build_wrap_expr(return_annotation, wrapped_classes, "result")
             sync_method_body = f"""        result = self._synchronizer._run_function_sync({target_module}.{class_name}.{method_name}({impl_call_args}))
         return {wrap_expr}"""
         else:
@@ -813,7 +440,9 @@ def compile_method_wrapper(
     return wrapper_class_code, sync_method_code
 
 
-def compile_class(cls: type, target_module: str, synchronizer_name: str, wrapped_classes: dict[str, str] = None) -> str:
+def compile_class(
+    cls: type, target_module: str, synchronizer_name: str, wrapped_classes: dict[str, str] = None
+) -> str:
     """
     Compile a class into a wrapper class where all methods are wrapped with sync/async versions.
 
@@ -842,7 +471,7 @@ def compile_class(cls: type, target_module: str, synchronizer_name: str, wrapped
     if hasattr(cls, "__annotations__"):
         for name, annotation in cls.__annotations__.items():
             if not name.startswith("_"):
-                attr_type = _format_type_annotation(annotation)
+                attr_type = format_type_annotation(annotation)
                 attributes.append((name, attr_type))
 
     # Generate method wrapper classes and method code
@@ -860,7 +489,7 @@ def compile_class(cls: type, target_module: str, synchronizer_name: str, wrapped
     init_method = getattr(cls, "__init__", None)
     if init_method and init_method is not object.__init__:
         sig = inspect.signature(init_method)
-        init_signature, _, init_call_args_list = _parse_parameters(sig, skip_self=True)
+        init_signature, _, init_call_args_list = parse_parameters(sig, skip_self=True)
         # For __init__, we want keyword arguments in the call
         init_call = ", ".join(f"{name}={name}" for name in init_call_args_list)
     else:
@@ -935,7 +564,7 @@ def compile_library(wrapped_items: dict, synchronizer_name: str) -> str:
         return ""
 
     # Extract wrapped classes mapping for type translation
-    wrapped_classes = _get_wrapped_classes(wrapped_items)
+    wrapped_classes = get_wrapped_classes(wrapped_items)
 
     # Generate header with imports
     header = f"""import typing
