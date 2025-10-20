@@ -6,16 +6,14 @@ from .type_translation import (
     build_unwrap_expr,
     build_wrap_expr,
     format_type_annotation,
-    get_wrapped_classes,
+    format_type_for_annotation,
     needs_translation,
-    translate_type_annotation,
 )
 
 __all__ = [
     # Type translation
-    "format_type_annotation",
-    "get_wrapped_classes",
-    "translate_type_annotation",
+    "format_type_annotation",  # Simple formatting without translation
+    "format_type_for_annotation",  # With wrapper/impl translation
     "needs_translation",
     "build_unwrap_expr",
     "build_wrap_expr",

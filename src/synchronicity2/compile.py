@@ -10,69 +10,17 @@ from .codegen import (
     build_unwrap_expr,
     build_wrap_expr,
     format_return_types,
-    format_type_annotation,
-    get_wrapped_classes,
+    format_type_for_annotation,
     is_async_generator,
     needs_translation,
     parse_parameters,
-    translate_type_annotation,
 )
 
 if TYPE_CHECKING:
     from .synchronizer import Synchronizer
 
 
-def _generate_weakref_import(wrapped_classes: dict[str, str]) -> str:
-    """
-    Generate weakref import if there are any wrapped classes.
-
-    Args:
-        wrapped_classes: Mapping of wrapper names to impl qualified names
-
-    Returns:
-        String containing weakref import, or empty string if no wrapped classes
-    """
-    if not wrapped_classes:
-        return ""
-
-    return "import weakref"
-
-
-def _qualify_type_for_annotation(
-    wrapper_type: str,
-    wrapped_classes: dict[str, str],
-    local_wrapped_classes: dict[str, str],
-    cross_module_imports: dict[str, set[str]],
-) -> str:
-    """
-    Qualify a wrapper type name for use in a type annotation.
-
-    For cross-module types, returns the fully qualified name (e.g., "multifile.a.A").
-    For local types, returns just the class name (e.g., "A").
-
-    Args:
-        wrapper_type: The wrapper type string (e.g., "A" or "list[A]")
-        wrapped_classes: Dict mapping wrapper names to impl qualified names
-        local_wrapped_classes: Dict of wrapped classes defined in the current module
-        cross_module_imports: Dict mapping target modules to sets of imported class names
-
-    Returns:
-        The qualified type string
-    """
-    # Check if this is a simple wrapped class name
-    if wrapper_type in wrapped_classes:
-        # Check if it's cross-module
-        if wrapper_type not in local_wrapped_classes:
-            # Find which module it belongs to
-            for target_module, class_names in cross_module_imports.items():
-                if wrapper_type in class_names:
-                    return f"{target_module}.{wrapper_type}"
-        # Local class - return as-is
-        return wrapper_type
-
-    # For complex types (like list[A]), we'd need more sophisticated parsing
-    # For now, return as-is
-    return wrapper_type
+# Old helper functions removed - now using object-based type translation
 
 
 def compile_function(
@@ -101,30 +49,13 @@ def compile_function(
         )
     current_target_module, _ = synchronizer._wrapped[f]
 
-    # Compute wrapped_classes and related data from the synchronizer
-    all_wrapped_classes = get_wrapped_classes(synchronizer._wrapped)
+    # Use get_annotations to resolve all type annotations to type objects
+    # This allows us to use object identity checks instead of string comparisons
+    annotations = inspect.get_annotations(f, eval_str=True)
 
-    # Determine local wrapped classes (those in the same target module)
-    local_wrapped_classes = {
-        name: qual_name
-        for name, qual_name in all_wrapped_classes.items()
-        for obj, (tgt_mod, tgt_name) in synchronizer._wrapped.items()
-        if isinstance(obj, type) and tgt_name == name and tgt_mod == current_target_module
-    }
-
-    # Build cross_module_imports: map of target_module -> set of class names
-    cross_module_imports: dict[str, set[str]] = {}
-    for obj, (tgt_mod, tgt_name) in synchronizer._wrapped.items():
-        if isinstance(obj, type) and tgt_mod != current_target_module:
-            if tgt_mod not in cross_module_imports:
-                cross_module_imports[tgt_mod] = set()
-            cross_module_imports[tgt_mod].add(tgt_name)
-
-    wrapped_classes = all_wrapped_classes
-
-    # Get function signature and annotations
+    # Get function signature
     sig = inspect.signature(f)
-    return_annotation = sig.return_annotation
+    return_annotation = annotations.get("return", sig.return_annotation)
 
     # Parse parameters - we'll need to translate types
     params = []
@@ -132,14 +63,17 @@ def compile_function(
     unwrap_stmts = []
 
     for name, param in sig.parameters.items():
+        # Get resolved annotation for this parameter
+        param_annotation = annotations.get(name, param.annotation)
+
         # Translate the parameter type annotation
-        if param.annotation != param.empty:
-            wrapper_type, impl_type = translate_type_annotation(param.annotation, wrapped_classes, origin_module)
-            param_str = f"{name}: {wrapper_type}"
+        if param_annotation != param.empty:
+            wrapper_type_str = format_type_for_annotation(param_annotation, synchronizer, current_target_module)
+            param_str = f"{name}: {wrapper_type_str}"
 
             # Generate unwrap code if needed
-            if needs_translation(param.annotation, wrapped_classes):
-                unwrap_expr = build_unwrap_expr(param.annotation, wrapped_classes, name)
+            if needs_translation(param_annotation, synchronizer):
+                unwrap_expr = build_unwrap_expr(param_annotation, synchronizer, name)
                 unwrap_stmts.append(f"    {name}_impl = {unwrap_expr}")
                 call_args.append(f"{name}_impl")
             else:
@@ -167,18 +101,17 @@ def compile_function(
     # For non-async functions, generate simple wrapper without @wrapped_function decorator or .aio()
     if not is_async_func:
         # Build simple wrapper function
-        if needs_translation(return_annotation, wrapped_classes):
-            wrapper_return_type, _ = translate_type_annotation(return_annotation, wrapped_classes, origin_module)
-            wrap_expr = build_wrap_expr(
-                return_annotation, wrapped_classes, "result", local_wrapped_classes, cross_module_imports
-            )
+        if needs_translation(return_annotation, synchronizer):
+            wrapper_return_type = format_type_for_annotation(return_annotation, synchronizer, current_target_module)
+            wrap_expr = build_wrap_expr(return_annotation, synchronizer, current_target_module, "result")
             function_body = f"""    result = impl_function({call_args_str})
     return {wrap_expr}"""
-            return_str = f" -> {wrapper_return_type}"
+            # Quote entire annotation when it contains wrapper types
+            return_str = f' -> "{wrapper_return_type}"'
         else:
             # Format return type if available
             if return_annotation != inspect.Signature.empty:
-                return_str = f" -> {format_type_annotation(return_annotation)}"
+                return_str = f" -> {format_type_for_annotation(return_annotation, synchronizer, current_target_module)}"
             else:
                 return_str = ""
             function_body = f"""    return impl_function({call_args_str})"""
@@ -195,39 +128,38 @@ def compile_function(
 {function_body}"""
 
     # Format return types - translate them
-    if needs_translation(return_annotation, wrapped_classes):
-        wrapper_return_type, impl_return_type = translate_type_annotation(
-            return_annotation, wrapped_classes, origin_module
-        )
+    if needs_translation(return_annotation, synchronizer):
+        wrapper_return_type = format_type_for_annotation(return_annotation, synchronizer, current_target_module)
+
         if is_async_gen:
             # Extract yield type from AsyncGenerator
-            if hasattr(return_annotation, "__args__") and return_annotation.__args__:
-                yield_type = return_annotation.__args__[0]
-                wrapper_yield_type, impl_yield_type = translate_type_annotation(
-                    yield_type, wrapped_classes, origin_module
-                )
+            import typing
+
+            args = typing.get_args(return_annotation)
+            if args:
+                yield_type = args[0]
+                wrapper_yield_type = format_type_for_annotation(yield_type, synchronizer, current_target_module)
+
                 # Quote wrapped class names in generic types for forward references
-                # Use fully qualified names for cross-module types
-                if wrapper_yield_type in wrapped_classes and wrapper_yield_type not in local_wrapped_classes:
-                    # Cross-module type - use fully qualified name
-                    qualified_yield_type = _qualify_type_for_annotation(
-                        wrapper_yield_type, wrapped_classes, local_wrapped_classes, cross_module_imports
-                    )
-                    quoted_yield_type = f'"{qualified_yield_type}"'
-                elif wrapper_yield_type in wrapped_classes:
-                    # Local wrapped type - just quote it
-                    quoted_yield_type = f'"{wrapper_yield_type}"'
+                # Always quote the entire annotation if it contains wrapper types
+                if isinstance(yield_type, type) and yield_type in synchronizer._wrapped:
+                    # It's a wrapped type - quote entire Generator annotation
+                    sync_return_str = f' -> "typing.Generator[{wrapper_yield_type}, None, None]"'
+                    if len(args) > 1:
+                        send_type = args[1]
+                        send_type_str = format_type_for_annotation(send_type, synchronizer, current_target_module)
+                        async_return_str = f' -> "typing.AsyncGenerator[{wrapper_yield_type}, {send_type_str}]"'
+                    else:
+                        async_return_str = f' -> "typing.AsyncGenerator[{wrapper_yield_type}]"'
                 else:
                     # Not a wrapped type - don't quote
-                    quoted_yield_type = wrapper_yield_type
-
-                sync_return_str = f" -> typing.Generator[{quoted_yield_type}, None, None]"
-                if len(return_annotation.__args__) > 1:
-                    send_type = return_annotation.__args__[1]
-                    send_type_str = format_type_annotation(send_type)
-                    async_return_str = f" -> typing.AsyncGenerator[{quoted_yield_type}, {send_type_str}]"
-                else:
-                    async_return_str = f" -> typing.AsyncGenerator[{quoted_yield_type}]"
+                    sync_return_str = f" -> typing.Generator[{wrapper_yield_type}, None, None]"
+                    if len(args) > 1:
+                        send_type = args[1]
+                        send_type_str = format_type_for_annotation(send_type, synchronizer, current_target_module)
+                        async_return_str = f" -> typing.AsyncGenerator[{wrapper_yield_type}, {send_type_str}]"
+                    else:
+                        async_return_str = f" -> typing.AsyncGenerator[{wrapper_yield_type}]"
             else:
                 sync_return_str = " -> typing.Generator"
                 async_return_str = " -> typing.AsyncGenerator"
@@ -235,41 +167,12 @@ def compile_function(
             sync_return_str_descriptor = sync_return_str
             async_return_str_descriptor = async_return_str
         else:
-            # For descriptor class methods, always quote wrapped class names to handle forward references
-            # For final function, only quote if it's a cross-module type (in TYPE_CHECKING)
-
-            # Check if the return type contains any wrapped classes from other modules
-            has_cross_module_class = False
-            if needs_translation(return_annotation, wrapped_classes):
-                # Return type contains wrapped classes - check if they're cross-module
-                # Get all wrapped class names that appear in the return type
-                for class_name in wrapped_classes.keys():
-                    if class_name in wrapper_return_type and class_name not in local_wrapped_classes:
-                        # Found a cross-module class reference
-                        has_cross_module_class = True
-                        break
-
-            if has_cross_module_class:
-                # Has cross-module class - use fully qualified name and quote
-                qualified_type = _qualify_type_for_annotation(
-                    wrapper_return_type, wrapped_classes, local_wrapped_classes, cross_module_imports
-                )
-                sync_return_str_descriptor = f' -> "{qualified_type}"'
-                async_return_str_descriptor = f' -> "{qualified_type}"'
-                sync_return_str = f' -> "{qualified_type}"'
-                async_return_str = f' -> "{qualified_type}"'
-            elif wrapper_return_type in local_wrapped_classes:
-                # Simple local class - quote only for descriptor (forward reference)
-                sync_return_str_descriptor = f' -> "{wrapper_return_type}"'
-                async_return_str_descriptor = f' -> "{wrapper_return_type}"'
-                sync_return_str = f" -> {wrapper_return_type}"
-                async_return_str = f" -> {wrapper_return_type}"
-            else:
-                # No wrapped classes or complex generic - don't quote
-                sync_return_str_descriptor = f" -> {wrapper_return_type}"
-                async_return_str_descriptor = f" -> {wrapper_return_type}"
-                sync_return_str = f" -> {wrapper_return_type}"
-                async_return_str = f" -> {wrapper_return_type}"
+            # For regular functions with wrapped return types
+            # Always quote the entire annotation if it contains wrapper types
+            sync_return_str_descriptor = f' -> "{wrapper_return_type}"'
+            async_return_str_descriptor = f' -> "{wrapper_return_type}"'
+            sync_return_str = f' -> "{wrapper_return_type}"'
+            async_return_str = f' -> "{wrapper_return_type}"'
     else:
         sync_return_str, async_return_str = format_return_types(return_annotation, is_async_gen)
         sync_return_str_descriptor = sync_return_str
@@ -279,19 +182,25 @@ def compile_function(
     wrapper_class_name = f"_{f.__name__}"
 
     # Determine if we need to wrap the return value
-    needs_return_wrap = needs_translation(return_annotation, wrapped_classes)
+    needs_return_wrap = needs_translation(return_annotation, synchronizer)
 
     # Build the aio() method body
     if is_async_gen:
         # For generators, wrap each yielded item
-        if needs_return_wrap and hasattr(return_annotation, "__args__"):
-            yield_type = return_annotation.__args__[0]
-            wrap_expr = build_wrap_expr(
-                yield_type, wrapped_classes, "item", local_wrapped_classes, cross_module_imports
-            )
-            aio_body = f"""        gen = impl_function({call_args_str})
+        if needs_return_wrap:
+            import typing
+
+            args = typing.get_args(return_annotation)
+            if args:
+                yield_type = args[0]
+                wrap_expr = build_wrap_expr(yield_type, synchronizer, current_target_module, "item")
+                aio_body = f"""        gen = impl_function({call_args_str})
         async for item in self._synchronizer._run_generator_async(gen):
             yield {wrap_expr}"""
+            else:
+                aio_body = f"""        gen = impl_function({call_args_str})
+        async for item in self._synchronizer._run_generator_async(gen):
+            yield item"""
         else:
             aio_body = f"""        gen = impl_function({call_args_str})
         async for item in self._synchronizer._run_generator_async(gen):
@@ -299,9 +208,7 @@ def compile_function(
     elif is_async_func:
         # For regular async functions
         if needs_return_wrap:
-            wrap_expr = build_wrap_expr(
-                return_annotation, wrapped_classes, "result", local_wrapped_classes, cross_module_imports
-            )
+            wrap_expr = build_wrap_expr(return_annotation, synchronizer, current_target_module, "result")
             aio_body = f"""        result = await impl_function({call_args_str})
         return {wrap_expr}"""
         else:
@@ -309,9 +216,7 @@ def compile_function(
     else:
         # For non-async functions, call directly (no await, no synchronizer)
         if needs_return_wrap:
-            wrap_expr = build_wrap_expr(
-                return_annotation, wrapped_classes, "result", local_wrapped_classes, cross_module_imports
-            )
+            wrap_expr = build_wrap_expr(return_annotation, synchronizer, current_target_module, "result")
             aio_body = f"""        result = impl_function({call_args_str})
         return {wrap_expr}"""
         else:
@@ -324,14 +229,6 @@ def compile_function(
         # Adjust indentation for aio method (8 spaces)
         aio_unwrap_lines = [line.replace("    ", "        ", 1) for line in unwrap_stmts]
         aio_unwrap += "\n" + "\n".join(aio_unwrap_lines)
-
-    # Build unwrap section for __call__ if needed - uses original call_args_str
-    # which has the wrapper parameter names, not the impl ones
-
-    if unwrap_code:
-        # For __call__, we need to unwrap but then pass to sync_wrapper_function
-        # The sync_wrapper_function will handle the actual impl call
-        pass  # __call__ passes through to sync_wrapper_function which handles unwrapping
 
     wrapper_class_code = f"""class {wrapper_class_name}:
     _synchronizer = get_synchronizer('{synchronizer_name}')
@@ -351,14 +248,19 @@ def compile_function(
     # Build the sync wrapper function code
     if is_async_gen:
         # For generators, wrap each yielded item
-        if needs_return_wrap and hasattr(return_annotation, "__args__"):
-            yield_type = return_annotation.__args__[0]
-            wrap_expr = build_wrap_expr(
-                yield_type, wrapped_classes, "item", local_wrapped_classes, cross_module_imports
-            )
-            sync_gen_body = f"""    gen = impl_function({call_args_str})
+        if needs_return_wrap:
+            import typing
+
+            args = typing.get_args(return_annotation)
+            if args:
+                yield_type = args[0]
+                wrap_expr = build_wrap_expr(yield_type, synchronizer, current_target_module, "item")
+                sync_gen_body = f"""    gen = impl_function({call_args_str})
     for item in get_synchronizer('{synchronizer_name}')._run_generator_sync(gen):
         yield {wrap_expr}"""
+            else:
+                sync_gen_body = f"""    gen = impl_function({call_args_str})
+    yield from get_synchronizer('{synchronizer_name}')._run_generator_sync(gen)"""
         else:
             sync_gen_body = f"""    gen = impl_function({call_args_str})
     yield from get_synchronizer('{synchronizer_name}')._run_generator_sync(gen)"""
@@ -367,9 +269,7 @@ def compile_function(
         # For regular async functions, use synchronizer
         sync_runner = f"get_synchronizer('{synchronizer_name}')._run_function_sync"
         if needs_return_wrap:
-            wrap_expr = build_wrap_expr(
-                return_annotation, wrapped_classes, "result", local_wrapped_classes, cross_module_imports
-            )
+            wrap_expr = build_wrap_expr(return_annotation, synchronizer, current_target_module, "result")
             sync_function_body = f"""    result = {sync_runner}(impl_function({call_args_str}))
     return {wrap_expr}"""
         else:
@@ -377,9 +277,7 @@ def compile_function(
     else:
         # For non-async functions, call directly without synchronizer
         if needs_return_wrap:
-            wrap_expr = build_wrap_expr(
-                return_annotation, wrapped_classes, "result", local_wrapped_classes, cross_module_imports
-            )
+            wrap_expr = build_wrap_expr(return_annotation, synchronizer, current_target_module, "result")
             sync_function_body = f"""    result = impl_function({call_args_str})
     return {wrap_expr}"""
         else:
@@ -425,30 +323,12 @@ def compile_method_wrapper(
     """
     synchronizer_name = synchronizer._name
 
-    # Compute wrapped_classes and related data from the synchronizer
-    all_wrapped_classes = get_wrapped_classes(synchronizer._wrapped)
+    # Use get_annotations to resolve all type annotations to type objects
+    annotations = inspect.get_annotations(method, eval_str=True)
 
-    # Determine local wrapped classes (those in the same target module)
-    local_wrapped_classes = {
-        name: qual_name
-        for name, qual_name in all_wrapped_classes.items()
-        for obj, (tgt_mod, tgt_name) in synchronizer._wrapped.items()
-        if isinstance(obj, type) and tgt_name == name and tgt_mod == current_target_module
-    }
-
-    # Build cross_module_imports: map of target_module -> set of class names
-    cross_module_imports: dict[str, set[str]] = {}
-    for obj, (tgt_mod, tgt_name) in synchronizer._wrapped.items():
-        if isinstance(obj, type) and tgt_mod != current_target_module:
-            if tgt_mod not in cross_module_imports:
-                cross_module_imports[tgt_mod] = set()
-            cross_module_imports[tgt_mod].add(tgt_name)
-
-    wrapped_classes = all_wrapped_classes
-
-    # Get method signature and annotations
+    # Get method signature
     sig = inspect.signature(method)
-    return_annotation = sig.return_annotation
+    return_annotation = annotations.get("return", sig.return_annotation)
 
     # Parse parameters - we'll need to translate types
     params = []
@@ -460,20 +340,23 @@ def compile_method_wrapper(
         if name == "self":
             continue
 
+        # Get resolved annotation for this parameter
+        param_annotation = annotations.get(name, param.annotation)
+
         # Translate the parameter type annotation
-        if param.annotation != param.empty:
-            wrapper_type, impl_type = translate_type_annotation(param.annotation, wrapped_classes, origin_module)
-            param_str = f"{name}: {wrapper_type}"
+        if param_annotation != param.empty:
+            wrapper_type_str = format_type_for_annotation(param_annotation, synchronizer, current_target_module)
+            param_str = f"{name}: {wrapper_type_str}"
 
             # For descriptor __call__, quote wrapped class names for forward references
-            if wrapper_type in wrapped_classes:
-                param_str_descriptor = f'{name}: "{wrapper_type}"'
+            if isinstance(param_annotation, type) and param_annotation in synchronizer._wrapped:
+                param_str_descriptor = f'{name}: "{wrapper_type_str}"'
             else:
                 param_str_descriptor = param_str
 
             # Generate unwrap code if needed
-            if needs_translation(param.annotation, wrapped_classes):
-                unwrap_expr = build_unwrap_expr(param.annotation, wrapped_classes, name)
+            if needs_translation(param_annotation, synchronizer):
+                unwrap_expr = build_unwrap_expr(param_annotation, synchronizer, name)
                 unwrap_stmts.append(f"        {name}_impl = {unwrap_expr}")
                 call_args.append(f"{name}_impl")
             else:
@@ -499,179 +382,141 @@ def compile_method_wrapper(
     # Check if it's an async generator
     is_async_gen = is_async_generator(method, return_annotation)
 
-    # Check if it's an async method (coroutine or async generator)
-    is_async_method = inspect.iscoroutinefunction(method) or is_async_gen
+    # Check if it's a non-async method (rare, but possible)
+    is_async = inspect.iscoroutinefunction(method) or is_async_gen
 
-    # For non-async methods, generate simple proxy method without wrapper class
-    if not is_async_method:
-        # Build impl call arguments (with unwrapped values)
-        impl_call_args = f"self._impl_instance{', ' + call_args_str if call_args_str else ''}"
-
-        # Build method body
-        impl_ref = f"        impl_function = {origin_module}.{class_name}.{method_name}"
-
-        if needs_translation(return_annotation, wrapped_classes):
-            wrapper_return_type, _ = translate_type_annotation(return_annotation, wrapped_classes, origin_module)
-            wrap_expr = build_wrap_expr(
-                return_annotation, wrapped_classes, "result", local_wrapped_classes, cross_module_imports
-            )
-            method_body = f"""        result = impl_function({impl_call_args})
-        return {wrap_expr}"""
-            return_str = f" -> {wrapper_return_type}"
-        else:
-            # Format return type if available
-            if return_annotation != inspect.Signature.empty:
-                return_str = f" -> {format_type_annotation(return_annotation)}"
-            else:
-                return_str = ""
-            method_body = f"""        return impl_function({impl_call_args})"""
-
-        # Add unwrap statements if needed
-        if unwrap_code:
-            method_body = f"{impl_ref}\n{unwrap_code}\n{method_body}"
-        else:
-            method_body = f"{impl_ref}\n{method_body}"
-
-        # Generate simple method (no wrapper class, no decorator)
-        simple_method = f"""    def {method_name}(self, {param_str}){return_str}:
-{method_body}"""
-
-        # Return empty wrapper class code and the simple method
-        return "", simple_method
+    # If not async at all, return empty strings (no wrapper needed)
+    if not is_async:
+        return "", ""
 
     # Format return types - translate them
-    if needs_translation(return_annotation, wrapped_classes):
-        wrapper_return_type, impl_return_type = translate_type_annotation(
-            return_annotation, wrapped_classes, origin_module
-        )
+    if needs_translation(return_annotation, synchronizer):
+        wrapper_return_type = format_type_for_annotation(return_annotation, synchronizer, current_target_module)
+
         if is_async_gen:
             # Extract yield type from AsyncGenerator
-            if hasattr(return_annotation, "__args__") and return_annotation.__args__:
-                yield_type = return_annotation.__args__[0]
-                wrapper_yield_type, impl_yield_type = translate_type_annotation(
-                    yield_type, wrapped_classes, origin_module
-                )
+            import typing
+
+            args = typing.get_args(return_annotation)
+            if args:
+                yield_type = args[0]
+                wrapper_yield_type = format_type_for_annotation(yield_type, synchronizer, current_target_module)
+
                 # Quote wrapped class names in generic types for forward references
-                # Use fully qualified names for cross-module types
-                if wrapper_yield_type in wrapped_classes and wrapper_yield_type not in local_wrapped_classes:
-                    # Cross-module type - use fully qualified name
-                    qualified_yield_type = _qualify_type_for_annotation(
-                        wrapper_yield_type, wrapped_classes, local_wrapped_classes, cross_module_imports
-                    )
-                    quoted_yield_type = f'"{qualified_yield_type}"'
-                elif wrapper_yield_type in wrapped_classes:
-                    # Local wrapped type - just quote it
+                # Check both direct types and ForwardRef
+                should_quote = False
+                if isinstance(yield_type, type) and yield_type in synchronizer._wrapped:
+                    should_quote = True
+                elif hasattr(yield_type, "__forward_arg__"):
+                    # ForwardRef - check if it refers to a wrapped class
+                    forward_str = yield_type.__forward_arg__
+                    for obj in synchronizer._wrapped.keys():
+                        if isinstance(obj, type) and obj.__name__ == forward_str:
+                            should_quote = True
+                            break
+
+                if should_quote:
                     quoted_yield_type = f'"{wrapper_yield_type}"'
                 else:
-                    # Not a wrapped type - don't quote
                     quoted_yield_type = wrapper_yield_type
 
-                sync_return_str = f" -> typing.Generator[{quoted_yield_type}, None, None]"
-                if len(return_annotation.__args__) > 1:
-                    send_type = return_annotation.__args__[1]
-                    send_type_str = format_type_annotation(send_type)
-                    async_return_str = f" -> typing.AsyncGenerator[{quoted_yield_type}, {send_type_str}]"
+                # For the actual method definitions, quote the entire type if it contains wrapper types
+                # to avoid forward reference issues at class definition time
+                if should_quote:
+                    sync_return_str = f' -> "typing.Generator[{wrapper_yield_type}, None, None]"'
                 else:
-                    async_return_str = f" -> typing.AsyncGenerator[{quoted_yield_type}]"
+                    sync_return_str = f" -> typing.Generator[{quoted_yield_type}, None, None]"
+
+                if len(args) > 1:
+                    send_type = args[1]
+                    send_type_str = format_type_for_annotation(send_type, synchronizer, current_target_module)
+                    if should_quote:
+                        async_return_str = f' -> "typing.AsyncGenerator[{wrapper_yield_type}, {send_type_str}]"'
+                    else:
+                        async_return_str = f" -> typing.AsyncGenerator[{quoted_yield_type}, {send_type_str}]"
+                else:
+                    if should_quote:
+                        async_return_str = f' -> "typing.AsyncGenerator[{wrapper_yield_type}]"'
+                    else:
+                        async_return_str = f" -> typing.AsyncGenerator[{quoted_yield_type}]"
             else:
                 sync_return_str = " -> typing.Generator"
                 async_return_str = " -> typing.AsyncGenerator"
-            # For generators, descriptor and final function have the same return type
+            # For descriptor classes, use the same (already safe with quotes inside generics)
             sync_return_str_descriptor = sync_return_str
             async_return_str_descriptor = async_return_str
         else:
-            # For descriptor class methods, quote wrapped class names to handle forward references
-            # Handle both simple types (Node) and complex types (list[Node])
-            quoted_wrapper_type = wrapper_return_type
-            for wrapper_name in wrapped_classes.keys():
-                # Quote wrapped class names wherever they appear
-                # Handle standalone class names
-                if wrapper_name == wrapper_return_type:
-                    quoted_wrapper_type = f'"{wrapper_name}"'
-                    break
-                # Handle class names within generic types (e.g., list[Node] -> list["Node"])
-                elif wrapper_name in wrapper_return_type:
-                    quoted_wrapper_type = wrapper_return_type.replace(wrapper_name, f'"{wrapper_name}"')
-            # Both descriptor and final methods use quoted types for forward references
-            sync_return_str_descriptor = f" -> {quoted_wrapper_type}"
-            async_return_str_descriptor = f" -> {quoted_wrapper_type}"
-            sync_return_str = f" -> {quoted_wrapper_type}"
-            async_return_str = f" -> {quoted_wrapper_type}"
+            # For regular methods with wrapped return types
+            # Always quote the entire type annotation if it contains wrapper types
+            if isinstance(return_annotation, type) and return_annotation in synchronizer._wrapped:
+                # Direct wrapped class - quote entire annotation for safety
+                sync_return_str_descriptor = f' -> "{wrapper_return_type}"'
+                async_return_str_descriptor = f' -> "{wrapper_return_type}"'
+                sync_return_str = f' -> "{wrapper_return_type}"'
+                async_return_str = f' -> "{wrapper_return_type}"'
+            elif needs_translation(return_annotation, synchronizer):
+                # Complex type containing wrapper types - quote entire annotation
+                sync_return_str_descriptor = f' -> "{wrapper_return_type}"'
+                async_return_str_descriptor = f' -> "{wrapper_return_type}"'
+                sync_return_str = f' -> "{wrapper_return_type}"'
+                async_return_str = f' -> "{wrapper_return_type}"'
+            else:
+                # No wrapper types - safe to not quote
+                sync_return_str_descriptor = f" -> {wrapper_return_type}"
+                async_return_str_descriptor = f" -> {wrapper_return_type}"
+                sync_return_str = f" -> {wrapper_return_type}"
+                async_return_str = f" -> {wrapper_return_type}"
     else:
         sync_return_str, async_return_str = format_return_types(return_annotation, is_async_gen)
         sync_return_str_descriptor = sync_return_str
         async_return_str_descriptor = async_return_str
 
-    # Generate the method wrapper class code
+    # Generate the wrapper class
     wrapper_class_name = f"{class_name}_{method_name}"
 
     # Determine if we need to wrap the return value
-    needs_return_wrap = needs_translation(return_annotation, wrapped_classes)
-
-    # Build the impl call arguments (with unwrapped values)
-    impl_call_args = f"self._impl_instance{', ' + call_args_str if call_args_str else ''}"
+    needs_return_wrap = needs_translation(return_annotation, synchronizer)
 
     # Build the aio() method body
     if is_async_gen:
         # For generators, wrap each yielded item
-        if needs_return_wrap and hasattr(return_annotation, "__args__"):
-            yield_type = return_annotation.__args__[0]
-            wrap_expr = build_wrap_expr(
-                yield_type, wrapped_classes, "item", local_wrapped_classes, cross_module_imports
-            )
-            aio_body = f"""        gen = impl_function({impl_call_args})
-        async for item in self._synchronizer._run_generator_async(gen):
+        if needs_return_wrap:
+            import typing
+
+            args = typing.get_args(return_annotation)
+            if args:
+                yield_type = args[0]
+                wrap_expr = build_wrap_expr(yield_type, synchronizer, current_target_module, "item")
+                aio_body = f"""        async for item in impl_method(self._wrapper_instance._impl_instance, {call_args_str}):
             yield {wrap_expr}"""
-        else:
-            aio_body = f"""        gen = impl_function({impl_call_args})
-        async for item in self._synchronizer._run_generator_async(gen):
+            else:
+                aio_body = f"""        async for item in impl_method(self._wrapper_instance._impl_instance, {call_args_str}):
             yield item"""
-    elif is_async_method:
+        else:
+            aio_body = f"""        async for item in impl_method(self._wrapper_instance._impl_instance, {call_args_str}):
+            yield item"""
+    else:
         # For regular async methods
         if needs_return_wrap:
-            wrap_expr = build_wrap_expr(
-                return_annotation, wrapped_classes, "result", local_wrapped_classes, cross_module_imports
-            )
-            aio_body = f"""        result = await impl_function({impl_call_args})
+            wrap_expr = build_wrap_expr(return_annotation, synchronizer, current_target_module, "result")
+            aio_body = f"""        result = await impl_method(self._wrapper_instance._impl_instance, {call_args_str})
         return {wrap_expr}"""
         else:
-            aio_body = f"""        return await impl_function({impl_call_args})"""
-    else:
-        # For non-async methods, call directly (no await, no synchronizer)
-        if needs_return_wrap:
-            wrap_expr = build_wrap_expr(
-                return_annotation, wrapped_classes, "result", local_wrapped_classes, cross_module_imports
-            )
-            aio_body = f"""        result = impl_function({impl_call_args})
-        return {wrap_expr}"""
-        else:
-            aio_body = f"""        return impl_function({impl_call_args})"""
+            aio_body = f"""        return await impl_method(self._wrapper_instance._impl_instance, {call_args_str})"""
 
     # Build unwrap section for aio() if needed
-    aio_impl_ref = f"        impl_function = {origin_module}.{class_name}.{method_name}"
+    aio_impl_ref = f"        impl_method = {origin_module}.{class_name}.{method_name}"
     aio_unwrap = f"\n{aio_impl_ref}"
     if unwrap_code:
-        # Adjust indentation for aio method (8 spaces)
-        aio_unwrap_lines = [line.replace("        ", "        ", 1) for line in unwrap_stmts]
-        aio_unwrap += "\n" + "\n".join(aio_unwrap_lines)
+        aio_unwrap += "\n" + unwrap_code
 
-    # For __call__, we need to pass the original parameter names (not _impl versions)
-    # because __call__ passes through to the sync wrapper method which handles unwrapping
-    call_params = ", ".join([p.split(":")[0].split("=")[0].strip() for p in params])
-
-    # Build the wrapper class
     wrapper_class_code = f"""class {wrapper_class_name}:
-    _synchronizer = get_synchronizer('{synchronizer_name}')
-    _impl_instance: {origin_module}.{class_name}
-    _sync_wrapper_method: typing.Callable[..., typing.Any]
-
-    def __init__(self, wrapper_instance: "{class_name}", unbound_sync_wrapper_method: typing.Callable[..., typing.Any]):
+    def __init__(self, wrapper_instance, unbound_sync_wrapper_method: typing.Callable[..., typing.Any]):
         self._wrapper_instance = wrapper_instance
-        self._impl_instance = wrapper_instance._impl_instance
         self._unbound_sync_wrapper_method = unbound_sync_wrapper_method
 
     def __call__(self, {param_str_descriptor}){sync_return_str_descriptor}:
-        return self._unbound_sync_wrapper_method(self._wrapper_instance, {call_params})
+        return self._unbound_sync_wrapper_method(self._wrapper_instance, {", ".join([p.split(":")[0].split("=")[0].strip() for p in params])})
 
     async def aio(self, {param_str_descriptor}){async_return_str_descriptor}:{aio_unwrap}
 {aio_body}
@@ -680,41 +525,33 @@ def compile_method_wrapper(
     # Build the sync wrapper method code
     if is_async_gen:
         # For generators, wrap each yielded item
-        if needs_return_wrap and hasattr(return_annotation, "__args__"):
-            yield_type = return_annotation.__args__[0]
-            wrap_expr = build_wrap_expr(
-                yield_type, wrapped_classes, "item", local_wrapped_classes, cross_module_imports
-            )
-            sync_method_body = f"""        gen = impl_function({impl_call_args})
+        if needs_return_wrap:
+            import typing
+
+            args = typing.get_args(return_annotation)
+            if args:
+                yield_type = args[0]
+                wrap_expr = build_wrap_expr(yield_type, synchronizer, current_target_module, "item")
+                sync_method_body = f"""        gen = impl_method(self._impl_instance, {call_args_str})
         for item in self._synchronizer._run_generator_sync(gen):
             yield {wrap_expr}"""
-        else:
-            sync_method_body = f"""        gen = impl_function({impl_call_args})
+            else:
+                sync_method_body = f"""        gen = impl_method(self._impl_instance, {call_args_str})
         yield from self._synchronizer._run_generator_sync(gen)"""
-    elif is_async_method:
-        # For regular async methods, use synchronizer
-        sync_runner = "self._synchronizer._run_function_sync"
-        if needs_return_wrap:
-            wrap_expr = build_wrap_expr(
-                return_annotation, wrapped_classes, "result", local_wrapped_classes, cross_module_imports
-            )
-            sync_method_body = f"""        result = {sync_runner}(impl_function({impl_call_args}))
-        return {wrap_expr}"""
         else:
-            sync_method_body = f"""        return {sync_runner}(impl_function({impl_call_args}))"""
+            sync_method_body = f"""        gen = impl_method(self._impl_instance, {call_args_str})
+        yield from self._synchronizer._run_generator_sync(gen)"""
     else:
-        # For non-async methods, call directly without synchronizer
+        # For regular async methods
         if needs_return_wrap:
-            wrap_expr = build_wrap_expr(
-                return_annotation, wrapped_classes, "result", local_wrapped_classes, cross_module_imports
-            )
-            sync_method_body = f"""        result = impl_function({impl_call_args})
+            wrap_expr = build_wrap_expr(return_annotation, synchronizer, current_target_module, "result")
+            sync_method_body = f"""        result = self._synchronizer._run_function_sync(impl_method(self._impl_instance, {call_args_str}))
         return {wrap_expr}"""
         else:
-            sync_method_body = f"""        return impl_function({impl_call_args})"""
+            sync_method_body = f"""        return self._synchronizer._run_function_sync(impl_method(self._impl_instance, {call_args_str}))"""
 
-    # Add impl_function reference and unwrap statements to sync method if needed
-    impl_ref = f"        impl_function = {origin_module}.{class_name}.{method_name}"
+    # Add impl_method reference and unwrap statements
+    impl_ref = f"        impl_method = {origin_module}.{class_name}.{method_name}"
     if unwrap_code:
         sync_method_body = f"{impl_ref}\n{unwrap_code}\n{sync_method_body}"
     else:
@@ -759,13 +596,21 @@ def compile_class(
             # Wrap all public methods (async and non-async)
             methods.append((name, method))
 
-    # Get class attributes from annotations
+    # Get class attributes from annotations - use get_annotations to resolve types
     attributes = []
-    if hasattr(cls, "__annotations__"):
-        for name, annotation in cls.__annotations__.items():
+    try:
+        class_annotations = inspect.get_annotations(cls, eval_str=True)
+        for name, annotation in class_annotations.items():
             if not name.startswith("_"):
-                attr_type = format_type_annotation(annotation)
+                attr_type = format_type_for_annotation(annotation, synchronizer, current_target_module)
                 attributes.append((name, attr_type))
+    except (NameError, AttributeError):
+        # If get_annotations fails, fall back to raw __annotations__
+        if hasattr(cls, "__annotations__"):
+            for name, annotation in cls.__annotations__.items():
+                if not name.startswith("_"):
+                    attr_type = format_type_for_annotation(annotation, synchronizer, current_target_module)
+                    attributes.append((name, attr_type))
 
     # Generate method wrapper classes and method code
     method_wrapper_classes = []
@@ -866,32 +711,25 @@ def compile_class(
     return "\n".join(all_code)
 
 
-def _get_cross_module_imports(
+def _get_cross_module_imports_new(
     module_name: str,
     module_items: dict,
-    wrapped_items: dict,
-    all_wrapped_classes: dict[str, str],
+    synchronizer: Synchronizer,
 ) -> dict[str, set[str]]:
     """
     Detect which wrapped classes from other modules are referenced in this module.
 
+    Uses object identity checks against synchronizer._wrapped for robustness.
+
     Args:
         module_name: The current module being compiled
         module_items: Items in the current module
-        wrapped_items: All wrapped items across all modules
-        all_wrapped_classes: Global dict of all wrapped classes
+        synchronizer: The Synchronizer instance
 
     Returns:
         Dict mapping target module names to sets of wrapper class names
     """
     cross_module_refs = {}  # target_module -> set of class names
-
-    # Build a reverse mapping: impl_qualified_name -> (target_module, wrapper_name)
-    impl_to_wrapper = {}
-    for obj, (target_module, target_name) in wrapped_items.items():
-        if isinstance(obj, type):
-            impl_qualified_name = f"{obj.__module__}.{obj.__name__}"
-            impl_to_wrapper[impl_qualified_name] = (target_module, target_name)
 
     # Check each item in this module for references to wrapped classes from other modules
     for obj, (target_module, target_name) in module_items.items():
@@ -901,19 +739,11 @@ def _get_cross_module_imports(
                 # Use get_annotations to resolve string annotations
                 annotations = inspect.get_annotations(obj, eval_str=True)
                 for param_name, annotation in annotations.items():
-                    _check_annotation_for_cross_refs(annotation, module_name, impl_to_wrapper, cross_module_refs)
+                    _check_annotation_for_cross_refs_new(annotation, module_name, synchronizer, cross_module_refs)
             except (NameError, AttributeError, TypeError):
-                # Fall back to signature if get_annotations fails
-                sig = inspect.signature(obj)
-                for param in sig.parameters.values():
-                    if param.annotation != param.empty:
-                        _check_annotation_for_cross_refs(
-                            param.annotation, module_name, impl_to_wrapper, cross_module_refs
-                        )
-                if sig.return_annotation != sig.empty:
-                    _check_annotation_for_cross_refs(
-                        sig.return_annotation, module_name, impl_to_wrapper, cross_module_refs
-                    )
+                # If get_annotations fails, skip this function
+                # In the new approach we don't fall back to string-based checks
+                pass
         elif isinstance(obj, type):
             # Check methods of the class
             for method_name, method in inspect.getmembers(obj, predicate=inspect.isfunction):
@@ -923,48 +753,36 @@ def _get_cross_module_imports(
                     # Try to use get_annotations to resolve string annotations
                     annotations = inspect.get_annotations(method, eval_str=True)
                     for annotation in annotations.values():
-                        _check_annotation_for_cross_refs(annotation, module_name, impl_to_wrapper, cross_module_refs)
+                        _check_annotation_for_cross_refs_new(annotation, module_name, synchronizer, cross_module_refs)
                 except (NameError, AttributeError, TypeError, ValueError):
-                    # Fall back to signature
-                    try:
-                        sig = inspect.signature(method)
-                        for param in sig.parameters.values():
-                            if param.annotation != param.empty:
-                                _check_annotation_for_cross_refs(
-                                    param.annotation, module_name, impl_to_wrapper, cross_module_refs
-                                )
-                        if sig.return_annotation != sig.empty:
-                            _check_annotation_for_cross_refs(
-                                sig.return_annotation, module_name, impl_to_wrapper, cross_module_refs
-                            )
-                    except (ValueError, TypeError):
-                        # Some built-in methods don't have signatures
-                        continue
+                    # If get_annotations fails, skip this method
+                    pass
 
     return cross_module_refs
 
 
-def _check_annotation_for_cross_refs(
+def _check_annotation_for_cross_refs_new(
     annotation,
     current_module: str,
-    impl_to_wrapper: dict,
+    synchronizer: Synchronizer,
     cross_module_refs: dict,
 ) -> None:
-    """Check a type annotation for references to wrapped classes from other modules."""
+    """Check a type annotation for references to wrapped classes from other modules using object identity."""
     # Handle direct class references
-    if isinstance(annotation, type):
-        impl_qualified_name = f"{annotation.__module__}.{annotation.__name__}"
-        if impl_qualified_name in impl_to_wrapper:
-            target_module, wrapper_name = impl_to_wrapper[impl_qualified_name]
-            if target_module != current_module:
-                if target_module not in cross_module_refs:
-                    cross_module_refs[target_module] = set()
-                cross_module_refs[target_module].add(wrapper_name)
+    if isinstance(annotation, type) and annotation in synchronizer._wrapped:
+        target_module, wrapper_name = synchronizer._wrapped[annotation]
+        if target_module != current_module:
+            if target_module not in cross_module_refs:
+                cross_module_refs[target_module] = set()
+            cross_module_refs[target_module].add(wrapper_name)
 
     # Handle generic types (e.g., List[WrapperClass], Optional[WrapperClass])
-    if hasattr(annotation, "__args__"):
-        for arg in annotation.__args__:
-            _check_annotation_for_cross_refs(arg, current_module, impl_to_wrapper, cross_module_refs)
+    import typing
+
+    args = typing.get_args(annotation)
+    if args:
+        for arg in args:
+            _check_annotation_for_cross_refs_new(arg, current_module, synchronizer, cross_module_refs)
 
 
 def compile_module(
@@ -983,8 +801,6 @@ def compile_module(
     """
     wrapped_items = synchronizer._wrapped
 
-    # Get all wrapped classes from the synchronizer
-    all_wrapped_classes = get_wrapped_classes(wrapped_items)
     # Filter items for this specific module
     module_items = {
         obj: (tgt_mod, tgt_name) for obj, (tgt_mod, tgt_name) in wrapped_items.items() if tgt_mod == module_name
@@ -998,15 +814,11 @@ def compile_module(
     for o, (target_module, target_name) in module_items.items():
         impl_modules.add(o.__module__)
 
-    # Extract wrapped classes for this module (subset of all_wrapped_classes)
-    wrapped_classes = {
-        name: qual_name
-        for name, qual_name in all_wrapped_classes.items()
-        if any(qual_name == f"{o.__module__}.{o.__name__}" for o, _ in module_items.items() if isinstance(o, type))
-    }
+    # Check if there are any wrapped classes (for weakref import)
+    has_wrapped_classes = any(isinstance(o, type) for o in module_items.keys())
 
-    # Detect cross-module references
-    cross_module_imports = _get_cross_module_imports(module_name, module_items, wrapped_items, all_wrapped_classes)
+    # Detect cross-module references using object-based approach
+    cross_module_imports = _get_cross_module_imports_new(module_name, module_items, synchronizer)
 
     # Generate header with imports for all implementation modules
     imports = "\n".join(f"import {mod}" for mod in sorted(impl_modules))
@@ -1034,9 +846,8 @@ from synchronicity2.synchronizer import get_synchronizer
     compiled_code = [header]
 
     # Generate weakref import if there are wrapped classes
-    if wrapped_classes:
-        weakref_import = _generate_weakref_import(wrapped_classes)
-        compiled_code.append(weakref_import)
+    if has_wrapped_classes:
+        compiled_code.append("import weakref")
         compiled_code.append("")  # Add blank line after import
 
     # Separate classes and functions to ensure correct ordering

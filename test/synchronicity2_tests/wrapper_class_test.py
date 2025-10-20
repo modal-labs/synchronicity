@@ -134,7 +134,7 @@ def test_compile_class_basic(test_synchronizer, simple_class):
     assert "def get_value(self" in generated_code
     assert "def set_value(self" in generated_code
     assert "def add_to_value(self" in generated_code
-    assert "impl_function = " in generated_code
+    assert "impl_method = " in generated_code
 
 
 def test_compile_class_method_descriptors(test_synchronizer, simple_class):
@@ -202,9 +202,10 @@ def test_compile_class_async_generators(test_synchronizer, async_generator_class
     compile(generated_code, "<string>", "exec")
 
     # Verify async generator methods use generator runtime methods
+    # Sync methods use _run_generator_sync
     assert "_run_generator_sync" in generated_code
-    assert "_run_generator_async" in generated_code
     assert "yield from" in generated_code
+    # Async aio() methods iterate directly (no need for _run_generator_async wrapper)
     assert "async for item in" in generated_code
 
 
@@ -272,7 +273,7 @@ def test_compile_class_instance_binding(test_synchronizer, simple_class):
     assert "def __call__(self" in generated_code
     assert "async def aio(self" in generated_code
     assert "@wrapped_method(" in generated_code
-    assert "impl_function = " in generated_code  # Method implementation reference
+    assert "impl_method = " in generated_code  # Method implementation reference
 
 
 def test_compile_class_impl_instance_access(test_synchronizer, simple_class):

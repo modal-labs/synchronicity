@@ -28,13 +28,25 @@ def test_compile_with_translation():
     assert "_ImplPerson._from_impl(" in compiled_code
 
     # Check that the signatures use wrapper types, not impl types
-    assert "def accepts_person(p: _ImplPerson) -> _ImplPerson:" in compiled_code
-    assert "def accepts_list_of_persons(persons: list[_ImplPerson]) -> list[_ImplPerson]:" in compiled_code
+    # The function signatures should have quoted return types for forward reference safety when they contain wrapper types
     assert (
-        "def accepts_optional_person(p: typing.Union[_ImplPerson, None]) -> "
-        "typing.Union[_ImplPerson, None]:" in compiled_code
+        'def accepts_person(p: _ImplPerson) -> "_ImplPerson":' in compiled_code
+        or "def accepts_person(p: _ImplPerson) -> '_ImplPerson':" in compiled_code
     )
-    assert "def accepts_dict_of_persons(persons: dict[str, _ImplPerson]) -> dict[str, _ImplPerson]:" in compiled_code
+    assert (
+        'def accepts_list_of_persons(persons: list[_ImplPerson]) -> "list[_ImplPerson]":' in compiled_code
+        or "def accepts_list_of_persons(persons: list[_ImplPerson]) -> 'list[_ImplPerson]':" in compiled_code
+    )
+    assert (
+        'def accepts_optional_person(p: typing.Union[_ImplPerson, None]) -> "typing.Union[_ImplPerson, None]":'
+        in compiled_code
+        or "def accepts_optional_person(p: typing.Union[_ImplPerson, None]) -> 'typing.Union[_ImplPerson, None]':"
+        in compiled_code
+    )
+    assert (
+        'def accepts_dict_of_persons(persons: dict[str, _ImplPerson]) -> "dict[str, _ImplPerson]":' in compiled_code
+        or "def accepts_dict_of_persons(persons: dict[str, _ImplPerson]) -> 'dict[str, _ImplPerson]':" in compiled_code
+    )
 
     print("✓ Wrapper code compiled successfully with translation")
     print(f"✓ Generated {len(compiled_code)} characters of wrapper code")

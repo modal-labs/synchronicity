@@ -120,11 +120,23 @@ def test_class_with_translation_generation():
     assert "wrapper._impl_instance = impl_instance" in generated_code
     assert "cls._instance_cache[cache_key] = wrapper" in generated_code
 
-    # Verify translation in function signatures
-    assert "def create_node(value: int) -> Node:" in generated_code
-    assert "def connect_nodes(parent: Node, child: Node) -> tuple[Node, Node]:" in generated_code
-    assert "def get_node_list(nodes: list[Node]) -> list[Node]:" in generated_code
-    assert "def get_optional_node(node: typing.Union[Node, None]) -> typing.Union[Node, None]:" in generated_code
+    # Verify translation in function signatures (with quoted return types for forward reference safety)
+    assert (
+        'def create_node(value: int) -> "Node":' in generated_code
+        or "def create_node(value: int) -> 'Node':" in generated_code
+    )
+    assert (
+        'def connect_nodes(parent: Node, child: Node) -> "tuple[Node, Node]":' in generated_code
+        or "def connect_nodes(parent: Node, child: Node) -> 'tuple[Node, Node]':" in generated_code
+    )
+    assert (
+        'def get_node_list(nodes: list[Node]) -> "list[Node]":' in generated_code
+        or "def get_node_list(nodes: list[Node]) -> 'list[Node]':" in generated_code
+    )
+    assert (
+        'def get_optional_node(node: typing.Union[Node, None]) -> "typing.Union[Node, None]":' in generated_code
+        or "def get_optional_node(node: typing.Union[Node, None]) -> 'typing.Union[Node, None]':" in generated_code
+    )
 
     # Verify unwrap expressions in function bodies
     assert "parent_impl = parent._impl_instance" in generated_code
