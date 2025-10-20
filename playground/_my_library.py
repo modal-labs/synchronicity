@@ -23,6 +23,6 @@ class Bar:
 
 
 @lib.wrap()
-def accepts_bar(b: Bar) -> Bar:
+async def accepts_bar(b: Bar) -> Bar:
     assert isinstance(b, Bar)
     return b
