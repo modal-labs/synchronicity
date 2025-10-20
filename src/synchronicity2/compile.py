@@ -290,7 +290,7 @@ def compile_function(
 
     # Build unwrap section for __call__ if needed - uses original call_args_str
     # which has the wrapper parameter names, not the impl ones
-    call_unwrap = ""
+
     if unwrap_code:
         # For __call__, we need to unwrap but then pass to sync_wrapper_function
         # The sync_wrapper_function will handle the actual impl call
