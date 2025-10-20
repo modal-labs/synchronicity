@@ -18,7 +18,7 @@ def test_compile_sync_function_basic(test_synchronizer):
     def simple_add(a: int, b: int) -> int:
         return a + b
 
-    code = compile_function(simple_add, "_impl", test_synchronizer)
+    code = compile_function(simple_add, test_synchronizer)
 
     # Verify generated code compiles
     compile(code, "<string>", "exec")
@@ -48,7 +48,7 @@ def test_compile_sync_function_with_wrapped_arg(test_synchronizer):
     def greet(person: Person) -> str:
         return f"Hello, {person.name}"
 
-    code = compile_function(greet, "_impl", test_synchronizer)
+    code = compile_function(greet, test_synchronizer)
 
     # Verify generated code compiles
     compile(code, "<string>", "exec")
@@ -76,14 +76,14 @@ def test_compile_sync_function_with_wrapped_return(test_synchronizer):
     def create_person(name: str) -> Person:
         return Person(name)
 
-    code = compile_function(create_person, "_impl", test_synchronizer)
+    code = compile_function(create_person, test_synchronizer)
 
     # Verify generated code compiles
     compile(code, "<string>", "exec")
 
     # Check that it wraps the return value
     assert "result = impl_function(name)" in code
-    assert "return Person._from_impl(result)" in code
+    assert "return test_module.Person._from_impl(result)" in code
 
     # Check that it calls impl_function directly (no synchronizer)
     assert "_run_function_sync" not in code
@@ -103,14 +103,14 @@ def test_compile_sync_function_with_list_wrapped_return(test_synchronizer):
     def create_people(names: list[str]) -> list[Person]:
         return [Person(name) for name in names]
 
-    code = compile_function(create_people, "_impl", test_synchronizer)
+    code = compile_function(create_people, test_synchronizer)
 
     # Verify generated code compiles
     compile(code, "<string>", "exec")
 
     # Check that it wraps the list items
     assert "result = impl_function(names)" in code
-    assert "[Person._from_impl(x) for x in result]" in code
+    assert "[test_module.Person._from_impl(x) for x in result]" in code
 
     # Check that it calls impl_function directly (no synchronizer)
     assert "_run_function_sync" not in code
@@ -125,7 +125,7 @@ def test_compile_sync_function_no_annotations(test_synchronizer):
     def no_types(x, y):
         return x + y
 
-    code = compile_function(no_types, "_impl", test_synchronizer)
+    code = compile_function(no_types, test_synchronizer)
 
     # Verify generated code compiles
     compile(code, "<string>", "exec")
@@ -141,7 +141,7 @@ def test_compile_sync_function_with_default_args(test_synchronizer):
     def with_defaults(a: int, b: int = 10, c: str = "hello") -> str:
         return f"{a}, {b}, {c}"
 
-    code = compile_function(with_defaults, "_impl", test_synchronizer)
+    code = compile_function(with_defaults, test_synchronizer)
 
     # Verify generated code compiles
     compile(code, "<string>", "exec")

@@ -82,17 +82,15 @@ def test_compile_function_basic_types(test_synchronizer, simple_function):
 
     # Get the wrapped function
     wrapped_func = None
-    target_module = None
     for func, (module, name) in test_synchronizer._wrapped.items():
         if func.__name__ == simple_function.__name__:
             wrapped_func = func
-            target_module = module
             break
 
     assert wrapped_func is not None, "Function should be wrapped"
 
     # Generate code
-    generated_code = compile_function(wrapped_func, target_module, test_synchronizer)
+    generated_code = compile_function(wrapped_func, test_synchronizer)
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
 
@@ -115,17 +113,15 @@ def test_compile_function_complex_types(test_synchronizer, complex_function):
 
     # Get the wrapped function
     wrapped_func = None
-    target_module = None
     for func, (module, name) in test_synchronizer._wrapped.items():
         if func.__name__ == complex_function.__name__:
             wrapped_func = func
-            target_module = module
             break
 
     assert wrapped_func is not None, "Function should be wrapped"
 
     # Generate code
-    generated_code = compile_function(wrapped_func, target_module, test_synchronizer)
+    generated_code = compile_function(wrapped_func, test_synchronizer)
 
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
@@ -149,17 +145,15 @@ def test_compile_function_no_annotations(test_synchronizer, no_annotation_functi
 
     # Get the wrapped function
     wrapped_func = None
-    target_module = None
     for func, (module, name) in test_synchronizer._wrapped.items():
         if func.__name__ == no_annotation_function.__name__:
             wrapped_func = func
-            target_module = module
             break
 
     assert wrapped_func is not None, "Function should be wrapped"
 
     # Generate code
-    generated_code = compile_function(wrapped_func, target_module, test_synchronizer)
+    generated_code = compile_function(wrapped_func, test_synchronizer)
 
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
@@ -176,14 +170,12 @@ def test_compile_function_template_pattern(test_synchronizer, simple_function):
 
     # Get the wrapped function
     wrapped_func = None
-    target_module = None
     for func, (module, name) in test_synchronizer._wrapped.items():
         if func.__name__ == simple_function.__name__:
             wrapped_func = func
-            target_module = module
             break
 
-    generated_code = compile_function(wrapped_func, target_module, test_synchronizer)
+    generated_code = compile_function(wrapped_func, test_synchronizer)
 
     # Check that the generated code contains all expected template elements
     template_elements = [
@@ -223,7 +215,7 @@ def test_compile_function_multiple_functions(test_synchronizer, simple_function,
 
     # Each should generate valid code
     for func, (target_module, target_name) in test_synchronizer._wrapped.items():
-        generated_code = compile_function(func, target_module, test_synchronizer)
+        generated_code = compile_function(func, test_synchronizer)
 
         # Should compile without errors
         compile(generated_code, "<string>", "exec")
@@ -243,17 +235,15 @@ def test_compile_function_async_generator(test_synchronizer, async_generator_fun
 
     # Get the wrapped function
     wrapped_func = None
-    target_module = None
     for func, (module, name) in test_synchronizer._wrapped.items():
         if func.__name__ == async_generator_function.__name__:
             wrapped_func = func
-            target_module = module
             break
 
     assert wrapped_func is not None, "Function should be wrapped"
 
     # Generate code
-    generated_code = compile_function(wrapped_func, target_module, test_synchronizer)
+    generated_code = compile_function(wrapped_func, test_synchronizer)
 
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
@@ -285,14 +275,12 @@ def test_compile_function_async_generator_template_pattern(test_synchronizer, as
 
     # Get the wrapped function
     wrapped_func = None
-    target_module = None
     for func, (module, name) in test_synchronizer._wrapped.items():
         if func.__name__ == async_generator_function.__name__:
             wrapped_func = func
-            target_module = module
             break
 
-    generated_code = compile_function(wrapped_func, target_module, test_synchronizer)
+    generated_code = compile_function(wrapped_func, test_synchronizer)
 
     # Check that the generated code contains all expected template elements
     template_elements = [
@@ -319,17 +307,15 @@ def test_compile_function_generic_types(test_synchronizer, generic_types_functio
 
     # Get the wrapped function
     wrapped_func = None
-    target_module = None
     for func, (module, name) in test_synchronizer._wrapped.items():
         if func.__name__ == generic_types_function.__name__:
             wrapped_func = func
-            target_module = module
             break
 
     assert wrapped_func is not None, "Function should be wrapped"
 
     # Generate code
-    generated_code = compile_function(wrapped_func, target_module, test_synchronizer)
+    generated_code = compile_function(wrapped_func, test_synchronizer)
 
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")

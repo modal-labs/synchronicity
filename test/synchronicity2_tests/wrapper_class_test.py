@@ -114,17 +114,15 @@ def test_compile_class_basic(test_synchronizer, simple_class):
 
     # Get the wrapped class
     wrapped_class = None
-    target_module = None
     for cls, (module, name) in test_synchronizer._wrapped.items():
         if cls.__name__ == simple_class.__name__:
             wrapped_class = cls
-            target_module = module
             break
 
     assert wrapped_class is not None, "Class should be wrapped"
 
     # Generate code
-    generated_code = compile_class(wrapped_class, target_module, test_synchronizer)
+    generated_code = compile_class(wrapped_class, test_synchronizer)
 
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
@@ -145,14 +143,12 @@ def test_compile_class_method_descriptors(test_synchronizer, simple_class):
 
     # Get the wrapped class
     wrapped_class = None
-    target_module = None
     for cls, (module, name) in test_synchronizer._wrapped.items():
         if cls.__name__ == simple_class.__name__:
             wrapped_class = cls
-            target_module = module
             break
 
-    generated_code = compile_class(wrapped_class, target_module, test_synchronizer)
+    generated_code = compile_class(wrapped_class, test_synchronizer)
 
     # Verify method wrapper classes are generated
     assert "TestClass_get_value" in generated_code
@@ -169,14 +165,12 @@ def test_compile_class_complex_types(test_synchronizer, complex_class):
 
     # Get the wrapped class
     wrapped_class = None
-    target_module = None
     for cls, (module, name) in test_synchronizer._wrapped.items():
         if cls.__name__ == complex_class.__name__:
             wrapped_class = cls
-            target_module = module
             break
 
-    generated_code = compile_class(wrapped_class, target_module, test_synchronizer)
+    generated_code = compile_class(wrapped_class, test_synchronizer)
 
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
@@ -197,14 +191,12 @@ def test_compile_class_async_generators(test_synchronizer, async_generator_class
 
     # Get the wrapped class
     wrapped_class = None
-    target_module = None
     for cls, (module, name) in test_synchronizer._wrapped.items():
         if cls.__name__ == async_generator_class.__name__:
             wrapped_class = cls
-            target_module = module
             break
 
-    generated_code = compile_class(wrapped_class, target_module, test_synchronizer)
+    generated_code = compile_class(wrapped_class, test_synchronizer)
 
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
@@ -222,14 +214,12 @@ def test_compile_class_mixed_methods(test_synchronizer, mixed_class):
 
     # Get the wrapped class
     wrapped_class = None
-    target_module = None
     for cls, (module, name) in test_synchronizer._wrapped.items():
         if cls.__name__ == mixed_class.__name__:
             wrapped_class = cls
-            target_module = module
             break
 
-    generated_code = compile_class(wrapped_class, target_module, test_synchronizer)
+    generated_code = compile_class(wrapped_class, test_synchronizer)
 
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
@@ -250,14 +240,12 @@ def test_compile_class_type_annotations_preserved(test_synchronizer, simple_clas
 
     # Get the wrapped class
     wrapped_class = None
-    target_module = None
     for cls, (module, name) in test_synchronizer._wrapped.items():
         if cls.__name__ == simple_class.__name__:
             wrapped_class = cls
-            target_module = module
             break
 
-    generated_code = compile_class(wrapped_class, target_module, test_synchronizer)
+    generated_code = compile_class(wrapped_class, test_synchronizer)
 
     # Verify type annotations are preserved
     assert "new_value: int" in generated_code
@@ -272,14 +260,12 @@ def test_compile_class_instance_binding(test_synchronizer, simple_class):
 
     # Get the wrapped class
     wrapped_class = None
-    target_module = None
     for cls, (module, name) in test_synchronizer._wrapped.items():
         if cls.__name__ == simple_class.__name__:
             wrapped_class = cls
-            target_module = module
             break
 
-    generated_code = compile_class(wrapped_class, target_module, test_synchronizer)
+    generated_code = compile_class(wrapped_class, test_synchronizer)
 
     # Verify method wrapper classes are present (new decorator pattern)
     assert "class TestClass_" in generated_code  # Method wrapper classes
@@ -295,14 +281,12 @@ def test_compile_class_impl_instance_access(test_synchronizer, simple_class):
 
     # Get the wrapped class
     wrapped_class = None
-    target_module = None
-    for cls, (module, name) in test_synchronizer._wrapped.items():
+    for cls, _ in test_synchronizer._wrapped.items():
         if cls.__name__ == simple_class.__name__:
             wrapped_class = cls
-            target_module = module
             break
 
-    generated_code = compile_class(wrapped_class, target_module, test_synchronizer)
+    generated_code = compile_class(wrapped_class, test_synchronizer)
 
     # Verify original instance is created and accessible
     assert "self._impl_instance = test_module.TestClass(" in generated_code
@@ -321,7 +305,7 @@ def test_compile_class_multiple_classes(test_synchronizer, simple_class, complex
 
     # Each should generate valid code
     for cls, (target_module, target_name) in test_synchronizer._wrapped.items():
-        generated_code = compile_class(cls, target_module, test_synchronizer)
+        generated_code = compile_class(cls, test_synchronizer)
 
         # Should compile without errors
         compile(generated_code, "<string>", "exec")
@@ -347,14 +331,12 @@ def test_compile_class_no_methods():
 
     # Get the wrapped class
     wrapped_class = None
-    target_module = None
-    for cls, (module, name) in test_synchronizer._wrapped.items():
+    for cls, _ in test_synchronizer._wrapped.items():
         if cls.__name__ == EmptyClass.__name__:
             wrapped_class = cls
-            target_module = module
             break
 
-    generated_code = compile_class(wrapped_class, target_module, test_synchronizer)
+    generated_code = compile_class(wrapped_class, test_synchronizer)
 
     # Should still generate a valid wrapper class
     compile(generated_code, "<string>", "exec")
