@@ -92,7 +92,7 @@ def test_compile_function_basic_types(test_synchronizer, simple_function):
     assert wrapped_func is not None, "Function should be wrapped"
 
     # Generate code
-    generated_code = compile_function(wrapped_func, target_module, test_synchronizer._name)
+    generated_code = compile_function(wrapped_func, target_module, test_synchronizer)
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
 
@@ -125,7 +125,7 @@ def test_compile_function_complex_types(test_synchronizer, complex_function):
     assert wrapped_func is not None, "Function should be wrapped"
 
     # Generate code
-    generated_code = compile_function(wrapped_func, target_module, test_synchronizer._name)
+    generated_code = compile_function(wrapped_func, target_module, test_synchronizer)
 
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
@@ -159,7 +159,7 @@ def test_compile_function_no_annotations(test_synchronizer, no_annotation_functi
     assert wrapped_func is not None, "Function should be wrapped"
 
     # Generate code
-    generated_code = compile_function(wrapped_func, target_module, test_synchronizer._name)
+    generated_code = compile_function(wrapped_func, target_module, test_synchronizer)
 
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
@@ -183,7 +183,7 @@ def test_compile_function_template_pattern(test_synchronizer, simple_function):
             target_module = module
             break
 
-    generated_code = compile_function(wrapped_func, target_module, test_synchronizer._name)
+    generated_code = compile_function(wrapped_func, target_module, test_synchronizer)
 
     # Check that the generated code contains all expected template elements
     template_elements = [
@@ -223,7 +223,7 @@ def test_compile_function_multiple_functions(test_synchronizer, simple_function,
 
     # Each should generate valid code
     for func, (target_module, target_name) in test_synchronizer._wrapped.items():
-        generated_code = compile_function(func, target_module, test_synchronizer._name)
+        generated_code = compile_function(func, target_module, test_synchronizer)
 
         # Should compile without errors
         compile(generated_code, "<string>", "exec")
@@ -253,7 +253,7 @@ def test_compile_function_async_generator(test_synchronizer, async_generator_fun
     assert wrapped_func is not None, "Function should be wrapped"
 
     # Generate code
-    generated_code = compile_function(wrapped_func, target_module, test_synchronizer._name)
+    generated_code = compile_function(wrapped_func, target_module, test_synchronizer)
 
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
@@ -292,7 +292,7 @@ def test_compile_function_async_generator_template_pattern(test_synchronizer, as
             target_module = module
             break
 
-    generated_code = compile_function(wrapped_func, target_module, test_synchronizer._name)
+    generated_code = compile_function(wrapped_func, target_module, test_synchronizer)
 
     # Check that the generated code contains all expected template elements
     template_elements = [
@@ -329,7 +329,7 @@ def test_compile_function_generic_types(test_synchronizer, generic_types_functio
     assert wrapped_func is not None, "Function should be wrapped"
 
     # Generate code
-    generated_code = compile_function(wrapped_func, target_module, test_synchronizer._name)
+    generated_code = compile_function(wrapped_func, target_module, test_synchronizer)
 
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")

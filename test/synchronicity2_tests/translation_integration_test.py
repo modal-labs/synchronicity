@@ -17,7 +17,7 @@ def test_compile_with_translation():
     from synchronicity2.compile import compile_modules
 
     # Compile the library
-    modules = compile_modules(_test_impl.lib._wrapped, "test_lib")
+    modules = compile_modules(_test_impl.lib)
     compiled_code = list(modules.values())[0]  # Extract the single module
 
     # Check that the code contains the expected elements
@@ -44,7 +44,7 @@ def test_wrapper_helpers_generated():
     """Test that _from_impl classmethod is generated correctly."""
     from synchronicity2.compile import compile_modules
 
-    modules = compile_modules(_test_impl.lib._wrapped, "test_lib")
+    modules = compile_modules(_test_impl.lib)
     compiled_code = list(modules.values())[0]  # Extract the single module
 
     # Check the _from_impl classmethod structure with class-level cache
@@ -63,7 +63,7 @@ def test_unwrap_expressions_in_functions():
     """Test that unwrap expressions are generated in function bodies."""
     from synchronicity2.compile import compile_modules
 
-    modules = compile_modules(_test_impl.lib._wrapped, "test_lib")
+    modules = compile_modules(_test_impl.lib)
     compiled_code = list(modules.values())[0]  # Extract the single module
 
     # Check for unwrap in sync wrapper
@@ -79,7 +79,7 @@ def test_translation_with_collections():
     """Test that collection types are translated correctly."""
     from synchronicity2.compile import compile_modules
 
-    modules = compile_modules(_test_impl.lib._wrapped, "test_lib")
+    modules = compile_modules(_test_impl.lib)
     compiled_code = list(modules.values())[0]  # Extract the single module
 
     # Check for list comprehension unwrap
@@ -105,7 +105,7 @@ def test_no_translation_for_primitives():
     sync = Synchronizer("test_lib")
     sync.wrap()(returns_string)
 
-    modules = compile_modules(sync._wrapped, "test_lib")
+    modules = compile_modules(sync)
     compiled_code = list(modules.values())[0]  # Extract the single module
 
     # Should not generate unwrap/wrap for strings

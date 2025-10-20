@@ -3,7 +3,6 @@
 import pytest
 
 from synchronicity2 import get_synchronizer
-from synchronicity2.codegen import get_wrapped_classes
 from synchronicity2.compile import compile_function
 
 
@@ -19,7 +18,7 @@ def test_compile_sync_function_basic(test_synchronizer):
     def simple_add(a: int, b: int) -> int:
         return a + b
 
-    code = compile_function(simple_add, "_impl", "test_compile_sync_function")
+    code = compile_function(simple_add, "_impl", test_synchronizer)
 
     # Verify generated code compiles
     compile(code, "<string>", "exec")
@@ -49,10 +48,7 @@ def test_compile_sync_function_with_wrapped_arg(test_synchronizer):
     def greet(person: Person) -> str:
         return f"Hello, {person.name}"
 
-    wrapped = test_synchronizer._wrapped
-    wrapped_classes = get_wrapped_classes(wrapped)
-
-    code = compile_function(greet, "_impl", "test_compile_sync_function", wrapped_classes, wrapped_classes)
+    code = compile_function(greet, "_impl", test_synchronizer)
 
     # Verify generated code compiles
     compile(code, "<string>", "exec")
@@ -80,10 +76,7 @@ def test_compile_sync_function_with_wrapped_return(test_synchronizer):
     def create_person(name: str) -> Person:
         return Person(name)
 
-    wrapped = test_synchronizer._wrapped
-    wrapped_classes = get_wrapped_classes(wrapped)
-
-    code = compile_function(create_person, "_impl", "test_compile_sync_function", wrapped_classes, wrapped_classes)
+    code = compile_function(create_person, "_impl", test_synchronizer)
 
     # Verify generated code compiles
     compile(code, "<string>", "exec")
@@ -110,10 +103,7 @@ def test_compile_sync_function_with_list_wrapped_return(test_synchronizer):
     def create_people(names: list[str]) -> list[Person]:
         return [Person(name) for name in names]
 
-    wrapped = test_synchronizer._wrapped
-    wrapped_classes = get_wrapped_classes(wrapped)
-
-    code = compile_function(create_people, "_impl", "test_compile_sync_function", wrapped_classes, wrapped_classes)
+    code = compile_function(create_people, "_impl", test_synchronizer)
 
     # Verify generated code compiles
     compile(code, "<string>", "exec")
@@ -135,7 +125,7 @@ def test_compile_sync_function_no_annotations(test_synchronizer):
     def no_types(x, y):
         return x + y
 
-    code = compile_function(no_types, "_impl", "test_compile_sync_function")
+    code = compile_function(no_types, "_impl", test_synchronizer)
 
     # Verify generated code compiles
     compile(code, "<string>", "exec")
@@ -151,7 +141,7 @@ def test_compile_sync_function_with_default_args(test_synchronizer):
     def with_defaults(a: int, b: int = 10, c: str = "hello") -> str:
         return f"{a}, {b}, {c}"
 
-    code = compile_function(with_defaults, "_impl", "test_compile_sync_function")
+    code = compile_function(with_defaults, "_impl", test_synchronizer)
 
     # Verify generated code compiles
     compile(code, "<string>", "exec")

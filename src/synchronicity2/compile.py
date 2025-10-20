@@ -1,7 +1,10 @@
 """Main compilation module - imports from codegen package and provides compile_* functions."""
 
+from __future__ import annotations
+
 import inspect
 import types
+from typing import TYPE_CHECKING
 
 from .codegen import (
     build_unwrap_expr,
@@ -14,6 +17,9 @@ from .codegen import (
     parse_parameters,
     translate_type_annotation,
 )
+
+if TYPE_CHECKING:
+    from .synchronizer import Synchronizer
 
 
 def _generate_weakref_import(wrapped_classes: dict[str, str]) -> str:
@@ -72,10 +78,11 @@ def _qualify_type_for_annotation(
 def compile_function(
     f: types.FunctionType,
     target_module: str,
-    synchronizer_name: str,
-    wrapped_classes: dict[str, str] = None,
-    local_wrapped_classes: dict[str, str] = None,
-    cross_module_imports: dict[str, set[str]] = None,
+    synchronizer: Synchronizer,
+    *,
+    _all_wrapped_classes: dict[str, str] | None = None,
+    _local_wrapped_classes: dict[str, str] | None = None,
+    _cross_module_imports: dict[str, set[str]] | None = None,
 ) -> str:
     """
     Compile a function into a wrapper class that provides both sync and async versions.
@@ -84,19 +91,27 @@ def compile_function(
     Args:
         f: The function to compile
         target_module: The module name where the original function is located
-        synchronizer_name: The name of the synchronizer to use
-        wrapped_classes: Mapping of ALL wrapper names to impl qualified names (across all modules)
-        local_wrapped_classes: Mapping of wrapper names defined in this module only
+        synchronizer: The Synchronizer instance
+
+    Internal args (computed by compile_module):
+        _all_wrapped_classes: Global wrapped classes mapping (for type translation)
+        _local_wrapped_classes: Wrapped classes local to the current module
+        _cross_module_imports: Cross-module import information
 
     Returns:
         String containing the generated wrapper class and decorated function code
     """
-    if wrapped_classes is None:
-        wrapped_classes = {}
-    if local_wrapped_classes is None:
-        local_wrapped_classes = wrapped_classes  # If not specified, assume all are local
-    if cross_module_imports is None:
-        cross_module_imports = {}  # No cross-module imports
+    synchronizer_name = synchronizer._name
+
+    # Derive wrapped_classes and related data from the synchronizer if not provided
+    if _all_wrapped_classes is None:
+        wrapped_classes = get_wrapped_classes(synchronizer._wrapped)
+        local_wrapped_classes = wrapped_classes
+        cross_module_imports = {}
+    else:
+        wrapped_classes = _all_wrapped_classes
+        local_wrapped_classes = _local_wrapped_classes or {}
+        cross_module_imports = _cross_module_imports or {}
 
     # Get function signature and annotations
     sig = inspect.signature(f)
@@ -378,12 +393,13 @@ def {f.__name__}({param_str}){sync_return_str}:
 def compile_method_wrapper(
     method: types.FunctionType,
     method_name: str,
-    synchronizer_name: str,
+    synchronizer: Synchronizer,
     target_module: str,
     class_name: str,
-    wrapped_classes: dict[str, str] = None,
-    local_wrapped_classes: dict[str, str] = None,
-    cross_module_imports: dict[str, set[str]] = None,
+    *,
+    _all_wrapped_classes: dict[str, str] | None = None,
+    _local_wrapped_classes: dict[str, str] | None = None,
+    _cross_module_imports: dict[str, set[str]] | None = None,
 ) -> tuple[str, str]:
     """
     Compile a method wrapper class that provides both sync and async versions.
@@ -393,22 +409,29 @@ def compile_method_wrapper(
     Args:
         method: The method to wrap
         method_name: The name of the method
-        synchronizer_name: The name of the synchronizer to use
+        synchronizer: The Synchronizer instance
         target_module: The module where the original class is located
         class_name: The name of the class containing the method
-        wrapped_classes: Mapping of wrapper names to impl qualified names for type translation
-        local_wrapped_classes: Mapping of wrapper names defined in the current module
-        cross_module_imports: Dict mapping target modules to sets of imported class names
+
+    Internal args (computed by compile_class/compile_module):
+        _all_wrapped_classes: Global wrapped classes mapping (for type translation)
+        _local_wrapped_classes: Wrapped classes local to the current module
+        _cross_module_imports: Cross-module import information
 
     Returns:
         Tuple of (wrapper_class_code, sync_method_code)
     """
-    if wrapped_classes is None:
-        wrapped_classes = {}
-    if local_wrapped_classes is None:
-        local_wrapped_classes = {}
-    if cross_module_imports is None:
+    synchronizer_name = synchronizer._name
+
+    # Derive wrapped_classes and related data from the synchronizer if not provided
+    if _all_wrapped_classes is None:
+        wrapped_classes = get_wrapped_classes(synchronizer._wrapped)
+        local_wrapped_classes = wrapped_classes
         cross_module_imports = {}
+    else:
+        wrapped_classes = _all_wrapped_classes
+        local_wrapped_classes = _local_wrapped_classes or {}
+        cross_module_imports = _cross_module_imports or {}
 
     # Get method signature and annotations
     sig = inspect.signature(method)
@@ -694,10 +717,11 @@ def compile_method_wrapper(
 def compile_class(
     cls: type,
     target_module: str,
-    synchronizer_name: str,
-    wrapped_classes: dict[str, str] = None,
-    local_wrapped_classes: dict[str, str] = None,
-    cross_module_imports: dict[str, set[str]] = None,
+    synchronizer: Synchronizer,
+    *,
+    _all_wrapped_classes: dict[str, str] | None = None,
+    _local_wrapped_classes: dict[str, str] | None = None,
+    _cross_module_imports: dict[str, set[str]] | None = None,
 ) -> str:
     """
     Compile a class into a wrapper class where all methods are wrapped with sync/async versions.
@@ -705,20 +729,27 @@ def compile_class(
     Args:
         cls: The class to compile
         target_module: The module name where the original class is located
-        synchronizer_name: The name of the synchronizer to use
-        wrapped_classes: Mapping of wrapper names to impl qualified names for type translation
-        local_wrapped_classes: Mapping of wrapper names defined in the current module
-        cross_module_imports: Dict mapping target modules to sets of imported class names
+        synchronizer: The Synchronizer instance
+
+    Internal args (computed by compile_module):
+        _all_wrapped_classes: Global wrapped classes mapping (for type translation)
+        _local_wrapped_classes: Wrapped classes local to the current module
+        _cross_module_imports: Cross-module import information
 
     Returns:
         String containing the generated wrapper class code
     """
-    if wrapped_classes is None:
-        wrapped_classes = {}
-    if local_wrapped_classes is None:
-        local_wrapped_classes = {}
-    if cross_module_imports is None:
+    synchronizer_name = synchronizer._name
+
+    # Derive wrapped_classes and related data from the synchronizer if not provided
+    if _all_wrapped_classes is None:
+        wrapped_classes = get_wrapped_classes(synchronizer._wrapped)
+        local_wrapped_classes = wrapped_classes
         cross_module_imports = {}
+    else:
+        wrapped_classes = _all_wrapped_classes
+        local_wrapped_classes = _local_wrapped_classes or {}
+        cross_module_imports = _cross_module_imports or {}
 
     # Get all methods from the class (both async and non-async)
     methods = []
@@ -743,12 +774,12 @@ def compile_class(
         wrapper_class_code, sync_method_code = compile_method_wrapper(
             method,
             method_name,
-            synchronizer_name,
+            synchronizer,
             target_module,
             cls.__name__,
-            wrapped_classes,
-            local_wrapped_classes,
-            cross_module_imports,
+            _all_wrapped_classes=wrapped_classes,
+            _local_wrapped_classes=local_wrapped_classes,
+            _cross_module_imports=cross_module_imports,
         )
         # Only add wrapper class if it's not empty (non-async methods return empty string)
         if wrapper_class_code:
@@ -939,22 +970,22 @@ def _check_annotation_for_cross_refs(
 
 def compile_module(
     module_name: str,
-    wrapped_items: dict,
-    synchronizer_name: str,
-    all_wrapped_classes: dict[str, str],
+    synchronizer: Synchronizer,
 ) -> str:
     """
     Compile wrapped items for a single target module.
 
     Args:
         module_name: The target module name to generate (e.g., "multifile.a")
-        wrapped_items: Dict mapping original objects to (target_module, target_name) tuples
-        synchronizer_name: The name of the synchronizer to use
-        all_wrapped_classes: Global dict of all wrapped classes for type translation
+        synchronizer: The Synchronizer instance
 
     Returns:
         String containing compiled wrapper code for this module
     """
+    wrapped_items = synchronizer._wrapped
+
+    # Get all wrapped classes from the synchronizer
+    all_wrapped_classes = get_wrapped_classes(wrapped_items)
     # Filter items for this specific module
     module_items = {
         obj: (tgt_mod, tgt_name) for obj, (tgt_mod, tgt_name) in wrapped_items.items() if tgt_mod == module_name
@@ -1024,14 +1055,24 @@ from synchronicity2.synchronizer import get_synchronizer
     # Compile all classes first
     for cls, obj_module in classes:
         code = compile_class(
-            cls, obj_module, synchronizer_name, all_wrapped_classes, wrapped_classes, cross_module_imports
+            cls,
+            obj_module,
+            synchronizer,
+            _all_wrapped_classes=all_wrapped_classes,
+            _local_wrapped_classes=wrapped_classes,
+            _cross_module_imports=cross_module_imports,
         )
         compiled_code.append(code)
 
     # Then compile all functions
     for func, obj_module in functions:
         code = compile_function(
-            func, obj_module, synchronizer_name, all_wrapped_classes, wrapped_classes, cross_module_imports
+            func,
+            obj_module,
+            synchronizer,
+            _all_wrapped_classes=all_wrapped_classes,
+            _local_wrapped_classes=wrapped_classes,
+            _cross_module_imports=cross_module_imports,
         )
         compiled_code.append(code)
         compiled_code.append("")  # Add blank line after function
@@ -1039,31 +1080,29 @@ from synchronicity2.synchronizer import get_synchronizer
     return "\n".join(compiled_code)
 
 
-def compile_modules(wrapped_items: dict, synchronizer_name: str) -> dict[str, str]:
+def compile_modules(synchronizer: Synchronizer) -> dict[str, str]:
     """
     Compile wrapped items into separate module files.
 
     Args:
-        wrapped_items: Dict mapping original objects to (target_module, target_name) tuples
-        synchronizer_name: The name of the synchronizer to use
+        synchronizer: The Synchronizer instance
 
     Returns:
         Dict mapping module names to their generated code
     """
-    # Group items by target module
+    wrapped_items = synchronizer._wrapped
+
+    # Group items by target module to get the list of modules we need to generate
     modules = {}
     for obj, (target_module, target_name) in wrapped_items.items():
         if target_module not in modules:
             modules[target_module] = {}
         modules[target_module][obj] = (target_module, target_name)
 
-    # Get global wrapped classes for type translation
-    all_wrapped_classes = get_wrapped_classes(wrapped_items)
-
     # Compile each module
     result = {}
     for module_name in sorted(modules.keys()):
-        code = compile_module(module_name, wrapped_items, synchronizer_name, all_wrapped_classes)
+        code = compile_module(module_name, synchronizer)
         if code:
             result[module_name] = code
 

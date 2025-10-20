@@ -142,7 +142,7 @@ Examples:
     from synchronicity2.compile import compile_modules
 
     print("Compiling wrappers...", file=sys.stderr)
-    modules = compile_modules(synchronizer._wrapped, synchronizer_name)
+    modules = compile_modules(synchronizer)
 
     if not modules:
         print("No modules generated", file=sys.stderr)

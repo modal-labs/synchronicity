@@ -50,7 +50,7 @@ def test_simple_function_generation():
     import _simple_function
 
     # Generate wrapper code
-    modules = compile_modules(_simple_function.lib._wrapped, "simple_func_lib")
+    modules = compile_modules(_simple_function.lib)
     generated_code = list(modules.values())[0]  # Extract the single module
 
     # Verify code structure
@@ -78,7 +78,7 @@ def test_simple_class_generation():
     import _simple_class
 
     # Generate wrapper code
-    modules = compile_modules(_simple_class.lib._wrapped, "simple_class_lib")
+    modules = compile_modules(_simple_class.lib)
     generated_code = list(modules.values())[0]  # Extract the single module
 
     # Verify code structure
@@ -106,7 +106,7 @@ def test_class_with_translation_generation():
     import _class_with_translation
 
     # Generate wrapper code
-    modules = compile_modules(_class_with_translation.lib._wrapped, "translation_lib")
+    modules = compile_modules(_class_with_translation.lib)
     generated_code = list(modules.values())[0]  # Extract the single module
 
     # Verify weakref import
@@ -153,7 +153,7 @@ def test_generated_code_execution_simple():
     import _simple_function
 
     # Generate wrapper code
-    modules = compile_modules(_simple_function.lib._wrapped, "exec_test_lib")
+    modules = compile_modules(_simple_function.lib)
     generated_code = list(modules.values())[0]  # Extract the single module
 
     # Write to a temporary file and import it
@@ -170,7 +170,7 @@ def test_generated_code_execution_class():
     import _simple_class
 
     # Generate wrapper code
-    modules = compile_modules(_simple_class.lib._wrapped, "class_exec_lib")
+    modules = compile_modules(_simple_class.lib)
     generated_code = list(modules.values())[0]  # Extract the single module
 
     # Write to a temporary file and import it
@@ -196,7 +196,7 @@ def test_generated_code_execution_with_translation():
     import _class_with_translation
 
     # Generate wrapper code
-    modules = compile_modules(_class_with_translation.lib._wrapped, "translation_exec_lib")
+    modules = compile_modules(_class_with_translation.lib)
     generated_code = list(modules.values())[0]  # Extract the single module
 
     # Write to a temporary file and import it
@@ -228,7 +228,7 @@ def test_wrapper_identity_preservation():
     import _class_with_translation
 
     # Generate wrapper code
-    modules = compile_modules(_class_with_translation.lib._wrapped, "identity_lib")
+    modules = compile_modules(_class_with_translation.lib)
     generated_code = list(modules.values())[0]  # Extract the single module
 
     # Write to a temporary file and import it
@@ -256,7 +256,7 @@ def test_pyright_type_checking():
     import _class_with_translation
 
     # Generate wrapper code
-    modules = compile_modules(_class_with_translation.lib._wrapped, "translation_lib")
+    modules = compile_modules(_class_with_translation.lib)
     generated_code = list(modules.values())[0]  # Extract the single module
 
     # Check if pyright is available
