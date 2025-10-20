@@ -252,6 +252,10 @@ from translation_lib import Node, create_node, connect_nodes
 reveal_type(create_node)  # Should be a callable returning Node
 reveal_type(connect_nodes)  # Should be a callable returning tuple[Node, Node]
 
+# Test __call__ attribute
+reveal_type(create_node.__call__)  # Should show callable signature
+reveal_type(create_node.aio)  # Should show callable signature
+
 # Test function return types
 node = create_node(42)
 reveal_type(node)  # Should be Node
@@ -305,6 +309,10 @@ reveal_type(result)  # Should be tuple[Node, Node]
         # Function object types
         assert 'Type of "create_node" is' in output, f"Expected create_node type to be revealed, got: {output}"
         assert 'Type of "connect_nodes" is' in output, f"Expected connect_nodes type to be revealed, got: {output}"
+        # __call__ attribute
+        assert (
+            'Type of "create_node.__call__" is' in output
+        ), f"Expected create_node.__call__ type to be revealed, got: {output}"
         # Return value types
         assert 'Type of "node" is "Node"' in output, f"Expected node type to be Node, got: {output}"
         assert 'Type of "child" is "Node"' in output, f"Expected child type to be Node, got: {output}"
