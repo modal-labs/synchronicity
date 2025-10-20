@@ -215,37 +215,58 @@ def build_unwrap_expr(annotation, wrapped_classes: dict[str, str], var_name: str
     return var_name
 
 
-def build_wrap_expr(annotation, wrapped_classes: dict[str, str], var_name: str = "value") -> str:
+def build_wrap_expr(
+    annotation,
+    wrapped_classes: dict[str, str],
+    var_name: str = "value",
+    local_wrapped_classes: dict[str, str] = None,
+) -> str:
     """
     Build Python expression to wrap a value from implementation type to wrapper type.
 
-    This generates annotation-driven wrapping code that calls _wrap_ClassName()
-    helper functions (which will be generated separately).
+    This generates annotation-driven wrapping code that calls ClassName._from_impl()
+    classmethods for local classes, or _wrap_ClassName() helpers for cross-module classes.
 
     Args:
         annotation: The type annotation
-        wrapped_classes: Mapping of wrapper names to impl qualified names
+        wrapped_classes: Mapping of ALL wrapper names to impl qualified names
         var_name: The variable name to wrap (default: "value")
+        local_wrapped_classes: Mapping of wrapper names defined in the current module.
+                              If None, assumes all classes are local.
 
     Returns:
         Python expression string that wraps the value
 
     Examples:
-        Bar -> "_wrap_Bar(value)"
-        list[Bar] -> "[_wrap_Bar(x) for x in value]"
-        dict[str, Bar] -> "{k: _wrap_Bar(v) for k, v in value.items()}"
-        Optional[Bar] -> "_wrap_Bar(value) if value is not None else None"
+        Local Bar -> "Bar._from_impl(value)"
+        Cross-module Bar -> "_wrap_Bar(value)"
+        list[Bar] -> "[Bar._from_impl(x) for x in value]" (if local)
+        dict[str, Bar] -> "{k: _wrap_Bar(v) for k, v in value.items()}" (if cross-module)
+        Optional[Bar] -> "Bar._from_impl(value) if value is not None else None" (if local)
         str -> "value"  # no wrapping needed
     """
     if not needs_translation(annotation, wrapped_classes):
         return var_name
+
+    # If local_wrapped_classes not specified, assume all are local
+    if local_wrapped_classes is None:
+        local_wrapped_classes = wrapped_classes
+
+    def _get_wrap_call(wrapper_name: str, value: str) -> str:
+        """Get the appropriate wrap call based on whether class is local or cross-module."""
+        if wrapper_name in local_wrapped_classes:
+            # Local class - use _from_impl classmethod
+            return f"{wrapper_name}._from_impl({value})"
+        else:
+            # Cross-module class - use _wrap_ helper function
+            return f"_wrap_{wrapper_name}({value})"
 
     # Handle string annotations (forward references)
     if isinstance(annotation, str):
         # Check if it matches a wrapped class name
         for wrapper_name in wrapped_classes.keys():
             if annotation == wrapper_name or annotation == f"'{wrapper_name}'":
-                return f"_wrap_{wrapper_name}({var_name})"
+                return _get_wrap_call(wrapper_name, var_name)
         return var_name
 
     # Get the origin and args for generic types
@@ -257,26 +278,26 @@ def build_wrap_expr(annotation, wrapped_classes: dict[str, str], var_name: str =
         impl_str = format_type_annotation(annotation)
         for wrapper_name, impl_qualified in wrapped_classes.items():
             if impl_str == impl_qualified or impl_str.strip("'\"") == wrapper_name:
-                return f"_wrap_{wrapper_name}({var_name})"
+                return _get_wrap_call(wrapper_name, var_name)
         return var_name
 
     elif origin is list:
         if args:
-            inner_expr = build_wrap_expr(args[0], wrapped_classes, "x")
+            inner_expr = build_wrap_expr(args[0], wrapped_classes, "x", local_wrapped_classes)
             if inner_expr != "x":
                 return f"[{inner_expr} for x in {var_name}]"
         return var_name
 
     elif origin is dict:
         if len(args) >= 2:
-            value_expr = build_wrap_expr(args[1], wrapped_classes, "v")
+            value_expr = build_wrap_expr(args[1], wrapped_classes, "v", local_wrapped_classes)
             if value_expr != "v":
                 return f"{{k: {value_expr} for k, v in {var_name}.items()}}"
         return var_name
 
     elif origin is tuple:
         if args:
-            inner_expr = build_wrap_expr(args[0], wrapped_classes, "x")
+            inner_expr = build_wrap_expr(args[0], wrapped_classes, "x", local_wrapped_classes)
             if inner_expr != "x":
                 return f"tuple({inner_expr} for x in {var_name})"
         return var_name
@@ -285,7 +306,7 @@ def build_wrap_expr(annotation, wrapped_classes: dict[str, str], var_name: str =
         # Handle Optional[T] which is Union[T, None]
         non_none_args = [arg for arg in args if arg is not type(None)]
         if len(non_none_args) == 1:
-            inner_expr = build_wrap_expr(non_none_args[0], wrapped_classes, var_name)
+            inner_expr = build_wrap_expr(non_none_args[0], wrapped_classes, var_name, local_wrapped_classes)
             if inner_expr != var_name:
                 return f"{inner_expr} if {var_name} is not None else None"
         return var_name

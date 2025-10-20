@@ -209,13 +209,13 @@ class TestBuildWrapExpr:
     def test_direct_wrapped_type(self, wrapped_classes):
         """Test wrapping a direct wrapped type."""
         expr = build_wrap_expr(_impl_Foo, wrapped_classes, "result")
-        assert expr == "_wrap_Foo(result)"
+        assert expr == "Foo._from_impl(result)"
 
     def test_list_of_wrapped(self, wrapped_classes):
         """Test wrapping list[WrappedClass]."""
         annotation = typing.List[_impl_Bar]
         expr = build_wrap_expr(annotation, wrapped_classes, "items")
-        assert "_wrap_Bar(x)" in expr
+        assert "Bar._from_impl(x)" in expr
         assert "for x in items" in expr
         assert expr.startswith("[")
 
@@ -223,7 +223,7 @@ class TestBuildWrapExpr:
         """Test wrapping dict[str, WrappedClass]."""
         annotation = typing.Dict[str, _impl_Foo]
         expr = build_wrap_expr(annotation, wrapped_classes, "mapping")
-        assert "_wrap_Foo(v)" in expr
+        assert "Foo._from_impl(v)" in expr
         assert ".items()" in expr
         assert "{" in expr
 
@@ -231,14 +231,14 @@ class TestBuildWrapExpr:
         """Test wrapping Optional[WrappedClass]."""
         annotation = typing.Optional[_impl_Bar]
         expr = build_wrap_expr(annotation, wrapped_classes, "maybe_val")
-        assert "_wrap_Bar(maybe_val)" in expr
+        assert "Bar._from_impl(maybe_val)" in expr
         assert "if maybe_val is not None else None" in expr
 
     def test_tuple_of_wrapped(self, wrapped_classes):
         """Test wrapping tuple[WrappedClass, ...]."""
         annotation = typing.Tuple[_impl_Foo, ...]
         expr = build_wrap_expr(annotation, wrapped_classes, "tup")
-        assert "_wrap_Foo(x)" in expr
+        assert "Foo._from_impl(x)" in expr
         assert "tuple(" in expr
         assert "for x in tup" in expr
 
@@ -247,7 +247,7 @@ class TestBuildWrapExpr:
         annotation = typing.List[typing.Dict[str, _impl_Bar]]
         expr = build_wrap_expr(annotation, wrapped_classes, "data")
         # Should have nested comprehensions
-        assert "_wrap_Bar(v)" in expr
+        assert "Bar._from_impl(v)" in expr
         assert "for x in data" in expr
         assert ".items()" in expr
 
@@ -274,7 +274,7 @@ class TestEdgeCases:
         # Keys are not translated, only values
         expr = build_wrap_expr(annotation, wrapped_classes, "data")
         # Should still work but only translate values
-        assert "_wrap_" in expr or expr == "data"
+        assert "._from_impl(" in expr or expr == "data"
 
     def test_deeply_nested_structure(self, wrapped_classes):
         """Test deeply nested type structure."""

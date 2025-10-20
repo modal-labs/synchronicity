@@ -64,7 +64,7 @@ def test_simple_function_generation():
 
     # Verify no translation code (no wrapped classes)
     assert "import weakref" not in generated_code
-    assert "_wrap_" not in generated_code
+    assert "_from_impl" not in generated_code
     assert "_impl_instance" not in generated_code
 
     # Code should compile
@@ -109,12 +109,15 @@ def test_class_with_translation_generation():
     modules = compile_modules(_class_with_translation.lib._wrapped, "translation_lib")
     generated_code = list(modules.values())[0]  # Extract the single module
 
-    # Verify wrapper helper generation
+    # Verify wrapper cache generation
     assert "import weakref" in generated_code
     assert "_cache_Node: weakref.WeakValueDictionary" in generated_code
-    assert 'def _wrap_Node(impl_instance: _class_with_translation.Node) -> "Node":' in generated_code
-    assert "wrapper = Node.__new__(Node)" in generated_code
+
+    # Verify _from_impl classmethod generation
+    assert "def _from_impl(cls, impl_instance: _class_with_translation.Node)" in generated_code
+    assert "wrapper = cls.__new__(cls)" in generated_code
     assert "wrapper._impl_instance = impl_instance" in generated_code
+    assert "_cache_Node[cache_key] = wrapper" in generated_code
 
     # Verify translation in function signatures
     assert "def create_node(value: int) -> Node:" in generated_code
@@ -127,16 +130,16 @@ def test_class_with_translation_generation():
     assert "child_impl = child._impl_instance" in generated_code
     assert "[x._impl_instance for x in nodes]" in generated_code
 
-    # Verify wrap expressions in function bodies
-    assert "_wrap_Node(result)" in generated_code
-    assert "[_wrap_Node(x) for x in result]" in generated_code
+    # Verify wrap expressions in function bodies now use _from_impl
+    assert "Node._from_impl(result)" in generated_code
+    assert "[Node._from_impl(x) for x in result]" in generated_code
 
     # Verify method translation (quotes can be single or double)
     assert (
         'def create_child(self, child_value: int) -> "Node":' in generated_code
         or "def create_child(self, child_value: int) -> 'Node':" in generated_code
     )
-    assert "return _wrap_Node(result)" in generated_code
+    assert "return Node._from_impl(result)" in generated_code
 
     # Code should compile
     compile(generated_code, "<string>", "exec")

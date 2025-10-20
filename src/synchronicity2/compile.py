@@ -16,54 +16,37 @@ from .codegen import (
 )
 
 
-def _generate_wrapper_helpers(wrapped_classes: dict[str, str], impl_module: str) -> str:
+def _generate_wrapper_caches(wrapped_classes: dict[str, str]) -> str:
     """
-    Generate wrapper helper functions for each wrapped class.
+    Generate module-level cache declarations for wrapped classes.
 
-    Each helper maintains a WeakValueDictionary cache to preserve identity
+    Each cache is a WeakValueDictionary to preserve identity
     (same impl instance always returns the same wrapper instance).
 
     Args:
         wrapped_classes: Mapping of wrapper names to impl qualified names
-        impl_module: The implementation module name
 
     Returns:
-        String containing all wrapper helper function definitions
+        String containing cache declarations
     """
     if not wrapped_classes:
         return ""
 
-    helpers = []
+    caches = []
 
     # Import weakref
-    helpers.append("import weakref")
-    helpers.append("")
+    caches.append("import weakref")
+    caches.append("")
 
-    # Generate a helper for each wrapped class
-    for wrapper_name, impl_qualified in wrapped_classes.items():
-        helper_code = f"""# Wrapper cache for {wrapper_name} to preserve identity
-_cache_{wrapper_name}: weakref.WeakValueDictionary = weakref.WeakValueDictionary()
+    # Generate a cache for each wrapped class
+    for wrapper_name in wrapped_classes.keys():
+        cache_code = (
+            f"# Cache for {wrapper_name} to preserve wrapper identity\n"
+            f"_cache_{wrapper_name}: weakref.WeakValueDictionary = weakref.WeakValueDictionary()"
+        )
+        caches.append(cache_code)
 
-def _wrap_{wrapper_name}(impl_instance: {impl_qualified}) -> "{wrapper_name}":
-    \"\"\"Wrap an implementation instance, preserving identity via weak reference cache.\"\"\"
-    # Use id() as cache key since impl instances are Python objects
-    cache_key = id(impl_instance)
-
-    # Check cache first
-    if cache_key in _cache_{wrapper_name}:
-        return _cache_{wrapper_name}[cache_key]
-
-    # Create new wrapper using __new__ to bypass __init__
-    wrapper = {wrapper_name}.__new__({wrapper_name})
-    wrapper._impl_instance = impl_instance
-
-    # Cache it
-    _cache_{wrapper_name}[cache_key] = wrapper
-
-    return wrapper"""
-        helpers.append(helper_code)
-
-    return "\n\n".join(helpers)
+    return "\n\n".join(caches)
 
 
 def _qualify_type_for_annotation(
@@ -263,7 +246,7 @@ def compile_function(
         # For generators, wrap each yielded item
         if needs_return_wrap and hasattr(return_annotation, "__args__"):
             yield_type = return_annotation.__args__[0]
-            wrap_expr = build_wrap_expr(yield_type, wrapped_classes, "item")
+            wrap_expr = build_wrap_expr(yield_type, wrapped_classes, "item", local_wrapped_classes)
             aio_body = f"""        gen = impl_function({call_args_str})
         async for item in self._synchronizer._run_generator_async(gen):
             yield {wrap_expr}"""
@@ -274,7 +257,7 @@ def compile_function(
     else:
         # For regular async functions
         if needs_return_wrap:
-            wrap_expr = build_wrap_expr(return_annotation, wrapped_classes, "result")
+            wrap_expr = build_wrap_expr(return_annotation, wrapped_classes, "result", local_wrapped_classes)
             aio_body = f"""        result = await impl_function({call_args_str})
         return {wrap_expr}"""
         else:
@@ -316,7 +299,7 @@ def compile_function(
         # For generators, wrap each yielded item
         if needs_return_wrap and hasattr(return_annotation, "__args__"):
             yield_type = return_annotation.__args__[0]
-            wrap_expr = build_wrap_expr(yield_type, wrapped_classes, "item")
+            wrap_expr = build_wrap_expr(yield_type, wrapped_classes, "item", local_wrapped_classes)
             sync_gen_body = f"""    gen = impl_function({call_args_str})
     for item in get_synchronizer('{synchronizer_name}')._run_generator_sync(gen):
         yield {wrap_expr}"""
@@ -328,7 +311,7 @@ def compile_function(
         # For regular async functions
         sync_runner = f"get_synchronizer('{synchronizer_name}')._run_function_sync"
         if needs_return_wrap:
-            wrap_expr = build_wrap_expr(return_annotation, wrapped_classes, "result")
+            wrap_expr = build_wrap_expr(return_annotation, wrapped_classes, "result", local_wrapped_classes)
             sync_function_body = f"""    result = {sync_runner}(impl_function({call_args_str}))
     return {wrap_expr}"""
         else:
@@ -498,7 +481,7 @@ def compile_method_wrapper(
         # For generators, wrap each yielded item
         if needs_return_wrap and hasattr(return_annotation, "__args__"):
             yield_type = return_annotation.__args__[0]
-            wrap_expr = build_wrap_expr(yield_type, wrapped_classes, "item")
+            wrap_expr = build_wrap_expr(yield_type, wrapped_classes, "item", local_wrapped_classes)
             aio_body = f"""        gen = impl_function({impl_call_args})
         async for item in self._synchronizer._run_generator_async(gen):
             yield {wrap_expr}"""
@@ -509,7 +492,7 @@ def compile_method_wrapper(
     else:
         # For regular async methods
         if needs_return_wrap:
-            wrap_expr = build_wrap_expr(return_annotation, wrapped_classes, "result")
+            wrap_expr = build_wrap_expr(return_annotation, wrapped_classes, "result", local_wrapped_classes)
             aio_body = f"""        result = await impl_function({impl_call_args})
         return {wrap_expr}"""
         else:
@@ -550,7 +533,7 @@ def compile_method_wrapper(
         # For generators, wrap each yielded item
         if needs_return_wrap and hasattr(return_annotation, "__args__"):
             yield_type = return_annotation.__args__[0]
-            wrap_expr = build_wrap_expr(yield_type, wrapped_classes, "item")
+            wrap_expr = build_wrap_expr(yield_type, wrapped_classes, "item", local_wrapped_classes)
             sync_method_body = f"""        gen = impl_function({impl_call_args})
         for item in self._synchronizer._run_generator_sync(gen):
             yield {wrap_expr}"""
@@ -561,7 +544,7 @@ def compile_method_wrapper(
         # For regular async methods
         sync_runner = "self._synchronizer._run_function_sync"
         if needs_return_wrap:
-            wrap_expr = build_wrap_expr(return_annotation, wrapped_classes, "result")
+            wrap_expr = build_wrap_expr(return_annotation, wrapped_classes, "result", local_wrapped_classes)
             sync_method_body = f"""        result = {sync_runner}(impl_function({impl_call_args}))
         return {wrap_expr}"""
         else:
@@ -681,6 +664,26 @@ def compile_class(
     properties_section = "\n\n".join(property_definitions) if property_definitions else ""
     methods_section = "\n\n".join(method_definitions) if method_definitions else ""
 
+    # Generate _from_impl classmethod
+    from_impl_method = f"""    @classmethod
+    def _from_impl(cls, impl_instance: {target_module}.{cls.__name__}) -> "{cls.__name__}":
+        \"\"\"Create wrapper from implementation instance, preserving identity via cache.\"\"\"
+        # Use id() as cache key since impl instances are Python objects
+        cache_key = id(impl_instance)
+
+        # Check cache first
+        if cache_key in _cache_{cls.__name__}:
+            return _cache_{cls.__name__}[cache_key]
+
+        # Create new wrapper using __new__ to bypass __init__
+        wrapper = cls.__new__(cls)
+        wrapper._impl_instance = impl_instance
+
+        # Cache it
+        _cache_{cls.__name__}[cache_key] = wrapper
+
+        return wrapper"""
+
     wrapper_class_code = f"""class {cls.__name__}:
     \"\"\"Wrapper class for {target_module}.{cls.__name__} with sync/async method support\"\"\"
 
@@ -688,6 +691,8 @@ def compile_class(
 
     def __init__(self, {init_signature}):
         self._impl_instance = {target_module}.{cls.__name__}({init_call})
+
+{from_impl_method}
 
 {properties_section}
 
@@ -872,25 +877,28 @@ from synchronicity2.synchronizer import get_synchronizer
 
     compiled_code = [header]
 
-    # Generate lazy import wrappers for cross-module dependencies
+    # Generate lazy wrapper helpers for cross-module dependencies
+    # These delegate to the target module's ClassName._from_impl() method
     if cross_module_imports:
-        lazy_imports = []
+        lazy_helpers = []
         for target_module, class_names in sorted(cross_module_imports.items()):
             for class_name in sorted(class_names):
-                # Create a lazy wrapper function that imports on first call
-                lazy_imports.append(f"""
-def _wrap_{class_name}(obj):
-    from {target_module} import _wrap_{class_name} as _real_wrap_{class_name}
-    return _real_wrap_{class_name}(obj)
-""")
-        compiled_code.append("\n".join(lazy_imports))
-        compiled_code.append("")  # Add blank line after lazy imports
+                # Create a lazy helper function that imports on first call
+                helper_code = f"""
+def _wrap_{class_name}(impl_instance):
+    \"\"\"Lazy wrapper for cross-module {class_name}.\"\"\"
+    from {target_module} import {class_name}
+    return {class_name}._from_impl(impl_instance)
+"""
+                lazy_helpers.append(helper_code)
+        compiled_code.append("".join(lazy_helpers))
+        compiled_code.append("")  # Add blank line after lazy helpers
 
-    # Generate wrapper helper functions if there are wrapped classes
+    # Generate wrapper caches if there are wrapped classes
     if wrapped_classes:
-        wrapper_helpers = _generate_wrapper_helpers(wrapped_classes, impl_module)
-        compiled_code.append(wrapper_helpers)
-        compiled_code.append("")  # Add blank line after helpers
+        wrapper_caches = _generate_wrapper_caches(wrapped_classes)
+        compiled_code.append(wrapper_caches)
+        compiled_code.append("")  # Add blank line after caches
 
     # Separate classes and functions to ensure correct ordering
     # Classes must be compiled before functions to avoid forward reference issues

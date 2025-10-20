@@ -23,9 +23,9 @@ def test_compile_with_translation():
     # Check that the code contains the expected elements
     assert "import weakref" in compiled_code
     assert "_cache__ImplPerson" in compiled_code
-    assert "def _wrap__ImplPerson" in compiled_code
+    assert "def _from_impl(cls, impl_instance" in compiled_code
     assert "p_impl = p._impl_instance" in compiled_code
-    assert "_wrap__ImplPerson(" in compiled_code
+    assert "_ImplPerson._from_impl(" in compiled_code
 
     # Check that the signatures use wrapper types, not impl types
     assert "def accepts_person(p: _ImplPerson) -> _ImplPerson:" in compiled_code
@@ -41,22 +41,22 @@ def test_compile_with_translation():
 
 
 def test_wrapper_helpers_generated():
-    """Test that wrapper helper functions are generated correctly."""
+    """Test that _from_impl classmethod is generated correctly."""
     from synchronicity2.compile import compile_modules
 
     modules = compile_modules(_test_impl.lib._wrapped, "test_lib")
     compiled_code = list(modules.values())[0]  # Extract the single module
 
-    # Check the wrapper helper structure
+    # Check the _from_impl classmethod structure
     assert "_cache__ImplPerson: weakref.WeakValueDictionary = weakref.WeakValueDictionary()" in compiled_code
-    assert 'def _wrap__ImplPerson(impl_instance: _test_impl._ImplPerson) -> "_ImplPerson":' in compiled_code
+    assert "def _from_impl(cls, impl_instance: _test_impl._ImplPerson)" in compiled_code
     assert "cache_key = id(impl_instance)" in compiled_code
     assert "if cache_key in _cache__ImplPerson:" in compiled_code
-    assert "wrapper = _ImplPerson.__new__(_ImplPerson)" in compiled_code
+    assert "wrapper = cls.__new__(cls)" in compiled_code
     assert "wrapper._impl_instance = impl_instance" in compiled_code
     assert "_cache__ImplPerson[cache_key] = wrapper" in compiled_code
 
-    print("✓ Wrapper helper functions generated correctly")
+    print("✓ _from_impl classmethod generated correctly")
 
 
 def test_unwrap_expressions_in_functions():
@@ -69,8 +69,8 @@ def test_unwrap_expressions_in_functions():
     # Check for unwrap in sync wrapper
     assert "p_impl = p._impl_instance" in compiled_code
 
-    # Check for wrap in return
-    assert "return _wrap__ImplPerson(result)" in compiled_code
+    # Check for wrap in return using _from_impl
+    assert "return _ImplPerson._from_impl(result)" in compiled_code
 
     print("✓ Unwrap/wrap expressions generated in functions")
 
@@ -85,8 +85,8 @@ def test_translation_with_collections():
     # Check for list comprehension unwrap
     assert "[x._impl_instance for x in persons]" in compiled_code or "persons_impl" in compiled_code
 
-    # Check for list comprehension wrap
-    assert "[_wrap__ImplPerson(x) for x in " in compiled_code
+    # Check for list comprehension wrap using _from_impl
+    assert "[_ImplPerson._from_impl(x) for x in " in compiled_code
 
     print("✓ Collection types translated correctly")
 
@@ -110,7 +110,7 @@ def test_no_translation_for_primitives():
 
     # Should not generate unwrap/wrap for strings
     assert "_impl" not in compiled_code or "str_impl" not in compiled_code
-    assert "_wrap_str" not in compiled_code
+    assert "str._from_impl" not in compiled_code
 
     print("✓ Primitive types not translated")
 
