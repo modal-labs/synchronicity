@@ -14,10 +14,11 @@ import _test_impl  # type: ignore
 
 def test_compile_with_translation():
     """Test that wrapper code compiles correctly with type translation."""
-    from synchronicity2.compile import compile_library
+    from synchronicity2.compile import compile_modules
 
     # Compile the library
-    compiled_code = compile_library(_test_impl.lib._wrapped, "test_lib")
+    modules = compile_modules(_test_impl.lib._wrapped, "test_lib")
+    compiled_code = list(modules.values())[0]  # Extract the single module
 
     # Check that the code contains the expected elements
     assert "import weakref" in compiled_code
@@ -41,9 +42,10 @@ def test_compile_with_translation():
 
 def test_wrapper_helpers_generated():
     """Test that wrapper helper functions are generated correctly."""
-    from synchronicity2.compile import compile_library
+    from synchronicity2.compile import compile_modules
 
-    compiled_code = compile_library(_test_impl.lib._wrapped, "test_lib")
+    modules = compile_modules(_test_impl.lib._wrapped, "test_lib")
+    compiled_code = list(modules.values())[0]  # Extract the single module
 
     # Check the wrapper helper structure
     assert "_cache__ImplPerson: weakref.WeakValueDictionary = weakref.WeakValueDictionary()" in compiled_code
@@ -59,9 +61,10 @@ def test_wrapper_helpers_generated():
 
 def test_unwrap_expressions_in_functions():
     """Test that unwrap expressions are generated in function bodies."""
-    from synchronicity2.compile import compile_library
+    from synchronicity2.compile import compile_modules
 
-    compiled_code = compile_library(_test_impl.lib._wrapped, "test_lib")
+    modules = compile_modules(_test_impl.lib._wrapped, "test_lib")
+    compiled_code = list(modules.values())[0]  # Extract the single module
 
     # Check for unwrap in sync wrapper
     assert "p_impl = p._impl_instance" in compiled_code
@@ -74,9 +77,10 @@ def test_unwrap_expressions_in_functions():
 
 def test_translation_with_collections():
     """Test that collection types are translated correctly."""
-    from synchronicity2.compile import compile_library
+    from synchronicity2.compile import compile_modules
 
-    compiled_code = compile_library(_test_impl.lib._wrapped, "test_lib")
+    modules = compile_modules(_test_impl.lib._wrapped, "test_lib")
+    compiled_code = list(modules.values())[0]  # Extract the single module
 
     # Check for list comprehension unwrap
     assert "[x._impl_instance for x in persons]" in compiled_code or "persons_impl" in compiled_code
@@ -90,7 +94,7 @@ def test_translation_with_collections():
 def test_no_translation_for_primitives():
     """Test that primitive types are not translated."""
     from synchronicity2 import Synchronizer
-    from synchronicity2.compile import compile_library
+    from synchronicity2.compile import compile_modules
 
     async def returns_string() -> str:
         return "hello"
@@ -101,7 +105,8 @@ def test_no_translation_for_primitives():
     sync = Synchronizer("test_lib")
     sync.wrap()(returns_string)
 
-    compiled_code = compile_library(sync._wrapped, "test_lib")
+    modules = compile_modules(sync._wrapped, "test_lib")
+    compiled_code = list(modules.values())[0]  # Extract the single module
 
     # Should not generate unwrap/wrap for strings
     assert "_impl" not in compiled_code or "str_impl" not in compiled_code

@@ -10,7 +10,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 sys.path.insert(0, str(Path(__file__).parent / "support_files"))
 
-from synchronicity2.compile import compile_library
+from synchronicity2.compile import compile_modules
 
 
 @contextmanager
@@ -50,7 +50,8 @@ def test_simple_function_generation():
     import _simple_function
 
     # Generate wrapper code
-    generated_code = compile_library(_simple_function.lib._wrapped, "simple_func_lib")
+    modules = compile_modules(_simple_function.lib._wrapped, "simple_func_lib")
+    generated_code = list(modules.values())[0]  # Extract the single module
 
     # Verify code structure
     assert "import _simple_function" in generated_code
@@ -77,7 +78,8 @@ def test_simple_class_generation():
     import _simple_class
 
     # Generate wrapper code
-    generated_code = compile_library(_simple_class.lib._wrapped, "simple_class_lib")
+    modules = compile_modules(_simple_class.lib._wrapped, "simple_class_lib")
+    generated_code = list(modules.values())[0]  # Extract the single module
 
     # Verify code structure
     assert "import _simple_class" in generated_code
@@ -104,7 +106,8 @@ def test_class_with_translation_generation():
     import _class_with_translation
 
     # Generate wrapper code
-    generated_code = compile_library(_class_with_translation.lib._wrapped, "translation_lib")
+    modules = compile_modules(_class_with_translation.lib._wrapped, "translation_lib")
+    generated_code = list(modules.values())[0]  # Extract the single module
 
     # Verify wrapper helper generation
     assert "import weakref" in generated_code
@@ -146,7 +149,8 @@ def test_generated_code_execution_simple():
     import _simple_function
 
     # Generate wrapper code
-    generated_code = compile_library(_simple_function.lib._wrapped, "exec_test_lib")
+    modules = compile_modules(_simple_function.lib._wrapped, "exec_test_lib")
+    generated_code = list(modules.values())[0]  # Extract the single module
 
     # Write to a temporary file and import it
     with generated_module(generated_code, "generated_wrapper") as wrapper:
@@ -162,7 +166,8 @@ def test_generated_code_execution_class():
     import _simple_class
 
     # Generate wrapper code
-    generated_code = compile_library(_simple_class.lib._wrapped, "class_exec_lib")
+    modules = compile_modules(_simple_class.lib._wrapped, "class_exec_lib")
+    generated_code = list(modules.values())[0]  # Extract the single module
 
     # Write to a temporary file and import it
     with generated_module(generated_code, "generated_class_wrapper") as wrapper:
@@ -187,7 +192,8 @@ def test_generated_code_execution_with_translation():
     import _class_with_translation
 
     # Generate wrapper code
-    generated_code = compile_library(_class_with_translation.lib._wrapped, "translation_exec_lib")
+    modules = compile_modules(_class_with_translation.lib._wrapped, "translation_exec_lib")
+    generated_code = list(modules.values())[0]  # Extract the single module
 
     # Write to a temporary file and import it
     with generated_module(generated_code, "generated_translation_wrapper") as wrapper:
@@ -218,7 +224,8 @@ def test_wrapper_identity_preservation():
     import _class_with_translation
 
     # Generate wrapper code
-    generated_code = compile_library(_class_with_translation.lib._wrapped, "identity_lib")
+    modules = compile_modules(_class_with_translation.lib._wrapped, "identity_lib")
+    generated_code = list(modules.values())[0]  # Extract the single module
 
     # Write to a temporary file and import it
     with generated_module(generated_code, "generated_identity_wrapper") as wrapper:
@@ -245,7 +252,8 @@ def test_pyright_type_checking():
     import _class_with_translation
 
     # Generate wrapper code
-    generated_code = compile_library(_class_with_translation.lib._wrapped, "translation_lib")
+    modules = compile_modules(_class_with_translation.lib._wrapped, "translation_lib")
+    generated_code = list(modules.values())[0]  # Extract the single module
 
     # Check if pyright is available
     venv_pyright = Path(__file__).parent.parent.parent / ".venv" / "bin" / "pyright"

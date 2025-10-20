@@ -951,30 +951,3 @@ def compile_modules(wrapped_items: dict, synchronizer_name: str) -> dict[str, st
             result[module_name] = code
 
     return result
-
-
-def compile_library(wrapped_items: dict, synchronizer_name: str) -> str:
-    """
-    Legacy function for backward compatibility.
-    Compiles all items into a single module.
-
-    Args:
-        wrapped_items: Dict mapping original objects to (target_module, target_name) tuples
-        synchronizer_name: The name of the synchronizer to use
-
-    Returns:
-        String containing all compiled wrapper code in a single module
-    """
-    modules = compile_modules(wrapped_items, synchronizer_name)
-    if not modules:
-        return ""
-    # If only one module, return it directly
-    if len(modules) == 1:
-        return list(modules.values())[0]
-    # Otherwise concatenate all modules with headers
-    result = []
-    for module_name, code in modules.items():
-        result.append(f"# Module: {module_name}\n")
-        result.append(code)
-        result.append("\n")
-    return "\n".join(result)
