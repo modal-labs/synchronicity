@@ -5,8 +5,6 @@ import _my_library
 from synchronicity2.descriptor import wrapped_function, wrapped_method
 from synchronicity2.synchronizer import get_synchronizer
 
-NoneType = None
-
 import weakref
 
 
@@ -43,7 +41,7 @@ class _foo:
     def __call__(self, ) -> typing.Generator[int, None, None]:
         return self._sync_wrapper_function()
 
-    async def aio(self, ) -> typing.AsyncGenerator[int, NoneType]:
+    async def aio(self, ) -> typing.AsyncGenerator[int, None]:
         gen = _my_library.foo()
         async for item in self._synchronizer._run_generator_async(gen):
             yield item
@@ -66,7 +64,7 @@ class Bar_moo:
     def __call__(self, s: str) -> typing.Generator[str, None, None]:
         return self._unbound_sync_wrapper_method(self._wrapper_instance, s)
 
-    async def aio(self, s: str) -> typing.AsyncGenerator[str, NoneType]:
+    async def aio(self, s: str) -> typing.AsyncGenerator[str, None]:
         gen = _my_library.Bar.moo(self._impl_instance, s)
         async for item in self._synchronizer._run_generator_async(gen):
             yield item

@@ -573,8 +573,6 @@ import {impl_module}
 
 from synchronicity2.descriptor import wrapped_function, wrapped_method
 from synchronicity2.synchronizer import get_synchronizer
-
-NoneType = None
 """
 
     compiled_code = [header]

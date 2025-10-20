@@ -272,7 +272,7 @@ def test_compile_function_async_generator(test_library, async_generator_function
     # Verify return type annotations for generators
     assert "-> typing.Iterator[str]" in generated_code  # Sync version returns Iterator
     assert (
-        "-> typing.AsyncGenerator[str, NoneType]" in generated_code
+        "-> typing.AsyncGenerator[str, None]" in generated_code
     )  # Async version returns AsyncGenerator with type args
 
     # Verify parameter types are preserved

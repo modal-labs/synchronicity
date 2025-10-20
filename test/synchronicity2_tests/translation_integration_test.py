@@ -30,8 +30,8 @@ def test_compile_with_translation():
     assert "def accepts_person(p: _ImplPerson) -> _ImplPerson:" in compiled_code
     assert "def accepts_list_of_persons(persons: list[_ImplPerson]) -> list[_ImplPerson]:" in compiled_code
     assert (
-        "def accepts_optional_person(p: typing.Union[_ImplPerson, NoneType]) -> "
-        "typing.Union[_ImplPerson, NoneType]:" in compiled_code
+        "def accepts_optional_person(p: typing.Union[_ImplPerson, None]) -> "
+        "typing.Union[_ImplPerson, None]:" in compiled_code
     )
     assert "def accepts_dict_of_persons(persons: dict[str, _ImplPerson]) -> dict[str, _ImplPerson]:" in compiled_code
 
