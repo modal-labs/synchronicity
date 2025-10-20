@@ -49,16 +49,12 @@ def test_compile_with_translation():
 
     # Check that the signatures use wrapper types, not impl types
     assert "def accepts_person(p: _ImplPerson) -> _ImplPerson:" in compiled_code
+    assert "def accepts_list_of_persons(persons: list[_ImplPerson]) -> list[_ImplPerson]:" in compiled_code
     assert (
-        "def accepts_list_of_persons(persons: typing.List[_ImplPerson]) -> typing.List[_ImplPerson]:" in compiled_code
+        "def accepts_optional_person(p: typing.Union[_ImplPerson, NoneType]) -> "
+        "typing.Union[_ImplPerson, NoneType]:" in compiled_code
     )
-    assert (
-        "def accepts_optional_person(p: typing.Optional[_ImplPerson]) -> typing.Optional[_ImplPerson]:" in compiled_code
-    )
-    assert (
-        "def accepts_dict_of_persons(persons: typing.Dict[str, _ImplPerson]) -> typing.Dict[str, _ImplPerson]:"
-        in compiled_code
-    )
+    assert "def accepts_dict_of_persons(persons: dict[str, _ImplPerson]) -> dict[str, _ImplPerson]:" in compiled_code
 
     print("✓ Wrapper code compiled successfully with translation")
     print(f"✓ Generated {len(compiled_code)} characters of wrapper code")

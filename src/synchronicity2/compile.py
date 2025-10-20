@@ -10,9 +10,39 @@ def _format_type_annotation(annotation) -> str:
     if annotation is type(None):
         return "NoneType"
 
+    # Handle ForwardRef specially
+    if hasattr(annotation, "__forward_arg__"):
+        # This is a ForwardRef - just return the string it contains
+        return f"'{annotation.__forward_arg__}'"
+
     if hasattr(annotation, "__origin__"):
         # This is a generic type like list[str], dict[str, int], etc.
-        return repr(annotation).replace("typing.", "typing.")
+        # Need to recursively format args to handle ForwardRef within generics
+        origin = annotation.__origin__
+        args = typing.get_args(annotation)
+
+        if args:
+            # Format each argument recursively
+            formatted_args = [_format_type_annotation(arg) for arg in args]
+
+            # Get the origin name
+            if hasattr(origin, "__name__"):
+                origin_name = origin.__name__
+            else:
+                origin_name = str(origin)
+
+            # Check if we need typing prefix
+            if origin in (list, dict, tuple, set, frozenset):
+                # Built-in types
+                return f"{origin_name}[{', '.join(formatted_args)}]"
+            else:
+                # typing module types
+                origin_str = repr(origin)
+                if "typing." in origin_str:
+                    origin_name = origin_str.split(".")[-1].rstrip("'>")
+                return f"typing.{origin_name}[{', '.join(formatted_args)}]"
+        else:
+            return repr(annotation).replace("typing.", "typing.")
     elif hasattr(annotation, "__module__") and hasattr(annotation, "__name__"):
         if annotation.__module__ in ("builtins", "__builtin__"):
             return annotation.__name__
@@ -158,9 +188,7 @@ def _get_wrapped_classes(wrapped_items: dict) -> dict[str, str]:
     return wrapped
 
 
-def _translate_type_annotation(
-    annotation, wrapped_classes: dict[str, str], impl_module: str
-) -> tuple[str, str]:
+def _translate_type_annotation(annotation, wrapped_classes: dict[str, str], impl_module: str) -> tuple[str, str]:
     """
     Translate type annotation from implementation types to wrapper types.
 
@@ -204,11 +232,20 @@ def _needs_translation(annotation, wrapped_classes: dict[str, str]) -> bool:
     if annotation == inspect.Signature.empty:
         return False
 
+    # Handle string annotations (forward references)
+    if isinstance(annotation, str):
+        # Check if the string matches any wrapped class name
+        for wrapper_name in wrapped_classes.keys():
+            if wrapper_name in annotation:
+                return True
+        return False
+
     impl_str = _format_type_annotation(annotation)
 
     # Check if any wrapped class appears in the type string
-    for impl_qualified in wrapped_classes.values():
-        if impl_qualified in impl_str:
+    # Need to check both wrapper names and impl qualified names
+    for wrapper_name, impl_qualified in wrapped_classes.items():
+        if impl_qualified in impl_str or wrapper_name in impl_str:
             return True
 
     return False
@@ -304,6 +341,14 @@ def _build_wrap_expr(annotation, wrapped_classes: dict[str, str], var_name: str 
     if not _needs_translation(annotation, wrapped_classes):
         return var_name
 
+    # Handle string annotations (forward references)
+    if isinstance(annotation, str):
+        # Check if it matches a wrapped class name
+        for wrapper_name in wrapped_classes.keys():
+            if annotation == wrapper_name or annotation == f"'{wrapper_name}'":
+                return f"_wrap_{wrapper_name}({var_name})"
+        return var_name
+
     # Get the origin and args for generic types
     origin = typing.get_origin(annotation)
     args = typing.get_args(annotation)
@@ -312,7 +357,7 @@ def _build_wrap_expr(annotation, wrapped_classes: dict[str, str], var_name: str 
         # Direct wrapped class type - need to find the wrapper name
         impl_str = _format_type_annotation(annotation)
         for wrapper_name, impl_qualified in wrapped_classes.items():
-            if impl_str == impl_qualified:
+            if impl_str == impl_qualified or impl_str.strip("'\"") == wrapper_name:
                 return f"_wrap_{wrapper_name}({var_name})"
         return var_name
 
@@ -433,9 +478,7 @@ def compile_function(
     for name, param in sig.parameters.items():
         # Translate the parameter type annotation
         if param.annotation != param.empty:
-            wrapper_type, impl_type = _translate_type_annotation(
-                param.annotation, wrapped_classes, target_module
-            )
+            wrapper_type, impl_type = _translate_type_annotation(param.annotation, wrapped_classes, target_module)
             param_str = f"{name}: {wrapper_type}"
 
             # Generate unwrap code if needed
@@ -623,9 +666,7 @@ def compile_method_wrapper(
 
         # Translate the parameter type annotation
         if param.annotation != param.empty:
-            wrapper_type, impl_type = _translate_type_annotation(
-                param.annotation, wrapped_classes, target_module
-            )
+            wrapper_type, impl_type = _translate_type_annotation(param.annotation, wrapped_classes, target_module)
             param_str = f"{name}: {wrapper_type}"
 
             # Generate unwrap code if needed
@@ -772,9 +813,7 @@ def compile_method_wrapper(
     return wrapper_class_code, sync_method_code
 
 
-def compile_class(
-    cls: type, target_module: str, synchronizer_name: str, wrapped_classes: dict[str, str] = None
-) -> str:
+def compile_class(cls: type, target_module: str, synchronizer_name: str, wrapped_classes: dict[str, str] = None) -> str:
     """
     Compile a class into a wrapper class where all methods are wrapped with sync/async versions.
 
