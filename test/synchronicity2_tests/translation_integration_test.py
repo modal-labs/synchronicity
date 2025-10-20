@@ -9,36 +9,15 @@ sys.path.insert(0, str(Path(__file__).parent / "support_files"))
 
 # Import the test implementation module
 # Note: This import will work at runtime because we add support_files to sys.path
-from _test_impl import (  # type: ignore
-    _ImplPerson,
-    accepts_dict_of_persons,
-    accepts_list_of_persons,
-    accepts_optional_person,
-    accepts_person,
-)
-
-from synchronicity2 import Library
-
-# ============================================================================
-# Compile Wrapper Code
-# ============================================================================
+import _test_impl  # type: ignore
 
 
 def test_compile_with_translation():
     """Test that wrapper code compiles correctly with type translation."""
     from synchronicity2.compile import compile_library
 
-    lib = Library("test_lib")
-
-    # Wrap the classes and functions
-    lib.wrap()(_ImplPerson)
-    lib.wrap()(accepts_person)
-    lib.wrap()(accepts_list_of_persons)
-    lib.wrap()(accepts_optional_person)
-    lib.wrap()(accepts_dict_of_persons)
-
     # Compile the library
-    compiled_code = compile_library(lib._wrapped, "test_lib")
+    compiled_code = compile_library(_test_impl.lib._wrapped, "test_lib")
 
     # Check that the code contains the expected elements
     assert "import weakref" in compiled_code
@@ -64,10 +43,7 @@ def test_wrapper_helpers_generated():
     """Test that wrapper helper functions are generated correctly."""
     from synchronicity2.compile import compile_library
 
-    lib = Library("test_lib")
-    lib.wrap()(_ImplPerson)
-
-    compiled_code = compile_library(lib._wrapped, "test_lib")
+    compiled_code = compile_library(_test_impl.lib._wrapped, "test_lib")
 
     # Check the wrapper helper structure
     assert "_cache__ImplPerson: weakref.WeakValueDictionary = weakref.WeakValueDictionary()" in compiled_code
@@ -85,11 +61,7 @@ def test_unwrap_expressions_in_functions():
     """Test that unwrap expressions are generated in function bodies."""
     from synchronicity2.compile import compile_library
 
-    lib = Library("test_lib")
-    lib.wrap()(_ImplPerson)
-    lib.wrap()(accepts_person)
-
-    compiled_code = compile_library(lib._wrapped, "test_lib")
+    compiled_code = compile_library(_test_impl.lib._wrapped, "test_lib")
 
     # Check for unwrap in sync wrapper
     assert "p_impl = p._impl_instance" in compiled_code
@@ -104,11 +76,7 @@ def test_translation_with_collections():
     """Test that collection types are translated correctly."""
     from synchronicity2.compile import compile_library
 
-    lib = Library("test_lib")
-    lib.wrap()(_ImplPerson)
-    lib.wrap()(accepts_list_of_persons)
-
-    compiled_code = compile_library(lib._wrapped, "test_lib")
+    compiled_code = compile_library(_test_impl.lib._wrapped, "test_lib")
 
     # Check for list comprehension unwrap
     assert "[x._impl_instance for x in persons]" in compiled_code or "persons_impl" in compiled_code
@@ -121,6 +89,7 @@ def test_translation_with_collections():
 
 def test_no_translation_for_primitives():
     """Test that primitive types are not translated."""
+    from synchronicity2 import Library
     from synchronicity2.compile import compile_library
 
     async def returns_string() -> str:
