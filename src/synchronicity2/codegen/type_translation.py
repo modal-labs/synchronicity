@@ -220,12 +220,13 @@ def build_wrap_expr(
     wrapped_classes: dict[str, str],
     var_name: str = "value",
     local_wrapped_classes: dict[str, str] = None,
+    cross_module_imports: dict[str, set[str]] = None,
 ) -> str:
     """
     Build Python expression to wrap a value from implementation type to wrapper type.
 
     This generates annotation-driven wrapping code that calls ClassName._from_impl()
-    classmethods for local classes, or _wrap_ClassName() helpers for cross-module classes.
+    classmethods, using either local references or fully qualified module paths.
 
     Args:
         annotation: The type annotation
@@ -233,15 +234,16 @@ def build_wrap_expr(
         var_name: The variable name to wrap (default: "value")
         local_wrapped_classes: Mapping of wrapper names defined in the current module.
                               If None, assumes all classes are local.
+        cross_module_imports: Dict mapping target modules to sets of imported class names.
+                             Used to generate fully qualified references.
 
     Returns:
         Python expression string that wraps the value
 
     Examples:
         Local Bar -> "Bar._from_impl(value)"
-        Cross-module Bar -> "_wrap_Bar(value)"
+        Cross-module Bar from foo.bar -> "foo.bar.Bar._from_impl(value)"
         list[Bar] -> "[Bar._from_impl(x) for x in value]" (if local)
-        dict[str, Bar] -> "{k: _wrap_Bar(v) for k, v in value.items()}" (if cross-module)
         Optional[Bar] -> "Bar._from_impl(value) if value is not None else None" (if local)
         str -> "value"  # no wrapping needed
     """
@@ -252,14 +254,27 @@ def build_wrap_expr(
     if local_wrapped_classes is None:
         local_wrapped_classes = wrapped_classes
 
+    if cross_module_imports is None:
+        cross_module_imports = {}
+
+    # Build reverse lookup: class_name -> module_name
+    class_to_module = {}
+    for module_name, class_names in cross_module_imports.items():
+        for class_name in class_names:
+            class_to_module[class_name] = module_name
+
     def _get_wrap_call(wrapper_name: str, value: str) -> str:
         """Get the appropriate wrap call based on whether class is local or cross-module."""
         if wrapper_name in local_wrapped_classes:
-            # Local class - use _from_impl classmethod
+            # Local class - use simple reference
             return f"{wrapper_name}._from_impl({value})"
+        elif wrapper_name in class_to_module:
+            # Cross-module class - use fully qualified reference
+            module_name = class_to_module[wrapper_name]
+            return f"{module_name}.{wrapper_name}._from_impl({value})"
         else:
-            # Cross-module class - use _wrap_ helper function
-            return f"_wrap_{wrapper_name}({value})"
+            # Fallback - assume local
+            return f"{wrapper_name}._from_impl({value})"
 
     # Handle string annotations (forward references)
     if isinstance(annotation, str):
@@ -283,21 +298,21 @@ def build_wrap_expr(
 
     elif origin is list:
         if args:
-            inner_expr = build_wrap_expr(args[0], wrapped_classes, "x", local_wrapped_classes)
+            inner_expr = build_wrap_expr(args[0], wrapped_classes, "x", local_wrapped_classes, cross_module_imports)
             if inner_expr != "x":
                 return f"[{inner_expr} for x in {var_name}]"
         return var_name
 
     elif origin is dict:
         if len(args) >= 2:
-            value_expr = build_wrap_expr(args[1], wrapped_classes, "v", local_wrapped_classes)
+            value_expr = build_wrap_expr(args[1], wrapped_classes, "v", local_wrapped_classes, cross_module_imports)
             if value_expr != "v":
                 return f"{{k: {value_expr} for k, v in {var_name}.items()}}"
         return var_name
 
     elif origin is tuple:
         if args:
-            inner_expr = build_wrap_expr(args[0], wrapped_classes, "x", local_wrapped_classes)
+            inner_expr = build_wrap_expr(args[0], wrapped_classes, "x", local_wrapped_classes, cross_module_imports)
             if inner_expr != "x":
                 return f"tuple({inner_expr} for x in {var_name})"
         return var_name
@@ -306,7 +321,9 @@ def build_wrap_expr(
         # Handle Optional[T] which is Union[T, None]
         non_none_args = [arg for arg in args if arg is not type(None)]
         if len(non_none_args) == 1:
-            inner_expr = build_wrap_expr(non_none_args[0], wrapped_classes, var_name, local_wrapped_classes)
+            inner_expr = build_wrap_expr(
+                non_none_args[0], wrapped_classes, var_name, local_wrapped_classes, cross_module_imports
+            )
             if inner_expr != var_name:
                 return f"{inner_expr} if {var_name} is not None else None"
         return var_name

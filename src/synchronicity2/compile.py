@@ -229,7 +229,9 @@ def compile_function(
         # For generators, wrap each yielded item
         if needs_return_wrap and hasattr(return_annotation, "__args__"):
             yield_type = return_annotation.__args__[0]
-            wrap_expr = build_wrap_expr(yield_type, wrapped_classes, "item", local_wrapped_classes)
+            wrap_expr = build_wrap_expr(
+                yield_type, wrapped_classes, "item", local_wrapped_classes, cross_module_imports
+            )
             aio_body = f"""        gen = impl_function({call_args_str})
         async for item in self._synchronizer._run_generator_async(gen):
             yield {wrap_expr}"""
@@ -240,7 +242,9 @@ def compile_function(
     else:
         # For regular async functions
         if needs_return_wrap:
-            wrap_expr = build_wrap_expr(return_annotation, wrapped_classes, "result", local_wrapped_classes)
+            wrap_expr = build_wrap_expr(
+                return_annotation, wrapped_classes, "result", local_wrapped_classes, cross_module_imports
+            )
             aio_body = f"""        result = await impl_function({call_args_str})
         return {wrap_expr}"""
         else:
@@ -282,7 +286,9 @@ def compile_function(
         # For generators, wrap each yielded item
         if needs_return_wrap and hasattr(return_annotation, "__args__"):
             yield_type = return_annotation.__args__[0]
-            wrap_expr = build_wrap_expr(yield_type, wrapped_classes, "item", local_wrapped_classes)
+            wrap_expr = build_wrap_expr(
+                yield_type, wrapped_classes, "item", local_wrapped_classes, cross_module_imports
+            )
             sync_gen_body = f"""    gen = impl_function({call_args_str})
     for item in get_synchronizer('{synchronizer_name}')._run_generator_sync(gen):
         yield {wrap_expr}"""
@@ -294,7 +300,9 @@ def compile_function(
         # For regular async functions
         sync_runner = f"get_synchronizer('{synchronizer_name}')._run_function_sync"
         if needs_return_wrap:
-            wrap_expr = build_wrap_expr(return_annotation, wrapped_classes, "result", local_wrapped_classes)
+            wrap_expr = build_wrap_expr(
+                return_annotation, wrapped_classes, "result", local_wrapped_classes, cross_module_imports
+            )
             sync_function_body = f"""    result = {sync_runner}(impl_function({call_args_str}))
     return {wrap_expr}"""
         else:
@@ -464,7 +472,9 @@ def compile_method_wrapper(
         # For generators, wrap each yielded item
         if needs_return_wrap and hasattr(return_annotation, "__args__"):
             yield_type = return_annotation.__args__[0]
-            wrap_expr = build_wrap_expr(yield_type, wrapped_classes, "item", local_wrapped_classes)
+            wrap_expr = build_wrap_expr(
+                yield_type, wrapped_classes, "item", local_wrapped_classes, cross_module_imports
+            )
             aio_body = f"""        gen = impl_function({impl_call_args})
         async for item in self._synchronizer._run_generator_async(gen):
             yield {wrap_expr}"""
@@ -475,7 +485,9 @@ def compile_method_wrapper(
     else:
         # For regular async methods
         if needs_return_wrap:
-            wrap_expr = build_wrap_expr(return_annotation, wrapped_classes, "result", local_wrapped_classes)
+            wrap_expr = build_wrap_expr(
+                return_annotation, wrapped_classes, "result", local_wrapped_classes, cross_module_imports
+            )
             aio_body = f"""        result = await impl_function({impl_call_args})
         return {wrap_expr}"""
         else:
@@ -516,7 +528,9 @@ def compile_method_wrapper(
         # For generators, wrap each yielded item
         if needs_return_wrap and hasattr(return_annotation, "__args__"):
             yield_type = return_annotation.__args__[0]
-            wrap_expr = build_wrap_expr(yield_type, wrapped_classes, "item", local_wrapped_classes)
+            wrap_expr = build_wrap_expr(
+                yield_type, wrapped_classes, "item", local_wrapped_classes, cross_module_imports
+            )
             sync_method_body = f"""        gen = impl_function({impl_call_args})
         for item in self._synchronizer._run_generator_sync(gen):
             yield {wrap_expr}"""
@@ -527,7 +541,9 @@ def compile_method_wrapper(
         # For regular async methods
         sync_runner = "self._synchronizer._run_function_sync"
         if needs_return_wrap:
-            wrap_expr = build_wrap_expr(return_annotation, wrapped_classes, "result", local_wrapped_classes)
+            wrap_expr = build_wrap_expr(
+                return_annotation, wrapped_classes, "result", local_wrapped_classes, cross_module_imports
+            )
             sync_method_body = f"""        result = {sync_runner}(impl_function({impl_call_args}))
         return {wrap_expr}"""
         else:
@@ -838,10 +854,10 @@ def compile_module(
 
     # Generate cross-module imports
     # Import the wrapper modules directly so pyright can resolve fully qualified names
-    # Use TYPE_CHECKING to avoid circular import issues at runtime
+    # Import cross-module wrapper classes directly (no longer behind TYPE_CHECKING)
     cross_module_import_strs = []
     for target_module in sorted(cross_module_imports.keys()):
-        cross_module_import_strs.append(f"    import {target_module}")
+        cross_module_import_strs.append(f"import {target_module}")
 
     cross_module_imports_str = "\n".join(cross_module_import_strs) if cross_module_import_strs else ""
 
@@ -854,26 +870,9 @@ from synchronicity2.synchronizer import get_synchronizer
 """
 
     if cross_module_imports_str:
-        header += f"\nif typing.TYPE_CHECKING:\n{cross_module_imports_str}\n"
+        header += f"\n{cross_module_imports_str}\n"
 
     compiled_code = [header]
-
-    # Generate lazy wrapper helpers for cross-module dependencies
-    # These delegate to the target module's ClassName._from_impl() method
-    if cross_module_imports:
-        lazy_helpers = []
-        for target_module, class_names in sorted(cross_module_imports.items()):
-            for class_name in sorted(class_names):
-                # Create a lazy helper function that imports on first call
-                helper_code = f"""
-def _wrap_{class_name}(impl_instance):
-    \"\"\"Lazy wrapper for cross-module {class_name}.\"\"\"
-    from {target_module} import {class_name}
-    return {class_name}._from_impl(impl_instance)
-"""
-                lazy_helpers.append(helper_code)
-        compiled_code.append("".join(lazy_helpers))
-        compiled_code.append("")  # Add blank line after lazy helpers
 
     # Generate weakref import if there are wrapped classes
     if wrapped_classes:
