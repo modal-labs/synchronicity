@@ -91,11 +91,13 @@ def test_compile_function_basic_types(test_synchronizer, simple_function):
 
     # Generate code
     generated_code = compile_function(wrapped_func, test_synchronizer)
+    print(generated_code)
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
 
     # Verify it contains expected elements
-    assert "impl_function = test_module." in generated_code
+    # Implementation should reference the actual module where func is defined
+    assert f"impl_function = {wrapped_func.__module__}." in generated_code
     assert "def __call__(self" in generated_code
     assert "async def aio(self" in generated_code
     assert "_run_function_sync" in generated_code
@@ -181,7 +183,7 @@ def test_compile_function_template_pattern(test_synchronizer, simple_function):
     template_elements = [
         "class _",
         "_synchronizer = get_synchronizer(",
-        "_impl_function = test_module.",
+        f"_impl_function = {wrapped_func.__module__}.",
         "def __call__(self",
         "async def aio(self",
         "_run_function_sync",
@@ -202,7 +204,8 @@ def test_compile_function_template_pattern(test_synchronizer, simple_function):
 
     assert class_line is not None, "Should have a class definition"
     assert "_synchronizer = get_synchronizer(" in lines[class_line + 1], "Should have synchronizer attribute"
-    assert "_impl_function = test_module." in lines[class_line + 2], "Should have impl_function attribute"
+    expected_impl = f"_impl_function = {wrapped_func.__module__}."
+    assert expected_impl in lines[class_line + 2], "Should have impl_function attribute"
 
 
 def test_compile_function_multiple_functions(test_synchronizer, simple_function, complex_function):
@@ -286,7 +289,7 @@ def test_compile_function_async_generator_template_pattern(test_synchronizer, as
     template_elements = [
         "class _",
         "_synchronizer = get_synchronizer(",
-        "_impl_function = test_module.",
+        f"_impl_function = {wrapped_func.__module__}.",
         "def __call__(self",
         "async def aio(self",
         "@wrapped_function(_",
@@ -335,6 +338,6 @@ def test_compile_function_generic_types(test_synchronizer, generic_types_functio
     # Verify it contains expected template elements
     assert "class _" in generated_code
     assert "synchronizer = get_synchronizer(" in generated_code
-    assert "impl_function = test_module." in generated_code
+    assert f"impl_function = {wrapped_func.__module__}." in generated_code
     assert "def __call__(self" in generated_code
     assert "async def aio(self" in generated_code

@@ -289,7 +289,8 @@ def test_compile_class_impl_instance_access(test_synchronizer, simple_class):
     generated_code = compile_class(wrapped_class, test_synchronizer)
 
     # Verify original instance is created and accessible
-    assert "self._impl_instance = test_module.TestClass(" in generated_code
+    # Should reference the actual module where the class is defined
+    assert f"self._impl_instance = {wrapped_class.__module__}.{simple_class.__name__}(" in generated_code
     # Verify that the generated class has the expected structure
     assert f"class {simple_class.__name__}:" in generated_code
     assert "_synchronizer = get_synchronizer(" in generated_code
