@@ -1,67 +1,23 @@
 """Integration tests for type translation in generated wrapper code."""
 
 import sys
-import typing
 from pathlib import Path
 
-# Add src to path
+# Add src and support_files to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent / "support_files"))
+
+# Import the test implementation module
+# Note: This import will work at runtime because we add support_files to sys.path
+from _test_impl import (  # type: ignore
+    _ImplPerson,
+    accepts_dict_of_persons,
+    accepts_list_of_persons,
+    accepts_optional_person,
+    accepts_person,
+)
 
 from synchronicity2 import Library
-
-# ============================================================================
-# Test Implementation Module
-# ============================================================================
-
-
-class _ImplPerson:
-    """Implementation class for testing."""
-
-    def __init__(self, name: str):
-        self.name = name
-
-    async def greet(self, other: "_ImplPerson") -> str:
-        return f"{self.name} greets {other.name}"
-
-    async def get_friends(self) -> typing.List["_ImplPerson"]:
-        return [_ImplPerson("Alice"), _ImplPerson("Bob")]
-
-
-async def accepts_person(p: _ImplPerson) -> _ImplPerson:
-    """Test function that accepts and returns a Person."""
-    return p
-
-
-async def accepts_list_of_persons(persons: typing.List[_ImplPerson]) -> typing.List[_ImplPerson]:
-    """Test function with list of persons."""
-    return persons
-
-
-async def accepts_optional_person(p: typing.Optional[_ImplPerson]) -> typing.Optional[_ImplPerson]:
-    """Test function with optional person."""
-    return p
-
-
-async def accepts_dict_of_persons(persons: typing.Dict[str, _ImplPerson]) -> typing.Dict[str, _ImplPerson]:
-    """Test function with dict of persons."""
-    return persons
-
-
-# Set __module__ to simulate an implementation module
-_ImplPerson.__module__ = "_test_impl"
-accepts_person.__module__ = "_test_impl"
-accepts_list_of_persons.__module__ = "_test_impl"
-accepts_optional_person.__module__ = "_test_impl"
-accepts_dict_of_persons.__module__ = "_test_impl"
-
-# Create the implementation module
-sys.modules["_test_impl"] = type(sys)("_test_impl")
-sys.modules["_test_impl"].Person = _ImplPerson
-sys.modules["_test_impl"].accepts_person = accepts_person
-sys.modules["_test_impl"].accepts_list_of_persons = accepts_list_of_persons
-sys.modules["_test_impl"].accepts_optional_person = accepts_optional_person
-sys.modules["_test_impl"].accepts_dict_of_persons = accepts_dict_of_persons
-
 
 # ============================================================================
 # Compile Wrapper Code
