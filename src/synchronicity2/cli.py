@@ -5,8 +5,8 @@ Command line interface for synchronicity2 compilation.
 Usage:
     python -m synchronicity2.cli -m <module> [<module> ...] <synchronizer_name>
 
-The CLI imports the specified modules and collects all Library objects that use the
-given synchronizer name, then generates wrapper code for all wrapped items.
+The CLI imports the specified modules, which causes them to register wrapped items
+with the named synchronizer, then generates wrapper code for all wrapped items.
 
 Examples:
     # Generate wrappers from a single module
@@ -19,34 +19,21 @@ Examples:
 import argparse
 import importlib
 import sys
-from typing import List
 
-from synchronicity2.synchronizer import Library
+from synchronicity2.synchronizer import get_synchronizer
 
 
-def collect_libraries_from_module(module_name: str, synchronizer_name: str) -> List[Library]:
+def import_module(module_name: str) -> None:
     """
-    Import a module and collect all Library objects that match the given synchronizer name.
+    Import a module to trigger registration of wrapped items.
 
     Args:
         module_name: Qualified module name (e.g., 'playground.multifile._b')
-        synchronizer_name: Name of the synchronizer to filter by
-
-    Returns:
-        List of Library objects found in the module with matching synchronizer name
     """
     try:
-        module = importlib.import_module(module_name)
+        importlib.import_module(module_name)
     except ImportError as e:
         raise ImportError(f"Could not import module '{module_name}': {e}")
-
-    libraries = []
-    for attr_name in dir(module):
-        attr = getattr(module, attr_name)
-        if isinstance(attr, Library) and attr._synchronizer_name == synchronizer_name:
-            libraries.append(attr)
-
-    return libraries
 
 
 def main() -> None:
@@ -78,43 +65,32 @@ Examples:
 
     args = parser.parse_args()
 
-    # Collect all libraries from all modules
-    all_wrapped_items = {}
     synchronizer_name = args.synchronizer_name
 
-    print(f"Collecting wrapped items for synchronizer '{synchronizer_name}'...", file=sys.stderr)
+    print(f"Importing modules for synchronizer '{synchronizer_name}'...", file=sys.stderr)
 
+    # Import all modules - this will cause them to register with the synchronizer
     for module_name in args.modules:
         print(f"  Importing module: {module_name}", file=sys.stderr)
-        libraries = collect_libraries_from_module(module_name, synchronizer_name)
+        import_module(module_name)
 
-        if not libraries:
-            print(
-                f"  Warning: No Library objects with synchronizer '{synchronizer_name}' found in {module_name}",
-                file=sys.stderr,
-            )
-            continue
+    # Get the synchronizer and check if it has wrapped items
+    synchronizer = get_synchronizer(synchronizer_name)
 
-        print(f"  Found {len(libraries)} Library object(s)", file=sys.stderr)
-
-        # Merge wrapped items from all libraries
-        for library in libraries:
-            all_wrapped_items.update(library._wrapped)
-
-    if not all_wrapped_items:
+    if not synchronizer._wrapped:
         print(
             f"\nError: No wrapped items found for synchronizer '{synchronizer_name}' in any of the specified modules",
             file=sys.stderr,
         )
         sys.exit(1)
 
-    print(f"\nTotal wrapped items collected: {len(all_wrapped_items)}", file=sys.stderr)
+    print(f"\nTotal wrapped items collected: {len(synchronizer._wrapped)}", file=sys.stderr)
 
     # Compile all wrapped items
     from synchronicity2.compile import compile_library
 
     print("Compiling wrappers...", file=sys.stderr)
-    result = compile_library(all_wrapped_items, synchronizer_name)
+    result = compile_library(synchronizer._wrapped, synchronizer_name)
 
     print("Compilation completed successfully!", file=sys.stderr)
     print(result)

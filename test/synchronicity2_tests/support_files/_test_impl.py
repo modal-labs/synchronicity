@@ -2,9 +2,9 @@
 
 import typing
 
-from synchronicity2 import Library
+from synchronicity2 import get_synchronizer
 
-lib = Library("test_lib")
+lib = get_synchronizer("test_lib")
 
 
 @lib.wrap()
@@ -40,8 +40,6 @@ async def accepts_optional_person(p: typing.Optional[_ImplPerson]) -> typing.Opt
 
 
 @lib.wrap()
-async def accepts_dict_of_persons(
-    persons: typing.Dict[str, _ImplPerson]
-) -> typing.Dict[str, _ImplPerson]:
+async def accepts_dict_of_persons(persons: typing.Dict[str, _ImplPerson]) -> typing.Dict[str, _ImplPerson]:
     """Test function with dict of persons."""
     return persons

@@ -15,12 +15,13 @@ _synchronizer_registry = {}
 def get_synchronizer(name: str) -> "Synchronizer":
     """Get or create a synchronizer instance by name from the global registry."""
     if name not in _synchronizer_registry:
-        _synchronizer_registry[name] = Synchronizer()
+        _synchronizer_registry[name] = Synchronizer(name)
     return _synchronizer_registry[name]
 
 
 class Synchronizer:
-    def __init__(self):
+    def __init__(self, name: Optional[str] = None):
+        self._name = name
         self._future_poll_interval = 0.1
         self._loop = None
         self._loop_creation_lock = threading.Lock()
@@ -36,6 +37,9 @@ class Synchronizer:
         self._nowrap_attr = "_sync_nonwrap_%d" % id(self)
         self._input_translation_attr = "_sync_input_translation_%d" % id(self)
         self._output_translation_attr = "_sync_output_translation_%d" % id(self)
+
+        # Dictionary to track wrapped items for code generation
+        self._wrapped = {}
 
         atexit.register(self._close_loop)
 
@@ -262,17 +266,36 @@ class Synchronizer:
                 value = exc
                 is_exc = True
 
-
-class Library:
-    def __init__(self, synchronizer_name: str):
-        self._synchronizer_name = synchronizer_name
-        self._wrapped = {}
-
     def wrap(self, *, target_module: Optional[str] = None) -> typing.Callable[[T], T]:
+        """
+        Decorator to mark a class or function for wrapping.
+
+        Args:
+            target_module: Optional target module name for the generated wrapper.
+                          If not provided, infers from the source module name by removing leading underscore.
+
+        Returns:
+            A decorator function that registers the class/function and returns it unchanged.
+
+        Example:
+            sync = get_synchronizer("my_sync")
+
+            @sync.wrap()
+            async def my_function():
+                pass
+
+            @sync.wrap()
+            class MyClass:
+                pass
+        """
+
         def decorator(class_or_function: T) -> T:
             if target_module is None:
                 current_module = class_or_function.__module__.split(".")
-                assert current_module[-1].startswith("_")
+                assert current_module[-1].startswith("_"), (
+                    f"Module name must start with underscore when target_module is not specified. "
+                    f"Got: {class_or_function.__module__}"
+                )
                 output_module = current_module[:-1] + [current_module[-1].removeprefix("_")]
                 output_module = ".".join(output_module)
             else:
@@ -282,8 +305,3 @@ class Library:
             return class_or_function
 
         return decorator
-
-    def compile(self) -> str:
-        from .compile import compile_library
-
-        return compile_library(self._wrapped, self._synchronizer_name)

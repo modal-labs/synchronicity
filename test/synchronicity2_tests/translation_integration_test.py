@@ -89,7 +89,7 @@ def test_translation_with_collections():
 
 def test_no_translation_for_primitives():
     """Test that primitive types are not translated."""
-    from synchronicity2 import Library
+    from synchronicity2 import Synchronizer
     from synchronicity2.compile import compile_library
 
     async def returns_string() -> str:
@@ -98,10 +98,10 @@ def test_no_translation_for_primitives():
     returns_string.__module__ = "_test_impl"
     sys.modules["_test_impl"].returns_string = returns_string
 
-    lib = Library("test_lib")
-    lib.wrap()(returns_string)
+    sync = Synchronizer("test_lib")
+    sync.wrap()(returns_string)
 
-    compiled_code = compile_library(lib._wrapped, "test_lib")
+    compiled_code = compile_library(sync._wrapped, "test_lib")
 
     # Should not generate unwrap/wrap for strings
     assert "_impl" not in compiled_code or "str_impl" not in compiled_code

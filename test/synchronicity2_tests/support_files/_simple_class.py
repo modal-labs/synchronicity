@@ -2,9 +2,9 @@
 
 import typing
 
-from synchronicity2 import Library
+from synchronicity2 import get_synchronizer
 
-lib = Library("simple_class_lib")
+lib = get_synchronizer("simple_class_lib")
 
 
 @lib.wrap()

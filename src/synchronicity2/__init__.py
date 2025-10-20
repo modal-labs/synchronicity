@@ -1,3 +1,3 @@
-from .synchronizer import Library
+from .synchronizer import Synchronizer, get_synchronizer
 
-__all__ = ["Library"]
+__all__ = ["Synchronizer", "get_synchronizer"]
