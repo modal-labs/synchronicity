@@ -66,12 +66,50 @@ def _wrap_{wrapper_name}(impl_instance: {impl_qualified}) -> "{wrapper_name}":
     return "\n\n".join(helpers)
 
 
+def _qualify_type_for_annotation(
+    wrapper_type: str,
+    wrapped_classes: dict[str, str],
+    local_wrapped_classes: dict[str, str],
+    cross_module_imports: dict[str, set[str]],
+) -> str:
+    """
+    Qualify a wrapper type name for use in a type annotation.
+
+    For cross-module types, returns the fully qualified name (e.g., "multifile.a.A").
+    For local types, returns just the class name (e.g., "A").
+
+    Args:
+        wrapper_type: The wrapper type string (e.g., "A" or "list[A]")
+        wrapped_classes: Dict mapping wrapper names to impl qualified names
+        local_wrapped_classes: Dict of wrapped classes defined in the current module
+        cross_module_imports: Dict mapping target modules to sets of imported class names
+
+    Returns:
+        The qualified type string
+    """
+    # Check if this is a simple wrapped class name
+    if wrapper_type in wrapped_classes:
+        # Check if it's cross-module
+        if wrapper_type not in local_wrapped_classes:
+            # Find which module it belongs to
+            for target_module, class_names in cross_module_imports.items():
+                if wrapper_type in class_names:
+                    return f"{target_module}.{wrapper_type}"
+        # Local class - return as-is
+        return wrapper_type
+
+    # For complex types (like list[A]), we'd need more sophisticated parsing
+    # For now, return as-is
+    return wrapper_type
+
+
 def compile_function(
     f: types.FunctionType,
     target_module: str,
     synchronizer_name: str,
     wrapped_classes: dict[str, str] = None,
     local_wrapped_classes: dict[str, str] = None,
+    cross_module_imports: dict[str, set[str]] = None,
 ) -> str:
     """
     Compile a function into a wrapper class that provides both sync and async versions.
@@ -91,6 +129,8 @@ def compile_function(
         wrapped_classes = {}
     if local_wrapped_classes is None:
         local_wrapped_classes = wrapped_classes  # If not specified, assume all are local
+    if cross_module_imports is None:
+        cross_module_imports = {}  # No cross-module imports
 
     # Get function signature and annotations
     sig = inspect.signature(f)
@@ -143,13 +183,28 @@ def compile_function(
                 wrapper_yield_type, impl_yield_type = translate_type_annotation(
                     yield_type, wrapped_classes, target_module
                 )
-                sync_return_str = f" -> typing.Generator[{wrapper_yield_type}, None, None]"
+                # Quote wrapped class names in generic types for forward references
+                # Use fully qualified names for cross-module types
+                if wrapper_yield_type in wrapped_classes and wrapper_yield_type not in local_wrapped_classes:
+                    # Cross-module type - use fully qualified name
+                    qualified_yield_type = _qualify_type_for_annotation(
+                        wrapper_yield_type, wrapped_classes, local_wrapped_classes, cross_module_imports
+                    )
+                    quoted_yield_type = f'"{qualified_yield_type}"'
+                elif wrapper_yield_type in wrapped_classes:
+                    # Local wrapped type - just quote it
+                    quoted_yield_type = f'"{wrapper_yield_type}"'
+                else:
+                    # Not a wrapped type - don't quote
+                    quoted_yield_type = wrapper_yield_type
+
+                sync_return_str = f" -> typing.Generator[{quoted_yield_type}, None, None]"
                 if len(return_annotation.__args__) > 1:
                     send_type = return_annotation.__args__[1]
                     send_type_str = format_type_annotation(send_type)
-                    async_return_str = f" -> typing.AsyncGenerator[{wrapper_yield_type}, {send_type_str}]"
+                    async_return_str = f" -> typing.AsyncGenerator[{quoted_yield_type}, {send_type_str}]"
                 else:
-                    async_return_str = f" -> typing.AsyncGenerator[{wrapper_yield_type}]"
+                    async_return_str = f" -> typing.AsyncGenerator[{quoted_yield_type}]"
             else:
                 sync_return_str = " -> typing.Generator"
                 async_return_str = " -> typing.AsyncGenerator"
@@ -172,11 +227,14 @@ def compile_function(
                         break
 
             if has_cross_module_class:
-                # Has cross-module class - quote for both (TYPE_CHECKING import)
-                sync_return_str_descriptor = f' -> "{wrapper_return_type}"'
-                async_return_str_descriptor = f' -> "{wrapper_return_type}"'
-                sync_return_str = f' -> "{wrapper_return_type}"'
-                async_return_str = f' -> "{wrapper_return_type}"'
+                # Has cross-module class - use fully qualified name and quote
+                qualified_type = _qualify_type_for_annotation(
+                    wrapper_return_type, wrapped_classes, local_wrapped_classes, cross_module_imports
+                )
+                sync_return_str_descriptor = f' -> "{qualified_type}"'
+                async_return_str_descriptor = f' -> "{qualified_type}"'
+                sync_return_str = f' -> "{qualified_type}"'
+                async_return_str = f' -> "{qualified_type}"'
             elif wrapper_return_type in local_wrapped_classes:
                 # Simple local class - quote only for descriptor (forward reference)
                 sync_return_str_descriptor = f' -> "{wrapper_return_type}"'
@@ -297,6 +355,8 @@ def compile_method_wrapper(
     target_module: str,
     class_name: str,
     wrapped_classes: dict[str, str] = None,
+    local_wrapped_classes: dict[str, str] = None,
+    cross_module_imports: dict[str, set[str]] = None,
 ) -> tuple[str, str]:
     """
     Compile a method wrapper class that provides both sync and async versions.
@@ -310,12 +370,18 @@ def compile_method_wrapper(
         target_module: The module where the original class is located
         class_name: The name of the class containing the method
         wrapped_classes: Mapping of wrapper names to impl qualified names for type translation
+        local_wrapped_classes: Mapping of wrapper names defined in the current module
+        cross_module_imports: Dict mapping target modules to sets of imported class names
 
     Returns:
         Tuple of (wrapper_class_code, sync_method_code)
     """
     if wrapped_classes is None:
         wrapped_classes = {}
+    if local_wrapped_classes is None:
+        local_wrapped_classes = {}
+    if cross_module_imports is None:
+        cross_module_imports = {}
 
     # Get method signature and annotations
     sig = inspect.signature(method)
@@ -371,13 +437,28 @@ def compile_method_wrapper(
                 wrapper_yield_type, impl_yield_type = translate_type_annotation(
                     yield_type, wrapped_classes, target_module
                 )
-                sync_return_str = f" -> typing.Generator[{wrapper_yield_type}, None, None]"
+                # Quote wrapped class names in generic types for forward references
+                # Use fully qualified names for cross-module types
+                if wrapper_yield_type in wrapped_classes and wrapper_yield_type not in local_wrapped_classes:
+                    # Cross-module type - use fully qualified name
+                    qualified_yield_type = _qualify_type_for_annotation(
+                        wrapper_yield_type, wrapped_classes, local_wrapped_classes, cross_module_imports
+                    )
+                    quoted_yield_type = f'"{qualified_yield_type}"'
+                elif wrapper_yield_type in wrapped_classes:
+                    # Local wrapped type - just quote it
+                    quoted_yield_type = f'"{wrapper_yield_type}"'
+                else:
+                    # Not a wrapped type - don't quote
+                    quoted_yield_type = wrapper_yield_type
+
+                sync_return_str = f" -> typing.Generator[{quoted_yield_type}, None, None]"
                 if len(return_annotation.__args__) > 1:
                     send_type = return_annotation.__args__[1]
                     send_type_str = format_type_annotation(send_type)
-                    async_return_str = f" -> typing.AsyncGenerator[{wrapper_yield_type}, {send_type_str}]"
+                    async_return_str = f" -> typing.AsyncGenerator[{quoted_yield_type}, {send_type_str}]"
                 else:
-                    async_return_str = f" -> typing.AsyncGenerator[{wrapper_yield_type}]"
+                    async_return_str = f" -> typing.AsyncGenerator[{quoted_yield_type}]"
             else:
                 sync_return_str = " -> typing.Generator"
                 async_return_str = " -> typing.AsyncGenerator"
@@ -386,19 +467,18 @@ def compile_method_wrapper(
             async_return_str_descriptor = async_return_str
         else:
             # For descriptor class methods, quote wrapped class names to handle forward references
-            # For final method, use unquoted names since all classes are defined by then
+            # For final method, also use quoted names since self-references need quotes in Python
             quoted_wrapper_type = wrapper_return_type
             for wrapper_name in wrapped_classes.keys():
-                # Quote standalone wrapped class names in descriptor
+                # Quote standalone wrapped class names
                 if wrapper_name == wrapper_return_type:
                     quoted_wrapper_type = f'"{wrapper_name}"'
                     break
-            # Descriptor class methods use quoted types
+            # Both descriptor and final methods use quoted types for forward references
             sync_return_str_descriptor = f" -> {quoted_wrapper_type}"
             async_return_str_descriptor = f" -> {quoted_wrapper_type}"
-            # Final method uses unquoted types
-            sync_return_str = f" -> {wrapper_return_type}"
-            async_return_str = f" -> {wrapper_return_type}"
+            sync_return_str = f" -> {quoted_wrapper_type}"
+            async_return_str = f" -> {quoted_wrapper_type}"
     else:
         sync_return_str, async_return_str = format_return_types(return_annotation, is_async_gen)
         sync_return_str_descriptor = sync_return_str
@@ -501,7 +581,14 @@ def compile_method_wrapper(
     return wrapper_class_code, sync_method_code
 
 
-def compile_class(cls: type, target_module: str, synchronizer_name: str, wrapped_classes: dict[str, str] = None) -> str:
+def compile_class(
+    cls: type,
+    target_module: str,
+    synchronizer_name: str,
+    wrapped_classes: dict[str, str] = None,
+    local_wrapped_classes: dict[str, str] = None,
+    cross_module_imports: dict[str, set[str]] = None,
+) -> str:
     """
     Compile a class into a wrapper class where all methods are wrapped with sync/async versions.
 
@@ -510,12 +597,18 @@ def compile_class(cls: type, target_module: str, synchronizer_name: str, wrapped
         target_module: The module name where the original class is located
         synchronizer_name: The name of the synchronizer to use
         wrapped_classes: Mapping of wrapper names to impl qualified names for type translation
+        local_wrapped_classes: Mapping of wrapper names defined in the current module
+        cross_module_imports: Dict mapping target modules to sets of imported class names
 
     Returns:
         String containing the generated wrapper class code
     """
     if wrapped_classes is None:
         wrapped_classes = {}
+    if local_wrapped_classes is None:
+        local_wrapped_classes = {}
+    if cross_module_imports is None:
+        cross_module_imports = {}
 
     # Get all async methods from the class
     methods = []
@@ -539,7 +632,14 @@ def compile_class(cls: type, target_module: str, synchronizer_name: str, wrapped
 
     for method_name, method in methods:
         wrapper_class_code, sync_method_code = compile_method_wrapper(
-            method, method_name, synchronizer_name, target_module, cls.__name__, wrapped_classes
+            method,
+            method_name,
+            synchronizer_name,
+            target_module,
+            cls.__name__,
+            wrapped_classes,
+            local_wrapped_classes,
+            cross_module_imports,
         )
         method_wrapper_classes.append(wrapper_class_code)
         method_definitions.append(sync_method_code)
@@ -751,13 +851,13 @@ def compile_module(
     imports = "\n".join(f"import {mod}" for mod in sorted(impl_modules))
 
     # Generate cross-module imports
-    # Use TYPE_CHECKING for type hints to avoid circular imports
-    type_checking_imports = []
-    for target_module, class_names in sorted(cross_module_imports.items()):
-        class_list = ", ".join(sorted(class_names))
-        type_checking_imports.append(f"    from {target_module} import {class_list}")
+    # Import the wrapper modules directly so pyright can resolve fully qualified names
+    # Use TYPE_CHECKING to avoid circular import issues at runtime
+    cross_module_import_strs = []
+    for target_module in sorted(cross_module_imports.keys()):
+        cross_module_import_strs.append(f"    import {target_module}")
 
-    type_checking_str = "\n".join(type_checking_imports) if type_checking_imports else ""
+    cross_module_imports_str = "\n".join(cross_module_import_strs) if cross_module_import_strs else ""
 
     header = f"""import typing
 
@@ -767,8 +867,8 @@ from synchronicity2.descriptor import wrapped_function, wrapped_method
 from synchronicity2.synchronizer import get_synchronizer
 """
 
-    if type_checking_str:
-        header += f"\nif typing.TYPE_CHECKING:\n{type_checking_str}\n"
+    if cross_module_imports_str:
+        header += f"\nif typing.TYPE_CHECKING:\n{cross_module_imports_str}\n"
 
     compiled_code = [header]
 
@@ -806,12 +906,16 @@ def _wrap_{class_name}(obj):
 
     # Compile all classes first
     for cls, obj_module in classes:
-        code = compile_class(cls, obj_module, synchronizer_name, all_wrapped_classes)
+        code = compile_class(
+            cls, obj_module, synchronizer_name, all_wrapped_classes, wrapped_classes, cross_module_imports
+        )
         compiled_code.append(code)
 
     # Then compile all functions
     for func, obj_module in functions:
-        code = compile_function(func, obj_module, synchronizer_name, all_wrapped_classes, wrapped_classes)
+        code = compile_function(
+            func, obj_module, synchronizer_name, all_wrapped_classes, wrapped_classes, cross_module_imports
+        )
         compiled_code.append(code)
         compiled_code.append("")  # Add blank line after function
 

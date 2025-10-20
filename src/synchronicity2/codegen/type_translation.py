@@ -9,10 +9,16 @@ def format_type_annotation(annotation) -> str:
     if annotation is type(None):
         return "None"
 
+    # Handle string annotations (forward references)
+    if isinstance(annotation, str):
+        # Return the string as-is - quotes will be added later if needed
+        return annotation
+
     # Handle ForwardRef specially
     if hasattr(annotation, "__forward_arg__"):
-        # This is a ForwardRef - just return the string it contains
-        return f"'{annotation.__forward_arg__}'"
+        # This is a ForwardRef - return the string it contains without quotes
+        # Quotes will be added later if needed during code generation
+        return annotation.__forward_arg__
 
     if hasattr(annotation, "__origin__"):
         # This is a generic type like list[str], dict[str, int], etc.
@@ -70,9 +76,7 @@ def get_wrapped_classes(wrapped_items: dict) -> dict[str, str]:
     return wrapped
 
 
-def translate_type_annotation(
-    annotation, wrapped_classes: dict[str, str], impl_module: str
-) -> tuple[str, str]:
+def translate_type_annotation(annotation, wrapped_classes: dict[str, str], impl_module: str) -> tuple[str, str]:
     """
     Translate type annotation from implementation types to wrapper types.
 
@@ -89,7 +93,18 @@ def translate_type_annotation(
         list[_my_library.Bar] -> ("list[Bar]", "list[_my_library.Bar]")
         str -> ("str", "str")  # no translation needed
         typing.Any -> ("typing.Any", "typing.Any")  # no translation
+        "Node" -> ("Node", "_my_library.Node")  # string annotation
     """
+    # Handle string annotations specially
+    if isinstance(annotation, str):
+        # Check if this string is a wrapped class name
+        for wrapper_name, impl_qualified in wrapped_classes.items():
+            if annotation == wrapper_name:
+                # It's a direct reference to a wrapped class
+                return wrapper_name, impl_qualified
+        # Not a wrapped class, return as-is
+        return annotation, annotation
+
     # Format the annotation to get string representation
     impl_str = format_type_annotation(annotation)
     wrapper_str = impl_str

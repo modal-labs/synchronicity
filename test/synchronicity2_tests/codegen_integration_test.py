@@ -128,8 +128,11 @@ def test_class_with_translation_generation():
     assert "_wrap_Node(result)" in generated_code
     assert "[_wrap_Node(x) for x in result]" in generated_code
 
-    # Verify method translation
-    assert "def create_child(self, child_value: int) -> 'Node':" in generated_code
+    # Verify method translation (quotes can be single or double)
+    assert (
+        'def create_child(self, child_value: int) -> "Node":' in generated_code
+        or "def create_child(self, child_value: int) -> 'Node':" in generated_code
+    )
     assert "return _wrap_Node(result)" in generated_code
 
     # Code should compile
