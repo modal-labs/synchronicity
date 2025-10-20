@@ -1,5 +1,6 @@
 """Integration tests for end-to-end code generation and execution."""
 
+import subprocess
 import sys
 import tempfile
 from contextlib import contextmanager
@@ -234,6 +235,84 @@ def test_wrapper_identity_preservation():
         assert nodes[1]._impl_instance is child._impl_instance, "Second node impl should be preserved"
 
         print("✓ Wrapper identity preservation test passed")
+
+
+def test_pyright_type_checking():
+    """Test that generated code type checks correctly with pyright using reveal_type."""
+    import _class_with_translation
+
+    # Generate wrapper code
+    generated_code = compile_library(_class_with_translation.lib._wrapped, "translation_lib")
+
+    # Create a usage file with reveal_type to verify types
+    usage_code = """from typing import reveal_type
+from translation_lib import Node, create_node, connect_nodes
+
+# Test function object types
+reveal_type(create_node)  # Should be a callable returning Node
+reveal_type(connect_nodes)  # Should be a callable returning tuple[Node, Node]
+
+# Test function return types
+node = create_node(42)
+reveal_type(node)  # Should be Node
+
+# Test method types
+child = node.create_child(100)
+reveal_type(child)  # Should be Node
+
+# Test function with multiple args
+parent = Node(1)
+child_node = Node(2)
+result = connect_nodes(parent, child_node)
+reveal_type(result)  # Should be tuple[Node, Node]
+"""
+
+    # Check if pyright is available
+    venv_pyright = Path(__file__).parent.parent.parent / ".venv" / "bin" / "pyright"
+    if not venv_pyright.exists():
+        print("✓ Pyright type checking: Skipped (pyright not available)")
+        return
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+
+        # Write the generated module
+        wrapper_file = tmppath / "translation_lib.py"
+        wrapper_file.write_text(generated_code)
+
+        # Write the usage file
+        usage_file = tmppath / "usage.py"
+        usage_file.write_text(usage_code)
+
+        # Run pyright
+        result = subprocess.run(
+            [str(venv_pyright), str(usage_file)],
+            capture_output=True,
+            text=True,
+            cwd=str(tmppath),
+        )
+
+        # Print pyright output
+        print(f"Pyright output:\n{result.stdout}")
+
+        # Pyright should succeed (exit code 0)
+        if result.returncode != 0:
+            print(f"Pyright stderr:\n{result.stderr}")
+            assert False, f"Pyright type checking failed with exit code {result.returncode}"
+
+        # Verify the revealed types match expectations
+        output = result.stdout
+        # Function object types
+        assert 'Type of "create_node" is' in output, f"Expected create_node type to be revealed, got: {output}"
+        assert 'Type of "connect_nodes" is' in output, f"Expected connect_nodes type to be revealed, got: {output}"
+        # Return value types
+        assert 'Type of "node" is "Node"' in output, f"Expected node type to be Node, got: {output}"
+        assert 'Type of "child" is "Node"' in output, f"Expected child type to be Node, got: {output}"
+        assert (
+            'Type of "result" is "tuple[Node, Node]"' in output
+        ), f"Expected result type to be tuple[Node, Node], got: {output}"
+
+        print("✓ Pyright type checking: Passed")
 
 
 if __name__ == "__main__":
