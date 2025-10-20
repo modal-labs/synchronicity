@@ -1,4 +1,5 @@
 from typing import reveal_type
+
 from my_library import Bar, accepts_bar
 
 b = Bar("hello")
@@ -12,7 +13,6 @@ assert b2 is b
 
 import modal
 
-
 app = modal.App()
 
-app.run
+app.run()

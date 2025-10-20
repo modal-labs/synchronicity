@@ -1,78 +1,123 @@
 #!/usr/bin/env python3
 """
 Command line interface for synchronicity2 compilation.
+
+Usage:
+    python -m synchronicity2.cli -m <module> [<module> ...] <synchronizer_name>
+
+The CLI imports the specified modules and collects all Library objects that use the
+given synchronizer name, then generates wrapper code for all wrapped items.
+
+Examples:
+    # Generate wrappers from a single module
+    python -m synchronicity2.cli -m my.package.module my_sync > generated.py
+
+    # Generate wrappers from multiple modules
+    python -m synchronicity2.cli -m package.a -m package.b my_sync > generated.py
 """
 
 import argparse
-import importlib.util
+import importlib
 import sys
-from pathlib import Path
-from typing import Any
+from typing import List
 
 from synchronicity2.synchronizer import Library
 
 
-def load_object_from_file(file_path: str, object_ref: str) -> Any:
+def collect_libraries_from_module(module_name: str, synchronizer_name: str) -> List[Library]:
     """
-    Load an object from a Python file using its reference.
+    Import a module and collect all Library objects that match the given synchronizer name.
 
     Args:
-        file_path: Path to the Python file
-        object_ref: Dot-separated reference to the object (e.g., 'my_module.my_object')
+        module_name: Qualified module name (e.g., 'playground.multifile._b')
+        synchronizer_name: Name of the synchronizer to filter by
 
     Returns:
-        The loaded object
+        List of Library objects found in the module with matching synchronizer name
     """
-    # Convert to absolute path
-    file_path = Path(file_path).resolve()
+    try:
+        module = importlib.import_module(module_name)
+    except ImportError as e:
+        raise ImportError(f"Could not import module '{module_name}': {e}")
 
-    if not file_path.exists():
-        raise FileNotFoundError(f"File not found: {file_path}")
+    libraries = []
+    for attr_name in dir(module):
+        attr = getattr(module, attr_name)
+        if isinstance(attr, Library) and attr._synchronizer_name == synchronizer_name:
+            libraries.append(attr)
 
-    if not file_path.suffix == ".py":
-        raise ValueError(f"File must be a Python file (.py): {file_path}")
-
-    # Load the module
-    module_name = file_path.stem
-    spec = importlib.util.spec_from_file_location(module_name, file_path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Could not load module from {file_path}")
-
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-
-    # Get the object reference
-    obj = module
-    for attr in object_ref.split("."):
-        if not hasattr(obj, attr):
-            raise AttributeError(f"Object '{object_ref}' not found in {file_path}")
-        obj = getattr(obj, attr)
-
-    return obj
+    return libraries
 
 
 def main() -> None:
     """Main CLI entry point."""
-    parser = argparse.ArgumentParser(description="Compile a synchronicity2.Library object from a Python file")
-    parser.add_argument("file_path", help="Path to the Python file containing the Library object")
-    parser.add_argument("object_ref", help="Dot-separated reference to the Library object (e.g., 'my_sync')")
+    parser = argparse.ArgumentParser(
+        description="Compile synchronicity2 wrappers for modules using a specific synchronizer",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Generate wrappers for a single module
+  python -m synchronicity2.cli -m my.package.module my_sync
+
+  # Generate wrappers for multiple modules
+  python -m synchronicity2.cli -m package.a -m package.b my_sync
+        """,
+    )
+    parser.add_argument(
+        "-m",
+        "--module",
+        action="append",
+        dest="modules",
+        required=True,
+        help="Qualified module name to import (can be specified multiple times)",
+    )
+    parser.add_argument(
+        "synchronizer_name",
+        help="Name of the synchronizer to generate wrappers for",
+    )
 
     args = parser.parse_args()
 
-    # Load the object from the file
-    obj = load_object_from_file(args.file_path, args.object_ref)
+    # Collect all libraries from all modules
+    all_wrapped_items = {}
+    synchronizer_name = args.synchronizer_name
 
-    # Assert that it's a Library object
-    if not isinstance(obj, Library):
-        raise TypeError(f"Object '{args.object_ref}' is not a synchronicity2.Library instance. Got: {type(obj)}")
+    print(f"Collecting wrapped items for synchronizer '{synchronizer_name}'...", file=sys.stderr)
 
-    # Call compile() on the object
-    print(f"Compiling Library: {args.object_ref}", file=sys.stderr)
-    result = obj.compile()
+    for module_name in args.modules:
+        print(f"  Importing module: {module_name}", file=sys.stderr)
+        libraries = collect_libraries_from_module(module_name, synchronizer_name)
+
+        if not libraries:
+            print(
+                f"  Warning: No Library objects with synchronizer '{synchronizer_name}' found in {module_name}",
+                file=sys.stderr,
+            )
+            continue
+
+        print(f"  Found {len(libraries)} Library object(s)", file=sys.stderr)
+
+        # Merge wrapped items from all libraries
+        for library in libraries:
+            all_wrapped_items.update(library._wrapped)
+
+    if not all_wrapped_items:
+        print(
+            f"\nError: No wrapped items found for synchronizer '{synchronizer_name}' in any of the specified modules",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    print(f"\nTotal wrapped items collected: {len(all_wrapped_items)}", file=sys.stderr)
+
+    # Compile all wrapped items
+    from synchronicity2.compile import compile_library
+
+    print("Compiling wrappers...", file=sys.stderr)
+    result = compile_library(all_wrapped_items, synchronizer_name)
 
     print("Compilation completed successfully!", file=sys.stderr)
-    if result is not None:
-        print(result)
+    print(result)
 
 
 if __name__ == "__main__":
