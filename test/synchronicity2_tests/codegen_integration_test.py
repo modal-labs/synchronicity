@@ -244,58 +244,16 @@ def test_pyright_type_checking():
     # Generate wrapper code
     generated_code = compile_library(_class_with_translation.lib._wrapped, "translation_lib")
 
-    # Create a usage file with reveal_type to verify types
-    usage_code = """from typing import reveal_type
-from translation_lib import Node, create_node, connect_nodes
-
-# Test function object types
-reveal_type(create_node)  # Should be a callable returning Node
-reveal_type(connect_nodes)  # Should be a callable returning tuple[Node, Node]
-
-# Test __call__ attribute
-reveal_type(create_node.__call__)  # Should show callable signature
-
-# Test .aio attribute types
-reveal_type(create_node.aio)  # Should be async callable returning Node
-reveal_type(connect_nodes.aio)  # Should be async callable returning tuple[Node, Node]
-
-# Test function return types
-node = create_node(42)
-reveal_type(node)  # Should be Node
-
-# Test method types
-child = node.create_child(100)
-reveal_type(child)  # Should be Node
-
-# Test function with multiple args
-parent = Node(1)
-child_node = Node(2)
-result = connect_nodes(parent, child_node)
-reveal_type(result)  # Should be tuple[Node, Node]
-
-
-async def async_usage() -> None:
-    # Test async function return types
-    node2 = await create_node.aio(42)
-    reveal_type(node2)  # Should be Node
-
-    # Test async method types
-    child2 = await node2.create_child.aio(100)
-    reveal_type(child2)  # Should be Node
-
-    # Test async function with multiple args
-    parent2 = await create_node.aio(1)
-    child_node2 = await create_node.aio(2)
-    result2 = await connect_nodes.aio(parent2, child_node2)
-    reveal_type(result2)  # Should be tuple[Node, Node]
-
-"""
-
     # Check if pyright is available
     venv_pyright = Path(__file__).parent.parent.parent / ".venv" / "bin" / "pyright"
     if not venv_pyright.exists():
         print("✓ Pyright type checking: Skipped (pyright not available)")
         return
+
+    # Get paths to support files
+    support_dir = Path(__file__).parent / "support_files"
+    sync_usage = support_dir / "type_check_usage_sync.py"
+    async_usage = support_dir / "type_check_usage_async.py"
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmppath = Path(tmpdir)
@@ -305,59 +263,63 @@ async def async_usage() -> None:
         wrapper_file.write_text(generated_code)
 
         # Write a pyright config to disable reportFunctionMemberAccess errors
-        # (since .aio is added dynamically by the decorator)
         pyright_config = tmppath / "pyrightconfig.json"
         pyright_config.write_text('{"reportFunctionMemberAccess": false}')
 
-        # Write the usage file
-        usage_file = tmppath / "usage.py"
-        usage_file.write_text(usage_code)
+        # Test sync usage
+        sync_file = tmppath / "usage_sync.py"
+        sync_file.write_text(sync_usage.read_text())
 
-        # Run pyright
-        result = subprocess.run(
-            [str(venv_pyright), str(usage_file)],
+        result_sync = subprocess.run(
+            [str(venv_pyright), str(sync_file)],
             capture_output=True,
             text=True,
             cwd=str(tmppath),
         )
 
-        # Print pyright output
-        print(f"Pyright output:\n{result.stdout}")
+        print(f"Pyright output (sync):\n{result_sync.stdout}")
 
-        # Pyright should succeed (exit code 0)
-        if result.returncode != 0:
-            print(f"Pyright stderr:\n{result.stderr}")
-            assert False, f"Pyright type checking failed with exit code {result.returncode}"
+        if result_sync.returncode != 0:
+            print(f"Pyright stderr:\n{result_sync.stderr}")
+            assert False, f"Pyright type checking failed for sync usage with exit code {result_sync.returncode}"
 
-        # Verify the revealed types match expectations
-        output = result.stdout
-        # Function object types
-        assert 'Type of "create_node" is' in output, f"Expected create_node type to be revealed, got: {output}"
-        assert 'Type of "connect_nodes" is' in output, f"Expected connect_nodes type to be revealed, got: {output}"
-        # __call__ attribute
+        output_sync = result_sync.stdout
+        assert 'Type of "create_node" is' in output_sync
+        assert 'Type of "connect_nodes" is' in output_sync
+        assert 'Type of "create_node.__call__" is' in output_sync
+        assert 'Type of "node" is "Node"' in output_sync
+        assert 'Type of "child" is "Node"' in output_sync
+        assert 'Type of "result" is "tuple[Node, Node]"' in output_sync
+
+        # Test async usage
+        async_file = tmppath / "usage_async.py"
+        async_file.write_text(async_usage.read_text())
+
+        result_async = subprocess.run(
+            [str(venv_pyright), str(async_file)],
+            capture_output=True,
+            text=True,
+            cwd=str(tmppath),
+        )
+
+        print(f"Pyright output (async):\n{result_async.stdout}")
+
+        if result_async.returncode != 0:
+            print(f"Pyright stderr:\n{result_async.stderr}")
+            assert False, f"Pyright type checking failed for async usage with exit code {result_async.returncode}"
+
+        output_async = result_async.stdout
+        assert 'Type of "create_node.aio" is "(value: int) -> CoroutineType[Any, Any, Node]"' in output_async
         assert (
-            'Type of "create_node.__call__" is' in output
-        ), f"Expected create_node.__call__ type to be revealed, got: {output}"
-        # .aio attribute types
+            'Type of "connect_nodes.aio" is "(parent: Node, child: Node) -> CoroutineType[Any, Any, tuple[Node, Node]]"'
+            in output_async
+        )
         assert (
-            'Type of "create_node.aio" is "(value: int) -> Coroutine[Any, Any, Node]"' in output
-        ), f"Expected create_node.aio to have proper coroutine type, got: {output}"
-        assert (
-            'Type of "connect_nodes.aio" is "(parent: Node, child: Node) -> Coroutine[Any, Any, tuple[Node, Node]]"'
-            in output
-        ), f"Expected connect_nodes.aio to have proper coroutine type, got: {output}"
-        # Sync return value types
-        assert 'Type of "node" is "Node"' in output, f"Expected node type to be Node, got: {output}"
-        assert 'Type of "child" is "Node"' in output, f"Expected child type to be Node, got: {output}"
-        assert (
-            'Type of "result" is "tuple[Node, Node]"' in output
-        ), f"Expected result type to be tuple[Node, Node], got: {output}"
-        # Async return value types
-        assert 'Type of "node2" is "Node"' in output, f"Expected node2 type to be Node, got: {output}"
-        assert 'Type of "child2" is "Node"' in output, f"Expected child2 type to be Node, got: {output}"
-        assert (
-            'Type of "result2" is "tuple[Node, Node]"' in output
-        ), f"Expected result2 type to be tuple[Node, Node], got: {output}"
+            'Type of "node2.create_child.aio" is "(child_value: int) -> CoroutineType[Any, Any, Node]"' in output_async
+        )
+        assert 'Type of "node2" is "Node"' in output_async
+        assert 'Type of "child2" is "Node"' in output_async
+        assert 'Type of "result2" is "tuple[Node, Node]"' in output_async
 
         print("✓ Pyright type checking: Passed")
 

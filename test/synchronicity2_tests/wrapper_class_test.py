@@ -131,10 +131,12 @@ def test_compile_class_basic(test_library, simple_class):
 
     # Verify it contains expected elements
     assert f"class {simple_class.__name__}:" in generated_code
-    assert "_original_instance" in generated_code
-    assert "get_value = _get_valueMethodWrapper()" in generated_code
-    assert "set_value = _set_valueMethodWrapper()" in generated_code
-    assert "add_to_value = _add_to_valueMethodWrapper()" in generated_code
+    assert "_impl_instance" in generated_code
+    assert "@wrapped_method(" in generated_code
+    assert "def get_value(self" in generated_code
+    assert "def set_value(self" in generated_code
+    assert "def add_to_value(self" in generated_code
+    assert "impl_function = " in generated_code
 
 
 def test_compile_class_method_descriptors(test_library, simple_class):
@@ -152,10 +154,11 @@ def test_compile_class_method_descriptors(test_library, simple_class):
 
     generated_code = compile_class(wrapped_class, target_module, test_library._synchronizer_name)
 
-    # Verify method wrapper descriptors are generated
-    assert "_get_valueMethodWrapper" in generated_code
-    assert "def __get__(self, instance, owner):" in generated_code
-    assert "class BoundMethod:" in generated_code
+    # Verify method wrapper classes are generated
+    assert "TestClass_get_value" in generated_code
+    assert "async def aio(self" in generated_code
+    assert "def __call__(self" in generated_code
+    # Method wrapper pattern has changed
     assert "def __call__(self" in generated_code
     assert "async def aio(self" in generated_code
 
@@ -178,10 +181,12 @@ def test_compile_class_complex_types(test_library, complex_class):
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
 
-    # Verify complex type annotations are preserved
-    assert "config: typing.Dict[str, int]" in generated_code
-    assert "optional_filter: typing.Optional[str] = None" in generated_code
-    assert "-> typing.List[str]" in generated_code
+    # Verify complex type annotations are preserved (now using lowercase types)
+    assert "config: dict[str, int]" in generated_code
+    assert ("optional_filter: typing.Union[str, None]" in generated_code or
+            "optional_filter: str | None" in generated_code or
+            "optional_filter: typing.Optional[str]" in generated_code)
+    assert "-> list[str]" in generated_code
 
 
 def test_compile_class_async_generators(test_library, async_generator_class):
@@ -227,9 +232,10 @@ def test_compile_class_mixed_methods(test_library, mixed_class):
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
 
-    # Verify async methods are wrapped
-    assert "process_sync = _process_syncMethodWrapper()" in generated_code
-    assert "process_generator = _process_generatorMethodWrapper()" in generated_code
+    # Verify async methods are wrapped with the new decorator pattern
+    assert "@wrapped_method(" in generated_code
+    assert "def process_sync(self" in generated_code
+    assert "def process_generator(self" in generated_code
 
     # Verify sync methods are not wrapped (they don't start with async)
     # In our implementation, we only wrap async methods, so sync_method should not be wrapped
@@ -273,15 +279,15 @@ def test_compile_class_instance_binding(test_library, simple_class):
 
     generated_code = compile_class(wrapped_class, target_module, test_library._synchronizer_name)
 
-    # Verify instance binding logic is present
-    assert "if instance is None:" in generated_code
-    assert "return self" in generated_code
-    assert "return self.BoundMethod(instance, self.synchronizer, self.impl_method)" in generated_code
-    assert "self.instance = instance" in generated_code
-    assert "self.impl_method = impl_method" in generated_code
+    # Verify method wrapper classes are present (new decorator pattern)
+    assert "class TestClass_" in generated_code  # Method wrapper classes
+    assert "def __call__(self" in generated_code
+    assert "async def aio(self" in generated_code
+    assert "@wrapped_method(" in generated_code
+    assert "impl_function = " in generated_code  # Method implementation reference
 
 
-def test_compile_class_original_instance_access(test_library, simple_class):
+def test_compile_class_impl_instance_access(test_library, simple_class):
     """Test that the generated class provides access to the original instance"""
     test_library.wrap(target_module="test_module")(simple_class)
 
@@ -297,9 +303,10 @@ def test_compile_class_original_instance_access(test_library, simple_class):
     generated_code = compile_class(wrapped_class, target_module, test_library._synchronizer_name)
 
     # Verify original instance is created and accessible
-    assert "self._original_instance = test_module.TestClass(*args, **kwargs)" in generated_code
-    assert "def __getattr__(self, name):" in generated_code
-    assert "return getattr(self._original_instance, name)" in generated_code
+    assert "self._impl_instance = test_module.TestClass(" in generated_code
+    # Verify that the generated class has the expected structure
+    assert f"class {simple_class.__name__}:" in generated_code
+    assert "_synchronizer = get_synchronizer(" in generated_code
 
 
 def test_compile_class_multiple_classes(test_library, simple_class, complex_class):
@@ -319,8 +326,8 @@ def test_compile_class_multiple_classes(test_library, simple_class, complex_clas
 
         # Should contain the class wrapper pattern
         assert f"class {cls.__name__}:" in generated_code
-        assert "_original_instance" in generated_code
-        assert "def __getattr__(self, name):" in generated_code
+        assert "_impl_instance" in generated_code
+        # __getattr__ no longer used
 
 
 def test_compile_class_no_methods():
@@ -350,5 +357,5 @@ def test_compile_class_no_methods():
     # Should still generate a valid wrapper class
     compile(generated_code, "<string>", "exec")
     assert f"class {EmptyClass.__name__}:" in generated_code
-    assert "_original_instance" in generated_code
+    assert "_impl_instance" in generated_code
     # Should not have any method wrapper assignments since no async methods

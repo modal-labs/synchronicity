@@ -42,13 +42,15 @@ class _foo:
         return self._sync_wrapper_function()
 
     async def aio(self, ) -> typing.AsyncGenerator[int, None]:
-        gen = _my_library.foo()
+        impl_function = _my_library.foo
+        gen = impl_function()
         async for item in self._synchronizer._run_generator_async(gen):
             yield item
 
 @wrapped_function(_foo)
 def foo() -> typing.Generator[int, None, None]:
-    gen = _my_library.foo()
+    impl_function = _my_library.foo
+    gen = impl_function()
     yield from get_synchronizer('my_library')._run_generator_sync(gen)
 
 class Bar_moo:
@@ -65,7 +67,8 @@ class Bar_moo:
         return self._unbound_sync_wrapper_method(self._wrapper_instance, s)
 
     async def aio(self, s: str) -> typing.AsyncGenerator[str, None]:
-        gen = _my_library.Bar.moo(self._impl_instance, s)
+        impl_function = _my_library.Bar.moo
+        gen = impl_function(self._impl_instance, s)
         async for item in self._synchronizer._run_generator_async(gen):
             yield item
 
@@ -89,7 +92,8 @@ class Bar:
 
     @wrapped_method(Bar_moo)
     def moo(self, s: str) -> typing.Generator[str, None, None]:
-        gen = _my_library.Bar.moo(self._impl_instance, s)
+        impl_function = _my_library.Bar.moo
+        gen = impl_function(self._impl_instance, s)
         yield from self._synchronizer._run_generator_sync(gen)
 class _accepts_bar:
     _synchronizer = get_synchronizer('my_library')
@@ -103,13 +107,15 @@ class _accepts_bar:
         return self._sync_wrapper_function(b)
 
     async def aio(self, b: Bar) -> Bar:
+        impl_function = _my_library.accepts_bar
         b_impl = b._impl_instance
-        result = await _my_library.accepts_bar(b_impl)
+        result = await impl_function(b_impl)
         return _wrap_Bar(result)
 
 @wrapped_function(_accepts_bar)
 def accepts_bar(b: Bar) -> Bar:
+    impl_function = _my_library.accepts_bar
     b_impl = b._impl_instance
-    result = get_synchronizer('my_library')._run_function_sync(_my_library.accepts_bar(b_impl))
+    result = get_synchronizer('my_library')._run_function_sync(impl_function(b_impl))
     return _wrap_Bar(result)
 

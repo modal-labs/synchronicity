@@ -93,20 +93,16 @@ def test_compile_function_basic_types(test_library, simple_function):
 
     # Generate code
     generated_code = compile_function(wrapped_func, target_module, test_library._synchronizer_name)
-
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
 
     # Verify it contains expected elements
-    assert "class _" in generated_code
-    assert "Wrapper:" in generated_code
-    assert "synchronizer = get_synchronizer(" in generated_code
     assert "impl_function = test_module." in generated_code
     assert "def __call__(self" in generated_code
     assert "async def aio(self" in generated_code
     assert "_run_function_sync" in generated_code
-    assert "_run_function_async" in generated_code
-    assert f"{simple_function.__name__} = _" in generated_code
+    assert "await impl_function" in generated_code
+    assert "@wrapped_function(_" in generated_code
 
     # Verify type annotations are preserved
     assert "x: int" in generated_code
@@ -134,11 +130,14 @@ def test_compile_function_complex_types(test_library, complex_function):
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
 
-    # Verify complex types are preserved
-    assert "items: typing.List" in generated_code
-    assert "config: typing.Dict" in generated_code
-    assert "optional_param: typing.Optional" in generated_code
-    assert "-> typing.Dict" in generated_code
+    # Verify complex types are preserved (now using lowercase list/dict)
+    assert "items: list" in generated_code
+    assert "config: dict" in generated_code
+    # Optional types can be Union[str, None] or int | None depending on Python version
+    assert ("optional_param: typing.Union[str, None]" in generated_code or
+            "optional_param: int | None" in generated_code or
+            "optional_param: typing.Optional" in generated_code)
+    assert "-> dict" in generated_code
     assert "= None" in generated_code  # Default parameter
 
 
@@ -187,14 +186,13 @@ def test_compile_function_template_pattern(test_library, simple_function):
     # Check that the generated code contains all expected template elements
     template_elements = [
         "class _",
-        "Wrapper:",
-        "synchronizer = get_synchronizer(",
-        "impl_function = test_module.",
+        "_synchronizer = get_synchronizer(",
+        "_impl_function = test_module.",
         "def __call__(self",
         "async def aio(self",
         "_run_function_sync",
-        "_run_function_async",
-        f"{simple_function.__name__} = _",
+        "await impl_function",
+        "@wrapped_function(_",
     ]
 
     for element in template_elements:
@@ -209,8 +207,8 @@ def test_compile_function_template_pattern(test_library, simple_function):
             break
 
     assert class_line is not None, "Should have a class definition"
-    assert "synchronizer = get_synchronizer(" in lines[class_line + 1], "Should have synchronizer attribute"
-    assert "impl_function = test_module." in lines[class_line + 2], "Should have impl_function attribute"
+    assert "_synchronizer = get_synchronizer(" in lines[class_line + 1], "Should have synchronizer attribute"
+    assert "_impl_function = test_module." in lines[class_line + 2], "Should have impl_function attribute"
 
 
 def test_compile_function_multiple_functions(test_library, simple_function, complex_function):
@@ -230,11 +228,11 @@ def test_compile_function_multiple_functions(test_library, simple_function, comp
 
         # Should contain the template pattern
         assert "class _" in generated_code
-        assert "synchronizer = get_synchronizer(" in generated_code
+        assert "_synchronizer = get_synchronizer(" in generated_code
         assert "impl_function = " in generated_code
         assert "def __call__(" in generated_code
         assert "async def aio(" in generated_code
-        assert f"{func.__name__} = " in generated_code
+        assert "@wrapped_function(_" in generated_code
 
 
 def test_compile_function_async_generator(test_library, async_generator_function):
@@ -262,21 +260,21 @@ def test_compile_function_async_generator(test_library, async_generator_function
     assert "_run_generator_sync" in generated_code
     assert "_run_generator_async" in generated_code
     assert "_run_function_sync" not in generated_code
-    assert "_run_function_async" not in generated_code
 
     # Verify it yields from the generator instead of returning
-    assert "yield from self.synchronizer._run_generator_sync(gen)" in generated_code
-    assert "async for item in self.synchronizer._run_generator_async(gen):" in generated_code
+    assert "yield from get_synchronizer" in generated_code
+    assert "async for item in self._synchronizer._run_generator_async(gen):" in generated_code
     assert "yield item" in generated_code
+    assert "gen = impl_function" in generated_code
 
     # Verify return type annotations for generators
-    assert "-> typing.Iterator[str]" in generated_code  # Sync version returns Iterator
+    assert "-> typing.Generator[str" in generated_code  # Sync version returns Generator
     assert (
         "-> typing.AsyncGenerator[str, None]" in generated_code
     )  # Async version returns AsyncGenerator with type args
 
     # Verify parameter types are preserved
-    assert "items: typing.List" in generated_code
+    assert "items: list" in generated_code
 
 
 def test_compile_function_async_generator_template_pattern(test_library, async_generator_function):
@@ -297,19 +295,18 @@ def test_compile_function_async_generator_template_pattern(test_library, async_g
     # Check that the generated code contains all expected template elements
     template_elements = [
         "class _",
-        "Wrapper:",
-        "synchronizer = get_synchronizer(",
-        "impl_function = test_module.",
+        "_synchronizer = get_synchronizer(",
+        "_impl_function = test_module.",
         "def __call__(self",
         "async def aio(self",
-        f"{async_generator_function.__name__} = _",
+        "@wrapped_function(_",
     ]
 
     for element in template_elements:
         assert element in generated_code, f"Generated code should contain '{element}'"
 
     # Verify the structure is correct for generators
-    assert "gen = self.impl_function(" in generated_code
+    assert "gen = impl_function(" in generated_code
     assert "yield from" in generated_code
     assert "async for" in generated_code
 

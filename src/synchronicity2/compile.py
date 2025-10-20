@@ -170,28 +170,29 @@ def compile_function(
         if needs_return_wrap and hasattr(return_annotation, "__args__"):
             yield_type = return_annotation.__args__[0]
             wrap_expr = build_wrap_expr(yield_type, wrapped_classes, "item")
-            aio_body = f"""        gen = {target_module}.{f.__name__}({call_args_str})
+            aio_body = f"""        gen = impl_function({call_args_str})
         async for item in self._synchronizer._run_generator_async(gen):
             yield {wrap_expr}"""
         else:
-            aio_body = f"""        gen = {target_module}.{f.__name__}({call_args_str})
+            aio_body = f"""        gen = impl_function({call_args_str})
         async for item in self._synchronizer._run_generator_async(gen):
             yield item"""
     else:
         # For regular async functions
         if needs_return_wrap:
             wrap_expr = build_wrap_expr(return_annotation, wrapped_classes, "result")
-            aio_body = f"""        result = await {target_module}.{f.__name__}({call_args_str})
+            aio_body = f"""        result = await impl_function({call_args_str})
         return {wrap_expr}"""
         else:
-            aio_body = f"""        return await {target_module}.{f.__name__}({call_args_str})"""
+            aio_body = f"""        return await impl_function({call_args_str})"""
 
     # Build unwrap section for aio() if needed
-    aio_unwrap = ""
+    aio_impl_ref = f"        impl_function = {target_module}.{f.__name__}"
+    aio_unwrap = f"\n{aio_impl_ref}"
     if unwrap_code:
         # Adjust indentation for aio method (8 spaces)
         aio_unwrap_lines = [line.replace("    ", "        ", 1) for line in unwrap_stmts]
-        aio_unwrap = "\n" + "\n".join(aio_unwrap_lines)
+        aio_unwrap += "\n" + "\n".join(aio_unwrap_lines)
 
     # Build unwrap section for __call__ if needed - uses original call_args_str
     # which has the wrapper parameter names, not the impl ones
@@ -222,25 +223,29 @@ def compile_function(
         if needs_return_wrap and hasattr(return_annotation, "__args__"):
             yield_type = return_annotation.__args__[0]
             wrap_expr = build_wrap_expr(yield_type, wrapped_classes, "item")
-            sync_gen_body = f"""    gen = {target_module}.{f.__name__}({call_args_str})
+            sync_gen_body = f"""    gen = impl_function({call_args_str})
     for item in get_synchronizer('{synchronizer_name}')._run_generator_sync(gen):
         yield {wrap_expr}"""
         else:
-            sync_gen_body = f"""    gen = {target_module}.{f.__name__}({call_args_str})
+            sync_gen_body = f"""    gen = impl_function({call_args_str})
     yield from get_synchronizer('{synchronizer_name}')._run_generator_sync(gen)"""
         sync_function_body = sync_gen_body
     else:
         # For regular async functions
+        sync_runner = f"get_synchronizer('{synchronizer_name}')._run_function_sync"
         if needs_return_wrap:
             wrap_expr = build_wrap_expr(return_annotation, wrapped_classes, "result")
-            sync_function_body = f"""    result = get_synchronizer('{synchronizer_name}')._run_function_sync({target_module}.{f.__name__}({call_args_str}))
+            sync_function_body = f"""    result = {sync_runner}(impl_function({call_args_str}))
     return {wrap_expr}"""
         else:
-            sync_function_body = f"""    return get_synchronizer('{synchronizer_name}')._run_function_sync({target_module}.{f.__name__}({call_args_str}))"""
+            sync_function_body = f"""    return {sync_runner}(impl_function({call_args_str}))"""
 
-    # Add unwrap statements to sync function if needed
+    # Add impl_function reference and unwrap statements to sync function if needed
+    impl_ref = f"    impl_function = {target_module}.{f.__name__}"
     if unwrap_code:
-        sync_function_body = f"{unwrap_code}\n{sync_function_body}"
+        sync_function_body = f"{impl_ref}\n{unwrap_code}\n{sync_function_body}"
+    else:
+        sync_function_body = f"{impl_ref}\n{sync_function_body}"
 
     sync_function_code = f"""@wrapped_function({wrapper_class_name})
 def {f.__name__}({param_str}){sync_return_str}:
@@ -363,28 +368,29 @@ def compile_method_wrapper(
         if needs_return_wrap and hasattr(return_annotation, "__args__"):
             yield_type = return_annotation.__args__[0]
             wrap_expr = build_wrap_expr(yield_type, wrapped_classes, "item")
-            aio_body = f"""        gen = {target_module}.{class_name}.{method_name}({impl_call_args})
+            aio_body = f"""        gen = impl_function({impl_call_args})
         async for item in self._synchronizer._run_generator_async(gen):
             yield {wrap_expr}"""
         else:
-            aio_body = f"""        gen = {target_module}.{class_name}.{method_name}({impl_call_args})
+            aio_body = f"""        gen = impl_function({impl_call_args})
         async for item in self._synchronizer._run_generator_async(gen):
             yield item"""
     else:
         # For regular async methods
         if needs_return_wrap:
             wrap_expr = build_wrap_expr(return_annotation, wrapped_classes, "result")
-            aio_body = f"""        result = await {target_module}.{class_name}.{method_name}({impl_call_args})
+            aio_body = f"""        result = await impl_function({impl_call_args})
         return {wrap_expr}"""
         else:
-            aio_body = f"""        return await {target_module}.{class_name}.{method_name}({impl_call_args})"""
+            aio_body = f"""        return await impl_function({impl_call_args})"""
 
     # Build unwrap section for aio() if needed
-    aio_unwrap = ""
+    aio_impl_ref = f"        impl_function = {target_module}.{class_name}.{method_name}"
+    aio_unwrap = f"\n{aio_impl_ref}"
     if unwrap_code:
         # Adjust indentation for aio method (8 spaces)
         aio_unwrap_lines = [line.replace("        ", "        ", 1) for line in unwrap_stmts]
-        aio_unwrap = "\n" + "\n".join(aio_unwrap_lines)
+        aio_unwrap += "\n" + "\n".join(aio_unwrap_lines)
 
     # For __call__, we need to pass the original parameter names (not _impl versions)
     # because __call__ passes through to the sync wrapper method which handles unwrapping
@@ -414,24 +420,28 @@ def compile_method_wrapper(
         if needs_return_wrap and hasattr(return_annotation, "__args__"):
             yield_type = return_annotation.__args__[0]
             wrap_expr = build_wrap_expr(yield_type, wrapped_classes, "item")
-            sync_method_body = f"""        gen = {target_module}.{class_name}.{method_name}({impl_call_args})
+            sync_method_body = f"""        gen = impl_function({impl_call_args})
         for item in self._synchronizer._run_generator_sync(gen):
             yield {wrap_expr}"""
         else:
-            sync_method_body = f"""        gen = {target_module}.{class_name}.{method_name}({impl_call_args})
+            sync_method_body = f"""        gen = impl_function({impl_call_args})
         yield from self._synchronizer._run_generator_sync(gen)"""
     else:
         # For regular async methods
+        sync_runner = "self._synchronizer._run_function_sync"
         if needs_return_wrap:
             wrap_expr = build_wrap_expr(return_annotation, wrapped_classes, "result")
-            sync_method_body = f"""        result = self._synchronizer._run_function_sync({target_module}.{class_name}.{method_name}({impl_call_args}))
+            sync_method_body = f"""        result = {sync_runner}(impl_function({impl_call_args}))
         return {wrap_expr}"""
         else:
-            sync_method_body = f"""        return self._synchronizer._run_function_sync({target_module}.{class_name}.{method_name}({impl_call_args}))"""
+            sync_method_body = f"""        return {sync_runner}(impl_function({impl_call_args}))"""
 
-    # Add unwrap statements to sync method if needed
+    # Add impl_function reference and unwrap statements to sync method if needed
+    impl_ref = f"        impl_function = {target_module}.{class_name}.{method_name}"
     if unwrap_code:
-        sync_method_body = f"{unwrap_code}\n{sync_method_body}"
+        sync_method_body = f"{impl_ref}\n{unwrap_code}\n{sync_method_body}"
+    else:
+        sync_method_body = f"{impl_ref}\n{sync_method_body}"
 
     sync_method_code = f"""    @wrapped_method({wrapper_class_name})
     def {method_name}(self, {param_str}){sync_return_str}:
@@ -584,7 +594,6 @@ from synchronicity2.synchronizer import get_synchronizer
         compiled_code.append("")  # Add blank line after helpers
 
     for o, (target_module, target_name) in wrapped_items.items():
-        print(target_module, target_name, o, file=sys.stderr)
         if isinstance(o, types.FunctionType):
             code = compile_function(o, impl_module, synchronizer_name, wrapped_classes)
             compiled_code.append(code)

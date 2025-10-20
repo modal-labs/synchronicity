@@ -1,16 +1,13 @@
 [project]
 name = "synchronicity"
-version = "0.10.1"
+version = "1.0"
 description = "Export blocking and async library versions from a single async implementation"
 readme = "README.md"
 authors = [
     { name = "Modal Labs" }
 ]
-requires-python = ">=3.8"
-dependencies = [
-    "sigtools>=4.0.1",
-    "typing-extensions>=4.12.2",
-]
+requires-python = ">=3.9"
+dependencies = []
 classifiers = [
   "Operating System :: OS Independent",
   "License :: OSI Approved :: Apache Software License",
@@ -32,7 +29,7 @@ select = ['E', 'F', 'W', 'I']
 
 [tool.ruff.lint.isort]
 combine-as-imports = true
-known-first-party = ["synchronicity"]
+known-first-party = ["synchronicity2"]
 extra-standard-library = ["pytest"]
 
 [tool.hatch.build.targets.sdist]
