@@ -374,3 +374,83 @@ def format_type_for_annotation(annotation, synchronizer: "Synchronizer", current
 
     # Fallback
     return repr(annotation)
+
+
+def format_return_annotation_with_translation(
+    return_annotation,
+    synchronizer: "Synchronizer",
+    current_target_module: str,
+) -> tuple[str, str]:
+    """
+    Format return type annotations for wrapper functions/methods with type translation.
+
+    This function handles the complexity of formatting return types for both sync and async
+    versions of wrappers, with special handling for generators and proper quoting of
+    wrapper types for forward reference safety.
+
+    Args:
+        return_annotation: The return type annotation to format
+        synchronizer: The Synchronizer instance
+        current_target_module: The target module for the wrapper
+
+    Returns:
+        Tuple of (sync_return_str, async_return_str) - return type annotations with " -> " prefix
+    """
+    import collections.abc
+    import inspect
+
+    # Handle empty annotations
+    if return_annotation == inspect.Signature.empty:
+        # Check if this might be an async generator without annotation
+        return "", ""
+
+    # Detect if this is an async generator from the annotation type
+    # Check for both AsyncGenerator and AsyncIterator (which is commonly used)
+    is_async_gen = False
+    if hasattr(return_annotation, "__origin__"):
+        origin = return_annotation.__origin__
+        is_async_gen = origin is collections.abc.AsyncGenerator or origin is collections.abc.AsyncIterator
+
+    # Check if we need type translation
+    if not needs_translation(return_annotation, synchronizer):
+        # No translation needed - use simple formatting
+        from .signature_utils import format_return_types
+
+        return format_return_types(return_annotation, is_async_gen)
+
+    # Build the return type strings without quotes first
+    if is_async_gen:
+        # Extract yield type from AsyncGenerator
+        args = typing.get_args(return_annotation)
+        if args:
+            yield_type = args[0]
+            wrapper_yield_type = format_type_for_annotation(yield_type, synchronizer, current_target_module)
+
+            if len(args) > 1:
+                send_type = args[1]
+                send_type_str = format_type_for_annotation(send_type, synchronizer, current_target_module)
+                sync_return_type = f"typing.Generator[{wrapper_yield_type}, None, None]"
+                async_return_type = f"typing.AsyncGenerator[{wrapper_yield_type}, {send_type_str}]"
+            else:
+                sync_return_type = f"typing.Generator[{wrapper_yield_type}, None, None]"
+                async_return_type = f"typing.AsyncGenerator[{wrapper_yield_type}]"
+        else:
+            sync_return_type = "typing.Generator"
+            async_return_type = "typing.AsyncGenerator"
+    else:
+        # Regular function/method with wrapped types
+        wrapper_return_type = format_type_for_annotation(return_annotation, synchronizer, current_target_module)
+        sync_return_type = wrapper_return_type
+        async_return_type = wrapper_return_type
+
+    # Post-processing: Apply quoting if contains wrapper types
+    # Quote the entire type annotation for forward reference safety
+    should_quote = needs_translation(return_annotation, synchronizer)
+    if should_quote:
+        sync_return_str = f' -> "{sync_return_type}"'
+        async_return_str = f' -> "{async_return_type}"'
+    else:
+        sync_return_str = f" -> {sync_return_type}"
+        async_return_str = f" -> {async_return_type}"
+
+    return sync_return_str, async_return_str
