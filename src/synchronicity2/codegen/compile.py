@@ -646,28 +646,19 @@ def _get_cross_module_imports_new(
     for obj, (target_module, target_name) in module_items.items():
         # Get signature if it's a function or class with methods
         if isinstance(obj, types.FunctionType):
-            try:
-                # Use get_annotations to resolve string annotations
-                annotations = inspect.get_annotations(obj, eval_str=True)
-                for param_name, annotation in annotations.items():
-                    _check_annotation_for_cross_refs_new(annotation, module_name, synchronizer, cross_module_refs)
-            except (NameError, AttributeError, TypeError):
-                # If get_annotations fails, skip this function
-                # In the new approach we don't fall back to string-based checks
-                pass
+            # Use get_annotations to resolve string annotations
+            annotations = inspect.get_annotations(obj, eval_str=True)
+            for param_name, annotation in annotations.items():
+                _check_annotation_for_cross_refs_new(annotation, module_name, synchronizer, cross_module_refs)
         elif isinstance(obj, type):
             # Check methods of the class
             for method_name, method in inspect.getmembers(obj, predicate=inspect.isfunction):
                 if method_name.startswith("_"):
                     continue
-                try:
-                    # Try to use get_annotations to resolve string annotations
-                    annotations = inspect.get_annotations(method, eval_str=True)
-                    for annotation in annotations.values():
-                        _check_annotation_for_cross_refs_new(annotation, module_name, synchronizer, cross_module_refs)
-                except (NameError, AttributeError, TypeError, ValueError):
-                    # If get_annotations fails, skip this method
-                    pass
+                # Try to use get_annotations to resolve string annotations
+                annotations = inspect.get_annotations(method, eval_str=True)
+                for annotation in annotations.values():
+                    _check_annotation_for_cross_refs_new(annotation, module_name, synchronizer, cross_module_refs)
 
     return cross_module_refs
 
