@@ -10,7 +10,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 sys.path.insert(0, str(Path(__file__).parent / "support_files"))
 
-from synchronicity2.compile import compile_modules
+from synchronicity2.codegen.compile import compile_modules
 
 
 @contextmanager
@@ -52,7 +52,7 @@ def test_simple_function_generation():
     # Generate wrapper code
     modules = compile_modules(_simple_function.lib)
     generated_code = list(modules.values())[0]  # Extract the single module
-
+    print(generated_code)
     # Verify code structure
     assert "import _simple_function" in generated_code
     assert "class _simple_add:" in generated_code

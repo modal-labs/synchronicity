@@ -139,7 +139,7 @@ Examples:
     print(f"\nTotal wrapped items collected: {len(synchronizer._wrapped)}", file=sys.stderr)
 
     # Compile all wrapped items into separate modules
-    from synchronicity2.compile import compile_modules
+    from synchronicity2.codegen.compile import compile_modules
 
     print("Compiling wrappers...", file=sys.stderr)
     modules = compile_modules(synchronizer)

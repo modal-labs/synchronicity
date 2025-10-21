@@ -3,7 +3,7 @@ import pytest
 import typing
 from typing import Dict, List, Optional
 
-from synchronicity2.compile import compile_function
+from synchronicity2.codegen.compile import compile_function
 from synchronicity2.synchronizer import Synchronizer
 
 
@@ -364,3 +364,104 @@ def test_compile_unwrapped_sync_function_raises_error(test_synchronizer):
     # This should raise a ValueError because the function is not wrapped
     with pytest.raises(ValueError, match="Function unwrapped_sync_func.*not in the synchronizer's wrapped dict"):
         compile_function(unwrapped_sync_func, test_synchronizer)
+
+
+def test_compile_async_generator_with_wrapped_type_quoting(test_synchronizer):
+    """Test that async generators with wrapped types quote the entire return type annotation.
+
+    When a generator yields wrapped types (e.g., AsyncGenerator[Person, None]),
+    the entire return type should be quoted as a string for forward reference safety,
+    not just individual parts within the generic.
+
+    We want: -> "typing.Generator[Person, None, None]"
+    Not: -> typing.Generator["Person", None, None]
+    """
+
+    # Create a wrapped class
+    @test_synchronizer.wrap(target_module="test_module")
+    class Person:
+        def __init__(self, name: str):
+            self.name = name
+
+    # Create an async generator that yields the wrapped type
+    @test_synchronizer.wrap(target_module="test_module")
+    async def stream_people(count: int) -> typing.AsyncIterator[Person]:
+        """Stream people instances."""
+        for i in range(count):
+            yield Person(f"Person {i}")
+
+    # Get the wrapped function
+    wrapped_func = None
+    for func, (module, name) in test_synchronizer._wrapped.items():
+        if func.__name__ == "stream_people":
+            wrapped_func = func
+            break
+
+    assert wrapped_func is not None, "Function should be wrapped"
+
+    # Generate code
+    generated_code = compile_function(wrapped_func, test_synchronizer)
+
+    # Verify the generated code compiles
+    compile(generated_code, "<string>", "exec")
+
+    # The key assertion: the entire return type should be quoted as a string
+    # for both sync and async versions when it contains wrapper types
+    assert (
+        ' -> "typing.Generator[Person, None, None]"' in generated_code
+    ), "Sync version should quote entire Generator type when it contains wrapped types"
+    assert (
+        ' -> "typing.AsyncGenerator[Person]"' in generated_code
+    ), "Async version should quote entire AsyncGenerator type when it contains wrapped types"
+
+    # Should NOT have individually quoted type arguments inside the generic
+    assert 'Generator["Person"' not in generated_code, "Should not quote individual type arguments within the generic"
+    assert (
+        'AsyncGenerator["Person"' not in generated_code
+    ), "Should not quote individual type arguments within the generic"
+
+
+def test_compile_async_generator_with_nested_wrapped_type_quoting(test_synchronizer):
+    """Test that async generators with nested wrapped types (e.g., list[Person]) quote the entire return type."""
+
+    # Create a wrapped class
+    @test_synchronizer.wrap(target_module="test_module")
+    class Person:
+        def __init__(self, name: str):
+            self.name = name
+
+    # Create an async generator that yields lists of the wrapped type
+    @test_synchronizer.wrap(target_module="test_module")
+    async def stream_person_batches(batch_size: int) -> typing.AsyncIterator[List[Person]]:
+        """Stream batches of people."""
+        batch = []
+        for i in range(10):
+            batch.append(Person(f"Person {i}"))
+            if len(batch) >= batch_size:
+                yield batch
+                batch = []
+        if batch:
+            yield batch
+
+    # Get the wrapped function
+    wrapped_func = None
+    for func, (module, name) in test_synchronizer._wrapped.items():
+        if func.__name__ == "stream_person_batches":
+            wrapped_func = func
+            break
+
+    assert wrapped_func is not None, "Function should be wrapped"
+
+    # Generate code
+    generated_code = compile_function(wrapped_func, test_synchronizer)
+
+    # Verify the generated code compiles
+    compile(generated_code, "<string>", "exec")
+
+    # The entire return type should be quoted because it contains wrapped types
+    assert (
+        ' -> "typing.Generator[list[Person], None, None]"' in generated_code
+    ), "Sync version should quote entire Generator type when yield type contains wrapped types"
+    assert (
+        ' -> "typing.AsyncGenerator[list[Person]]"' in generated_code
+    ), "Async version should quote entire AsyncGenerator type when yield type contains wrapped types"

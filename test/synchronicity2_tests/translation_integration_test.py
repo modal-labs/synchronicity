@@ -14,7 +14,7 @@ import _test_impl  # type: ignore
 
 def test_compile_with_translation():
     """Test that wrapper code compiles correctly with type translation."""
-    from synchronicity2.compile import compile_modules
+    from synchronicity2.codegen.compile import compile_modules
 
     # Compile the library
     modules = compile_modules(_test_impl.lib)
@@ -54,7 +54,7 @@ def test_compile_with_translation():
 
 def test_wrapper_helpers_generated():
     """Test that _from_impl classmethod is generated correctly."""
-    from synchronicity2.compile import compile_modules
+    from synchronicity2.codegen.compile import compile_modules
 
     modules = compile_modules(_test_impl.lib)
     compiled_code = list(modules.values())[0]  # Extract the single module
@@ -73,7 +73,7 @@ def test_wrapper_helpers_generated():
 
 def test_unwrap_expressions_in_functions():
     """Test that unwrap expressions are generated in function bodies."""
-    from synchronicity2.compile import compile_modules
+    from synchronicity2.codegen.compile import compile_modules
 
     modules = compile_modules(_test_impl.lib)
     compiled_code = list(modules.values())[0]  # Extract the single module
@@ -89,7 +89,7 @@ def test_unwrap_expressions_in_functions():
 
 def test_translation_with_collections():
     """Test that collection types are translated correctly."""
-    from synchronicity2.compile import compile_modules
+    from synchronicity2.codegen.compile import compile_modules
 
     modules = compile_modules(_test_impl.lib)
     compiled_code = list(modules.values())[0]  # Extract the single module
@@ -106,7 +106,7 @@ def test_translation_with_collections():
 def test_no_translation_for_primitives():
     """Test that primitive types are not translated."""
     from synchronicity2 import Synchronizer
-    from synchronicity2.compile import compile_modules
+    from synchronicity2.codegen.compile import compile_modules
 
     async def returns_string() -> str:
         return "hello"
