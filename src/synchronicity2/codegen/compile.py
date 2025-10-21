@@ -393,35 +393,41 @@ def compile_method_wrapper(
     # Generate the wrapper class
     wrapper_class_name = f"{class_name}_{method_name}"
 
-    # Determine if we need to wrap the return value
-    needs_return_wrap = needs_translation(return_annotation, synchronizer)
-
-    # Build the aio() method body
+    # Build both sync and async bodies together (same branching logic)
     if is_async_gen:
-        # For generators, wrap each yielded item
-        if needs_return_wrap:
-            import typing
-
-            args = typing.get_args(return_annotation)
-            if args:
-                yield_type = args[0]
-                wrap_expr = build_wrap_expr(yield_type, synchronizer, current_target_module, "item")
-                aio_body = f"""        async for item in impl_method(self._wrapper_instance._impl_instance, {call_args_str}):
-            yield {wrap_expr}"""
-            else:
-                aio_body = f"""        async for item in impl_method(self._wrapper_instance._impl_instance, {call_args_str}):
-            yield item"""
-        else:
-            aio_body = f"""        async for item in impl_method(self._wrapper_instance._impl_instance, {call_args_str}):
-            yield item"""
+        # For async generator methods, wrap each yielded item
+        aio_body = _build_generator_with_wrap(
+            f"impl_method(self._wrapper_instance._impl_instance, {call_args_str})",
+            return_annotation,
+            synchronizer,
+            current_target_module,
+            "async for item in gen",
+            indent="        ",
+        )
+        sync_method_body = _build_generator_with_wrap(
+            f"impl_method(self._impl_instance, {call_args_str})",
+            return_annotation,
+            synchronizer,
+            current_target_module,
+            "for item in self._synchronizer._run_generator_sync(gen)",
+            indent="        ",
+        )
     else:
         # For regular async methods
-        if needs_return_wrap:
-            wrap_expr = build_wrap_expr(return_annotation, synchronizer, current_target_module, "result")
-            aio_body = f"""        result = await impl_method(self._wrapper_instance._impl_instance, {call_args_str})
-        return {wrap_expr}"""
-        else:
-            aio_body = f"""        return await impl_method(self._wrapper_instance._impl_instance, {call_args_str})"""
+        aio_body = _build_call_with_wrap(
+            f"await impl_method(self._wrapper_instance._impl_instance, {call_args_str})",
+            return_annotation,
+            synchronizer,
+            current_target_module,
+            indent="        ",
+        )
+        sync_method_body = _build_call_with_wrap(
+            f"self._synchronizer._run_function_sync(impl_method(self._impl_instance, {call_args_str}))",
+            return_annotation,
+            synchronizer,
+            current_target_module,
+            indent="        ",
+        )
 
     # Build unwrap section for aio() if needed
     aio_impl_ref = f"        impl_method = {origin_module}.{class_name}.{method_name}"
@@ -440,34 +446,6 @@ def compile_method_wrapper(
     async def aio(self, {param_str}){async_return_str}:{aio_unwrap}
 {aio_body}
 """
-
-    # Build the sync wrapper method code
-    if is_async_gen:
-        # For generators, wrap each yielded item
-        if needs_return_wrap:
-            import typing
-
-            args = typing.get_args(return_annotation)
-            if args:
-                yield_type = args[0]
-                wrap_expr = build_wrap_expr(yield_type, synchronizer, current_target_module, "item")
-                sync_method_body = f"""        gen = impl_method(self._impl_instance, {call_args_str})
-        for item in self._synchronizer._run_generator_sync(gen):
-            yield {wrap_expr}"""
-            else:
-                sync_method_body = f"""        gen = impl_method(self._impl_instance, {call_args_str})
-        yield from self._synchronizer._run_generator_sync(gen)"""
-        else:
-            sync_method_body = f"""        gen = impl_method(self._impl_instance, {call_args_str})
-        yield from self._synchronizer._run_generator_sync(gen)"""
-    else:
-        # For regular async methods
-        if needs_return_wrap:
-            wrap_expr = build_wrap_expr(return_annotation, synchronizer, current_target_module, "result")
-            sync_method_body = f"""        result = self._synchronizer._run_function_sync(impl_method(self._impl_instance, {call_args_str}))
-        return {wrap_expr}"""
-        else:
-            sync_method_body = f"""        return self._synchronizer._run_function_sync(impl_method(self._impl_instance, {call_args_str}))"""
 
     # Add impl_method reference and unwrap statements
     impl_ref = f"        impl_method = {origin_module}.{class_name}.{method_name}"
