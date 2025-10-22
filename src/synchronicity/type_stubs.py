@@ -58,6 +58,11 @@ def safe_get_module(obj: typing.Any) -> typing.Optional[str]:
     if obj.__module__ in ("_contextvars", "_asyncio"):
         return obj.__module__[1:]  # strip leading underscore
 
+    if obj.__module__ == "pathlib._local":
+        # in newer versions of Python (known: 3.13)
+        # some pathlib classes live in pathlib._local
+        return "pathlib"
+
     try:
         if (obj.__module__, obj.__name__) == ("typing", "Concatenate"):
             # typing_extensions.Concatenate forwards typing.Concatenate if
