@@ -1,11 +1,11 @@
 """Integration tests for multifile code generation."""
+
 import os
+import pytest
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
-
-import pytest
 
 
 @pytest.fixture
@@ -32,7 +32,7 @@ def test_multifile_generation(monkeypatch, support_files_path):
         [
             sys.executable,
             "-m",
-            "synchronicity2.cli",
+            "synchronicity.cli",
             "-m",
             "multifile._a",
             "-m",
@@ -83,7 +83,7 @@ def test_multifile_execution(support_files_path):
             [
                 sys.executable,
                 "-m",
-                "synchronicity2.cli",
+                "synchronicity.cli",
                 "-m",
                 "multifile._a",
                 "-m",
@@ -112,6 +112,7 @@ def test_multifile_execution(support_files_path):
         target_dir = tmppath / "multifile"
 
         import shutil
+
         shutil.copy(impl_module_a, target_dir / "_a.py")
         shutil.copy(impl_module_b, target_dir / "_b.py")
 
@@ -188,7 +189,7 @@ def test_multifile_type_checking(support_files_path):
             [
                 sys.executable,
                 "-m",
-                "synchronicity2.cli",
+                "synchronicity.cli",
                 "-m",
                 "multifile._a",
                 "-m",
@@ -274,6 +275,7 @@ async def test():
         target_dir = tmppath / "multifile"
 
         import shutil
+
         shutil.copy(impl_module_a, target_dir / "_a.py")
         shutil.copy(impl_module_b, target_dir / "_b.py")
 

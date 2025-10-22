@@ -1,4 +1,4 @@
-"""Tests for type translation utilities in synchronicity2.codegen.
+"""Tests for type translation utilities in synchronicity.codegen.
 
 These tests verify the object-based type translation system that uses
 inspect.get_annotations(eval_str=True) and object identity checks.
@@ -8,13 +8,13 @@ import inspect
 import pytest
 import typing
 
-from synchronicity2.codegen import (
+from synchronicity.codegen import (
     build_unwrap_expr,
     build_wrap_expr,
     format_type_for_annotation,
     needs_translation,
 )
-from synchronicity2.synchronizer import Synchronizer
+from synchronicity.synchronizer import Synchronizer
 
 
 # Mock implementation classes

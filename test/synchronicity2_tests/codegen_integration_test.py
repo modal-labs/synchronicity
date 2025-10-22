@@ -10,7 +10,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 sys.path.insert(0, str(Path(__file__).parent / "support_files"))
 
-from synchronicity2.codegen.compile import compile_modules
+from synchronicity.codegen.compile import compile_modules
 
 
 @contextmanager

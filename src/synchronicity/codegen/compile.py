@@ -716,8 +716,8 @@ def compile_module(
 
 {imports}
 
-from synchronicity2.descriptor import wrapped_function, wrapped_method
-from synchronicity2.synchronizer import get_synchronizer
+from synchronicity.descriptor import wrapped_function, wrapped_method
+from synchronicity.synchronizer import get_synchronizer
 """
 
     if cross_module_imports_str:

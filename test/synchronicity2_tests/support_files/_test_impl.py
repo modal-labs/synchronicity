@@ -2,7 +2,7 @@
 
 import typing
 
-from synchronicity2 import get_synchronizer
+from synchronicity import get_synchronizer
 
 lib = get_synchronizer("test_lib")
 

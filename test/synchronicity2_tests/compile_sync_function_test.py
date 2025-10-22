@@ -2,8 +2,8 @@
 
 import pytest
 
-from synchronicity2 import get_synchronizer
-from synchronicity2.codegen.compile import compile_function
+from synchronicity import get_synchronizer
+from synchronicity.codegen.compile import compile_function
 
 
 @pytest.fixture

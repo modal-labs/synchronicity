@@ -1,7 +1,8 @@
 """Module B for multifile integration testing."""
+
 import typing
 
-from synchronicity2.synchronizer import get_synchronizer
+from synchronicity.synchronizer import get_synchronizer
 
 if typing.TYPE_CHECKING:
     from ._a import A

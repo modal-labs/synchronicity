@@ -1,4 +1,4 @@
-"""Code generation package for synchronicity2."""
+"""Code generation package for synchronicity."""
 
 # Re-export all public functions for backward compatibility
 from .signature_utils import format_return_types, is_async_generator, parse_parameters

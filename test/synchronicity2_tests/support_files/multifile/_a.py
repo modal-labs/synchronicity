@@ -1,5 +1,6 @@
 """Module A for multifile integration testing."""
-from synchronicity2.synchronizer import get_synchronizer
+
+from synchronicity.synchronizer import get_synchronizer
 
 from ._b import B
 

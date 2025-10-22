@@ -33,8 +33,6 @@ class WrappedMethodDescriptor(typing.Generic[T]):
         return self.method_wrapper_type(wrapper_instance, self.sync_wrapper_method)
 
 
-
-
 def wrapped_method(method_wrapper_type: type[T]):
     """
     Decorator that creates a WrappedMethodDescriptor for a method.

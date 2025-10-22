@@ -29,7 +29,6 @@ select = ['E', 'F', 'W', 'I']
 
 [tool.ruff.lint.isort]
 combine-as-imports = true
-known-first-party = ["synchronicity2"]
 extra-standard-library = ["pytest"]
 
 [tool.hatch.build.targets.sdist]

@@ -3,8 +3,8 @@ import pytest
 import typing
 from typing import Dict, List, Optional
 
-from synchronicity2.codegen.compile import compile_function
-from synchronicity2.synchronizer import Synchronizer
+from synchronicity.codegen.compile import compile_function
+from synchronicity.synchronizer import Synchronizer
 
 
 # Test fixtures

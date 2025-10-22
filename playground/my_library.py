@@ -1,16 +1,14 @@
 import typing
+import weakref
 
 import _my_library
 
-from synchronicity2.descriptor import wrapped_function, wrapped_method
-from synchronicity2.synchronizer import get_synchronizer
-
-import weakref
-
-
+from synchronicity.descriptor import wrapped_function, wrapped_method
+from synchronicity.synchronizer import get_synchronizer
 
 # Wrapper cache for Bar to preserve identity
 _cache_Bar: weakref.WeakValueDictionary = weakref.WeakValueDictionary()
+
 
 def _wrap_Bar(impl_instance: _my_library.Bar) -> "Bar":
     """Wrap an implementation instance, preserving identity via weak reference cache."""
@@ -30,31 +28,38 @@ def _wrap_Bar(impl_instance: _my_library.Bar) -> "Bar":
 
     return wrapper
 
+
 class _foo:
-    _synchronizer = get_synchronizer('my_library')
+    _synchronizer = get_synchronizer("my_library")
     _impl_function = _my_library.foo
     _sync_wrapper_function: typing.Callable[..., typing.Any]
 
     def __init__(self, sync_wrapper_function: typing.Callable[..., typing.Any]):
         self._sync_wrapper_function = sync_wrapper_function
 
-    def __call__(self, ) -> typing.Generator[int, None, None]:
+    def __call__(
+        self,
+    ) -> typing.Generator[int, None, None]:
         return self._sync_wrapper_function()
 
-    async def aio(self, ) -> typing.AsyncGenerator[int, None]:
+    async def aio(
+        self,
+    ) -> typing.AsyncGenerator[int, None]:
         impl_function = _my_library.foo
         gen = impl_function()
         async for item in self._synchronizer._run_generator_async(gen):
             yield item
 
+
 @wrapped_function(_foo)
 def foo() -> typing.Generator[int, None, None]:
     impl_function = _my_library.foo
     gen = impl_function()
-    yield from get_synchronizer('my_library')._run_generator_sync(gen)
+    yield from get_synchronizer("my_library")._run_generator_sync(gen)
+
 
 class Bar_moo:
-    _synchronizer = get_synchronizer('my_library')
+    _synchronizer = get_synchronizer("my_library")
     _impl_instance: _my_library.Bar
     _sync_wrapper_method: typing.Callable[..., typing.Any]
 
@@ -76,7 +81,7 @@ class Bar_moo:
 class Bar:
     """Wrapper class for _my_library.Bar with sync/async method support"""
 
-    _synchronizer = get_synchronizer('my_library')
+    _synchronizer = get_synchronizer("my_library")
 
     def __init__(self, a: str):
         self._impl_instance = _my_library.Bar(a=a)
@@ -95,8 +100,10 @@ class Bar:
         impl_function = _my_library.Bar.moo
         gen = impl_function(self._impl_instance, s)
         yield from self._synchronizer._run_generator_sync(gen)
+
+
 class _accepts_bar:
-    _synchronizer = get_synchronizer('my_library')
+    _synchronizer = get_synchronizer("my_library")
     _impl_function = _my_library.accepts_bar
     _sync_wrapper_function: typing.Callable[..., typing.Any]
 
@@ -112,10 +119,10 @@ class _accepts_bar:
         result = await impl_function(b_impl)
         return _wrap_Bar(result)
 
+
 @wrapped_function(_accepts_bar)
 def accepts_bar(b: Bar) -> Bar:
     impl_function = _my_library.accepts_bar
     b_impl = b._impl_instance
-    result = get_synchronizer('my_library')._run_function_sync(impl_function(b_impl))
+    result = get_synchronizer("my_library")._run_function_sync(impl_function(b_impl))
     return _wrap_Bar(result)
-
