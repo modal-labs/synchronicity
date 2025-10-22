@@ -1,6 +1,7 @@
 import collections
 import functools
 import importlib
+import pathlib
 import pytest
 import sys
 import typing
@@ -746,3 +747,11 @@ def test_docstrings():
     with pytest.warns(UserWarning, match="both \"\"\" and ''' quote blocks"):
         src = _function_source(deranged_docstring_func)
         assert '"""' not in src
+
+
+def test_pathlib():
+    def test_path() -> pathlib.Path: ...
+
+    src = _function_source(test_path)
+    assert "import pathlib\n" in src
+    assert "pathlib.Path" in src
