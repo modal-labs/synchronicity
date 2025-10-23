@@ -98,7 +98,7 @@ def test_compile_function_basic_types(test_synchronizer, simple_function):
     # Verify it contains expected elements
     # Implementation should reference the actual module where func is defined
     assert f"impl_function = {wrapped_func.__module__}." in generated_code
-    assert "def __call__(self" in generated_code
+    assert "(AioWrapper):" in generated_code  # Inherits from AioWrapper
     assert "async def aio(self" in generated_code
     assert "_run_function_sync" in generated_code
     assert "await impl_function" in generated_code
@@ -160,9 +160,9 @@ def test_compile_function_no_annotations(test_synchronizer, no_annotation_functi
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
 
-    # Verify parameters without annotations are handled
-    assert "def __call__(self, x, y = 42)" in generated_code
+    # Verify parameters without annotations are handled in aio method
     assert "async def aio(self, x, y = 42)" in generated_code
+    # __call__ is now handled by AioWrapper base class
     # No return type annotation since there wasn't one in the original
 
 
@@ -182,9 +182,7 @@ def test_compile_function_template_pattern(test_synchronizer, simple_function):
     # Check that the generated code contains all expected template elements
     template_elements = [
         "class _",
-        "_synchronizer = get_synchronizer(",
-        f"_impl_function = {wrapped_func.__module__}.",
-        "def __call__(self",
+        "(AioWrapper):",  # Now inherits from AioWrapper
         "async def aio(self",
         "_run_function_sync",
         "await impl_function",
@@ -194,7 +192,7 @@ def test_compile_function_template_pattern(test_synchronizer, simple_function):
     for element in template_elements:
         assert element in generated_code, f"Generated code should contain '{element}'"
 
-    # Verify the structure matches the template
+    # Verify the structure - class definition should inherit from AioWrapper
     lines = generated_code.split("\n")
     class_line = None
     for i, line in enumerate(lines):
@@ -203,9 +201,7 @@ def test_compile_function_template_pattern(test_synchronizer, simple_function):
             break
 
     assert class_line is not None, "Should have a class definition"
-    assert "_synchronizer = get_synchronizer(" in lines[class_line + 1], "Should have synchronizer attribute"
-    expected_impl = f"_impl_function = {wrapped_func.__module__}."
-    assert expected_impl in lines[class_line + 2], "Should have impl_function attribute"
+    assert "(AioWrapper):" in lines[class_line], "Should inherit from AioWrapper"
 
 
 def test_compile_function_multiple_functions(test_synchronizer, simple_function, complex_function):
@@ -225,9 +221,8 @@ def test_compile_function_multiple_functions(test_synchronizer, simple_function,
 
         # Should contain the template pattern
         assert "class _" in generated_code
-        assert "_synchronizer = get_synchronizer(" in generated_code
+        assert "(AioWrapper):" in generated_code  # Inherits from AioWrapper
         assert "impl_function = " in generated_code
-        assert "def __call__(" in generated_code
         assert "async def aio(" in generated_code
         assert "@wrapped_function(_" in generated_code
 
@@ -288,9 +283,7 @@ def test_compile_function_async_generator_template_pattern(test_synchronizer, as
     # Check that the generated code contains all expected template elements
     template_elements = [
         "class _",
-        "_synchronizer = get_synchronizer(",
-        f"_impl_function = {wrapped_func.__module__}.",
-        "def __call__(self",
+        "(AioWrapper):",  # Inherits from AioWrapper
         "async def aio(self",
         "@wrapped_function(_",
     ]
@@ -337,9 +330,8 @@ def test_compile_function_generic_types(test_synchronizer, generic_types_functio
 
     # Verify it contains expected template elements
     assert "class _" in generated_code
-    assert "synchronizer = get_synchronizer(" in generated_code
+    assert "(AioWrapper):" in generated_code  # Inherits from AioWrapper
     assert f"impl_function = {wrapped_func.__module__}." in generated_code
-    assert "def __call__(self" in generated_code
     assert "async def aio(self" in generated_code
 
 

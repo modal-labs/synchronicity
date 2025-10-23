@@ -166,12 +166,6 @@ print("SUCCESS")
 
 def test_multifile_type_checking(support_files_path):
     """Test that generated code from multiple modules passes type checking."""
-    # Check if pyright is available in the virtualenv
-    venv_pyright = Path(__file__).parent.parent.parent / ".venv" / "bin" / "pyright"
-    if not venv_pyright.exists():
-        print("✓ Multifile type checking: Skipped (pyright not available)")
-        pytest.skip("pyright not installed in virtualenv")
-
     # Create a temporary directory and generate files there
     with tempfile.TemporaryDirectory() as tmpdir:
         tmppath = Path(tmpdir)
@@ -279,14 +273,9 @@ async def test():
         shutil.copy(impl_module_a, target_dir / "_a.py")
         shutil.copy(impl_module_b, target_dir / "_b.py")
 
-        # Write a pyright config to disable reportFunctionMemberAccess errors
-        # (pyright can't see the dynamically added .aio attributes from descriptors)
-        pyright_config = tmppath / "pyrightconfig.json"
-        pyright_config.write_text('{"reportFunctionMemberAccess": false, "reportAttributeAccessIssue": false}')
-
         # Run pyright from virtualenv (it will automatically use the venv's Python)
         result_sync = subprocess.run(
-            [str(venv_pyright), str(usage_sync)],
+            ["pyright", str(usage_sync)],
             capture_output=True,
             text=True,
             cwd=str(tmppath),
@@ -305,7 +294,7 @@ async def test():
 
         # Run pyright on async usage
         result_async = subprocess.run(
-            [str(venv_pyright), str(usage_async)],
+            ["pyright", str(usage_async)],
             capture_output=True,
             text=True,
             cwd=str(tmppath),

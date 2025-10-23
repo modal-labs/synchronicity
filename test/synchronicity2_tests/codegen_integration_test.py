@@ -55,17 +55,17 @@ def test_simple_function_generation():
     print(generated_code)
     # Verify code structure
     assert "import _simple_function" in generated_code
-    assert "class _simple_add:" in generated_code
-    assert "class _simple_generator:" in generated_code
+    assert "class _simple_add(AioWrapper):" in generated_code
+    assert "class _simple_generator(AioWrapper):" in generated_code
     assert "@wrapped_function(_simple_add)" in generated_code
     assert "@wrapped_function(_simple_generator)" in generated_code
     assert "def simple_add(a: int, b: int) -> int:" in generated_code
     assert "def simple_generator() -> typing.Generator[int, None, None]:" in generated_code
 
-    # Verify no translation code (no wrapped classes)
+    # Verify no translation code (no wrapped classes, only AioWrapper)
     assert "import weakref" not in generated_code
     assert "_from_impl" not in generated_code
-    assert "_impl_instance" not in generated_code
+    # Note: _impl_instance is not used in function wrappers, only in class wrappers
 
     # Code should compile
     compile(generated_code, "<string>", "exec")

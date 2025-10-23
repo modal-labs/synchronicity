@@ -39,8 +39,9 @@ exclude = [
 [dependency-groups]
 dev = [
     "pre-commit>=3.5.0",
+    "pyright>=1.1.406",
     {include-group = "lint"},
-    {include-group = "test"}
+    {include-group = "test"},
 ]
 lint = [
     "mypy-extensions>=1.0.0",

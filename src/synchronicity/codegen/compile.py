@@ -241,10 +241,6 @@ def compile_function(
         sig, annotations, synchronizer, current_target_module, skip_self=False, unwrap_indent="    "
     )
 
-    # Extract parameter names for passing to wrapper
-    param_names = [name for name in sig.parameters.keys()]
-    param_names_str = ", ".join(param_names)
-
     # Check if it's an async generator
     is_async_gen = is_async_generator(f, return_annotation)
 
@@ -345,17 +341,8 @@ def compile_function(
         aio_unwrap_lines = [line.replace("    ", "        ", 1) for line in unwrap_code.split("\n")]
         aio_unwrap += "\n" + "\n".join(aio_unwrap_lines)
 
-    wrapper_class_code = f"""class {wrapper_class_name}:
-    _synchronizer = get_synchronizer('{synchronizer_name}')
-    _impl_function = {origin_module}.{f.__name__}
-    _sync_wrapper_function: typing.Callable[..., typing.Any]
-
-    def __init__(self, sync_wrapper_function: typing.Callable[..., typing.Any]):
-        self._sync_wrapper_function = sync_wrapper_function
-
-    def __call__(self, {param_str}){sync_return_str}:
-        return self._sync_wrapper_function({param_names_str})
-
+    # Simplified wrapper class that inherits from AioWrapper
+    wrapper_class_code = f"""class {wrapper_class_name}(AioWrapper):
     async def aio(self, {param_str}){async_return_str}:{aio_unwrap}
 {aio_body}
 """
@@ -774,7 +761,7 @@ def compile_module(
 
 {imports}
 
-from synchronicity.descriptor import wrapped_function, wrapped_method
+from synchronicity.descriptor import AioWrapper, wrapped_function, wrapped_method
 from synchronicity.synchronizer import get_synchronizer
 """
 

@@ -13,6 +13,8 @@ via .aio() (e.g., foo.aio()).
 import typing
 
 T = typing.TypeVar("T")
+P = typing.ParamSpec("P")
+R = typing.TypeVar("R")
 
 
 class WrappedMethodDescriptor(typing.Generic[T]):
@@ -48,6 +50,28 @@ def wrapped_method(method_wrapper_type: type[T]):
         return WrappedMethodDescriptor(method_wrapper_type, sync_wrapper_method)
 
     return decorator
+
+
+class AioWrapper(typing.Generic[P, R]):
+    """
+    Base class for function wrappers that provide both sync and async versions.
+
+    This generic base class handles the boilerplate of storing the sync wrapper function
+    and proxying __call__ to it. Subclasses only need to implement the async aio() method.
+
+    Type parameters:
+        P: ParamSpec for the function parameters
+        R: Return type of the sync function
+    """
+
+    _sync_wrapper_function: typing.Callable[P, R]
+
+    def __init__(self, sync_wrapper_function: typing.Callable[P, R]):
+        self._sync_wrapper_function = sync_wrapper_function
+
+    def __call__(self, *args: P.args, **kwargs: P.kwargs) -> R:
+        """Proxy to the sync wrapper function."""
+        return self._sync_wrapper_function(*args, **kwargs)
 
 
 def wrapped_function(function_wrapper_type: type[T]):
