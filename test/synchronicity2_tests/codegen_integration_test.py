@@ -55,10 +55,10 @@ def test_simple_function_generation():
     print(generated_code)
     # Verify code structure
     assert "import _simple_function" in generated_code
-    assert "class _simple_add(AioWrapper):" in generated_code
-    assert "class _simple_generator(AioWrapper):" in generated_code
-    assert "@wrapped_function(_simple_add)" in generated_code
-    assert "@wrapped_function(_simple_generator)" in generated_code
+    assert "class _simple_add(AioWrapper[" in generated_code
+    assert "class _simple_generator(AioWrapper[" in generated_code
+    assert "@_simple_add" in generated_code  # Uses wrapper class as decorator
+    assert "@_simple_generator" in generated_code  # Uses wrapper class as decorator
     assert "def simple_add(a: int, b: int) -> int:" in generated_code
     assert "def simple_generator() -> typing.Generator[int, None, None]:" in generated_code
 

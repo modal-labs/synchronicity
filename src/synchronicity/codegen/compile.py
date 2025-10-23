@@ -342,7 +342,31 @@ def compile_function(
         aio_unwrap += "\n" + "\n".join(aio_unwrap_lines)
 
     # Simplified wrapper class that inherits from AioWrapper
-    wrapper_class_code = f"""class {wrapper_class_name}(AioWrapper):
+    # Specify generic parameters for proper type inference
+    # Extract parameter types for the generic specification
+    param_types = []
+    for name, param in sig.parameters.items():
+        param_annotation = annotations.get(name, param.annotation)
+        if param_annotation != param.empty:
+            transformer = create_transformer(param_annotation, synchronizer)
+            wrapper_type_str = transformer.wrapped_type(synchronizer, current_target_module)
+            param_types.append(wrapper_type_str)
+        else:
+            param_types.append("typing.Any")
+
+    # Format the return type for the generic specification
+    if return_transformer.wrapped_type(synchronizer, current_target_module):
+        return_type_for_generic = return_transformer.wrapped_type(synchronizer, current_target_module)
+    else:
+        return_type_for_generic = "None"
+
+    # Build the generic specification: AioWrapper[[param_types...], return_type]
+    if param_types:
+        generic_params = f"[[{', '.join(param_types)}], {return_type_for_generic}]"
+    else:
+        generic_params = f"[[], {return_type_for_generic}]"
+
+    wrapper_class_code = f"""class {wrapper_class_name}(AioWrapper{generic_params}):
     async def aio(self, {param_str}){async_return_str}:{aio_unwrap}
 {aio_body}
 """
@@ -354,7 +378,8 @@ def compile_function(
     else:
         sync_function_body = f"{impl_ref}\n{sync_function_body}"
 
-    sync_function_code = f"""@wrapped_function({wrapper_class_name})
+    # Use the AioWrapper subclass directly as a decorator (no need for @wrapped_function)
+    sync_function_code = f"""@{wrapper_class_name}
 def {f.__name__}({param_str}){sync_return_str}:
 {sync_function_body}"""
 
