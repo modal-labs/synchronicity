@@ -35,3 +35,7 @@ async def accepts_bar(b: Bar) -> Bar:
 def accepts_bar_sync(b: Bar) -> Bar:
     assert isinstance(b, Bar)
     return b
+
+
+@lib.wrap()
+async def crazy() -> typing.AsyncGenerator[str]: ...

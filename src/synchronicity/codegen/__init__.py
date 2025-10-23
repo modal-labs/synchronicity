@@ -1,26 +1,10 @@
 """Code generation package for synchronicity."""
 
-# Re-export all public functions for backward compatibility
-from .signature_utils import format_return_types, is_async_generator, parse_parameters
-from .type_translation import (
-    build_unwrap_expr,
-    build_wrap_expr,
-    format_return_annotation_with_translation,
-    format_type_annotation,
-    format_type_for_annotation,
-    needs_translation,
-)
+# Re-export public functions
+from .signature_utils import is_async_generator
+from .type_transformer import create_transformer
 
 __all__ = [
-    # Type translation
-    "format_type_annotation",  # Simple formatting without translation
-    "format_type_for_annotation",  # With wrapper/impl translation
-    "format_return_annotation_with_translation",  # Complete return type formatting with translation
-    "needs_translation",
-    "build_unwrap_expr",
-    "build_wrap_expr",
-    # Signature utilities
-    "parse_parameters",
     "is_async_generator",
-    "format_return_types",
+    "create_transformer",
 ]
