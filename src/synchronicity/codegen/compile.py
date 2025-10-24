@@ -504,9 +504,16 @@ def compile_method_wrapper(
 {aio_body}
 """
 
+    # Extract parameter names (excluding 'self') for the call
+    param_names = [name for name in sig.parameters.keys() if name != "self"]
+    param_call = ", ".join(param_names)
+
+    # Generate dummy method with descriptor that calls through to wrapper
     sync_method_code = f"""    @wrapped_method({wrapper_class_name})
     def {method_name}(self, {param_str}){sync_return_str}:
-        pass  # Descriptor handles method binding"""
+        # Dummy method for type checkers and IDE navigation
+        # Actual implementation is in {wrapper_class_name}.__call__
+        return self.{method_name}({param_call})"""
 
     return wrapper_class_code, sync_method_code
 

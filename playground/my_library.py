@@ -62,7 +62,9 @@ class Bar:
 
     @wrapped_method(Bar_moo)
     def moo(self, s: str) -> typing.Generator[str, None, None]:
-        pass  # Descriptor handles method binding
+        # Dummy method for type checkers and IDE navigation
+        # Actual implementation is in Bar_moo.__call__
+        return self.moo(s)
 
 
 class _foo:
