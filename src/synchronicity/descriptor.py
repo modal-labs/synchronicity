@@ -4,17 +4,15 @@ Generic infrastructure for wrapped methods and functions.
 This module provides:
 - WrappedMethodDescriptor: A descriptor for class methods that provides sync/async variants
 - wrapped_method: Decorator for wrapping class methods
-- wrapped_function: Decorator for wrapping module-level functions
+- replace_with: Decorator for swapping dummy function signatures with wrapper instances
 
-Both patterns allow calling the sync version directly (e.g., foo()) and the async version
+The wrapped_method pattern allows calling the sync version directly (e.g., foo()) and the async version
 via .aio() (e.g., foo.aio()).
 """
 
 import typing
 
 T = typing.TypeVar("T")
-P = typing.ParamSpec("P")
-R = typing.TypeVar("R")
 
 
 class WrappedMethodDescriptor(typing.Generic[T]):
@@ -52,40 +50,29 @@ def wrapped_method(method_wrapper_type: type[T]):
     return decorator
 
 
-class AioWrapper(typing.Generic[P, R]):
+def replace_with(wrapper: T) -> typing.Callable[[typing.Callable[..., typing.Any]], T]:
     """
-    Base class for function wrappers that provide both sync and async versions.
+    Decorator that replaces a dummy function signature with an actual wrapper instance.
 
-    This generic base class handles the boilerplate of storing the sync wrapper function
-    and proxying __call__ to it. Subclasses only need to implement the async aio() method.
-
-    Type parameters:
-        P: ParamSpec for the function parameters
-        R: Return type of the sync function
-    """
-
-    _sync_wrapper_function: typing.Callable[P, R]
-
-    def __init__(self, sync_wrapper_function: typing.Callable[P, R]):
-        self._sync_wrapper_function = sync_wrapper_function
-
-    def __call__(self, *args: P.args, **kwargs: P.kwargs) -> R:
-        """Proxy to the sync wrapper function."""
-        return self._sync_wrapper_function(*args, **kwargs)
-
-
-def wrapped_function(function_wrapper_type: type[T]):
-    """
-    Decorator that creates a wrapper instance for a module-level function.
+    This is used to preserve full function signatures (including parameter names) for
+    type checkers and go-to-definition, while swapping in the actual wrapper instance
+    at runtime.
 
     Args:
-        function_wrapper_type: The wrapper class that provides sync and async variants
+        wrapper: The actual wrapper instance to use
 
     Returns:
-        An instance of function_wrapper_type that wraps the sync function
+        A decorator that ignores the dummy function and returns the wrapper
+
+    Example:
+        @replace_with(MyWrapper())
+        def my_func(x: int, y: str) -> Result:
+            # This dummy implementation is never called
+            # It exists only for type checkers and IDE navigation
+            return MyWrapper().__call__(x, y)
     """
 
-    def decorator(sync_wrapper_function) -> T:
-        return function_wrapper_type(sync_wrapper_function)
+    def decorator(_dummy_sync_signature: typing.Callable[..., typing.Any]) -> T:
+        return wrapper
 
     return decorator

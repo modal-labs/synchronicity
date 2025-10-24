@@ -341,49 +341,41 @@ def compile_function(
         aio_unwrap_lines = [line.replace("    ", "        ", 1) for line in unwrap_code.split("\n")]
         aio_unwrap += "\n" + "\n".join(aio_unwrap_lines)
 
-    # Simplified wrapper class that inherits from AioWrapper
-    # Specify generic parameters for proper type inference
-    # Extract parameter types for the generic specification
-    param_types = []
-    for name, param in sig.parameters.items():
-        param_annotation = annotations.get(name, param.annotation)
-        if param_annotation != param.empty:
-            transformer = create_transformer(param_annotation, synchronizer)
-            wrapper_type_str = transformer.wrapped_type(synchronizer, current_target_module)
-            param_types.append(wrapper_type_str)
-        else:
-            param_types.append("typing.Any")
+    # Generate wrapper class with both __call__ (sync) and aio (async) methods
+    # This preserves full signatures including parameter names for type checkers
 
-    # Format the return type for the generic specification
-    if return_transformer.wrapped_type(synchronizer, current_target_module):
-        return_type_for_generic = return_transformer.wrapped_type(synchronizer, current_target_module)
-    else:
-        return_type_for_generic = "None"
+    # Build unwrap section for __call__ (sync) if needed
+    call_impl_ref = f"        impl_function = {origin_module}.{f.__name__}"
+    call_unwrap = f"\n{call_impl_ref}"
+    if unwrap_code:
+        # Adjust indentation for __call__ method (8 spaces)
+        call_unwrap_lines = [line.replace("    ", "        ", 1) for line in unwrap_code.split("\n")]
+        call_unwrap += "\n" + "\n".join(call_unwrap_lines)
 
-    # Build the generic specification: AioWrapper[[param_types...], return_type]
-    if param_types:
-        generic_params = f"[[{', '.join(param_types)}], {return_type_for_generic}]"
-    else:
-        generic_params = f"[[], {return_type_for_generic}]"
+    # Adjust sync_function_body indentation (was 4 spaces, now needs 8 for __call__)
+    sync_body_indented = "\n".join("    " + line if line.strip() else line for line in sync_function_body.split("\n"))
 
-    wrapper_class_code = f"""class {wrapper_class_name}(AioWrapper{generic_params}):
+    wrapper_class_code = f"""class {wrapper_class_name}:
+    def __call__(self, {param_str}){sync_return_str}:{call_unwrap}
+{sync_body_indented}
+
     async def aio(self, {param_str}){async_return_str}:{aio_unwrap}
 {aio_body}
 """
 
-    # Add impl_function reference and unwrap statements to sync function
-    impl_ref = f"    impl_function = {origin_module}.{f.__name__}"
-    if unwrap_code:
-        sync_function_body = f"{impl_ref}\n{unwrap_code}\n{sync_function_body}"
-    else:
-        sync_function_body = f"{impl_ref}\n{sync_function_body}"
+    # Create instance of wrapper class
+    wrapper_instance_name = f"_{f.__name__}_instance"
+    instance_creation = f"{wrapper_instance_name} = {wrapper_class_name}()"
 
-    # Use the AioWrapper subclass directly as a decorator (no need for @wrapped_function)
-    sync_function_code = f"""@{wrapper_class_name}
+    # Generate dummy function with full signature for type checkers and go-to-definition
+    # The @replace_with decorator swaps this with the actual wrapper instance
+    dummy_function_code = f"""@replace_with({wrapper_instance_name})
 def {f.__name__}({param_str}){sync_return_str}:
-{sync_function_body}"""
+    # Dummy function for type checkers and IDE navigation
+    # Actual implementation is in {wrapper_class_name}.__call__
+    return {wrapper_instance_name}({", ".join(sig.parameters.keys())})"""
 
-    return f"{wrapper_class_code}\n{sync_function_code}"
+    return f"{wrapper_class_code}\n{instance_creation}\n\n{dummy_function_code}"
 
 
 def compile_method_wrapper(
@@ -786,7 +778,7 @@ def compile_module(
 
 {imports}
 
-from synchronicity.descriptor import AioWrapper, wrapped_function, wrapped_method
+from synchronicity.descriptor import replace_with, wrapped_method
 from synchronicity.synchronizer import get_synchronizer
 """
 

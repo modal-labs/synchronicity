@@ -55,14 +55,14 @@ def test_simple_function_generation():
     print(generated_code)
     # Verify code structure
     assert "import _simple_function" in generated_code
-    assert "class _simple_add(AioWrapper[" in generated_code
-    assert "class _simple_generator(AioWrapper[" in generated_code
-    assert "@_simple_add" in generated_code  # Uses wrapper class as decorator
-    assert "@_simple_generator" in generated_code  # Uses wrapper class as decorator
+    assert "class _simple_add:" in generated_code
+    assert "class _simple_generator:" in generated_code
+    assert "@replace_with(_simple_add_instance)" in generated_code
+    assert "@replace_with(_simple_generator_instance)" in generated_code
     assert "def simple_add(a: int, b: int) -> int:" in generated_code
     assert "def simple_generator() -> typing.Generator[int, None, None]:" in generated_code
 
-    # Verify no translation code (no wrapped classes, only AioWrapper)
+    # Verify no translation code (no wrapped classes, only simple wrapper classes)
     assert "import weakref" not in generated_code
     assert "_from_impl" not in generated_code
     # Note: _impl_instance is not used in function wrappers, only in class wrappers
@@ -351,14 +351,11 @@ def test_pyright_type_checking():
         print("✓ Pyright type checking: Passed")
 
 
-def test_pyright_keyword_arguments_limitation():
-    """Test that demonstrates ParamSpec limitation with keyword arguments.
+def test_pyright_keyword_arguments():
+    """Test that keyword arguments work with full signature preservation.
 
-    EXPECTED TO FAIL: With AioWrapper[[T1, T2], R] explicit type list approach,
-    pyright cannot infer parameter names, only types. This means keyword argument
-    calls don't get proper type inference.
-
-    This test documents the limitation of the current approach.
+    With the new approach using explicit __call__ signatures, pyright should
+    properly infer types for keyword argument calls.
     """
     from test.synchronicity2_tests.support_files import _class_with_translation
 
@@ -385,7 +382,7 @@ def test_pyright_keyword_arguments_limitation():
 
         # Write a pyright config
         pyright_config = tmppath / "pyrightconfig.json"
-        pyright_config.write_text('{"reportFunctionMemberAccess": false, "reportCallIssue": false}')
+        pyright_config.write_text('{"reportFunctionMemberAccess": false}')
 
         # Test keyword arguments
         test_file = tmppath / "usage_keyword.py"
@@ -400,22 +397,16 @@ def test_pyright_keyword_arguments_limitation():
 
         print(f"Pyright output (keyword args):\n{result.stdout}")
 
-        # Check if keyword argument calls get proper type inference
-        # With explicit [[int], Node], these should show Unknown/Any instead of Node
-        # This demonstrates the limitation of not using a captured ParamSpec
+        if result.returncode != 0:
+            print(f"Pyright stderr:\n{result.stderr}")
+            assert False, f"Pyright type checking failed with exit code {result.returncode}"
 
-        if 'Type of "node2" is "Node"' in result.stdout:
-            print("✓ Keyword arguments: Properly typed (limitation may be resolved!)")
-        else:
-            print("⚠ Keyword arguments: Type inference limited (as expected)")
-            print("  Note: This is a known limitation of AioWrapper[[T1, T2], R] approach")
-            print("  Pyright cannot infer parameter names from explicit type list")
-            # Don't fail the test - this is a documented limitation
-            return
+        # With explicit __call__ signatures, keyword arguments should be properly typed
+        assert 'Type of "node1" is "Node"' in result.stdout, "Positional call should work"
+        assert 'Type of "node2" is "Node"' in result.stdout, "Keyword call should work"
+        assert 'Type of "result" is "tuple[Node, Node]"' in result.stdout, "Keyword call result should be typed"
 
-        # Also check the result of keyword call
-        if 'Type of "result" is "tuple[Node, Node]"' not in result.stdout:
-            print("  Keyword call result type: Not properly inferred (as expected)")
+        print("✓ Keyword arguments: Properly typed with full signature preservation")
 
 
 if __name__ == "__main__":
