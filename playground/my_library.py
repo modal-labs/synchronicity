@@ -8,12 +8,13 @@ from synchronicity.synchronizer import get_synchronizer
 
 
 class Bar_moo:
-    def __init__(self, wrapper_instance, unbound_sync_wrapper_method: typing.Callable[..., typing.Any]):
+    def __init__(self, wrapper_instance):
         self._wrapper_instance = wrapper_instance
-        self._unbound_sync_wrapper_method = unbound_sync_wrapper_method
 
     def __call__(self, s: str) -> typing.Generator[str, None, None]:
-        return self._unbound_sync_wrapper_method(self._wrapper_instance, s)
+        impl_method = _my_library.Bar.moo
+        gen = impl_method(self._wrapper_instance._impl_instance, s)
+        yield from self._wrapper_instance._synchronizer._run_generator_sync(gen)
 
     async def aio(self, s: str) -> typing.AsyncGenerator[str, None]:
         impl_method = _my_library.Bar.moo
@@ -61,9 +62,7 @@ class Bar:
 
     @wrapped_method(Bar_moo)
     def moo(self, s: str) -> typing.Generator[str, None, None]:
-        impl_method = _my_library.Bar.moo
-        gen = impl_method(self._impl_instance, s)
-        yield from self._synchronizer._run_generator_sync(gen)
+        pass  # Descriptor handles method binding
 
 
 class _foo:

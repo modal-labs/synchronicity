@@ -415,10 +415,6 @@ def compile_method_wrapper(
         sig, annotations, synchronizer, current_target_module, skip_self=True, unwrap_indent="        "
     )
 
-    # Extract parameter names (skip 'self')
-    param_names = [name for name in sig.parameters.keys() if name != "self"]
-    param_names_str = ", ".join(param_names)
-
     # Check if it's an async generator
     is_async_gen = is_async_generator(method, return_annotation)
 
@@ -449,11 +445,11 @@ def compile_method_wrapper(
             indent="        ",
         )
         sync_method_body = _build_generator_with_wrap(
-            f"impl_method(self._impl_instance, {call_args_str})",
+            f"impl_method(self._wrapper_instance._impl_instance, {call_args_str})",
             return_transformer,
             synchronizer,
             current_target_module,
-            "for item in self._synchronizer._run_generator_sync(gen)",
+            "for item in self._wrapper_instance._synchronizer._run_generator_sync(gen)",
             indent="        ",
         )
     else:
@@ -465,13 +461,23 @@ def compile_method_wrapper(
             current_target_module,
             indent="        ",
         )
+        sync_call_expr = (
+            f"self._wrapper_instance._synchronizer._run_function_sync("
+            f"impl_method(self._wrapper_instance._impl_instance, {call_args_str}))"
+        )
         sync_method_body = _build_call_with_wrap(
-            f"self._synchronizer._run_function_sync(impl_method(self._impl_instance, {call_args_str}))",
+            sync_call_expr,
             return_transformer,
             synchronizer,
             current_target_module,
             indent="        ",
         )
+
+    # Build unwrap section for __call__() if needed
+    sync_impl_ref = f"        impl_method = {origin_module}.{class_name}.{method_name}"
+    sync_unwrap = f"\n{sync_impl_ref}"
+    if unwrap_code:
+        sync_unwrap += "\n" + unwrap_code
 
     # Build unwrap section for aio() if needed
     aio_impl_ref = f"        impl_method = {origin_module}.{class_name}.{method_name}"
@@ -479,28 +485,21 @@ def compile_method_wrapper(
     if unwrap_code:
         aio_unwrap += "\n" + unwrap_code
 
+    # The sync_method_body is already indented with 8 spaces, just use it directly
     wrapper_class_code = f"""class {wrapper_class_name}:
-    def __init__(self, wrapper_instance, unbound_sync_wrapper_method: typing.Callable[..., typing.Any]):
+    def __init__(self, wrapper_instance):
         self._wrapper_instance = wrapper_instance
-        self._unbound_sync_wrapper_method = unbound_sync_wrapper_method
 
-    def __call__(self, {param_str}){sync_return_str}:
-        return self._unbound_sync_wrapper_method(self._wrapper_instance, {param_names_str})
+    def __call__(self, {param_str}){sync_return_str}:{sync_unwrap}
+{sync_method_body}
 
     async def aio(self, {param_str}){async_return_str}:{aio_unwrap}
 {aio_body}
 """
 
-    # Add impl_method reference and unwrap statements
-    impl_ref = f"        impl_method = {origin_module}.{class_name}.{method_name}"
-    if unwrap_code:
-        sync_method_body = f"{impl_ref}\n{unwrap_code}\n{sync_method_body}"
-    else:
-        sync_method_body = f"{impl_ref}\n{sync_method_body}"
-
     sync_method_code = f"""    @wrapped_method({wrapper_class_name})
     def {method_name}(self, {param_str}){sync_return_str}:
-{sync_method_body}"""
+        pass  # Descriptor handles method binding"""
 
     return wrapper_class_code, sync_method_code
 

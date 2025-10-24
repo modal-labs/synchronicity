@@ -19,18 +19,16 @@ class WrappedMethodDescriptor(typing.Generic[T]):
     """Descriptor that provides both sync and async method variants via .aio()"""
 
     method_wrapper_type: type[T]
-    sync_wrapper_method: typing.Callable[..., typing.Any]
 
-    def __init__(self, method_wrapper_type, sync_wrapper_method):
+    def __init__(self, method_wrapper_type):
         self.method_wrapper_type = method_wrapper_type
-        self.sync_wrapper_method = sync_wrapper_method
 
     def __get__(self, wrapper_instance, owner) -> T:
         if wrapper_instance is None:
             # For class access, return self to allow descriptor access
             return self
 
-        return self.method_wrapper_type(wrapper_instance, self.sync_wrapper_method)
+        return self.method_wrapper_type(wrapper_instance)
 
 
 def wrapped_method(method_wrapper_type: type[T]):
@@ -44,8 +42,9 @@ def wrapped_method(method_wrapper_type: type[T]):
         A WrappedMethodDescriptor that will create method_wrapper_type instances
     """
 
-    def decorator(sync_wrapper_method) -> WrappedMethodDescriptor[T]:
-        return WrappedMethodDescriptor(method_wrapper_type, sync_wrapper_method)
+    def decorator(_dummy_method) -> WrappedMethodDescriptor[T]:
+        # The dummy method is ignored - the actual implementation is in the wrapper class
+        return WrappedMethodDescriptor(method_wrapper_type)
 
     return decorator
 
