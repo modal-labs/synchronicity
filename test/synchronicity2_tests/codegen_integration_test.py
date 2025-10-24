@@ -351,6 +351,73 @@ def test_pyright_type_checking():
         print("✓ Pyright type checking: Passed")
 
 
+def test_pyright_keyword_arguments_limitation():
+    """Test that demonstrates ParamSpec limitation with keyword arguments.
+
+    EXPECTED TO FAIL: With AioWrapper[[T1, T2], R] explicit type list approach,
+    pyright cannot infer parameter names, only types. This means keyword argument
+    calls don't get proper type inference.
+
+    This test documents the limitation of the current approach.
+    """
+    from test.synchronicity2_tests.support_files import _class_with_translation
+
+    # Generate wrapper code
+    modules = compile_modules(_class_with_translation.lib)
+    generated_code = list(modules.values())[0]
+
+    # Check if pyright is available
+    venv_pyright = Path(__file__).parent.parent.parent / ".venv" / "bin" / "pyright"
+    if not venv_pyright.exists():
+        print("✓ Keyword argument test: Skipped (pyright not available)")
+        return
+
+    # Get path to keyword args test file
+    support_dir = Path(__file__).parent / "support_files"
+    keyword_usage = support_dir / "type_check_keyword_args.py"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+
+        # Write the generated module
+        wrapper_file = tmppath / "translation_lib.py"
+        wrapper_file.write_text(generated_code)
+
+        # Write a pyright config
+        pyright_config = tmppath / "pyrightconfig.json"
+        pyright_config.write_text('{"reportFunctionMemberAccess": false, "reportCallIssue": false}')
+
+        # Test keyword arguments
+        test_file = tmppath / "usage_keyword.py"
+        test_file.write_text(keyword_usage.read_text())
+
+        result = subprocess.run(
+            [str(venv_pyright), str(test_file)],
+            capture_output=True,
+            text=True,
+            cwd=str(tmppath),
+        )
+
+        print(f"Pyright output (keyword args):\n{result.stdout}")
+
+        # Check if keyword argument calls get proper type inference
+        # With explicit [[int], Node], these should show Unknown/Any instead of Node
+        # This demonstrates the limitation of not using a captured ParamSpec
+
+        if 'Type of "node2" is "Node"' in result.stdout:
+            print("✓ Keyword arguments: Properly typed (limitation may be resolved!)")
+        else:
+            print("⚠ Keyword arguments: Type inference limited (as expected)")
+            print("  Note: This is a known limitation of AioWrapper[[T1, T2], R] approach")
+            print("  Pyright cannot infer parameter names from explicit type list")
+            # Don't fail the test - this is a documented limitation
+            return
+
+        # Also check the result of keyword call
+        if 'Type of "result" is "tuple[Node, Node]"' not in result.stdout:
+            print("  Keyword call result type: Not properly inferred (as expected)")
+
+
 if __name__ == "__main__":
     test_simple_function_generation()
     test_simple_class_generation()

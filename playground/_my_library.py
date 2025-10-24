@@ -38,4 +38,6 @@ def accepts_bar_sync(b: Bar) -> Bar:
 
 
 @lib.wrap()
-async def crazy() -> typing.AsyncGenerator[str]: ...
+async def crazy(i: int) -> typing.AsyncGenerator[str]:
+    for _ in range(i):
+        yield "hej"
