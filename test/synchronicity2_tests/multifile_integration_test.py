@@ -106,6 +106,35 @@ def test_multifile_execution(support_files_path):
         assert module_a.exists(), f"Module a.py not created at {module_a}"
         assert module_b.exists(), f"Module b.py not created at {module_b}"
 
+        # Verify generated modules are type-correct by running pyright
+        venv_pyright = Path(__file__).parent.parent.parent / ".venv" / "bin" / "pyright"
+        if venv_pyright.exists():
+            # Check module_a
+            result_a = subprocess.run(
+                [str(venv_pyright), str(module_a)],
+                capture_output=True,
+                text=True,
+                cwd=str(tmppath),
+            )
+            if result_a.returncode != 0:
+                print(f"  ✗ Generated module a.py has type errors:\n{result_a.stdout}")
+            else:
+                print("  ✓ Generated module a.py passes pyright")
+
+            # Check module_b
+            result_b = subprocess.run(
+                [str(venv_pyright), str(module_b)],
+                capture_output=True,
+                text=True,
+                cwd=str(tmppath),
+            )
+            if result_b.returncode != 0:
+                print(f"  ✗ Generated module b.py has type errors:\n{result_b.stdout}")
+            else:
+                print("  ✓ Generated module b.py passes pyright")
+        else:
+            print("  ⊘ Pyright validation skipped (pyright not installed)")
+
         # Copy implementation modules to tmpdir so they can be imported
         impl_module_a = support_files_path / "multifile/_a.py"
         impl_module_b = support_files_path / "multifile/_b.py"

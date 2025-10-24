@@ -1,16 +1,49 @@
 """Integration tests for end-to-end code generation and execution."""
 
+import os
+import pytest
 import subprocess
 import sys
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 
-# Add src and support_files to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
-sys.path.insert(0, str(Path(__file__).parent / "support_files"))
-
 from synchronicity.codegen.compile import compile_modules
+
+
+def check_pyright(code: str, module_name: str = "test_module") -> str:
+    """Run pyright on generated code to check for type errors.
+
+    Args:
+        code: The generated Python code to check
+        module_name: Name for the module file
+
+    Returns:
+        True if pyright passes or is not available, False if there are errors
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+
+        # Write the generated module
+        module_file = tmppath / f"{module_name}.py"
+        module_file.write_text(code)
+
+        # Run pyright
+        REPO_ROOT = Path(__file__).parent.parent.parent
+        pythonpath = f"{os.environ.get('PYTHONPATH')}:{REPO_ROOT}"
+        result = subprocess.run(
+            ["pyright", str(module_file)], capture_output=True, text=True, env={**os.environ, "PYTHONPATH": pythonpath}
+        )
+
+        if result.returncode != 0:
+            print("  ✗ Pyright validation failed!")
+            print(f"    Output: {result.stdout}")
+            if result.stderr:
+                print(f"    Stderr: {result.stderr}")
+            pytest.fail("Pyright validation failed")
+
+        print("  ✓ Pyright validation passed")
+        return result.stdout
 
 
 @contextmanager
@@ -47,14 +80,14 @@ def generated_module(code: str, module_name: str):
 
 def test_simple_function_generation():
     """Test generation of simple functions without dependencies."""
-    import _simple_function
+    from test.synchronicity2_tests.support_files import _simple_function
 
     # Generate wrapper code
     modules = compile_modules(_simple_function.lib)
     generated_code = list(modules.values())[0]  # Extract the single module
     print(generated_code)
     # Verify code structure
-    assert "import _simple_function" in generated_code
+    assert "import test.synchronicity2_tests.support_files._simple_function" in generated_code
     assert "class _simple_add:" in generated_code
     assert "class _simple_generator:" in generated_code
     assert "@replace_with(_simple_add_instance)" in generated_code
@@ -70,26 +103,29 @@ def test_simple_function_generation():
     # Code should compile
     compile(generated_code, "<string>", "exec")
 
+    # Verify type correctness with pyright
+    check_pyright(generated_code, "simple_function_generated")
+
     print("✓ Simple function generation test passed")
 
 
 def test_simple_class_generation():
     """Test generation of a simple class without translation needs."""
-    import _simple_class
+    from test.synchronicity2_tests.support_files import _simple_class
 
     # Generate wrapper code
     modules = compile_modules(_simple_class.lib)
     generated_code = list(modules.values())[0]  # Extract the single module
 
     # Verify code structure
-    assert "import _simple_class" in generated_code
+    assert "import test.synchronicity2_tests.support_files._simple_class" in generated_code
     assert "class Counter:" in generated_code
     assert "class Counter_increment:" in generated_code
     assert "class Counter_get_multiples:" in generated_code
     assert "@wrapped_method(Counter_increment)" in generated_code
     assert "@wrapped_method(Counter_get_multiples)" in generated_code
     assert "def __init__(self, start: int = 0):" in generated_code
-    assert "_impl_instance = _simple_class.Counter" in generated_code
+    assert "_impl_instance = test.synchronicity2_tests.support_files._simple_class.Counter" in generated_code
 
     # Verify property generation for annotated attribute
     assert "@property" in generated_code
@@ -98,12 +134,15 @@ def test_simple_class_generation():
     # Code should compile
     compile(generated_code, "<string>", "exec")
 
+    # Verify type correctness with pyright
+    check_pyright(generated_code, "simple_class_generated")
+
     print("✓ Simple class generation test passed")
 
 
 def test_class_with_translation_generation():
     """Test generation of classes and functions that need type translation."""
-    import _class_with_translation
+    from test.synchronicity2_tests.support_files import _class_with_translation
 
     # Generate wrapper code
     modules = compile_modules(_class_with_translation.lib)
@@ -113,7 +152,10 @@ def test_class_with_translation_generation():
     assert "import weakref" in generated_code
 
     # Verify _from_impl classmethod generation with class-level cache
-    assert "def _from_impl(cls, impl_instance: _class_with_translation.Node)" in generated_code
+    assert (
+        "def _from_impl(cls, impl_instance: test.synchronicity2_tests.support_files._class_with_translation.Node)"
+        in generated_code
+    )
     assert "_instance_cache: weakref.WeakValueDictionary" in generated_code
     assert "if cache_key in cls._instance_cache:" in generated_code
     assert "wrapper = cls.__new__(cls)" in generated_code
@@ -157,12 +199,15 @@ def test_class_with_translation_generation():
     # Code should compile
     compile(generated_code, "<string>", "exec")
 
+    # Verify type correctness with pyright
+    check_pyright(generated_code, "class_with_translation_generated")
+
     print("✓ Class with translation generation test passed")
 
 
 def test_generated_code_execution_simple():
     """Test that generated code can be imported and executed."""
-    import _simple_function
+    from test.synchronicity2_tests.support_files import _simple_function
 
     # Generate wrapper code
     modules = compile_modules(_simple_function.lib)
@@ -179,7 +224,7 @@ def test_generated_code_execution_simple():
 
 def test_generated_code_execution_class():
     """Test that generated class wrappers work correctly."""
-    import _simple_class
+    from test.synchronicity2_tests.support_files import _simple_class
 
     # Generate wrapper code
     modules = compile_modules(_simple_class.lib)
@@ -205,7 +250,7 @@ def test_generated_code_execution_class():
 
 def test_generated_code_execution_with_translation():
     """Test that type translation works at runtime."""
-    import _class_with_translation
+    from test.synchronicity2_tests.support_files import _class_with_translation
 
     # Generate wrapper code
     modules = compile_modules(_class_with_translation.lib)
@@ -237,7 +282,7 @@ def test_generated_code_execution_with_translation():
 
 def test_wrapper_identity_preservation():
     """Test that wrapper identity is preserved through caching."""
-    import _class_with_translation
+    from test.synchronicity2_tests.support_files import _class_with_translation
 
     # Generate wrapper code
     modules = compile_modules(_class_with_translation.lib)
@@ -265,17 +310,11 @@ def test_wrapper_identity_preservation():
 
 def test_pyright_type_checking():
     """Test that generated code type checks correctly with pyright using reveal_type."""
-    import _class_with_translation
+    from test.synchronicity2_tests.support_files import _class_with_translation
 
     # Generate wrapper code
     modules = compile_modules(_class_with_translation.lib)
     generated_code = list(modules.values())[0]  # Extract the single module
-
-    # Check if pyright is available
-    venv_pyright = Path(__file__).parent.parent.parent / ".venv" / "bin" / "pyright"
-    if not venv_pyright.exists():
-        print("✓ Pyright type checking: Skipped (pyright not available)")
-        return
 
     # Get paths to support files
     support_dir = Path(__file__).parent / "support_files"
@@ -289,16 +328,12 @@ def test_pyright_type_checking():
         wrapper_file = tmppath / "translation_lib.py"
         wrapper_file.write_text(generated_code)
 
-        # Write a pyright config to disable reportFunctionMemberAccess errors
-        pyright_config = tmppath / "pyrightconfig.json"
-        pyright_config.write_text('{"reportFunctionMemberAccess": false}')
-
         # Test sync usage
         sync_file = tmppath / "usage_sync.py"
         sync_file.write_text(sync_usage.read_text())
 
         result_sync = subprocess.run(
-            [str(venv_pyright), str(sync_file)],
+            ["pyright", str(sync_file)],
             capture_output=True,
             text=True,
             cwd=str(tmppath),
@@ -323,7 +358,7 @@ def test_pyright_type_checking():
         async_file.write_text(async_usage.read_text())
 
         result_async = subprocess.run(
-            [str(venv_pyright), str(async_file)],
+            ["pyright", str(async_file)],
             capture_output=True,
             text=True,
             cwd=str(tmppath),
@@ -363,12 +398,6 @@ def test_pyright_keyword_arguments():
     modules = compile_modules(_class_with_translation.lib)
     generated_code = list(modules.values())[0]
 
-    # Check if pyright is available
-    venv_pyright = Path(__file__).parent.parent.parent / ".venv" / "bin" / "pyright"
-    if not venv_pyright.exists():
-        print("✓ Keyword argument test: Skipped (pyright not available)")
-        return
-
     # Get path to keyword args test file
     support_dir = Path(__file__).parent / "support_files"
     keyword_usage = support_dir / "type_check_keyword_args.py"
@@ -380,16 +409,12 @@ def test_pyright_keyword_arguments():
         wrapper_file = tmppath / "translation_lib.py"
         wrapper_file.write_text(generated_code)
 
-        # Write a pyright config
-        pyright_config = tmppath / "pyrightconfig.json"
-        pyright_config.write_text('{"reportFunctionMemberAccess": false}')
-
         # Test keyword arguments
         test_file = tmppath / "usage_keyword.py"
         test_file.write_text(keyword_usage.read_text())
 
         result = subprocess.run(
-            [str(venv_pyright), str(test_file)],
+            ["pyright", str(test_file)],
             capture_output=True,
             text=True,
             cwd=str(tmppath),
@@ -415,7 +440,7 @@ def test_method_wrapper_aio_execution():
     This tests both regular async methods and async generator methods
     to ensure they can be called via .aio() without errors.
     """
-    import _simple_class
+    from test.synchronicity2_tests.support_files import _simple_class
 
     # Generate wrapper code
     modules = compile_modules(_simple_class.lib)
@@ -458,7 +483,7 @@ def test_event_loop_execution():
     This is critical - all async code must run in the synchronizer's event loop
     to avoid concurrency issues and ensure proper isolation.
     """
-    import _event_loop_check
+    from test.synchronicity2_tests.support_files import _event_loop_check
 
     # Generate wrapper code
     modules = compile_modules(_event_loop_check.lib)
