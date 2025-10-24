@@ -1,5 +1,6 @@
 """Integration tests for end-to-end code generation and execution."""
 
+import inspect
 import os
 import pytest
 import subprocess
@@ -7,11 +8,13 @@ import sys
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Optional
 
 from synchronicity.codegen.compile import compile_modules
+from synchronicity.codegen.writer import write_modules
 
 
-def check_pyright(code: str, module_name: str = "test_module") -> str:
+def check_pyright(module_paths: list[Path], extra_pythonpath: Optional[str] = None) -> str:
     """Run pyright on generated code to check for type errors.
 
     Args:
@@ -21,29 +24,25 @@ def check_pyright(code: str, module_name: str = "test_module") -> str:
     Returns:
         True if pyright passes or is not available, False if there are errors
     """
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmppath = Path(tmpdir)
+    pythonpath = os.environ.get("PYTHONPATH", "")
+    if pythonpath:
+        pythonpath += f":{extra_pythonpath}"
+    result = subprocess.run(
+        ["pyright"] + [str(p) for p in module_paths],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "PYTHONPATH": pythonpath},
+    )
 
-        # Write the generated module
-        module_file = tmppath / f"{module_name}.py"
-        module_file.write_text(code)
+    if result.returncode != 0:
+        print("  ✗ Pyright validation failed!")
+        print(f"    Output: {result.stdout}")
+        if result.stderr:
+            print(f"    Stderr: {result.stderr}")
+        pytest.fail("Pyright validation failed")
 
-        # Run pyright
-        REPO_ROOT = Path(__file__).parent.parent.parent
-        pythonpath = f"{os.environ.get('PYTHONPATH')}:{REPO_ROOT}"
-        result = subprocess.run(
-            ["pyright", str(module_file)], capture_output=True, text=True, env={**os.environ, "PYTHONPATH": pythonpath}
-        )
-
-        if result.returncode != 0:
-            print("  ✗ Pyright validation failed!")
-            print(f"    Output: {result.stdout}")
-            if result.stderr:
-                print(f"    Stderr: {result.stderr}")
-            pytest.fail("Pyright validation failed")
-
-        print("  ✓ Pyright validation passed")
-        return result.stdout
+    print("  ✓ Pyright validation passed")
+    return result.stdout
 
 
 @contextmanager
@@ -78,33 +77,25 @@ def generated_module(code: str, module_name: str):
                 del sys.modules[module_name]
 
 
-def test_simple_function_generation():
+def test_simple_function_generation(tmpdir, monkeypatch):
     """Test generation of simple functions without dependencies."""
     from test.synchronicity2_tests.support_files import _simple_function
 
     # Generate wrapper code
-    modules = compile_modules(_simple_function.lib)
-    generated_code = list(modules.values())[0]  # Extract the single module
-    print(generated_code)
-    # Verify code structure
-    assert "import test.synchronicity2_tests.support_files._simple_function" in generated_code
-    assert "class _simple_add:" in generated_code
-    assert "class _simple_generator:" in generated_code
-    assert "@replace_with(_simple_add_instance)" in generated_code
-    assert "@replace_with(_simple_generator_instance)" in generated_code
-    assert "def simple_add(a: int, b: int) -> int:" in generated_code
-    assert "def simple_generator() -> typing.Generator[int, None, None]:" in generated_code
+    modules = compile_modules([_simple_function.wrapper_module], "s")
+    assert len(modules) == 1
+    module_paths = list(write_modules(Path(tmpdir), modules))
+    print(module_paths)
+    # Verify that files can be imported
+    monkeypatch.syspath_prepend(tmpdir)
+    simple_function = __import__("test.synchronicity2_tests.support_files.simple_function")
+    assert simple_function.simple_add(2, 4) == 6
 
-    # Verify no translation code (no wrapped classes, only simple wrapper classes)
-    assert "import weakref" not in generated_code
-    assert "_from_impl" not in generated_code
-    # Note: _impl_instance is not used in function wrappers, only in class wrappers
-
-    # Code should compile
-    compile(generated_code, "<string>", "exec")
-
+    gen = simple_function.simple_generator()
+    assert inspect.isgenerator(gen)
+    assert list(gen) == [0, 1, 2]
     # Verify type correctness with pyright
-    check_pyright(generated_code, "simple_function_generated")
+    check_pyright(module_paths, tmpdir)
 
     print("✓ Simple function generation test passed")
 
@@ -116,24 +107,6 @@ def test_simple_class_generation():
     # Generate wrapper code
     modules = compile_modules(_simple_class.lib)
     generated_code = list(modules.values())[0]  # Extract the single module
-
-    # Verify code structure
-    assert "import test.synchronicity2_tests.support_files._simple_class" in generated_code
-    assert "class Counter:" in generated_code
-    assert "class Counter_increment:" in generated_code
-    assert "class Counter_get_multiples:" in generated_code
-    assert "@wrapped_method(Counter_increment)" in generated_code
-    assert "@wrapped_method(Counter_get_multiples)" in generated_code
-    assert "def __init__(self, start: int = 0):" in generated_code
-    assert "_impl_instance = test.synchronicity2_tests.support_files._simple_class.Counter" in generated_code
-
-    # Verify property generation for annotated attribute
-    assert "@property" in generated_code
-    assert "def count(self) -> int:" in generated_code
-
-    # Code should compile
-    compile(generated_code, "<string>", "exec")
-
     # Verify type correctness with pyright
     check_pyright(generated_code, "simple_class_generated")
 

@@ -3,6 +3,7 @@ import atexit
 import concurrent.futures
 import os
 import threading
+import types
 import typing
 from typing import Callable, Optional
 
@@ -17,6 +18,30 @@ def get_synchronizer(name: str) -> "Synchronizer":
     if name not in _synchronizer_registry:
         _synchronizer_registry[name] = Synchronizer(name)
     return _synchronizer_registry[name]
+
+
+class Module:
+    _target_module: str
+    _registered_classes: dict[type, tuple[str, str]]
+    _registered_functions: dict[types.FunctionType, tuple[str, str]]
+
+    def __init__(self, target_module: Optional[str]):
+        if not target_module:
+            # TODO: Use call stack to infer calling module, if it's underscored
+            # or suffixed with "_impl" -> default to output in same dir
+            raise NotImplementedError("Auto module not implemented")
+
+        self._target_module: str = target_module
+        self._registered_classes = {}
+        self._registered_functions = {}
+
+    def wrap_function(self, f: T) -> T:
+        self._registered_functions[f] = (self._target_module, f.__name__)
+        return f
+
+    def wrap_class(self, cls: T) -> T:
+        self._registered_classes[cls] = (self._target_module, cls.__name__)
+        return cls
 
 
 class Synchronizer:

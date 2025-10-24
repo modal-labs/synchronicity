@@ -2,18 +2,18 @@
 
 import typing
 
-from synchronicity import get_synchronizer
+from synchronicity import Module
 
-lib = get_synchronizer("simple_func_lib")
+wrapper_module = Module("test_support")
 
 
-@lib.wrap()
+@wrapper_module.wrap_function
 async def simple_add(a: int, b: int) -> int:
     """Add two numbers asynchronously."""
     return a + b
 
 
-@lib.wrap()
+@wrapper_module.wrap_class
 async def simple_generator() -> typing.AsyncGenerator[int, None]:
     """Simple async generator."""
     for i in range(3):

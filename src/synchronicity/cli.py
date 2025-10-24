@@ -20,7 +20,9 @@ import argparse
 import importlib
 import sys
 import typing
+from pathlib import Path
 
+from synchronicity.codegen.writer import write_modules
 from synchronicity.synchronizer import get_synchronizer
 
 
@@ -158,35 +160,9 @@ Examples:
             print(modules[module_name])
             print()  # Blank line between modules
     else:
-        # Write to files
-        from pathlib import Path
-
         output_dir = Path(args.output_dir)
-        created_dirs = set()
-
-        for module_name, code in modules.items():
-            # Convert module name to file path
-            module_path = output_dir / (module_name.replace(".", "/") + ".py")
-
-            # Create parent directories and track them
-            module_path.parent.mkdir(parents=True, exist_ok=True)
-
-            # Track all directories in the path for __init__.py creation
-            current = module_path.parent
-            while current != output_dir and current not in created_dirs:
-                created_dirs.add(current)
-                current = current.parent
-
-            # Write file
-            module_path.write_text(code)
+        for module_path in write_modules(output_dir, modules):
             print(f"  Wrote: {module_path}", file=sys.stderr)
-
-        # Create __init__.py files in all package directories
-        for dir_path in created_dirs:
-            init_file = dir_path / "__init__.py"
-            if not init_file.exists():
-                init_file.write_text("# Auto-generated package file\n")
-
         print("\nCompilation completed successfully!", file=sys.stderr)
 
 

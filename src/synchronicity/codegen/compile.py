@@ -6,6 +6,8 @@ import inspect
 import types
 from typing import TYPE_CHECKING
 
+from synchronicity.synchronizer import Module
+
 from .signature_utils import is_async_generator
 from .type_transformer import GeneratorTransformer, create_transformer
 
@@ -743,8 +745,9 @@ def _check_annotation_for_cross_refs(
 
 
 def compile_module(
-    module_name: str,
-    synchronizer: Synchronizer,
+    module: Module,
+    synchronized_types: dict[type, tuple[str, str]],
+    synchronizer_name: str,
 ) -> str:
     """
     Compile wrapped items for a single target module.
@@ -756,23 +759,14 @@ def compile_module(
     Returns:
         String containing compiled wrapper code for this module
     """
-    wrapped_items = synchronizer._wrapped
-
-    # Filter items for this specific module
-    module_items = {
-        obj: (tgt_mod, tgt_name) for obj, (tgt_mod, tgt_name) in wrapped_items.items() if tgt_mod == module_name
-    }
-
-    if not module_items:
-        return ""
 
     # Collect unique implementation modules
     impl_modules = set()
-    for o, (target_module, target_name) in module_items.items():
+    for o, (target_module, target_name) in module.module_items():
         impl_modules.add(o.__module__)
 
     # Check if there are any wrapped classes (for weakref import)
-    has_wrapped_classes = any(isinstance(o, type) for o in module_items.keys())
+    has_wrapped_classes = len(module._registered_classes) > 0
 
     # Detect cross-module references
     cross_module_imports = _get_cross_module_imports(module_name, module_items, synchronizer)
@@ -829,7 +823,7 @@ from synchronicity.synchronizer import get_synchronizer
     return "\n".join(compiled_code)
 
 
-def compile_modules(synchronizer: Synchronizer) -> dict[str, str]:
+def compile_modules(modules: list[Module], synchronizer_name: str) -> dict[str, str]:
     """
     Compile wrapped items into separate module files.
 
@@ -839,20 +833,15 @@ def compile_modules(synchronizer: Synchronizer) -> dict[str, str]:
     Returns:
         Dict mapping module names to their generated code
     """
-    wrapped_items = synchronizer._wrapped
-
-    # Group items by target module
-    modules = {}
-    for obj, (target_module, target_name) in wrapped_items.items():
-        if target_module not in modules:
-            modules[target_module] = {}
-        modules[target_module][obj] = (target_module, target_name)
+    synchronized_classes = {}
+    for module in modules:
+        synchronized_classes.update(module._registered_classes)
 
     # Compile each module
     result = {}
-    for module_name in sorted(modules.keys()):
-        code = compile_module(module_name, synchronizer)
+    for module in modules:
+        code = compile_module(module, synchronized_classes, synchronizer_name)
         if code:
-            result[module_name] = code
+            result[module.target_module] = code
 
     return result
