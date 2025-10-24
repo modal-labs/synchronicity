@@ -283,12 +283,13 @@ def compile_function(
     # Build both sync and async bodies
     if is_async_gen:
         # For async generators, wrap each yielded item
+        aio_runner = f"get_synchronizer('{synchronizer_name}')._run_generator_async"
         aio_body = _build_generator_with_wrap(
             f"impl_function({call_args_str})",
             return_transformer,
             synchronizer,
             current_target_module,
-            "async for item in self._synchronizer._run_generator_async(gen)",
+            f"async for item in {aio_runner}(gen)",
             indent="        ",
         )
         sync_function_body = _build_generator_with_wrap(
@@ -301,8 +302,9 @@ def compile_function(
         )
     elif is_async_func:
         # For regular async functions
+        aio_runner = f"get_synchronizer('{synchronizer_name}')._run_function_async"
         aio_body = _build_call_with_wrap(
-            f"await impl_function({call_args_str})",
+            f"await {aio_runner}(impl_function({call_args_str}))",
             return_transformer,
             synchronizer,
             current_target_module,
@@ -441,7 +443,7 @@ def compile_method_wrapper(
             return_transformer,
             synchronizer,
             current_target_module,
-            "async for item in gen",
+            "async for item in self._wrapper_instance._synchronizer._run_generator_async(gen)",
             indent="        ",
         )
         sync_method_body = _build_generator_with_wrap(
@@ -454,8 +456,12 @@ def compile_method_wrapper(
         )
     else:
         # For regular async methods
+        aio_call_expr = (
+            f"await self._wrapper_instance._synchronizer._run_function_async("
+            f"impl_method(self._wrapper_instance._impl_instance, {call_args_str}))"
+        )
         aio_body = _build_call_with_wrap(
-            f"await impl_method(self._wrapper_instance._impl_instance, {call_args_str})",
+            aio_call_expr,
             return_transformer,
             synchronizer,
             current_target_module,
@@ -486,6 +492,7 @@ def compile_method_wrapper(
         aio_unwrap += "\n" + unwrap_code
 
     # The sync_method_body is already indented with 8 spaces, just use it directly
+    # Simple __init__ just stores wrapper_instance
     wrapper_class_code = f"""class {wrapper_class_name}:
     def __init__(self, wrapper_instance):
         self._wrapper_instance = wrapper_instance

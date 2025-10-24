@@ -409,6 +409,109 @@ def test_pyright_keyword_arguments():
         print("✓ Keyword arguments: Properly typed with full signature preservation")
 
 
+def test_method_wrapper_aio_execution():
+    """Test that calling .aio() on method wrappers works correctly.
+
+    This tests both regular async methods and async generator methods
+    to ensure they can be called via .aio() without errors.
+    """
+    import _simple_class
+
+    # Generate wrapper code
+    modules = compile_modules(_simple_class.lib)
+    generated_code = list(modules.values())[0]
+
+    # Execute the generated code to verify it works
+    with generated_module(generated_code, "simple_class_generated") as mod:
+        import asyncio
+
+        async def test_async_method():
+            """Test calling .aio() on a regular async method."""
+            counter = mod.Counter(start=10)
+            # Call the async version directly
+            result = await counter.increment.aio()
+            assert result == 11, f"Expected 11, got {result}"
+            return result
+
+        async def test_async_generator_method():
+            """Test calling .aio() on an async generator method."""
+            counter = mod.Counter(start=5)
+            # Call the async generator version (get_multiples yields count * i for i in range(n))
+            results = []
+            async for value in counter.get_multiples.aio(3):
+                results.append(value)
+            # With count=5 and n=3, should yield 5*0=0, 5*1=5, 5*2=10
+            assert results == [0, 5, 10], f"Expected [0, 5, 10], got {results}"
+            return results
+
+        # Run the async tests
+        result1 = asyncio.run(test_async_method())
+        result2 = asyncio.run(test_async_generator_method())
+
+        print(f"✓ Method wrapper .aio() execution: async method returned {result1}")
+        print(f"✓ Method wrapper .aio() execution: async generator returned {result2}")
+
+
+def test_event_loop_execution():
+    """Test that all .aio() calls execute in the synchronizer's event loop.
+
+    This is critical - all async code must run in the synchronizer's event loop
+    to avoid concurrency issues and ensure proper isolation.
+    """
+    import _event_loop_check
+
+    # Generate wrapper code
+    modules = compile_modules(_event_loop_check.lib)
+    generated_code = list(modules.values())[0]
+
+    # Execute the generated code to verify event loop usage
+    with generated_module(generated_code, "event_loop_test_generated") as mod:
+        import asyncio
+
+        # Test 1: Function .aio() should run in synchronizer event loop
+        async def test_function_aio():
+            result = await mod.async_function.aio(5)
+            assert result == 10, f"Expected 10, got {result}"
+            return result
+
+        # Test 2: Generator function .aio() should run in synchronizer event loop
+        async def test_generator_aio():
+            results = []
+            async for value in mod.async_generator.aio(3):
+                results.append(value)
+            assert results == [0, 1, 2], f"Expected [0, 1, 2], got {results}"
+            return results
+
+        # Test 3: Method .aio() should run in synchronizer event loop
+        async def test_method_aio():
+            checker = mod.EventLoopChecker(7)
+            result = await checker.async_method.aio()
+            assert result == 14, f"Expected 14, got {result}"
+            return result
+
+        # Test 4: Generator method .aio() should run in synchronizer event loop
+        async def test_generator_method_aio():
+            checker = mod.EventLoopChecker(3)
+            results = []
+            async for value in checker.async_generator_method.aio(4):
+                results.append(value)
+            assert results == [0, 3, 6, 9], f"Expected [0, 3, 6, 9], got {results}"
+            return results
+
+        # Run all tests - they will raise AssertionError if not in the right event loop
+        result1 = asyncio.run(test_function_aio())
+        print(f"✓ Function .aio() runs in synchronizer event loop: {result1}")
+
+        result2 = asyncio.run(test_generator_aio())
+        print(f"✓ Generator function .aio() runs in synchronizer event loop: {result2}")
+
+        result3 = asyncio.run(test_method_aio())
+        print(f"✓ Method .aio() runs in synchronizer event loop: {result3}")
+
+        result4 = asyncio.run(test_generator_method_aio())
+        print(f"✓ Generator method .aio() runs in synchronizer event loop: {result4}")
+
+
 if __name__ == "__main__":
     test_simple_function_generation()
     test_simple_class_generation()

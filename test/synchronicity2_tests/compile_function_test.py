@@ -102,7 +102,7 @@ def test_compile_function_basic_types(test_synchronizer, simple_function):
     assert "def __call__(self" in generated_code
     assert "async def aio(self" in generated_code
     assert "_run_function_sync" in generated_code
-    assert "await impl_function" in generated_code
+    assert "_run_function_async" in generated_code  # aio() should use _run_function_async
     assert f"@replace_with(_{wrapped_func.__name__}_instance)" in generated_code  # Uses replace_with decorator
 
     # Verify type annotations are preserved
@@ -186,7 +186,7 @@ def test_compile_function_template_pattern(test_synchronizer, simple_function):
         "def __call__(self",
         "async def aio(self",
         "_run_function_sync",
-        "await impl_function",
+        "_run_function_async",  # aio() should use _run_function_async
         "@replace_with",
     ]
 
@@ -253,7 +253,10 @@ def test_compile_function_async_generator(test_synchronizer, async_generator_fun
 
     # Verify it yields from the generator instead of returning
     assert "yield from get_synchronizer" in generated_code
-    assert "async for item in self._synchronizer._run_generator_async(gen):" in generated_code
+    assert (
+        "async for item in get_synchronizer" in generated_code
+    )  # aio() should use get_synchronizer, not self._synchronizer
+    assert "_run_generator_async(gen)" in generated_code
     assert "yield item" in generated_code
     assert "gen = impl_function" in generated_code
 

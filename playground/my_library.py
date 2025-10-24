@@ -19,7 +19,7 @@ class Bar_moo:
     async def aio(self, s: str) -> typing.AsyncGenerator[str, None]:
         impl_method = _my_library.Bar.moo
         gen = impl_method(self._wrapper_instance._impl_instance, s)
-        async for item in gen:
+        async for item in self._wrapper_instance._synchronizer._run_generator_async(gen):
             yield item
 
 
@@ -78,7 +78,7 @@ class _foo:
     ) -> typing.AsyncGenerator[int, None]:
         impl_function = _my_library.foo
         gen = impl_function()
-        async for item in self._synchronizer._run_generator_async(gen):
+        async for item in get_synchronizer("my_library")._run_generator_async(gen):
             yield item
 
 
@@ -102,7 +102,7 @@ class _accepts_bar:
     async def aio(self, b: Bar) -> "Bar":
         impl_function = _my_library.accepts_bar
         b_impl = b._impl_instance
-        result = await impl_function(b_impl)
+        result = await get_synchronizer("my_library")._run_function_async(impl_function(b_impl))
         return Bar._from_impl(result)
 
 
@@ -132,7 +132,7 @@ class _crazy:
     async def aio(self, i: int) -> typing.AsyncGenerator[str, None]:
         impl_function = _my_library.crazy
         gen = impl_function(i)
-        async for item in self._synchronizer._run_generator_async(gen):
+        async for item in get_synchronizer("my_library")._run_generator_async(gen):
             yield item
 
 

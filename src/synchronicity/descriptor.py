@@ -28,6 +28,7 @@ class WrappedMethodDescriptor(typing.Generic[T]):
             # For class access, return self to allow descriptor access
             return self
 
+        # Create instance with wrapper_instance bound
         return self.method_wrapper_type(wrapper_instance)
 
 
