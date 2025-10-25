@@ -1,0 +1,1 @@
+* When running pytest, always activate the virtualenv in .venv first, every time
