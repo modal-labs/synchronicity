@@ -79,7 +79,7 @@ def generated_module(code: str, module_name: str):
 
 def test_simple_function_generation(tmpdir, monkeypatch):
     """Test generation of simple functions without dependencies."""
-    from test.synchronicity2_tests.support_files import _simple_function
+    from test.support_files import _simple_function
 
     # Generate wrapper code
     modules = compile_modules([_simple_function.wrapper_module], "s")
@@ -102,7 +102,7 @@ def test_simple_function_generation(tmpdir, monkeypatch):
 
 def test_simple_class_generation(tmpdir):
     """Test generation of a simple class without translation needs."""
-    from test.synchronicity2_tests.support_files import _simple_class
+    from test.support_files import _simple_class
 
     # Generate wrapper code
     modules = compile_modules([_simple_class.wrapper_module], "s")
@@ -119,7 +119,7 @@ def test_simple_class_generation(tmpdir):
 
 def test_class_with_translation_generation(tmpdir):
     """Test generation of classes and functions that need type translation."""
-    from test.synchronicity2_tests.support_files import _class_with_translation
+    from test.support_files import _class_with_translation
 
     # Generate wrapper code
     modules = compile_modules([_class_with_translation.wrapper_module], "s")
@@ -129,10 +129,7 @@ def test_class_with_translation_generation(tmpdir):
     assert "import weakref" in generated_code
 
     # Verify _from_impl classmethod generation with class-level cache
-    assert (
-        "def _from_impl(cls, impl_instance: test.synchronicity2_tests.support_files._class_with_translation.Node)"
-        in generated_code
-    )
+    assert "def _from_impl(cls, impl_instance: test.support_files._class_with_translation.Node)" in generated_code
     assert "_instance_cache: weakref.WeakValueDictionary" in generated_code
     assert "if cache_key in cls._instance_cache:" in generated_code
     assert "wrapper = cls.__new__(cls)" in generated_code
@@ -187,7 +184,7 @@ def test_class_with_translation_generation(tmpdir):
 
 def test_generated_code_execution_simple():
     """Test that generated code can be imported and executed."""
-    from test.synchronicity2_tests.support_files import _simple_function
+    from test.support_files import _simple_function
 
     # Generate wrapper code
     modules = compile_modules([_simple_function.wrapper_module], "s")
@@ -204,7 +201,7 @@ def test_generated_code_execution_simple():
 
 def test_generated_code_execution_class():
     """Test that generated class wrappers work correctly."""
-    from test.synchronicity2_tests.support_files import _simple_class
+    from test.support_files import _simple_class
 
     # Generate wrapper code
     modules = compile_modules([_simple_class.wrapper_module], "s")
@@ -230,7 +227,7 @@ def test_generated_code_execution_class():
 
 def test_generated_code_execution_with_translation():
     """Test that type translation works at runtime."""
-    from test.synchronicity2_tests.support_files import _class_with_translation
+    from test.support_files import _class_with_translation
 
     # Generate wrapper code
     modules = compile_modules([_class_with_translation.wrapper_module], "s")
@@ -262,7 +259,7 @@ def test_generated_code_execution_with_translation():
 
 def test_wrapper_identity_preservation():
     """Test that wrapper identity is preserved through caching."""
-    from test.synchronicity2_tests.support_files import _class_with_translation
+    from test.support_files import _class_with_translation
 
     # Generate wrapper code
     modules = compile_modules([_class_with_translation.wrapper_module], "s")
@@ -290,7 +287,7 @@ def test_wrapper_identity_preservation():
 
 def test_pyright_type_checking():
     """Test that generated code type checks correctly with pyright using reveal_type."""
-    from test.synchronicity2_tests.support_files import _class_with_translation
+    from test.support_files import _class_with_translation
 
     # Generate wrapper code
     modules = compile_modules([_class_with_translation.wrapper_module], "s")
@@ -372,7 +369,7 @@ def test_pyright_keyword_arguments():
     With the new approach using explicit __call__ signatures, pyright should
     properly infer types for keyword argument calls.
     """
-    from test.synchronicity2_tests.support_files import _class_with_translation
+    from test.support_files import _class_with_translation
 
     # Generate wrapper code
     modules = compile_modules([_class_with_translation.wrapper_module], "s")
@@ -420,7 +417,7 @@ def test_method_wrapper_aio_execution():
     This tests both regular async methods and async generator methods
     to ensure they can be called via .aio() without errors.
     """
-    from test.synchronicity2_tests.support_files import _simple_class
+    from test.support_files import _simple_class
 
     # Generate wrapper code
     modules = compile_modules([_simple_class.wrapper_module], "s")
@@ -463,7 +460,7 @@ def test_event_loop_execution():
     This is critical - all async code must run in the synchronizer's event loop
     to avoid concurrency issues and ensure proper isolation.
     """
-    from test.synchronicity2_tests.support_files import _event_loop_check
+    from test.support_files import _event_loop_check
 
     # Generate wrapper code
     modules = compile_modules([_event_loop_check.wrapper_module], "s")

@@ -1,15 +1,10 @@
 """Integration tests for type translation in generated wrapper code."""
 
 import sys
-from pathlib import Path
-
-# Add src and support_files to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
-sys.path.insert(0, str(Path(__file__).parent / "support_files"))
 
 # Import the test implementation module
 # Note: This import will work at runtime because we add support_files to sys.path
-import _test_impl  # type: ignore
+from test.support_files import _test_impl
 
 
 def test_compile_with_translation():
