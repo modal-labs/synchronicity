@@ -88,10 +88,10 @@ def test_simple_function_generation(tmpdir, monkeypatch):
     print(module_paths)
     # Verify that files can be imported
     monkeypatch.syspath_prepend(tmpdir)
-    simple_function = __import__("test.synchronicity2_tests.support_files.simple_function")
-    assert simple_function.simple_add(2, 4) == 6
+    test_support = __import__("test_support")
+    assert test_support.simple_add(2, 4) == 6
 
-    gen = simple_function.simple_generator()
+    gen = test_support.simple_generator()
     assert inspect.isgenerator(gen)
     assert list(gen) == [0, 1, 2]
     # Verify type correctness with pyright
@@ -100,25 +100,29 @@ def test_simple_function_generation(tmpdir, monkeypatch):
     print("✓ Simple function generation test passed")
 
 
-def test_simple_class_generation():
+def test_simple_class_generation(tmpdir):
     """Test generation of a simple class without translation needs."""
     from test.synchronicity2_tests.support_files import _simple_class
 
     # Generate wrapper code
-    modules = compile_modules(_simple_class.lib)
-    generated_code = list(modules.values())[0]  # Extract the single module
+    modules = compile_modules([_simple_class.wrapper_module], "s")
+    assert len(modules) == 1
+
+    # Write to temporary directory for pyright validation
+    module_paths = list(write_modules(Path(tmpdir), modules))
+
     # Verify type correctness with pyright
-    check_pyright(generated_code, "simple_class_generated")
+    check_pyright(module_paths, tmpdir)
 
     print("✓ Simple class generation test passed")
 
 
-def test_class_with_translation_generation():
+def test_class_with_translation_generation(tmpdir):
     """Test generation of classes and functions that need type translation."""
     from test.synchronicity2_tests.support_files import _class_with_translation
 
     # Generate wrapper code
-    modules = compile_modules(_class_with_translation.lib)
+    modules = compile_modules([_class_with_translation.wrapper_module], "s")
     generated_code = list(modules.values())[0]  # Extract the single module
 
     # Verify weakref import
@@ -172,8 +176,11 @@ def test_class_with_translation_generation():
     # Code should compile
     compile(generated_code, "<string>", "exec")
 
+    # Write to temporary directory for pyright validation
+    module_paths = list(write_modules(Path(tmpdir), modules))
+
     # Verify type correctness with pyright
-    check_pyright(generated_code, "class_with_translation_generated")
+    check_pyright(module_paths, tmpdir)
 
     print("✓ Class with translation generation test passed")
 
@@ -183,7 +190,7 @@ def test_generated_code_execution_simple():
     from test.synchronicity2_tests.support_files import _simple_function
 
     # Generate wrapper code
-    modules = compile_modules(_simple_function.lib)
+    modules = compile_modules([_simple_function.wrapper_module], "s")
     generated_code = list(modules.values())[0]  # Extract the single module
 
     # Write to a temporary file and import it
@@ -200,7 +207,7 @@ def test_generated_code_execution_class():
     from test.synchronicity2_tests.support_files import _simple_class
 
     # Generate wrapper code
-    modules = compile_modules(_simple_class.lib)
+    modules = compile_modules([_simple_class.wrapper_module], "s")
     generated_code = list(modules.values())[0]  # Extract the single module
 
     # Write to a temporary file and import it
@@ -226,7 +233,7 @@ def test_generated_code_execution_with_translation():
     from test.synchronicity2_tests.support_files import _class_with_translation
 
     # Generate wrapper code
-    modules = compile_modules(_class_with_translation.lib)
+    modules = compile_modules([_class_with_translation.wrapper_module], "s")
     generated_code = list(modules.values())[0]  # Extract the single module
 
     # Write to a temporary file and import it
@@ -258,7 +265,7 @@ def test_wrapper_identity_preservation():
     from test.synchronicity2_tests.support_files import _class_with_translation
 
     # Generate wrapper code
-    modules = compile_modules(_class_with_translation.lib)
+    modules = compile_modules([_class_with_translation.wrapper_module], "s")
     generated_code = list(modules.values())[0]  # Extract the single module
 
     # Write to a temporary file and import it
@@ -286,7 +293,7 @@ def test_pyright_type_checking():
     from test.synchronicity2_tests.support_files import _class_with_translation
 
     # Generate wrapper code
-    modules = compile_modules(_class_with_translation.lib)
+    modules = compile_modules([_class_with_translation.wrapper_module], "s")
     generated_code = list(modules.values())[0]  # Extract the single module
 
     # Get paths to support files
@@ -368,7 +375,7 @@ def test_pyright_keyword_arguments():
     from test.synchronicity2_tests.support_files import _class_with_translation
 
     # Generate wrapper code
-    modules = compile_modules(_class_with_translation.lib)
+    modules = compile_modules([_class_with_translation.wrapper_module], "s")
     generated_code = list(modules.values())[0]
 
     # Get path to keyword args test file
@@ -416,7 +423,7 @@ def test_method_wrapper_aio_execution():
     from test.synchronicity2_tests.support_files import _simple_class
 
     # Generate wrapper code
-    modules = compile_modules(_simple_class.lib)
+    modules = compile_modules([_simple_class.wrapper_module], "s")
     generated_code = list(modules.values())[0]
 
     # Execute the generated code to verify it works
@@ -459,7 +466,7 @@ def test_event_loop_execution():
     from test.synchronicity2_tests.support_files import _event_loop_check
 
     # Generate wrapper code
-    modules = compile_modules(_event_loop_check.lib)
+    modules = compile_modules([_event_loop_check.wrapper_module], "s")
     generated_code = list(modules.values())[0]
 
     # Execute the generated code to verify event loop usage

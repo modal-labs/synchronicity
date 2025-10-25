@@ -2,12 +2,12 @@
 
 import typing
 
-from synchronicity import get_synchronizer
+from synchronicity import Module
 
-lib = get_synchronizer("translation_lib")
+wrapper_module = Module("translation_lib")
 
 
-@lib.wrap()
+@wrapper_module.wrap_class
 class Node:
     """A simple node class for testing translation."""
 
@@ -26,25 +26,25 @@ class Node:
             yield Node(self.value + i)
 
 
-@lib.wrap()
+@wrapper_module.wrap_function
 async def create_node(value: int) -> Node:
     """Create a new node."""
     return Node(value)
 
 
-@lib.wrap()
+@wrapper_module.wrap_function
 async def connect_nodes(parent: Node, child: Node) -> typing.Tuple[Node, Node]:
     """Connect two nodes (just returns them as a tuple)."""
     return (parent, child)
 
 
-@lib.wrap()
+@wrapper_module.wrap_function
 async def get_node_list(nodes: typing.List[Node]) -> typing.List[Node]:
     """Process a list of nodes."""
     return nodes
 
 
-@lib.wrap()
+@wrapper_module.wrap_function
 async def get_optional_node(node: typing.Optional[Node]) -> typing.Optional[Node]:
     """Process an optional node."""
     return node

@@ -2,12 +2,12 @@
 
 import typing
 
-from synchronicity import get_synchronizer
+from synchronicity import Module
 
-lib = get_synchronizer("simple_class_lib")
+wrapper_module = Module("simple_class_lib")
 
 
-@lib.wrap()
+@wrapper_module.wrap_class
 class Counter:
     """A simple counter class."""
 

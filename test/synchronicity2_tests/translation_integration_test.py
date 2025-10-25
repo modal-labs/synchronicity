@@ -17,7 +17,7 @@ def test_compile_with_translation():
     from synchronicity.codegen.compile import compile_modules
 
     # Compile the library
-    modules = compile_modules(_test_impl.lib)
+    modules = compile_modules([_test_impl.wrapper_module], "s")
     compiled_code = list(modules.values())[0]  # Extract the single module
 
     # Check that the code contains the expected elements
@@ -28,7 +28,8 @@ def test_compile_with_translation():
     assert "_ImplPerson._from_impl(" in compiled_code
 
     # Check that the signatures use wrapper types, not impl types
-    # The function signatures should have quoted return types for forward reference safety when they contain wrapper types
+    # The function signatures should have quoted return types for
+    # forward reference safety when they contain wrapper types
     assert (
         'def accepts_person(p: _ImplPerson) -> "_ImplPerson":' in compiled_code
         or "def accepts_person(p: _ImplPerson) -> '_ImplPerson':" in compiled_code
@@ -56,7 +57,7 @@ def test_wrapper_helpers_generated():
     """Test that _from_impl classmethod is generated correctly."""
     from synchronicity.codegen.compile import compile_modules
 
-    modules = compile_modules(_test_impl.lib)
+    modules = compile_modules([_test_impl.wrapper_module], "s")
     compiled_code = list(modules.values())[0]  # Extract the single module
 
     # Check the _from_impl classmethod structure with class-level cache
@@ -75,7 +76,7 @@ def test_unwrap_expressions_in_functions():
     """Test that unwrap expressions are generated in function bodies."""
     from synchronicity.codegen.compile import compile_modules
 
-    modules = compile_modules(_test_impl.lib)
+    modules = compile_modules([_test_impl.wrapper_module], "s")
     compiled_code = list(modules.values())[0]  # Extract the single module
 
     # Check for unwrap in sync wrapper
@@ -91,7 +92,7 @@ def test_translation_with_collections():
     """Test that collection types are translated correctly."""
     from synchronicity.codegen.compile import compile_modules
 
-    modules = compile_modules(_test_impl.lib)
+    modules = compile_modules([_test_impl.wrapper_module], "s")
     compiled_code = list(modules.values())[0]  # Extract the single module
 
     # Check for list comprehension unwrap
@@ -105,7 +106,7 @@ def test_translation_with_collections():
 
 def test_no_translation_for_primitives():
     """Test that primitive types are not translated."""
-    from synchronicity import Synchronizer
+    from synchronicity import Module
     from synchronicity.codegen.compile import compile_modules
 
     async def returns_string() -> str:
@@ -114,10 +115,10 @@ def test_no_translation_for_primitives():
     returns_string.__module__ = "_test_impl"
     sys.modules["_test_impl"].returns_string = returns_string
 
-    sync = Synchronizer("test_lib")
-    sync.wrap()(returns_string)
+    test_module = Module("test_lib")
+    test_module.wrap_function(returns_string)
 
-    modules = compile_modules(sync)
+    modules = compile_modules([test_module], "test_lib")
     compiled_code = list(modules.values())[0]  # Extract the single module
 
     # Should not generate unwrap/wrap for strings

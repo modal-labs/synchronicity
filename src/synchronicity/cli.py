@@ -140,11 +140,25 @@ Examples:
 
     print(f"\nTotal wrapped items collected: {len(synchronizer._wrapped)}", file=sys.stderr)
 
-    # Compile all wrapped items into separate modules
+    # Convert wrapped items to Module objects grouped by target module
     from synchronicity.codegen.compile import compile_modules
+    from synchronicity.synchronizer import Module
 
     print("Compiling wrappers...", file=sys.stderr)
-    modules = compile_modules(synchronizer)
+
+    # Group wrapped items by target module
+    modules_by_target = {}
+    for item, (target_module, name) in synchronizer._wrapped.items():
+        if target_module not in modules_by_target:
+            modules_by_target[target_module] = Module(target_module)
+        # Register the item with the module
+        if isinstance(item, type):
+            modules_by_target[target_module]._registered_classes[item] = (target_module, name)
+        else:
+            modules_by_target[target_module]._registered_functions[item] = (target_module, name)
+
+    # Compile using the new Module-based API
+    modules = compile_modules(list(modules_by_target.values()), synchronizer_name)
 
     if not modules:
         print("No modules generated", file=sys.stderr)

@@ -19,7 +19,7 @@ def test_compile_sync_function_basic(test_synchronizer):
     def simple_add(a: int, b: int) -> int:
         return a + b
 
-    code = compile_function(simple_add, test_synchronizer)
+    code = compile_function(simple_add, "test_module", "test_synchronizer", test_synchronizer._wrapped)
 
     # Verify generated code compiles
     compile(code, "<string>", "exec")
@@ -50,7 +50,7 @@ def test_compile_sync_function_with_wrapped_arg(test_synchronizer):
     def greet(person: Person) -> str:
         return f"Hello, {person.name}"
 
-    code = compile_function(greet, test_synchronizer)
+    code = compile_function(greet, "test_module", "test_synchronizer", test_synchronizer._wrapped)
 
     # Verify generated code compiles
     compile(code, "<string>", "exec")
@@ -79,7 +79,7 @@ def test_compile_sync_function_with_wrapped_return(test_synchronizer):
     def create_person(name: str) -> Person:
         return Person(name)
 
-    code = compile_function(create_person, test_synchronizer)
+    code = compile_function(create_person, "test_module", "test_synchronizer", test_synchronizer._wrapped)
 
     # Verify generated code compiles
     compile(code, "<string>", "exec")
@@ -108,7 +108,7 @@ def test_compile_sync_function_with_list_wrapped_return(test_synchronizer):
     def create_people(names: list[str]) -> list[Person]:
         return [Person(name) for name in names]
 
-    code = compile_function(create_people, test_synchronizer)
+    code = compile_function(create_people, "test_module", "test_synchronizer", test_synchronizer._wrapped)
 
     # Verify generated code compiles
     compile(code, "<string>", "exec")
@@ -132,7 +132,7 @@ def test_compile_sync_function_no_annotations(test_synchronizer):
     def no_types(x, y):
         return x + y
 
-    code = compile_function(no_types, test_synchronizer)
+    code = compile_function(no_types, "test_module", "test_synchronizer", test_synchronizer._wrapped)
 
     # Verify generated code compiles
     compile(code, "<string>", "exec")
@@ -149,7 +149,7 @@ def test_compile_sync_function_with_default_args(test_synchronizer):
     def with_defaults(a: int, b: int = 10, c: str = "hello") -> str:
         return f"{a}, {b}, {c}"
 
-    code = compile_function(with_defaults, test_synchronizer)
+    code = compile_function(with_defaults, "test_module", "test_synchronizer", test_synchronizer._wrapped)
 
     # Verify generated code compiles
     compile(code, "<string>", "exec")

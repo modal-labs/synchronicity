@@ -90,7 +90,7 @@ def test_compile_function_basic_types(test_synchronizer, simple_function):
     assert wrapped_func is not None, "Function should be wrapped"
 
     # Generate code
-    generated_code = compile_function(wrapped_func, test_synchronizer)
+    generated_code = compile_function(wrapped_func, "test_module", "test_synchronizer", test_synchronizer._wrapped)
     print(generated_code)
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
@@ -124,7 +124,7 @@ def test_compile_function_complex_types(test_synchronizer, complex_function):
     assert wrapped_func is not None, "Function should be wrapped"
 
     # Generate code
-    generated_code = compile_function(wrapped_func, test_synchronizer)
+    generated_code = compile_function(wrapped_func, "test_module", "test_synchronizer", test_synchronizer._wrapped)
 
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
@@ -156,7 +156,7 @@ def test_compile_function_no_annotations(test_synchronizer, no_annotation_functi
     assert wrapped_func is not None, "Function should be wrapped"
 
     # Generate code
-    generated_code = compile_function(wrapped_func, test_synchronizer)
+    generated_code = compile_function(wrapped_func, "test_module", "test_synchronizer", test_synchronizer._wrapped)
 
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
@@ -178,7 +178,7 @@ def test_compile_function_template_pattern(test_synchronizer, simple_function):
             wrapped_func = func
             break
 
-    generated_code = compile_function(wrapped_func, test_synchronizer)
+    generated_code = compile_function(wrapped_func, "test_module", "test_synchronizer", test_synchronizer._wrapped)
 
     # Check that the generated code contains all expected template elements
     template_elements = [
@@ -214,7 +214,7 @@ def test_compile_function_multiple_functions(test_synchronizer, simple_function,
 
     # Each should generate valid code
     for func, (target_module, target_name) in test_synchronizer._wrapped.items():
-        generated_code = compile_function(func, test_synchronizer)
+        generated_code = compile_function(func, "test_module", "test_synchronizer", test_synchronizer._wrapped)
 
         # Should compile without errors
         compile(generated_code, "<string>", "exec")
@@ -241,7 +241,7 @@ def test_compile_function_async_generator(test_synchronizer, async_generator_fun
     assert wrapped_func is not None, "Function should be wrapped"
 
     # Generate code
-    generated_code = compile_function(wrapped_func, test_synchronizer)
+    generated_code = compile_function(wrapped_func, "test_module", "test_synchronizer", test_synchronizer._wrapped)
 
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
@@ -281,7 +281,7 @@ def test_compile_function_async_generator_template_pattern(test_synchronizer, as
             wrapped_func = func
             break
 
-    generated_code = compile_function(wrapped_func, test_synchronizer)
+    generated_code = compile_function(wrapped_func, "test_module", "test_synchronizer", test_synchronizer._wrapped)
 
     # Check that the generated code contains all expected template elements
     template_elements = [
@@ -314,7 +314,7 @@ def test_compile_function_generic_types(test_synchronizer, generic_types_functio
     assert wrapped_func is not None, "Function should be wrapped"
 
     # Generate code
-    generated_code = compile_function(wrapped_func, test_synchronizer)
+    generated_code = compile_function(wrapped_func, "test_module", "test_synchronizer", test_synchronizer._wrapped)
 
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
@@ -339,27 +339,9 @@ def test_compile_function_generic_types(test_synchronizer, generic_types_functio
     assert "@replace_with" in generated_code
 
 
-def test_compile_unwrapped_async_function_raises_error(test_synchronizer):
-    """Test that compiling an async function not in the wrapped dict raises an error."""
-
-    async def unwrapped_async_func(x: int) -> str:
-        await asyncio.sleep(0.01)
-        return f"Result: {x}"
-
-    # This should raise a ValueError because the function is async but not wrapped
-    with pytest.raises(ValueError, match="Function unwrapped_async_func.*not in the synchronizer's wrapped dict"):
-        compile_function(unwrapped_async_func, test_synchronizer)
-
-
-def test_compile_unwrapped_sync_function_raises_error(test_synchronizer):
-    """Test that compiling a sync function not in the wrapped dict raises an error."""
-
-    def unwrapped_sync_func(x: int) -> str:
-        return f"Result: {x}"
-
-    # This should raise a ValueError because the function is not wrapped
-    with pytest.raises(ValueError, match="Function unwrapped_sync_func.*not in the synchronizer's wrapped dict"):
-        compile_function(unwrapped_sync_func, test_synchronizer)
+# Note: The following validation tests were removed as they're obsolete with the new Module-based API.
+# The new API accepts synchronized_types dict directly, so there's no validation that functions
+# are "wrapped" before compilation - that's handled at the Module registration level.
 
 
 def test_compile_async_generator_with_wrapped_type_quoting(test_synchronizer):
@@ -396,7 +378,7 @@ def test_compile_async_generator_with_wrapped_type_quoting(test_synchronizer):
     assert wrapped_func is not None, "Function should be wrapped"
 
     # Generate code
-    generated_code = compile_function(wrapped_func, test_synchronizer)
+    generated_code = compile_function(wrapped_func, "test_module", "test_synchronizer", test_synchronizer._wrapped)
 
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
@@ -449,7 +431,7 @@ def test_compile_async_generator_with_nested_wrapped_type_quoting(test_synchroni
     assert wrapped_func is not None, "Function should be wrapped"
 
     # Generate code
-    generated_code = compile_function(wrapped_func, test_synchronizer)
+    generated_code = compile_function(wrapped_func, "test_module", "test_synchronizer", test_synchronizer._wrapped)
 
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")

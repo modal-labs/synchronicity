@@ -50,19 +50,19 @@ class TestIdentityTransformer:
 
     def test_wrapped_type_int(self, sync):
         transformer = IdentityTransformer(int)
-        assert transformer.wrapped_type(sync, "test_module") == "int"
+        assert transformer.wrapped_type(sync._wrapped, "test_module") == "int"
 
     def test_wrapped_type_str(self, sync):
         transformer = IdentityTransformer(str)
-        assert transformer.wrapped_type(sync, "test_module") == "str"
+        assert transformer.wrapped_type(sync._wrapped, "test_module") == "str"
 
     def test_unwrap_expr_returns_same(self, sync):
         transformer = IdentityTransformer(int)
-        assert transformer.unwrap_expr(sync, "value") == "value"
+        assert transformer.unwrap_expr(sync._wrapped, "value") == "value"
 
     def test_wrap_expr_returns_same(self, sync):
         transformer = IdentityTransformer(str)
-        assert transformer.wrap_expr(sync, "test_module", "value") == "value"
+        assert transformer.wrap_expr(sync._wrapped, "test_module", "value") == "value"
 
     def test_needs_translation_false(self, sync):
         transformer = IdentityTransformer(int)
@@ -90,27 +90,27 @@ class TestWrappedClassTransformer:
     def test_wrapped_type_local_reference(self, sync, wrapped_class):
         transformer = WrappedClassTransformer(wrapped_class)
         # When target_module matches, should return just class name
-        result = transformer.wrapped_type(sync, "test_module")
+        result = transformer.wrapped_type(sync._wrapped, "test_module")
         assert result == "TestClass"
 
     def test_wrapped_type_cross_module_reference(self, sync, wrapped_class):
         transformer = WrappedClassTransformer(wrapped_class)
         # When target_module differs, should return fully qualified name
-        result = transformer.wrapped_type(sync, "other_module")
+        result = transformer.wrapped_type(sync._wrapped, "other_module")
         assert result == "test_module.TestClass"
 
     def test_unwrap_expr(self, sync, wrapped_class):
         transformer = WrappedClassTransformer(wrapped_class)
-        assert transformer.unwrap_expr(sync, "obj") == "obj._impl_instance"
+        assert transformer.unwrap_expr(sync._wrapped, "obj") == "obj._impl_instance"
 
     def test_wrap_expr_local(self, sync, wrapped_class):
         transformer = WrappedClassTransformer(wrapped_class)
-        result = transformer.wrap_expr(sync, "test_module", "impl")
+        result = transformer.wrap_expr(sync._wrapped, "test_module", "impl")
         assert result == "TestClass._from_impl(impl)"
 
     def test_wrap_expr_cross_module(self, sync, wrapped_class):
         transformer = WrappedClassTransformer(wrapped_class)
-        result = transformer.wrap_expr(sync, "other_module", "impl")
+        result = transformer.wrap_expr(sync._wrapped, "other_module", "impl")
         assert result == "test_module.TestClass._from_impl(impl)"
 
     def test_needs_translation_true(self, sync, wrapped_class):
@@ -124,29 +124,29 @@ class TestListTransformer:
     def test_wrapped_type_primitives(self, sync):
         item_transformer = IdentityTransformer(int)
         transformer = ListTransformer(item_transformer)
-        assert transformer.wrapped_type(sync, "test_module") == "list[int]"
+        assert transformer.wrapped_type(sync._wrapped, "test_module") == "list[int]"
 
     def test_wrapped_type_wrapped_class(self, sync, wrapped_class):
         item_transformer = WrappedClassTransformer(wrapped_class)
         transformer = ListTransformer(item_transformer)
-        assert transformer.wrapped_type(sync, "test_module") == "list[TestClass]"
+        assert transformer.wrapped_type(sync._wrapped, "test_module") == "list[TestClass]"
 
     def test_unwrap_expr_primitives(self, sync):
         """Primitives don't need unwrapping."""
         item_transformer = IdentityTransformer(int)
         transformer = ListTransformer(item_transformer)
-        assert transformer.unwrap_expr(sync, "values") == "values"
+        assert transformer.unwrap_expr(sync._wrapped, "values") == "values"
 
     def test_unwrap_expr_wrapped_class(self, sync, wrapped_class):
         item_transformer = WrappedClassTransformer(wrapped_class)
         transformer = ListTransformer(item_transformer)
-        result = transformer.unwrap_expr(sync, "items")
+        result = transformer.unwrap_expr(sync._wrapped, "items")
         assert result == "[x._impl_instance for x in items]"
 
     def test_wrap_expr_wrapped_class(self, sync, wrapped_class):
         item_transformer = WrappedClassTransformer(wrapped_class)
         transformer = ListTransformer(item_transformer)
-        result = transformer.wrap_expr(sync, "test_module", "impl_items")
+        result = transformer.wrap_expr(sync._wrapped, "test_module", "impl_items")
         assert result == "[TestClass._from_impl(x) for x in impl_items]"
 
     def test_needs_translation(self, sync, wrapped_class):
@@ -182,27 +182,27 @@ class TestDictTransformer:
         key_transformer = IdentityTransformer(str)
         value_transformer = WrappedClassTransformer(wrapped_class)
         transformer = DictTransformer(key_transformer, value_transformer)
-        assert transformer.wrapped_type(sync, "test_module") == "dict[str, TestClass]"
+        assert transformer.wrapped_type(sync._wrapped, "test_module") == "dict[str, TestClass]"
 
     def test_unwrap_expr_primitives(self, sync):
         """Dict with primitive values doesn't need unwrapping."""
         key_transformer = IdentityTransformer(str)
         value_transformer = IdentityTransformer(int)
         transformer = DictTransformer(key_transformer, value_transformer)
-        assert transformer.unwrap_expr(sync, "mapping") == "mapping"
+        assert transformer.unwrap_expr(sync._wrapped, "mapping") == "mapping"
 
     def test_unwrap_expr_wrapped_values(self, sync, wrapped_class):
         key_transformer = IdentityTransformer(str)
         value_transformer = WrappedClassTransformer(wrapped_class)
         transformer = DictTransformer(key_transformer, value_transformer)
-        result = transformer.unwrap_expr(sync, "mapping")
+        result = transformer.unwrap_expr(sync._wrapped, "mapping")
         assert result == "{k: v._impl_instance for k, v in mapping.items()}"
 
     def test_wrap_expr_wrapped_values(self, sync, wrapped_class):
         key_transformer = IdentityTransformer(str)
         value_transformer = WrappedClassTransformer(wrapped_class)
         transformer = DictTransformer(key_transformer, value_transformer)
-        result = transformer.wrap_expr(sync, "test_module", "impl_mapping")
+        result = transformer.wrap_expr(sync._wrapped, "test_module", "impl_mapping")
         assert result == "{k: TestClass._from_impl(v) for k, v in impl_mapping.items()}"
 
     def test_needs_translation(self, sync, wrapped_class):
@@ -237,31 +237,31 @@ class TestTupleTransformer:
         """Test tuple[T, ...] formatting."""
         item_transformer = IdentityTransformer(int)
         transformer = TupleTransformer([item_transformer])
-        assert transformer.wrapped_type(sync, "test_module") == "tuple[int, ...]"
+        assert transformer.wrapped_type(sync._wrapped, "test_module") == "tuple[int, ...]"
 
     def test_wrapped_type_fixed_size(self, sync, wrapped_class):
         """Test tuple[T1, T2] formatting."""
         transformers = [IdentityTransformer(int), WrappedClassTransformer(wrapped_class)]
         transformer = TupleTransformer(transformers)
-        assert transformer.wrapped_type(sync, "test_module") == "tuple[int, TestClass]"
+        assert transformer.wrapped_type(sync._wrapped, "test_module") == "tuple[int, TestClass]"
 
     def test_unwrap_expr_variable_length(self, sync, wrapped_class):
         item_transformer = WrappedClassTransformer(wrapped_class)
         transformer = TupleTransformer([item_transformer])
-        result = transformer.unwrap_expr(sync, "items")
+        result = transformer.unwrap_expr(sync._wrapped, "items")
         assert result == "tuple(x._impl_instance for x in items)"
 
     def test_unwrap_expr_fixed_size(self, sync, wrapped_class):
         """Test fixed-size tuple unwrapping by index."""
         transformers = [IdentityTransformer(int), WrappedClassTransformer(wrapped_class)]
         transformer = TupleTransformer(transformers)
-        result = transformer.unwrap_expr(sync, "items")
+        result = transformer.unwrap_expr(sync._wrapped, "items")
         assert result == "(items[0], items[1]._impl_instance)"
 
     def test_wrap_expr_fixed_size(self, sync, wrapped_class):
         transformers = [IdentityTransformer(int), WrappedClassTransformer(wrapped_class)]
         transformer = TupleTransformer(transformers)
-        result = transformer.wrap_expr(sync, "test_module", "impl_items")
+        result = transformer.wrap_expr(sync._wrapped, "test_module", "impl_items")
         assert result == "(impl_items[0], TestClass._from_impl(impl_items[1]))"
 
     def test_execution_fixed_size_tuple(self, sync):
@@ -286,18 +286,18 @@ class TestOptionalTransformer:
     def test_wrapped_type(self, sync, wrapped_class):
         inner_transformer = WrappedClassTransformer(wrapped_class)
         transformer = OptionalTransformer(inner_transformer)
-        assert transformer.wrapped_type(sync, "test_module") == "typing.Union[TestClass, None]"
+        assert transformer.wrapped_type(sync._wrapped, "test_module") == "typing.Union[TestClass, None]"
 
     def test_unwrap_expr(self, sync, wrapped_class):
         inner_transformer = WrappedClassTransformer(wrapped_class)
         transformer = OptionalTransformer(inner_transformer)
-        result = transformer.unwrap_expr(sync, "obj")
+        result = transformer.unwrap_expr(sync._wrapped, "obj")
         assert result == "obj._impl_instance if obj is not None else None"
 
     def test_wrap_expr(self, sync, wrapped_class):
         inner_transformer = WrappedClassTransformer(wrapped_class)
         transformer = OptionalTransformer(inner_transformer)
-        result = transformer.wrap_expr(sync, "test_module", "impl")
+        result = transformer.wrap_expr(sync._wrapped, "test_module", "impl")
         assert result == "TestClass._from_impl(impl) if impl is not None else None"
 
     def test_needs_translation(self, sync, wrapped_class):
@@ -334,18 +334,18 @@ class TestGeneratorTransformer:
     def test_wrapped_type_async_generator(self, sync, wrapped_class):
         yield_transformer = WrappedClassTransformer(wrapped_class)
         transformer = GeneratorTransformer(yield_transformer, is_async=True, send_type_str="None")
-        assert transformer.wrapped_type(sync, "test_module") == "typing.AsyncGenerator[TestClass, None]"
+        assert transformer.wrapped_type(sync._wrapped, "test_module") == "typing.AsyncGenerator[TestClass, None]"
 
     def test_wrapped_type_async_iterator_no_send(self, sync):
         """AsyncIterator doesn't have send type."""
         yield_transformer = IdentityTransformer(int)
         transformer = GeneratorTransformer(yield_transformer, is_async=True, send_type_str=None)
-        assert transformer.wrapped_type(sync, "test_module") == "typing.AsyncGenerator[int]"
+        assert transformer.wrapped_type(sync._wrapped, "test_module") == "typing.AsyncGenerator[int]"
 
     def test_wrapped_type_sync_generator(self, sync):
         yield_transformer = IdentityTransformer(str)
         transformer = GeneratorTransformer(yield_transformer, is_async=False)
-        assert transformer.wrapped_type(sync, "test_module") == "typing.Generator[str, None, None]"
+        assert transformer.wrapped_type(sync._wrapped, "test_module") == "typing.Generator[str, None, None]"
 
     def test_needs_translation(self, sync, wrapped_class):
         # Generator of primitives doesn't need translation
@@ -359,7 +359,7 @@ class TestGeneratorTransformer:
     def test_get_yield_wrap_expr(self, sync, wrapped_class):
         yield_transformer = WrappedClassTransformer(wrapped_class)
         transformer = GeneratorTransformer(yield_transformer, is_async=True)
-        result = transformer.get_yield_wrap_expr(sync, "test_module", "item")
+        result = transformer.get_yield_wrap_expr(sync._wrapped, "test_module", "item")
         assert result == "TestClass._from_impl(item)"
 
 
@@ -367,44 +367,44 @@ class TestCreateTransformer:
     """Test the create_transformer factory function."""
 
     def test_create_primitive(self, sync):
-        transformer = create_transformer(int, sync)
+        transformer = create_transformer(int, sync._wrapped)
         assert isinstance(transformer, IdentityTransformer)
 
     def test_create_wrapped_class(self, sync, wrapped_class):
-        transformer = create_transformer(wrapped_class, sync)
+        transformer = create_transformer(wrapped_class, sync._wrapped)
         assert isinstance(transformer, WrappedClassTransformer)
 
     def test_create_list(self, sync):
         from typing import List
 
-        transformer = create_transformer(List[int], sync)
+        transformer = create_transformer(List[int], sync._wrapped)
         assert isinstance(transformer, ListTransformer)
         assert isinstance(transformer.item_transformer, IdentityTransformer)
 
     def test_create_dict(self, sync):
         from typing import Dict
 
-        transformer = create_transformer(Dict[str, int], sync)
+        transformer = create_transformer(Dict[str, int], sync._wrapped)
         assert isinstance(transformer, DictTransformer)
 
     def test_create_tuple_fixed(self, sync, wrapped_class):
         from typing import Tuple
 
-        transformer = create_transformer(Tuple[int, wrapped_class], sync)
+        transformer = create_transformer(Tuple[int, wrapped_class], sync._wrapped)
         assert isinstance(transformer, TupleTransformer)
         assert len(transformer.item_transformers) == 2
 
     def test_create_optional(self, sync, wrapped_class):
         from typing import Optional
 
-        transformer = create_transformer(Optional[wrapped_class], sync)
+        transformer = create_transformer(Optional[wrapped_class], sync._wrapped)
         assert isinstance(transformer, OptionalTransformer)
         assert isinstance(transformer.inner_transformer, WrappedClassTransformer)
 
     def test_create_async_generator(self, sync):
         from typing import AsyncGenerator
 
-        transformer = create_transformer(AsyncGenerator[str, None], sync)
+        transformer = create_transformer(AsyncGenerator[str, None], sync._wrapped)
         assert isinstance(transformer, GeneratorTransformer)
         assert transformer.is_async is True
 
@@ -412,13 +412,13 @@ class TestCreateTransformer:
         """Test nested type: list[Optional[WrappedClass]]."""
         from typing import List, Optional
 
-        transformer = create_transformer(List[Optional[wrapped_class]], sync)
+        transformer = create_transformer(List[Optional[wrapped_class]], sync._wrapped)
         assert isinstance(transformer, ListTransformer)
         assert isinstance(transformer.item_transformer, OptionalTransformer)
         assert isinstance(transformer.item_transformer.inner_transformer, WrappedClassTransformer)
 
         # Check type signature
-        result = transformer.wrapped_type(sync, "test_module")
+        result = transformer.wrapped_type(sync._wrapped, "test_module")
         assert result == "list[typing.Union[TestClass, None]]"
 
         # Check needs translation
@@ -432,14 +432,14 @@ class TestComplexNestedTypes:
         """Test dict[str, list[WrappedClass]]."""
         from typing import Dict, List
 
-        transformer = create_transformer(Dict[str, List[wrapped_class]], sync)
+        transformer = create_transformer(Dict[str, List[wrapped_class]], sync._wrapped)
 
         # Check type signature
-        result = transformer.wrapped_type(sync, "test_module")
+        result = transformer.wrapped_type(sync._wrapped, "test_module")
         assert result == "dict[str, list[TestClass]]"
 
         # Check unwrap expression
-        unwrap = transformer.unwrap_expr(sync, "data")
+        unwrap = transformer.unwrap_expr(sync._wrapped, "data")
         assert "[x._impl_instance for x in v]" in unwrap
         assert "for k, v in data.items()" in unwrap
 
@@ -450,14 +450,14 @@ class TestComplexNestedTypes:
         """Test tuple[int, WrappedClass, str]."""
         from typing import Tuple
 
-        transformer = create_transformer(Tuple[int, wrapped_class, str], sync)
+        transformer = create_transformer(Tuple[int, wrapped_class, str], sync._wrapped)
 
         # Check type signature
-        result = transformer.wrapped_type(sync, "test_module")
+        result = transformer.wrapped_type(sync._wrapped, "test_module")
         assert result == "tuple[int, TestClass, str]"
 
         # Check unwrap - should unwrap only the wrapped class at index 1
-        unwrap = transformer.unwrap_expr(sync, "items")
+        unwrap = transformer.unwrap_expr(sync._wrapped, "items")
         assert "items[0]" in unwrap
         assert "items[1]._impl_instance" in unwrap
         assert "items[2]" in unwrap

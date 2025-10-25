@@ -35,6 +35,18 @@ class Module:
         self._registered_classes = {}
         self._registered_functions = {}
 
+    @property
+    def target_module(self) -> str:
+        """Get the target module name for code generation."""
+        return self._target_module
+
+    def module_items(self) -> dict[typing.Union[type, types.FunctionType], tuple[str, str]]:
+        """Get all registered classes and functions with their target module and name."""
+        result = {}
+        result.update(self._registered_classes)
+        result.update(self._registered_functions)
+        return result
+
     def wrap_function(self, f: T) -> T:
         self._registered_functions[f] = (self._target_module, f.__name__)
         return f
