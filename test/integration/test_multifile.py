@@ -192,6 +192,46 @@ print("SUCCESS")
         assert result.returncode == 0, f"Test script failed with exit code {result.returncode}"
         assert "SUCCESS" in result.stdout
 
+        # Verify that importing generated wrappers does NOT import synchronicity.codegen
+        # This ensures build-time code (codegen) is separate from runtime code (synchronizer)
+        check_imports_script = tmppath / "check_imports.py"
+        check_imports_script.write_text(
+            """
+import sys
+from multifile.a import A
+from multifile.b import B
+
+# Check what synchronicity modules were imported
+sync_modules = [m for m in sys.modules.keys() if m.startswith('synchronicity')]
+print("SYNC_MODULES:", ','.join(sorted(sync_modules)))
+
+# Verify codegen was NOT imported (build-time only)
+assert 'synchronicity.codegen' not in sys.modules, "synchronicity.codegen should not be imported at runtime"
+
+# Verify synchronizer WAS imported (runtime dependency)
+assert 'synchronicity.synchronizer' in sys.modules, "synchronicity.synchronizer should be imported at runtime"
+
+print("IMPORT_CHECK_SUCCESS")
+"""
+        )
+
+        # Run import check in fresh subprocess
+        result_imports = subprocess.run(
+            [sys.executable, str(check_imports_script)],
+            capture_output=True,
+            text=True,
+            cwd=str(tmppath),
+            env=env,
+        )
+
+        print(f"Import check output:\n{result_imports.stdout}")
+        if result_imports.returncode != 0:
+            print(f"Import check stderr:\n{result_imports.stderr}")
+
+        assert result_imports.returncode == 0, f"Import check failed with exit code {result_imports.returncode}"
+        assert "IMPORT_CHECK_SUCCESS" in result_imports.stdout
+        assert "synchronicity.codegen" not in result_imports.stdout
+
 
 def test_multifile_type_checking(support_files_path):
     """Test that generated code from multiple modules passes type checking.
