@@ -3,17 +3,21 @@
 Command line interface for synchronicity compilation.
 
 Usage:
-    python -m synchronicity.cli -m <module> [<module> ...] <synchronizer_name>
+    python -m synchronicity.codegen -m <module> [<module> ...] <synchronizer_name>
+    # Or use the CLI entrypoint:
+    synchronicity -m <module> [<module> ...] <synchronizer_name>
 
 The CLI imports the specified modules, which causes them to register wrapped items
 with the named synchronizer, then generates wrapper code for all wrapped items.
 
 Examples:
     # Generate wrappers from a single module
-    python -m synchronicity.cli -m my.package.module my_sync > generated.py
+    python -m synchronicity.codegen -m my.package.module my_sync > generated.py
+    synchronicity -m my.package.module my_sync > generated.py
 
     # Generate wrappers from multiple modules
-    python -m synchronicity.cli -m package.a -m package.b my_sync > generated.py
+    python -m synchronicity.codegen -m package.a -m package.b my_sync > generated.py
+    synchronicity -m package.a -m package.b my_sync > generated.py
 """
 
 import argparse
@@ -22,7 +26,7 @@ import sys
 import typing
 from pathlib import Path
 
-from synchronicity.codegen.writer import write_modules
+from .writer import write_modules
 
 
 def import_module(module_name: str) -> None:
@@ -85,16 +89,20 @@ def main() -> None:
         epilog="""
 Examples:
   # Generate wrappers to files (default)
-  python -m synchronicity.cli -m my.package._module my_sync
+  python -m synchronicity.codegen -m my.package._module my_sync
+  synchronicity -m my.package._module my_sync
 
   # Generate wrappers to a specific directory
-  python -m synchronicity.cli -m my.package._module my_sync -o output/
+  python -m synchronicity.codegen -m my.package._module my_sync -o output/
+  synchronicity -m my.package._module my_sync -o output/
 
   # Print all modules to stdout
-  python -m synchronicity.cli -m my.package._module my_sync --stdout
+  python -m synchronicity.codegen -m my.package._module my_sync --stdout
+  synchronicity -m my.package._module my_sync --stdout
 
   # Generate wrappers for multiple modules
-  python -m synchronicity.cli -m package._a -m package._b my_sync
+  python -m synchronicity.codegen -m package._a -m package._b my_sync
+  synchronicity -m package._a -m package._b my_sync
         """,
     )
     parser.add_argument(
@@ -128,8 +136,9 @@ Examples:
     print(f"Importing modules for synchronizer '{synchronizer_name}'...", file=sys.stderr)
 
     # Import modules and collect Module objects BEFORE the reload pass
-    from synchronicity.codegen.compile import compile_modules
-    from synchronicity.synchronizer import Module
+    from synchronicity.module import Module
+
+    from .compile import compile_modules
 
     # First pass: Normal imports to register wrapped items
     module_objects = []

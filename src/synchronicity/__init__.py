@@ -1,3 +1,4 @@
-from .synchronizer import Module, Synchronizer, get_synchronizer
+from .module import Module
+from .synchronizer import Synchronizer, get_synchronizer
 
-__all__ = ["Synchronizer", "get_synchronizer", "Module"]
+__all__ = ["Module", "Synchronizer", "get_synchronizer"]

@@ -3,11 +3,8 @@ import atexit
 import concurrent.futures
 import os
 import threading
-import types
 import typing
-from typing import Callable, Optional
-
-T = typing.TypeVar("T", bound=typing.Union[type, Callable])
+from typing import Optional
 
 # Global registry for synchronizer instances
 _synchronizer_registry = {}
@@ -18,50 +15,6 @@ def get_synchronizer(name: str) -> "Synchronizer":
     if name not in _synchronizer_registry:
         _synchronizer_registry[name] = Synchronizer(name)
     return _synchronizer_registry[name]
-
-
-class Module:
-    _target_module: str
-    _registered_classes: dict[type, tuple[str, str]]
-    _registered_functions: dict[types.FunctionType, tuple[str, str]]
-
-    def __init__(self, target_module: Optional[str]):
-        if not target_module:
-            # TODO: Use call stack to infer calling module, if it's underscored
-            # or suffixed with "_impl" -> default to output in same dir
-            raise NotImplementedError("Auto module not implemented")
-
-        self._target_module: str = target_module
-        self._registered_classes = {}
-        self._registered_functions = {}
-
-    @property
-    def target_module(self) -> str:
-        """Get the target module name for code generation."""
-        return self._target_module
-
-    def module_items(self) -> dict[typing.Union[type, types.FunctionType], tuple[str, str]]:
-        """Get all registered classes and functions with their target module and name."""
-        result = {}
-        result.update(self._registered_classes)
-        result.update(self._registered_functions)
-        return result
-
-    def wrap_function(self, f: T) -> T:
-        # Skip registration if we're in a reload pass for type checking
-        import os
-
-        if not os.environ.get("_SYNCHRONICITY_SKIP_REGISTRATION"):
-            self._registered_functions[f] = (self._target_module, f.__name__)
-        return f
-
-    def wrap_class(self, cls: T) -> T:
-        # Skip registration if we're in a reload pass for type checking
-        import os
-
-        if not os.environ.get("_SYNCHRONICITY_SKIP_REGISTRATION"):
-            self._registered_classes[cls] = (self._target_module, cls.__name__)
-        return cls
 
 
 class Synchronizer:

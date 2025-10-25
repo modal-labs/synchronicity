@@ -6,7 +6,7 @@ import inspect
 import types
 from typing import TYPE_CHECKING
 
-from synchronicity.synchronizer import Module
+from synchronicity.module import Module
 
 from .signature_utils import is_async_generator
 from .type_transformer import GeneratorTransformer, create_transformer

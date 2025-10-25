@@ -32,7 +32,7 @@ def test_multifile_generation(monkeypatch, support_files_path):
         [
             sys.executable,
             "-m",
-            "synchronicity.cli",
+            "synchronicity.codegen",
             "-m",
             "multifile._a",
             "-m",
@@ -83,7 +83,7 @@ def test_multifile_execution(support_files_path):
             [
                 sys.executable,
                 "-m",
-                "synchronicity.cli",
+                "synchronicity.codegen",
                 "-m",
                 "multifile._a",
                 "-m",
@@ -215,7 +215,7 @@ def test_multifile_type_checking(support_files_path):
             [
                 sys.executable,
                 "-m",
-                "synchronicity.cli",
+                "synchronicity.codegen",
                 "-m",
                 "multifile._a",
                 "-m",
