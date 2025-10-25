@@ -57,7 +57,7 @@ def test_wrapper_helpers_generated():
 
     # Check the _from_impl classmethod structure with class-level cache
     assert "_instance_cache: weakref.WeakValueDictionary = weakref.WeakValueDictionary()" in compiled_code
-    assert "def _from_impl(cls, impl_instance: _test_impl._ImplPerson)" in compiled_code
+    assert "def _from_impl(cls, impl_instance: test.support_files._test_impl._ImplPerson)" in compiled_code
     assert "cache_key = id(impl_instance)" in compiled_code
     assert "if cache_key in cls._instance_cache:" in compiled_code
     assert "wrapper = cls.__new__(cls)" in compiled_code
@@ -107,8 +107,8 @@ def test_no_translation_for_primitives():
     async def returns_string() -> str:
         return "hello"
 
-    returns_string.__module__ = "_test_impl"
-    sys.modules["_test_impl"].returns_string = returns_string
+    returns_string.__module__ = "test.support_files._test_impl"
+    sys.modules["test.support_files._test_impl"].returns_string = returns_string
 
     test_module = Module("test_lib")
     test_module.wrap_function(returns_string)
