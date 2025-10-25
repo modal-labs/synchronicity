@@ -11,7 +11,7 @@ from pathlib import Path
 @pytest.fixture
 def support_files_path():
     """Get the path to support_files directory."""
-    return Path(__file__).parent / "support_files"
+    return Path(__file__).parent.parent / "support_files"
 
 
 def test_multifile_generation(monkeypatch, support_files_path):
@@ -194,7 +194,10 @@ print("SUCCESS")
 
 
 def test_multifile_type_checking(support_files_path):
-    """Test that generated code from multiple modules passes type checking."""
+    """Test that generated code from multiple modules passes type checking.
+
+    Note: Requires pyright to be installed (npm install -g pyright).
+    """
     # Create a temporary directory and generate files there
     with tempfile.TemporaryDirectory() as tmpdir:
         tmppath = Path(tmpdir)

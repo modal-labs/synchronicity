@@ -594,28 +594,88 @@ write_modules(Path("./package/"), modules)
 
 ## Test Suite Overview
 
-**Location:** [test/synchronicity2_tests/](test/synchronicity2_tests/)
-**Total Tests:** 98 tests across 7 test files
-**Pass Rate:** ~79% (77/98 passing, 21 with minor test fixture issues)
+**Location:** [test/](test/)
+**Total Tests:** 101 tests across 7 test files organized by abstraction layer
+**Pass Rate:** 101 passing (100%)
 
-### Test Categories
+### Running Tests
 
-1. **Compilation Tests (26 tests)**
-   - [compile_function_test.py](test/synchronicity2_tests/compile_function_test.py) - 10 tests
-   - [compile_sync_function_test.py](test/synchronicity2_tests/compile_sync_function_test.py) - 6 tests
-   - [wrapper_class_test.py](test/synchronicity2_tests/wrapper_class_test.py) - 10 tests
+**IMPORTANT:** Always activate the virtualenv before running tests:
 
-2. **Type System Tests (53 tests)**
-   - [type_transformers_test.py](test/synchronicity2_tests/type_transformers_test.py) - Complete transformer coverage (all passing)
+```bash
+# Activate virtualenv (required for pytest to be on PATH)
+source .venv/bin/activate
 
-3. **Integration Tests (19 tests)**
-   - [codegen_integration_test.py](test/synchronicity2_tests/codegen_integration_test.py) - 11 tests
-   - [multifile_integration_test.py](test/synchronicity2_tests/multifile_integration_test.py) - 3 tests
-   - [translation_integration_test.py](test/synchronicity2_tests/translation_integration_test.py) - 5 tests
+# Run all tests
+pytest test/
+
+# Run unit tests only (fast)
+pytest test/unit/
+
+# Run integration tests only
+pytest test/integration/
+
+# Run specific test file
+pytest test/unit/compile/test_function_codegen.py
+
+# Run tests with verbose output
+pytest test/ -v
+
+# Run tests with coverage
+pytest test/ --cov=synchronicity
+```
+
+**Note:** Some tests require `pyright` for type checking validation:
+```bash
+npm install -g pyright  # Install pyright globally
+```
+
+### Test Organization
+
+Tests are organized by abstraction layers for clear separation of concerns:
+
+```
+test/
+├── unit/                          # Pure unit tests (no execution, no I/O)
+│   ├── compile/                   # Code generation units
+│   │   ├── test_function_codegen.py    # 26 tests - async/sync/generator functions
+│   │   ├── test_class_codegen.py       # 10 tests - class wrapper generation
+│   │   └── test_module_codegen.py      # 3 tests - module-level compilation
+│   │
+│   └── transformers/              # Type transformation units
+│       └── test_type_transformers.py   # 53 tests - all transformer types
+│
+├── integration/                   # Integration tests (execution, I/O)
+│   ├── test_codegen_execution.py       # 6 tests - execute generated code
+│   ├── test_type_translation.py        # 5 tests - type translation runtime
+│   ├── test_multifile.py               # 2 tests - multi-module scenarios
+│   └── test_type_checking.py           # 5 tests - pyright validation (requires pyright)
+│
+└── support_files/                 # Test fixtures using Module API
+    ├── _simple_function.py             # Basic functions
+    ├── _simple_class.py                # Async class examples
+    ├── _class_with_translation.py      # Wrapped type examples
+    ├── _test_impl.py                   # Translation test fixtures
+    ├── _event_loop_check.py            # Event loop validation
+    └── multifile/                      # Cross-module tests
+        ├── _a.py
+        └── _b.py
+```
+
+### Adding New Tests
+
+**Where to add new tests:**
+
+- **Function compilation** → `test/unit/compile/test_function_codegen.py`
+- **Class compilation** → `test/unit/compile/test_class_codegen.py`
+- **Type transformers** → `test/unit/transformers/test_type_transformers.py`
+- **Execution/runtime** → `test/integration/test_codegen_execution.py`
+- **Type checking** → `test/integration/test_type_checking.py`
+- **Multi-module** → `test/integration/test_multifile.py`
 
 ### Test Fixtures (All Use Module API)
 
-**Support Files:** [test/synchronicity2_tests/support_files/](test/synchronicity2_tests/support_files/)
+**Support Files:** [test/support_files/](test/support_files/)
 - `_simple_function.py` - Module("test_support") with basic functions
 - `_simple_class.py` - Module("simple_class_lib") with async class
 - `_class_with_translation.py` - Module("translation_lib") with wrapped types
@@ -733,7 +793,7 @@ Only generated code uses Synchronizer.
 - **Generated code:** `from synchronicity import get_synchronizer`
 - **Build script:** `from synchronicity.codegen.compile import compile_modules`
 - **CLI:** `python -m synchronicity.cli`
-- **Tests:** `pytest test/synchronicity2_tests/`
+- **Tests:** `source .venv/bin/activate && pytest test/`
 
 ---
 
@@ -809,4 +869,4 @@ Only generated code uses Synchronizer.
 
 **Last Updated:** 2025-01-25
 **Codebase Branch:** `freider/synchronicity2-vibes`
-**Test Status:** 77/98 passing (79%)
+**Test Status:** 101/101 passing (100%) 🎉
