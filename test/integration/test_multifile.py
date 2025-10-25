@@ -107,33 +107,29 @@ def test_multifile_execution(support_files_path):
         assert module_b.exists(), f"Module b.py not created at {module_b}"
 
         # Verify generated modules are type-correct by running pyright
-        venv_pyright = Path(__file__).parent.parent.parent / ".venv" / "bin" / "pyright"
-        if venv_pyright.exists():
-            # Check module_a
-            result_a = subprocess.run(
-                [str(venv_pyright), str(module_a)],
-                capture_output=True,
-                text=True,
-                cwd=str(tmppath),
-            )
-            if result_a.returncode != 0:
-                print(f"  ✗ Generated module a.py has type errors:\n{result_a.stdout}")
-            else:
-                print("  ✓ Generated module a.py passes pyright")
-
-            # Check module_b
-            result_b = subprocess.run(
-                [str(venv_pyright), str(module_b)],
-                capture_output=True,
-                text=True,
-                cwd=str(tmppath),
-            )
-            if result_b.returncode != 0:
-                print(f"  ✗ Generated module b.py has type errors:\n{result_b.stdout}")
-            else:
-                print("  ✓ Generated module b.py passes pyright")
+        # Check module_a
+        result_a = subprocess.run(
+            ["pyright", str(module_a)],
+            capture_output=True,
+            text=True,
+            cwd=str(tmppath),
+        )
+        if result_a.returncode != 0:
+            print(f"  ✗ Generated module a.py has type errors:\n{result_a.stdout}")
         else:
-            print("  ⊘ Pyright validation skipped (pyright not installed)")
+            print("  ✓ Generated module a.py passes pyright")
+
+        # Check module_b
+        result_b = subprocess.run(
+            ["pyright", str(module_b)],
+            capture_output=True,
+            text=True,
+            cwd=str(tmppath),
+        )
+        if result_b.returncode != 0:
+            print(f"  ✗ Generated module b.py has type errors:\n{result_b.stdout}")
+        else:
+            print("  ✓ Generated module b.py passes pyright")
 
         # Copy implementation modules to tmpdir so they can be imported
         impl_module_a = support_files_path / "multifile/_a.py"
@@ -234,10 +230,7 @@ print("IMPORT_CHECK_SUCCESS")
 
 
 def test_multifile_type_checking(support_files_path):
-    """Test that generated code from multiple modules passes type checking.
-
-    Note: Requires pyright to be installed (npm install -g pyright).
-    """
+    """Test that generated code from multiple modules passes type checking."""
     # Create a temporary directory and generate files there
     with tempfile.TemporaryDirectory() as tmpdir:
         tmppath = Path(tmpdir)

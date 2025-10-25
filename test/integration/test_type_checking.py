@@ -12,10 +12,6 @@ from pathlib import Path
 
 from synchronicity.codegen.compile import compile_modules
 
-# Note: These tests require pyright to be installed
-# Install with: npm install -g pyright
-# Or use the project's pyright if available in node_modules
-
 
 def check_pyright(module_paths: list[Path], extra_pythonpath: str = None) -> str:
     """Run pyright on generated code to check for type errors.
