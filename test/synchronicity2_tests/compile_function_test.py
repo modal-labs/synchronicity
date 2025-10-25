@@ -4,14 +4,13 @@ import typing
 from typing import Dict, List, Optional
 
 from synchronicity.codegen.compile import compile_function
-from synchronicity.synchronizer import Synchronizer
 
 
 # Test fixtures
 @pytest.fixture
 def test_synchronizer():
-    """Create a test synchronizer for testing"""
-    return Synchronizer("test_synchronizer")
+    """Create empty synchronized_types dict for testing (replaces Synchronizer._wrapped)"""
+    return {}
 
 
 @pytest.fixture
@@ -78,32 +77,22 @@ def generic_types_function():
 
 def test_compile_function_basic_types(test_synchronizer, simple_function):
     """Test _compile_function with basic type annotations"""
-    test_synchronizer.wrap(target_module="test_module")(simple_function)
 
-    # Get the wrapped function
-    wrapped_func = None
-    for func, (module, name) in test_synchronizer._wrapped.items():
-        if func.__name__ == simple_function.__name__:
-            wrapped_func = func
-            break
-
-    assert wrapped_func is not None, "Function should be wrapped"
-
-    # Generate code
-    generated_code = compile_function(wrapped_func, "test_module", "test_synchronizer", test_synchronizer._wrapped)
+    # Generate code directly (no wrapping needed)
+    generated_code = compile_function(simple_function, "test_module", "test_synchronizer", test_synchronizer)
     print(generated_code)
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
 
     # Verify it contains expected elements
     # Implementation should reference the actual module where func is defined
-    assert f"impl_function = {wrapped_func.__module__}." in generated_code
-    assert f"class _{wrapped_func.__name__}:" in generated_code  # Wrapper class
+    assert f"impl_function = {simple_function.__module__}." in generated_code
+    assert f"class _{simple_function.__name__}:" in generated_code  # Wrapper class
     assert "def __call__(self" in generated_code
     assert "async def aio(self" in generated_code
     assert "_run_function_sync" in generated_code
     assert "_run_function_async" in generated_code  # aio() should use _run_function_async
-    assert f"@replace_with(_{wrapped_func.__name__}_instance)" in generated_code  # Uses replace_with decorator
+    assert f"@replace_with(_{simple_function.__name__}_instance)" in generated_code  # Uses replace_with decorator
 
     # Verify type annotations are preserved
     assert "x: int" in generated_code
@@ -112,19 +101,9 @@ def test_compile_function_basic_types(test_synchronizer, simple_function):
 
 def test_compile_function_complex_types(test_synchronizer, complex_function):
     """Test _compile_function with complex type annotations"""
-    test_synchronizer.wrap(target_module="test_module")(complex_function)
 
-    # Get the wrapped function
-    wrapped_func = None
-    for func, (module, name) in test_synchronizer._wrapped.items():
-        if func.__name__ == complex_function.__name__:
-            wrapped_func = func
-            break
-
-    assert wrapped_func is not None, "Function should be wrapped"
-
-    # Generate code
-    generated_code = compile_function(wrapped_func, "test_module", "test_synchronizer", test_synchronizer._wrapped)
+    # Generate code directly (no wrapping needed)
+    generated_code = compile_function(complex_function, "test_module", "test_synchronizer", test_synchronizer)
 
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
@@ -144,19 +123,9 @@ def test_compile_function_complex_types(test_synchronizer, complex_function):
 
 def test_compile_function_no_annotations(test_synchronizer, no_annotation_function):
     """Test _compile_function with no type annotations"""
-    test_synchronizer.wrap(target_module="test_module")(no_annotation_function)
 
-    # Get the wrapped function
-    wrapped_func = None
-    for func, (module, name) in test_synchronizer._wrapped.items():
-        if func.__name__ == no_annotation_function.__name__:
-            wrapped_func = func
-            break
-
-    assert wrapped_func is not None, "Function should be wrapped"
-
-    # Generate code
-    generated_code = compile_function(wrapped_func, "test_module", "test_synchronizer", test_synchronizer._wrapped)
+    # Generate code directly (no wrapping needed)
+    generated_code = compile_function(no_annotation_function, "test_module", "test_synchronizer", test_synchronizer)
 
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
@@ -169,16 +138,9 @@ def test_compile_function_no_annotations(test_synchronizer, no_annotation_functi
 
 def test_compile_function_template_pattern(test_synchronizer, simple_function):
     """Test that the generated code follows the template pattern exactly"""
-    test_synchronizer.wrap(target_module="test_module")(simple_function)
 
-    # Get the wrapped function
-    wrapped_func = None
-    for func, (module, name) in test_synchronizer._wrapped.items():
-        if func.__name__ == simple_function.__name__:
-            wrapped_func = func
-            break
-
-    generated_code = compile_function(wrapped_func, "test_module", "test_synchronizer", test_synchronizer._wrapped)
+    # Generate code directly (no wrapping needed)
+    generated_code = compile_function(simple_function, "test_module", "test_synchronizer", test_synchronizer)
 
     # Check that the generated code contains all expected template elements
     template_elements = [
@@ -206,15 +168,10 @@ def test_compile_function_template_pattern(test_synchronizer, simple_function):
 
 def test_compile_function_multiple_functions(test_synchronizer, simple_function, complex_function):
     """Test _compile_function with multiple wrapped functions"""
-    test_synchronizer.wrap(target_module="test_module")(simple_function)
-    test_synchronizer.wrap(target_module="test_module")(complex_function)
 
-    # Should have 2 wrapped functions
-    assert len(test_synchronizer._wrapped) == 2
-
-    # Each should generate valid code
-    for func, (target_module, target_name) in test_synchronizer._wrapped.items():
-        generated_code = compile_function(func, "test_module", "test_synchronizer", test_synchronizer._wrapped)
+    # Both functions should generate valid code independently
+    for func in [simple_function, complex_function]:
+        generated_code = compile_function(func, "test_module", "test_synchronizer", test_synchronizer)
 
         # Should compile without errors
         compile(generated_code, "<string>", "exec")
@@ -229,19 +186,9 @@ def test_compile_function_multiple_functions(test_synchronizer, simple_function,
 
 def test_compile_function_async_generator(test_synchronizer, async_generator_function):
     """Test _compile_function with async generator function"""
-    test_synchronizer.wrap(target_module="test_module")(async_generator_function)
 
-    # Get the wrapped function
-    wrapped_func = None
-    for func, (module, name) in test_synchronizer._wrapped.items():
-        if func.__name__ == async_generator_function.__name__:
-            wrapped_func = func
-            break
-
-    assert wrapped_func is not None, "Function should be wrapped"
-
-    # Generate code
-    generated_code = compile_function(wrapped_func, "test_module", "test_synchronizer", test_synchronizer._wrapped)
+    # Generate code directly (no wrapping needed)
+    generated_code = compile_function(async_generator_function, "test_module", "test_synchronizer", test_synchronizer)
 
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
@@ -272,16 +219,9 @@ def test_compile_function_async_generator(test_synchronizer, async_generator_fun
 
 def test_compile_function_async_generator_template_pattern(test_synchronizer, async_generator_function):
     """Test that async generator functions follow the template pattern"""
-    test_synchronizer.wrap(target_module="test_module")(async_generator_function)
 
-    # Get the wrapped function
-    wrapped_func = None
-    for func, (module, name) in test_synchronizer._wrapped.items():
-        if func.__name__ == async_generator_function.__name__:
-            wrapped_func = func
-            break
-
-    generated_code = compile_function(wrapped_func, "test_module", "test_synchronizer", test_synchronizer._wrapped)
+    # Generate code directly (no wrapping needed)
+    generated_code = compile_function(async_generator_function, "test_module", "test_synchronizer", test_synchronizer)
 
     # Check that the generated code contains all expected template elements
     template_elements = [
@@ -302,19 +242,9 @@ def test_compile_function_async_generator_template_pattern(test_synchronizer, as
 
 def test_compile_function_generic_types(test_synchronizer, generic_types_function):
     """Test _compile_function with generic type arguments like list[str], dict[str, int]"""
-    test_synchronizer.wrap(target_module="test_module")(generic_types_function)
 
-    # Get the wrapped function
-    wrapped_func = None
-    for func, (module, name) in test_synchronizer._wrapped.items():
-        if func.__name__ == generic_types_function.__name__:
-            wrapped_func = func
-            break
-
-    assert wrapped_func is not None, "Function should be wrapped"
-
-    # Generate code
-    generated_code = compile_function(wrapped_func, "test_module", "test_synchronizer", test_synchronizer._wrapped)
+    # Generate code directly (no wrapping needed)
+    generated_code = compile_function(generic_types_function, "test_module", "test_synchronizer", test_synchronizer)
 
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
@@ -334,7 +264,7 @@ def test_compile_function_generic_types(test_synchronizer, generic_types_functio
     # Verify it contains expected template elements
     assert "class _" in generated_code
     assert "def __call__(self" in generated_code
-    assert f"impl_function = {wrapped_func.__module__}." in generated_code
+    assert f"impl_function = {simple_function.__module__}." in generated_code
     assert "async def aio(self" in generated_code
     assert "@replace_with" in generated_code
 
@@ -356,29 +286,21 @@ def test_compile_async_generator_with_wrapped_type_quoting(test_synchronizer):
     """
 
     # Create a wrapped class
-    @test_synchronizer.wrap(target_module="test_module")
     class Person:
         def __init__(self, name: str):
             self.name = name
 
+    # Register the wrapped class
+    test_synchronizer[Person] = ("test_module", "Person")
+
     # Create an async generator that yields the wrapped type
-    @test_synchronizer.wrap(target_module="test_module")
     async def stream_people(count: int) -> typing.AsyncIterator[Person]:
         """Stream people instances."""
         for i in range(count):
             yield Person(f"Person {i}")
 
-    # Get the wrapped function
-    wrapped_func = None
-    for func, (module, name) in test_synchronizer._wrapped.items():
-        if func.__name__ == "stream_people":
-            wrapped_func = func
-            break
-
-    assert wrapped_func is not None, "Function should be wrapped"
-
     # Generate code
-    generated_code = compile_function(wrapped_func, "test_module", "test_synchronizer", test_synchronizer._wrapped)
+    generated_code = compile_function(stream_people, "test_module", "test_synchronizer", test_synchronizer)
 
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
@@ -403,13 +325,14 @@ def test_compile_async_generator_with_nested_wrapped_type_quoting(test_synchroni
     """Test that async generators with nested wrapped types (e.g., list[Person]) quote the entire return type."""
 
     # Create a wrapped class
-    @test_synchronizer.wrap(target_module="test_module")
     class Person:
         def __init__(self, name: str):
             self.name = name
 
+    # Register the wrapped class
+    test_synchronizer[Person] = ("test_module", "Person")
+
     # Create an async generator that yields lists of the wrapped type
-    @test_synchronizer.wrap(target_module="test_module")
     async def stream_person_batches(batch_size: int) -> typing.AsyncIterator[List[Person]]:
         """Stream batches of people."""
         batch = []
@@ -421,17 +344,8 @@ def test_compile_async_generator_with_nested_wrapped_type_quoting(test_synchroni
         if batch:
             yield batch
 
-    # Get the wrapped function
-    wrapped_func = None
-    for func, (module, name) in test_synchronizer._wrapped.items():
-        if func.__name__ == "stream_person_batches":
-            wrapped_func = func
-            break
-
-    assert wrapped_func is not None, "Function should be wrapped"
-
     # Generate code
-    generated_code = compile_function(wrapped_func, "test_module", "test_synchronizer", test_synchronizer._wrapped)
+    generated_code = compile_function(stream_person_batches, "test_module", "test_synchronizer", test_synchronizer)
 
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")

@@ -1,13 +1,13 @@
 """Module A for multifile integration testing."""
 
-from synchronicity.synchronizer import get_synchronizer
+from synchronicity import Module
 
 from ._b import B
 
-s = get_synchronizer("s")
+wrapper_module = Module("multifile.a")
 
 
-@s.wrap()
+@wrapper_module.wrap_class
 class A:
     """A test class."""
 
@@ -18,7 +18,7 @@ class A:
         return self.value
 
 
-@s.wrap()
+@wrapper_module.wrap_function
 async def get_b() -> B:
     """Create and return a B instance."""
     return B()

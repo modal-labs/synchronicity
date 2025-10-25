@@ -4,18 +4,17 @@ import typing
 from typing import Dict, List, Optional
 
 from synchronicity.codegen.compile import compile_class
-from synchronicity.synchronizer import Synchronizer
 
 
 # Test fixtures
 @pytest.fixture
 def test_synchronizer():
-    """Create a test synchronizer for testing"""
-    return Synchronizer("test_synchronizer")
+    """Empty synchronized_types dict for testing (replaces Synchronizer._wrapped)."""
+    return {}
 
 
 @pytest.fixture
-def simple_class():
+def simple_class(test_synchronizer):
     """Simple class with basic async methods"""
 
     class TestClass:
@@ -35,11 +34,13 @@ def simple_class():
             self.value += amount
             return self.value
 
+    # Register the class in synchronized_types
+    test_synchronizer[TestClass] = ("test_module", "TestClass")
     return TestClass
 
 
 @pytest.fixture
-def complex_class():
+def complex_class(test_synchronizer):
     """Class with complex type annotations"""
 
     class ComplexClass:
@@ -58,11 +59,13 @@ def complex_class():
             await asyncio.sleep(0.01)
             return len(self.data)
 
+    # Register the class in synchronized_types
+    test_synchronizer[ComplexClass] = ("test_module", "ComplexClass")
     return ComplexClass
 
 
 @pytest.fixture
-def async_generator_class():
+def async_generator_class(test_synchronizer):
     """Class with async generator methods"""
 
     class AsyncGeneratorClass:
@@ -80,11 +83,13 @@ def async_generator_class():
                     await asyncio.sleep(0.01)
                     yield item
 
+    # Register the class in synchronized_types
+    test_synchronizer[AsyncGeneratorClass] = ("test_module", "AsyncGeneratorClass")
     return AsyncGeneratorClass
 
 
 @pytest.fixture
-def mixed_class():
+def mixed_class(test_synchronizer):
     """Class with mixed method types"""
 
     class MixedClass:
@@ -104,25 +109,17 @@ def mixed_class():
             # This should be ignored by the wrapper since it's not async
             return f"sync_{item}"
 
+    # Register the class in synchronized_types
+    test_synchronizer[MixedClass] = ("test_module", "MixedClass")
     return MixedClass
 
 
 # Test basic class compilation
 def test_compile_class_basic(test_synchronizer, simple_class):
     """Test basic class compilation"""
-    test_synchronizer.wrap(target_module="test_module")(simple_class)
-
-    # Get the wrapped class
-    wrapped_class = None
-    for cls, (module, name) in test_synchronizer._wrapped.items():
-        if cls.__name__ == simple_class.__name__:
-            wrapped_class = cls
-            break
-
-    assert wrapped_class is not None, "Class should be wrapped"
 
     # Generate code
-    generated_code = compile_class(wrapped_class, "test_module", "test_synchronizer", test_synchronizer._wrapped)
+    generated_code = compile_class(simple_class, "test_module", "test_synchronizer", test_synchronizer)
 
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
@@ -139,16 +136,8 @@ def test_compile_class_basic(test_synchronizer, simple_class):
 
 def test_compile_class_method_descriptors(test_synchronizer, simple_class):
     """Test that method descriptors are properly generated"""
-    test_synchronizer.wrap(target_module="test_module")(simple_class)
 
-    # Get the wrapped class
-    wrapped_class = None
-    for cls, (module, name) in test_synchronizer._wrapped.items():
-        if cls.__name__ == simple_class.__name__:
-            wrapped_class = cls
-            break
-
-    generated_code = compile_class(wrapped_class, "test_module", "test_synchronizer", test_synchronizer._wrapped)
+    generated_code = compile_class(simple_class, "test_module", "test_synchronizer", test_synchronizer)
 
     # Verify method wrapper classes are generated
     assert "TestClass_get_value" in generated_code
@@ -161,16 +150,8 @@ def test_compile_class_method_descriptors(test_synchronizer, simple_class):
 
 def test_compile_class_complex_types(test_synchronizer, complex_class):
     """Test class compilation with complex type annotations"""
-    test_synchronizer.wrap(target_module="test_module")(complex_class)
 
-    # Get the wrapped class
-    wrapped_class = None
-    for cls, (module, name) in test_synchronizer._wrapped.items():
-        if cls.__name__ == complex_class.__name__:
-            wrapped_class = cls
-            break
-
-    generated_code = compile_class(wrapped_class, "test_module", "test_synchronizer", test_synchronizer._wrapped)
+    generated_code = compile_class(complex_class, "test_module", "test_synchronizer", test_synchronizer)
 
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
@@ -187,16 +168,8 @@ def test_compile_class_complex_types(test_synchronizer, complex_class):
 
 def test_compile_class_async_generators(test_synchronizer, async_generator_class):
     """Test class compilation with async generator methods"""
-    test_synchronizer.wrap(target_module="test_module")(async_generator_class)
 
-    # Get the wrapped class
-    wrapped_class = None
-    for cls, (module, name) in test_synchronizer._wrapped.items():
-        if cls.__name__ == async_generator_class.__name__:
-            wrapped_class = cls
-            break
-
-    generated_code = compile_class(wrapped_class, "test_module", "test_synchronizer", test_synchronizer._wrapped)
+    generated_code = compile_class(async_generator_class, "test_module", "test_synchronizer", test_synchronizer)
 
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
@@ -211,16 +184,8 @@ def test_compile_class_async_generators(test_synchronizer, async_generator_class
 
 def test_compile_class_mixed_methods(test_synchronizer, mixed_class):
     """Test class compilation with mixed method types"""
-    test_synchronizer.wrap(target_module="test_module")(mixed_class)
 
-    # Get the wrapped class
-    wrapped_class = None
-    for cls, (module, name) in test_synchronizer._wrapped.items():
-        if cls.__name__ == mixed_class.__name__:
-            wrapped_class = cls
-            break
-
-    generated_code = compile_class(wrapped_class, "test_module", "test_synchronizer", test_synchronizer._wrapped)
+    generated_code = compile_class(mixed_class, "test_module", "test_synchronizer", test_synchronizer)
 
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
@@ -237,16 +202,8 @@ def test_compile_class_mixed_methods(test_synchronizer, mixed_class):
 
 def test_compile_class_type_annotations_preserved(test_synchronizer, simple_class):
     """Test that method type annotations are preserved"""
-    test_synchronizer.wrap(target_module="test_module")(simple_class)
 
-    # Get the wrapped class
-    wrapped_class = None
-    for cls, (module, name) in test_synchronizer._wrapped.items():
-        if cls.__name__ == simple_class.__name__:
-            wrapped_class = cls
-            break
-
-    generated_code = compile_class(wrapped_class, "test_module", "test_synchronizer", test_synchronizer._wrapped)
+    generated_code = compile_class(simple_class, "test_module", "test_synchronizer", test_synchronizer)
 
     # Verify type annotations are preserved
     assert "new_value: int" in generated_code
@@ -257,16 +214,8 @@ def test_compile_class_type_annotations_preserved(test_synchronizer, simple_clas
 
 def test_compile_class_instance_binding(test_synchronizer, simple_class):
     """Test that the generated code properly handles instance binding"""
-    test_synchronizer.wrap(target_module="test_module")(simple_class)
 
-    # Get the wrapped class
-    wrapped_class = None
-    for cls, (module, name) in test_synchronizer._wrapped.items():
-        if cls.__name__ == simple_class.__name__:
-            wrapped_class = cls
-            break
-
-    generated_code = compile_class(wrapped_class, "test_module", "test_synchronizer", test_synchronizer._wrapped)
+    generated_code = compile_class(simple_class, "test_module", "test_synchronizer", test_synchronizer)
 
     # Verify method wrapper classes are present (new decorator pattern)
     assert "class TestClass_" in generated_code  # Method wrapper classes
@@ -278,20 +227,12 @@ def test_compile_class_instance_binding(test_synchronizer, simple_class):
 
 def test_compile_class_impl_instance_access(test_synchronizer, simple_class):
     """Test that the generated class provides access to the original instance"""
-    test_synchronizer.wrap(target_module="test_module")(simple_class)
 
-    # Get the wrapped class
-    wrapped_class = None
-    for cls, _ in test_synchronizer._wrapped.items():
-        if cls.__name__ == simple_class.__name__:
-            wrapped_class = cls
-            break
-
-    generated_code = compile_class(wrapped_class, "test_module", "test_synchronizer", test_synchronizer._wrapped)
+    generated_code = compile_class(simple_class, "test_module", "test_synchronizer", test_synchronizer)
 
     # Verify original instance is created and accessible
     # Should reference the actual module where the class is defined
-    assert f"self._impl_instance = {wrapped_class.__module__}.{simple_class.__name__}(" in generated_code
+    assert f"self._impl_instance = {simple_class.__module__}.{simple_class.__name__}(" in generated_code
     # Verify that the generated class has the expected structure
     assert f"class {simple_class.__name__}:" in generated_code
     assert "_synchronizer = get_synchronizer(" in generated_code
@@ -299,15 +240,13 @@ def test_compile_class_impl_instance_access(test_synchronizer, simple_class):
 
 def test_compile_class_multiple_classes(test_synchronizer, simple_class, complex_class):
     """Test compilation of multiple classes"""
-    test_synchronizer.wrap(target_module="test_module")(simple_class)
-    test_synchronizer.wrap(target_module="test_module")(complex_class)
 
     # Should have 2 wrapped classes
-    assert len(test_synchronizer._wrapped) == 2
+    assert len(test_synchronizer) == 2
 
     # Each should generate valid code
-    for cls, (target_module, target_name) in test_synchronizer._wrapped.items():
-        generated_code = compile_class(cls, "test_module", "test_synchronizer", test_synchronizer._wrapped)
+    for cls, (target_module, target_name) in test_synchronizer.items():
+        generated_code = compile_class(cls, "test_module", "test_synchronizer", test_synchronizer)
 
         # Should compile without errors
         compile(generated_code, "<string>", "exec")
@@ -320,7 +259,7 @@ def test_compile_class_multiple_classes(test_synchronizer, simple_class, complex
 
 def test_compile_class_no_methods():
     """Test compilation of a class with no async methods"""
-    test_synchronizer = Synchronizer("test_synchronizer")
+    test_synchronizer = {}
 
     class EmptyClass:
         def __init__(self, value: int):
@@ -329,16 +268,10 @@ def test_compile_class_no_methods():
         def sync_method(self) -> int:
             return self.value
 
-    test_synchronizer.wrap(target_module="test_module")(EmptyClass)
+    # Register the class
+    test_synchronizer[EmptyClass] = ("test_module", "EmptyClass")
 
-    # Get the wrapped class
-    wrapped_class = None
-    for cls, _ in test_synchronizer._wrapped.items():
-        if cls.__name__ == EmptyClass.__name__:
-            wrapped_class = cls
-            break
-
-    generated_code = compile_class(wrapped_class, "test_module", "test_synchronizer", test_synchronizer._wrapped)
+    generated_code = compile_class(EmptyClass, "test_module", "test_synchronizer", test_synchronizer)
 
     # Should still generate a valid wrapper class
     compile(generated_code, "<string>", "exec")
@@ -347,5 +280,5 @@ def test_compile_class_no_methods():
     # Should not have any method wrapper assignments since no async methods
 
 
-# Note: test_compile_unwrapped_class_raises_error was removed as it's obsolete with the new Module-based API.
+# Note: test_compile_untest_class_raises_error was removed as it's obsolete with the new Module-based API.
 # The new API accepts synchronized_types dict directly without validation.

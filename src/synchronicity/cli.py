@@ -23,7 +23,6 @@ import typing
 from pathlib import Path
 
 from synchronicity.codegen.writer import write_modules
-from synchronicity.synchronizer import get_synchronizer
 
 
 def import_module(module_name: str) -> None:
@@ -39,16 +38,18 @@ def import_module(module_name: str) -> None:
         raise ImportError(f"Could not import module '{module_name}': {e}")
 
 
-def import_modules_two_pass(module_names: list[str]) -> None:
+def import_modules_two_pass(module_names: list[str]) -> list:
     """
     Import modules in two passes to handle TYPE_CHECKING imports.
 
     First pass: Normal import to register wrapped items
     Second pass: Reload with TYPE_CHECKING=True to make type annotations available
-                 (but prevent re-registration by temporarily disabling wrapping)
 
     Args:
         module_names: List of qualified module names to import
+
+    Returns:
+        List of imported module objects
     """
     import os
 
@@ -61,11 +62,10 @@ def import_modules_two_pass(module_names: list[str]) -> None:
 
     # Second pass: Reload with TYPE_CHECKING=True to resolve all type annotations
     # This allows us to evaluate annotations even if they're in TYPE_CHECKING blocks
-    # We temporarily set a flag to prevent re-registration during reload
     original_type_checking = typing.TYPE_CHECKING
     try:
         typing.TYPE_CHECKING = True
-        # Set an environment marker to prevent re-registration
+        # Set an environment marker to prevent re-registration during reload
         os.environ["_SYNCHRONICITY_SKIP_REGISTRATION"] = "1"
         for module in imported_modules:
             importlib.reload(module)
@@ -73,6 +73,8 @@ def import_modules_two_pass(module_names: list[str]) -> None:
         typing.TYPE_CHECKING = original_type_checking
         if "_SYNCHRONICITY_SKIP_REGISTRATION" in os.environ:
             del os.environ["_SYNCHRONICITY_SKIP_REGISTRATION"]
+
+    return imported_modules
 
 
 def main() -> None:
@@ -125,40 +127,59 @@ Examples:
 
     print(f"Importing modules for synchronizer '{synchronizer_name}'...", file=sys.stderr)
 
-    # Import all modules using two-pass loading to handle TYPE_CHECKING imports
-    import_modules_two_pass(args.modules)
-
-    # Get the synchronizer and check if it has wrapped items
-    synchronizer = get_synchronizer(synchronizer_name)
-
-    if not synchronizer._wrapped:
-        print(
-            f"\nError: No wrapped items found for synchronizer '{synchronizer_name}' in any of the specified modules",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    print(f"\nTotal wrapped items collected: {len(synchronizer._wrapped)}", file=sys.stderr)
-
-    # Convert wrapped items to Module objects grouped by target module
+    # Import modules and collect Module objects BEFORE the reload pass
     from synchronicity.codegen.compile import compile_modules
     from synchronicity.synchronizer import Module
 
+    # First pass: Normal imports to register wrapped items
+    module_objects = []
+    for module_name in args.modules:
+        print(f"  Importing module: {module_name}", file=sys.stderr)
+        importlib.import_module(module_name)
+        imported_module = sys.modules[module_name]
+
+        # Collect Module objects immediately after import (before reload)
+        for attr_name in dir(imported_module):
+            attr = getattr(imported_module, attr_name)
+            if isinstance(attr, Module):
+                module_objects.append(attr)
+                print(f"  Found Module: {attr.target_module} with {len(attr.module_items())} items", file=sys.stderr)
+
+    # Now do the TYPE_CHECKING reload pass (but Module objects are already collected)
+    import os
+
+    original_type_checking = typing.TYPE_CHECKING
+    try:
+        typing.TYPE_CHECKING = True
+        os.environ["_SYNCHRONICITY_SKIP_REGISTRATION"] = "1"
+        for module_name in args.modules:
+            importlib.reload(sys.modules[module_name])
+    finally:
+        typing.TYPE_CHECKING = original_type_checking
+        if "_SYNCHRONICITY_SKIP_REGISTRATION" in os.environ:
+            del os.environ["_SYNCHRONICITY_SKIP_REGISTRATION"]
+
+    if not module_objects:
+        print(
+            "\nError: No Module objects found in the specified modules.",
+            file=sys.stderr,
+        )
+        print(
+            "Make sure you have created a Module instance and decorated your functions/classes with it:",
+            file=sys.stderr,
+        )
+        print("  wrapper_module = Module('my_module')", file=sys.stderr)
+        print("  @wrapper_module.wrap_function", file=sys.stderr)
+        sys.exit(1)
+
+    # Count total registered items
+    total_items = sum(len(m.module_items()) for m in module_objects)
+    print(f"\nTotal registered items: {total_items}", file=sys.stderr)
+
     print("Compiling wrappers...", file=sys.stderr)
 
-    # Group wrapped items by target module
-    modules_by_target = {}
-    for item, (target_module, name) in synchronizer._wrapped.items():
-        if target_module not in modules_by_target:
-            modules_by_target[target_module] = Module(target_module)
-        # Register the item with the module
-        if isinstance(item, type):
-            modules_by_target[target_module]._registered_classes[item] = (target_module, name)
-        else:
-            modules_by_target[target_module]._registered_functions[item] = (target_module, name)
-
-    # Compile using the new Module-based API
-    modules = compile_modules(list(modules_by_target.values()), synchronizer_name)
+    # Compile using the Module-based API
+    modules = compile_modules(module_objects, synchronizer_name)
 
     if not modules:
         print("No modules generated", file=sys.stderr)

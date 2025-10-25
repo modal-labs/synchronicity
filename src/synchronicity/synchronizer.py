@@ -48,11 +48,19 @@ class Module:
         return result
 
     def wrap_function(self, f: T) -> T:
-        self._registered_functions[f] = (self._target_module, f.__name__)
+        # Skip registration if we're in a reload pass for type checking
+        import os
+
+        if not os.environ.get("_SYNCHRONICITY_SKIP_REGISTRATION"):
+            self._registered_functions[f] = (self._target_module, f.__name__)
         return f
 
     def wrap_class(self, cls: T) -> T:
-        self._registered_classes[cls] = (self._target_module, cls.__name__)
+        # Skip registration if we're in a reload pass for type checking
+        import os
+
+        if not os.environ.get("_SYNCHRONICITY_SKIP_REGISTRATION"):
+            self._registered_classes[cls] = (self._target_module, cls.__name__)
         return cls
 
 
@@ -74,9 +82,6 @@ class Synchronizer:
         self._nowrap_attr = "_sync_nonwrap_%d" % id(self)
         self._input_translation_attr = "_sync_input_translation_%d" % id(self)
         self._output_translation_attr = "_sync_output_translation_%d" % id(self)
-
-        # Dictionary to track wrapped items for code generation
-        self._wrapped = {}
 
         atexit.register(self._close_loop)
 
@@ -302,49 +307,3 @@ class Synchronizer:
             except BaseException as exc:
                 value = exc
                 is_exc = True
-
-    def wrap(self, *, target_module: Optional[str] = None) -> typing.Callable[[T], T]:
-        """
-        Decorator to mark a class or function for wrapping.
-
-        Args:
-            target_module: Optional target module name for the generated wrapper.
-                          If not provided, infers from the source module name by removing leading underscore.
-
-        Returns:
-            A decorator function that registers the class/function and returns it unchanged.
-
-        Example:
-            sync = get_synchronizer("my_sync")
-
-            @sync.wrap()
-            async def my_function():
-                pass
-
-            @sync.wrap()
-            class MyClass:
-                pass
-        """
-
-        def decorator(class_or_function: T) -> T:
-            # Skip registration if we're in a reload pass for type checking
-            import os
-
-            if os.environ.get("_SYNCHRONICITY_SKIP_REGISTRATION"):
-                return class_or_function
-
-            if target_module is None:
-                current_module = class_or_function.__module__.split(".")
-                assert current_module[-1].startswith("_"), (
-                    f"Module name must start with underscore when target_module is not specified. "
-                    f"Got: {class_or_function.__module__}"
-                )
-                output_module = current_module[:-1] + [current_module[-1].removeprefix("_")]
-                output_module = ".".join(output_module)
-            else:
-                output_module = target_module
-
-            self._wrapped[class_or_function] = (output_module, class_or_function.__name__)
-            return class_or_function
-
-        return decorator

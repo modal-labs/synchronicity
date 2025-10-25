@@ -2,15 +2,15 @@
 
 import typing
 
-from synchronicity.synchronizer import get_synchronizer
+from synchronicity import Module
 
 if typing.TYPE_CHECKING:
     from ._a import A
 
-s = get_synchronizer("s")
+wrapper_module = Module("multifile.b")
 
 
-@s.wrap()
+@wrapper_module.wrap_class
 class B:
     """B test class."""
 
@@ -21,7 +21,7 @@ class B:
         return self.name
 
 
-@s.wrap()
+@wrapper_module.wrap_function
 async def get_a() -> "A":
     """Create and return an A instance."""
     from ._a import A
