@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from synchronicity.module import Module
 
 from .signature_utils import is_async_generator
-from .type_transformer import GeneratorTransformer, create_transformer
+from .type_transformer import create_transformer
 
 if TYPE_CHECKING:
     pass
@@ -93,6 +93,10 @@ def _build_call_with_wrap(
     """
     Build a function call with optional return value wrapping.
 
+    This is used for non-generator return types. For nested generators inside
+    return values (e.g., tuple[AsyncGenerator, ...]), we always use is_async=True
+    so they remain async generators even in sync calling contexts.
+
     Args:
         call_expr: The function call expression
         return_transformer: TypeTransformer for the return type
@@ -104,7 +108,7 @@ def _build_call_with_wrap(
         Code string with the call and optional wrapping
     """
     if return_transformer.needs_translation():
-        wrap_expr = return_transformer.wrap_expr(synchronized_types, current_target_module, "result")
+        wrap_expr = return_transformer.wrap_expr(synchronized_types, current_target_module, "result", is_async=True)
         return f"""{indent}result = {call_expr}
 {indent}return {wrap_expr}"""
     else:
@@ -128,28 +132,12 @@ def _format_return_annotation(
     Returns:
         Tuple of (sync_return_str, async_return_str) with " -> " prefix
     """
-    if isinstance(return_transformer, GeneratorTransformer):
-        # For generators, sync version returns Generator, async version returns AsyncGenerator
-        yield_type_str = return_transformer.yield_transformer.wrapped_type(synchronized_types, current_target_module)
+    # Get the wrapped types for both sync and async contexts
+    sync_return_type = return_transformer.wrapped_type(synchronized_types, current_target_module, is_async=False)
+    async_return_type = return_transformer.wrapped_type(synchronized_types, current_target_module, is_async=True)
 
-        if return_transformer.is_async:
-            sync_return_type = f"typing.Generator[{yield_type_str}, None, None]"
-            # If send_type_str is None, omit it (for AsyncIterator)
-            if return_transformer.send_type_str is None:
-                async_return_type = f"typing.AsyncGenerator[{yield_type_str}]"
-            else:
-                async_return_type = f"typing.AsyncGenerator[{yield_type_str}, {return_transformer.send_type_str}]"
-        else:
-            # Non-async generator (rare but possible)
-            sync_return_type = f"typing.Generator[{yield_type_str}, None, None]"
-            async_return_type = sync_return_type
-    else:
-        # Regular function/method
-        wrapper_return_type = return_transformer.wrapped_type(synchronized_types, current_target_module)
-        if not wrapper_return_type:
-            return "", ""
-        sync_return_type = wrapper_return_type
-        async_return_type = wrapper_return_type
+    if not sync_return_type:
+        return "", ""
 
     # Quote the entire type annotation if it contains wrapped types
     should_quote = return_transformer.needs_translation()
@@ -264,10 +252,7 @@ def compile_function(
         )
 
         # For sync version, use yield from for efficiency
-        if isinstance(return_transformer, GeneratorTransformer):
-            sync_wrap_expr = return_transformer.wrap_expr_sync(synchronized_types, current_target_module, "gen")
-        else:
-            sync_wrap_expr = return_transformer.wrap_expr(synchronized_types, current_target_module, "gen")
+        sync_wrap_expr = return_transformer.wrap_expr(synchronized_types, current_target_module, "gen", is_async=False)
         sync_function_body = f"    gen = impl_function({call_args_str})\n    yield from {sync_wrap_expr}"
     elif is_async_func:
         # For regular async functions
@@ -432,10 +417,7 @@ def compile_method_wrapper(
         aio_body = f"        gen = {gen_call}\n" f"        async for _item in {wrap_expr}:\n" f"            yield _item"
 
         # For sync version, use yield from for efficiency
-        if isinstance(return_transformer, GeneratorTransformer):
-            sync_wrap_expr = return_transformer.wrap_expr_sync(synchronized_types, current_target_module, "gen")
-        else:
-            sync_wrap_expr = return_transformer.wrap_expr(synchronized_types, current_target_module, "gen")
+        sync_wrap_expr = return_transformer.wrap_expr(synchronized_types, current_target_module, "gen", is_async=False)
         sync_method_body = f"        gen = {gen_call}\n        yield from {sync_wrap_expr}"
     else:
         # For regular async methods

@@ -145,23 +145,33 @@ def accepts_bar(b: Bar) -> "Bar":
     return _accepts_bar_instance(b)
 
 
-class _crazy:
+class _nested_async_generator:
+    @staticmethod
+    async def _wrap_async_gen_str(_gen):
+        async for _item in get_synchronizer("blah")._run_generator_async(_gen):
+            yield _item
+
+    @staticmethod
+    def _wrap_async_gen_str_sync(_gen):
+        for _item in get_synchronizer("blah")._run_generator_sync(_gen):
+            yield _item
+
     def __call__(self, i: int) -> "tuple[typing.AsyncGenerator[str, None], ...]":
-        impl_function = _my_library.crazy
+        impl_function = _my_library.nested_async_generator
         result = get_synchronizer("blah")._run_function_sync(impl_function(i))
         return tuple(self._wrap_async_gen_str(x) for x in result)
 
     async def aio(self, i: int) -> "tuple[typing.AsyncGenerator[str, None], ...]":
-        impl_function = _my_library.crazy
+        impl_function = _my_library.nested_async_generator
         result = await get_synchronizer("blah")._run_function_async(impl_function(i))
         return tuple(self._wrap_async_gen_str(x) for x in result)
 
 
-_crazy_instance = _crazy()
+_nested_async_generator_instance = _nested_async_generator()
 
 
-@replace_with(_crazy_instance)
-def crazy(i: int) -> "tuple[typing.AsyncGenerator[str, None], ...]":
+@replace_with(_nested_async_generator_instance)
+def nested_async_generator(i: int) -> "tuple[typing.AsyncGenerator[str, None], ...]":
     # Dummy function for type checkers and IDE navigation
-    # Actual implementation is in _crazy.__call__
-    return _crazy_instance(i)
+    # Actual implementation is in _nested_async_generator.__call__
+    return _nested_async_generator_instance(i)

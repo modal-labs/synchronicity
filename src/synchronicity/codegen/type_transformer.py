@@ -19,12 +19,15 @@ class TypeTransformer(ABC):
     """Base class for type transformers that handle type signatures and translation."""
 
     @abstractmethod
-    def wrapped_type(self, synchronized_types: dict[type, tuple[str, str]], target_module: str) -> str:
+    def wrapped_type(
+        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, is_async: bool = True
+    ) -> str:
         """Return the type signature string for generated wrapper code.
 
         Args:
             synchronized_types: Dict mapping implementation types to (target_module, wrapper_name)
             target_module: Current target module (for local vs cross-module refs)
+            is_async: Whether we're in an async context (affects async generator return types)
 
         Returns:
             Type string like "Person", "list[str]", "foo.bar.Person"
@@ -45,13 +48,16 @@ class TypeTransformer(ABC):
         pass
 
     @abstractmethod
-    def wrap_expr(self, synchronized_types: dict[type, tuple[str, str]], target_module: str, var_name: str) -> str:
+    def wrap_expr(
+        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, var_name: str, is_async: bool = True
+    ) -> str:
         """Generate Python expression to wrap from impl → wrapper.
 
         Args:
             synchronized_types: Dict mapping implementation types to (target_module, wrapper_name)
             target_module: Current target module (for local vs cross-module refs)
             var_name: Variable name to wrap
+            is_async: Whether we're in an async context (affects generator wrapping)
 
         Returns:
             Expression string like "Person._from_impl(value)" or "[Person._from_impl(x) for x in value]"
@@ -96,7 +102,9 @@ class IdentityTransformer(TypeTransformer):
     def __init__(self, annotation):
         self.annotation = annotation
 
-    def wrapped_type(self, synchronized_types: dict[type, tuple[str, str]], target_module: str) -> str:
+    def wrapped_type(
+        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, is_async: bool = True
+    ) -> str:
         """Format the type annotation as-is."""
         return _format_annotation_str(self.annotation)
 
@@ -104,7 +112,9 @@ class IdentityTransformer(TypeTransformer):
         """No unwrapping needed - return variable as-is."""
         return var_name
 
-    def wrap_expr(self, synchronized_types: dict[type, tuple[str, str]], target_module: str, var_name: str) -> str:
+    def wrap_expr(
+        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, var_name: str, is_async: bool = True
+    ) -> str:
         """No wrapping needed - return variable as-is."""
         return var_name
 
@@ -118,7 +128,9 @@ class WrappedClassTransformer(TypeTransformer):
     def __init__(self, impl_type: type):
         self.impl_type = impl_type
 
-    def wrapped_type(self, synchronized_types: dict[type, tuple[str, str]], target_module: str) -> str:
+    def wrapped_type(
+        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, is_async: bool = True
+    ) -> str:
         """Return the wrapper class name (local or fully qualified)."""
         if self.impl_type not in synchronized_types:
             # Should not happen if create_transformer is used correctly
@@ -137,7 +149,9 @@ class WrappedClassTransformer(TypeTransformer):
         """Unwrap by accessing _impl_instance."""
         return f"{var_name}._impl_instance"
 
-    def wrap_expr(self, synchronized_types: dict[type, tuple[str, str]], target_module: str, var_name: str) -> str:
+    def wrap_expr(
+        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, var_name: str, is_async: bool = True
+    ) -> str:
         """Wrap by calling WrapperClass._from_impl()."""
         if self.impl_type not in synchronized_types:
             return var_name
@@ -161,9 +175,11 @@ class ListTransformer(TypeTransformer):
     def __init__(self, item_transformer: TypeTransformer):
         self.item_transformer = item_transformer
 
-    def wrapped_type(self, synchronized_types: dict[type, tuple[str, str]], target_module: str) -> str:
+    def wrapped_type(
+        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, is_async: bool = True
+    ) -> str:
         """Return list[WrappedItemType]."""
-        item_type_str = self.item_transformer.wrapped_type(synchronized_types, target_module)
+        item_type_str = self.item_transformer.wrapped_type(synchronized_types, target_module, is_async)
         return f"list[{item_type_str}]"
 
     def unwrap_expr(self, synchronized_types: dict[type, tuple[str, str]], var_name: str) -> str:
@@ -174,12 +190,14 @@ class ListTransformer(TypeTransformer):
         item_unwrap = self.item_transformer.unwrap_expr(synchronized_types, "x")
         return f"[{item_unwrap} for x in {var_name}]"
 
-    def wrap_expr(self, synchronized_types: dict[type, tuple[str, str]], target_module: str, var_name: str) -> str:
+    def wrap_expr(
+        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, var_name: str, is_async: bool = True
+    ) -> str:
         """Generate list comprehension to wrap items."""
         if not self.item_transformer.needs_translation():
             return var_name
 
-        item_wrap = self.item_transformer.wrap_expr(synchronized_types, target_module, "x")
+        item_wrap = self.item_transformer.wrap_expr(synchronized_types, target_module, "x", is_async)
         return f"[{item_wrap} for x in {var_name}]"
 
     def needs_translation(self) -> bool:
@@ -203,10 +221,12 @@ class DictTransformer(TypeTransformer):
         self.key_transformer = key_transformer
         self.value_transformer = value_transformer
 
-    def wrapped_type(self, synchronized_types: dict[type, tuple[str, str]], target_module: str) -> str:
+    def wrapped_type(
+        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, is_async: bool = True
+    ) -> str:
         """Return dict[WrappedKeyType, WrappedValueType]."""
-        key_type_str = self.key_transformer.wrapped_type(synchronized_types, target_module)
-        value_type_str = self.value_transformer.wrapped_type(synchronized_types, target_module)
+        key_type_str = self.key_transformer.wrapped_type(synchronized_types, target_module, is_async)
+        value_type_str = self.value_transformer.wrapped_type(synchronized_types, target_module, is_async)
         return f"dict[{key_type_str}, {value_type_str}]"
 
     def unwrap_expr(self, synchronized_types: dict[type, tuple[str, str]], var_name: str) -> str:
@@ -217,12 +237,14 @@ class DictTransformer(TypeTransformer):
         value_unwrap = self.value_transformer.unwrap_expr(synchronized_types, "v")
         return f"{{k: {value_unwrap} for k, v in {var_name}.items()}}"
 
-    def wrap_expr(self, synchronized_types: dict[type, tuple[str, str]], target_module: str, var_name: str) -> str:
+    def wrap_expr(
+        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, var_name: str, is_async: bool = True
+    ) -> str:
         """Generate dict comprehension to wrap values."""
         if not self.value_transformer.needs_translation():
             return var_name
 
-        value_wrap = self.value_transformer.wrap_expr(synchronized_types, target_module, "v")
+        value_wrap = self.value_transformer.wrap_expr(synchronized_types, target_module, "v", is_async)
         return f"{{k: {value_wrap} for k, v in {var_name}.items()}}"
 
     def needs_translation(self) -> bool:
@@ -257,15 +279,19 @@ class TupleTransformer(TypeTransformer):
         """
         self.item_transformers = item_transformers
 
-    def wrapped_type(self, synchronized_types: dict[type, tuple[str, str]], target_module: str) -> str:
+    def wrapped_type(
+        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, is_async: bool = True
+    ) -> str:
         """Return tuple[WrappedType1, WrappedType2, ...] or tuple[WrappedType, ...]."""
         if len(self.item_transformers) == 1:
             # Variable-length tuple: tuple[T, ...]
-            item_type_str = self.item_transformers[0].wrapped_type(synchronized_types, target_module)
+            item_type_str = self.item_transformers[0].wrapped_type(synchronized_types, target_module, is_async)
             return f"tuple[{item_type_str}, ...]"
         else:
             # Fixed-size tuple: tuple[T1, T2, ...]
-            item_type_strs = [t.wrapped_type(synchronized_types, target_module) for t in self.item_transformers]
+            item_type_strs = [
+                t.wrapped_type(synchronized_types, target_module, is_async) for t in self.item_transformers
+            ]
             return f"tuple[{', '.join(item_type_strs)}]"
 
     def unwrap_expr(self, synchronized_types: dict[type, tuple[str, str]], var_name: str) -> str:
@@ -284,19 +310,21 @@ class TupleTransformer(TypeTransformer):
             ]
             return f"({', '.join(unwrap_exprs)})"
 
-    def wrap_expr(self, synchronized_types: dict[type, tuple[str, str]], target_module: str, var_name: str) -> str:
+    def wrap_expr(
+        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, var_name: str, is_async: bool = True
+    ) -> str:
         """Generate tuple comprehension/constructor to wrap items."""
         if not self.needs_translation():
             return var_name
 
         if len(self.item_transformers) == 1:
             # Variable-length tuple
-            item_wrap = self.item_transformers[0].wrap_expr(synchronized_types, target_module, "x")
+            item_wrap = self.item_transformers[0].wrap_expr(synchronized_types, target_module, "x", is_async)
             return f"tuple({item_wrap} for x in {var_name})"
         else:
             # Fixed-size tuple - wrap each element by index
             wrap_exprs = [
-                t.wrap_expr(synchronized_types, target_module, f"{var_name}[{i}]")
+                t.wrap_expr(synchronized_types, target_module, f"{var_name}[{i}]", is_async)
                 for i, t in enumerate(self.item_transformers)
             ]
             return f"({', '.join(wrap_exprs)})"
@@ -326,9 +354,11 @@ class OptionalTransformer(TypeTransformer):
     def __init__(self, inner_transformer: TypeTransformer):
         self.inner_transformer = inner_transformer
 
-    def wrapped_type(self, synchronized_types: dict[type, tuple[str, str]], target_module: str) -> str:
+    def wrapped_type(
+        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, is_async: bool = True
+    ) -> str:
         """Return typing.Union[WrappedInnerType, None]."""
-        inner_type_str = self.inner_transformer.wrapped_type(synchronized_types, target_module)
+        inner_type_str = self.inner_transformer.wrapped_type(synchronized_types, target_module, is_async)
         return f"typing.Union[{inner_type_str}, None]"
 
     def unwrap_expr(self, synchronized_types: dict[type, tuple[str, str]], var_name: str) -> str:
@@ -339,12 +369,14 @@ class OptionalTransformer(TypeTransformer):
         inner_unwrap = self.inner_transformer.unwrap_expr(synchronized_types, var_name)
         return f"{inner_unwrap} if {var_name} is not None else None"
 
-    def wrap_expr(self, synchronized_types: dict[type, tuple[str, str]], target_module: str, var_name: str) -> str:
+    def wrap_expr(
+        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, var_name: str, is_async: bool = True
+    ) -> str:
         """Generate conditional expression to wrap if not None."""
         if not self.inner_transformer.needs_translation():
             return var_name
 
-        inner_wrap = self.inner_transformer.wrap_expr(synchronized_types, target_module, var_name)
+        inner_wrap = self.inner_transformer.wrap_expr(synchronized_types, target_module, var_name, is_async)
         return f"{inner_wrap} if {var_name} is not None else None"
 
     def needs_translation(self) -> bool:
@@ -369,17 +401,33 @@ class GeneratorTransformer(TypeTransformer):
         self.is_async = is_async
         self.send_type_str = send_type_str
 
-    def wrapped_type(self, synchronized_types: dict[type, tuple[str, str]], target_module: str) -> str:
-        """Return typing.Generator[WrappedYieldType, None, None] or typing.AsyncGenerator[...]."""
-        yield_type_str = self.yield_transformer.wrapped_type(synchronized_types, target_module)
+    def wrapped_type(
+        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, is_async: bool = True
+    ) -> str:
+        """Return the appropriate generator type based on context.
+
+        For async generators in the implementation:
+        - is_async=True: AsyncGenerator[T, S] (for async wrapper methods)
+        - is_async=False: Generator[T, None, None] (for sync wrapper methods)
+
+        For sync generators in the implementation:
+        - Always returns Generator[T, None, None] (regardless of is_async)
+        """
+        yield_type_str = self.yield_transformer.wrapped_type(synchronized_types, target_module, is_async)
 
         if self.is_async:
-            # If send_type_str is None, omit it (for AsyncIterator)
-            if self.send_type_str is None:
-                return f"typing.AsyncGenerator[{yield_type_str}]"
+            # AsyncGenerator in implementation
+            if is_async:
+                # Async context: return AsyncGenerator
+                if self.send_type_str is None:
+                    return f"typing.AsyncGenerator[{yield_type_str}]"
+                else:
+                    return f"typing.AsyncGenerator[{yield_type_str}, {self.send_type_str}]"
             else:
-                return f"typing.AsyncGenerator[{yield_type_str}, {self.send_type_str}]"
+                # Sync context: return regular Generator
+                return f"typing.Generator[{yield_type_str}, None, None]"
         else:
+            # Sync Generator in implementation - always returns Generator
             return f"typing.Generator[{yield_type_str}, None, None]"
 
     def unwrap_expr(self, synchronized_types: dict[type, tuple[str, str]], var_name: str) -> str:
@@ -391,41 +439,30 @@ class GeneratorTransformer(TypeTransformer):
         synchronized_types: dict[type, tuple[str, str]],
         target_module: str,
         var_name: str,
+        is_async: bool = True,
     ) -> str:
         """Return expression that wraps a generator by calling a helper function.
 
         If the yielded items need translation, this returns a call to a helper function
         that wraps each yielded item. Otherwise, returns the variable as-is.
 
-        This returns the async version of the helper.
-
         Args:
             synchronized_types: Dict mapping implementation types to (target_module, wrapper_name)
             target_module: Current target module
             var_name: Variable name to wrap
+            is_async: Whether we're in an async context (determines which helper to call)
         """
         if not self.needs_translation():
             return var_name
 
         # Generate helper function name based on the yield type
         helper_name = self._get_helper_name(synchronized_types, target_module)
-        return f"self.{helper_name}({var_name})"
 
-    def wrap_expr_sync(self, synchronized_types: dict[type, tuple[str, str]], target_module: str, var_name: str) -> str:
-        """Return expression for sync wrapper of async generator.
-
-        This is used when we need to synchronously iterate an async generator.
-        """
-        if not self.needs_translation():
-            return var_name
-
-        # For async generators, use the _sync suffix
-        if self.is_async:
-            helper_name = self._get_helper_name(synchronized_types, target_module)
+        # For async generators, use different helpers for sync vs async contexts
+        if self.is_async and not is_async:
             return f"self.{helper_name}_sync({var_name})"
         else:
-            # For sync generators, same as async version
-            return self.wrap_expr(synchronized_types, target_module, var_name)
+            return f"self.{helper_name}({var_name})"
 
     def needs_translation(self) -> bool:
         """Generators need special handling even without yield translation.
