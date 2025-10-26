@@ -498,7 +498,13 @@ class AsyncGeneratorTransformer(TypeTransformer):
 {indent}        except StopAsyncIteration:
 {indent}            break"""
 
-        sync_helper = f"""{indent}@staticmethod
+        # For sync helper, use yield from if no wrapping needed (more efficient)
+        if wrap_expr == "_item":
+            sync_helper = f"""{indent}@staticmethod
+{indent}def {helper_name}_sync(_gen):
+{indent}    yield from get_synchronizer('{synchronizer_name}')._run_generator_sync(_gen)"""
+        else:
+            sync_helper = f"""{indent}@staticmethod
 {indent}def {helper_name}_sync(_gen):
 {indent}    _wrapped = get_synchronizer('{synchronizer_name}')._run_generator_sync(_gen)
 {indent}    _sent = None
@@ -590,8 +596,14 @@ class SyncGeneratorTransformer(TypeTransformer):
             wrap_expr = "_item"
 
         # Generate sync helper with send() support
-        # Use manual iteration with send() to preserve bidirectional communication
-        helper_code = f"""{indent}@staticmethod
+        # Use yield from if no wrapping needed (automatically forwards send() values)
+        if wrap_expr == "_item":
+            helper_code = f"""{indent}@staticmethod
+{indent}def {helper_name}(_gen):
+{indent}    yield from _gen"""
+        else:
+            # Manual iteration with send() to preserve bidirectional communication while wrapping
+            helper_code = f"""{indent}@staticmethod
 {indent}def {helper_name}(_gen):
 {indent}    _sent = None
 {indent}    while True:

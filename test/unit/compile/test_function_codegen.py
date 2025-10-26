@@ -234,10 +234,11 @@ class TestAsyncGenerators:
         assert "async def _wrap_async_gen" in generated_code  # Async helper
         assert "def _wrap_async_gen" in generated_code  # Sync helper (note: both contain this string)
         assert "_wrapped.asend(_sent)" in generated_code  # Async helper uses asend() for two-way generators
-        assert "_wrapped.send(_sent)" in generated_code  # Sync helper uses send() for two-way generators
+        # Sync helper uses yield from when no wrapping needed (more efficient, still forwards send())
+        assert "yield from get_synchronizer" in generated_code or "_wrapped.send(_sent)" in generated_code
         assert "_run_generator_async(_gen)" in generated_code
         assert "_run_generator_sync(_gen)" in generated_code
-        assert "_sent = yield _item" in generated_code  # Helpers capture sent values
+        assert "_sent = yield _item" in generated_code  # Async helper captures sent values
         assert "gen = impl_function" in generated_code
         # Methods iterate over helpers (can't return generators from async functions)
         assert "yield from self._wrap_async_gen" in generated_code  # Sync uses yield from
