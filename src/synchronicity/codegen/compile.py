@@ -244,17 +244,21 @@ def compile_function(
     # Build both sync and async bodies
     if is_async_gen:
         # For async generators, manually iterate with asend() to support two-way generators
+        # Wrap in try/finally to ensure proper cleanup on aclose()
         wrap_expr = return_transformer.wrap_expr(synchronized_types, current_target_module, "gen")
         aio_body = (
             f"        gen = impl_function({call_args_str})\n"
             f"        _wrapped = {wrap_expr}\n"
             f"        _sent = None\n"
-            f"        while True:\n"
-            f"            try:\n"
-            f"                _item = await _wrapped.asend(_sent)\n"
-            f"                _sent = yield _item\n"
-            f"            except StopAsyncIteration:\n"
-            f"                break"
+            f"        try:\n"
+            f"            while True:\n"
+            f"                try:\n"
+            f"                    _item = await _wrapped.asend(_sent)\n"
+            f"                    _sent = yield _item\n"
+            f"                except StopAsyncIteration:\n"
+            f"                    break\n"
+            f"        finally:\n"
+            f"            await _wrapped.aclose()"
         )
 
         # For sync version, use yield from for efficiency
@@ -418,18 +422,22 @@ def compile_method_wrapper(
     # Build both sync and async bodies
     if is_async_gen:
         # For async generator methods, manually iterate with asend() to support two-way generators
+        # Wrap in try/finally to ensure proper cleanup on aclose()
         gen_call = f"impl_method(self._wrapper_instance._impl_instance, {call_args_str})"
         wrap_expr = return_transformer.wrap_expr(synchronized_types, current_target_module, "gen")
         aio_body = (
             f"        gen = {gen_call}\n"
             f"        _wrapped = {wrap_expr}\n"
             f"        _sent = None\n"
-            f"        while True:\n"
-            f"            try:\n"
-            f"                _item = await _wrapped.asend(_sent)\n"
-            f"                _sent = yield _item\n"
-            f"            except StopAsyncIteration:\n"
-            f"                break"
+            f"        try:\n"
+            f"            while True:\n"
+            f"                try:\n"
+            f"                    _item = await _wrapped.asend(_sent)\n"
+            f"                    _sent = yield _item\n"
+            f"                except StopAsyncIteration:\n"
+            f"                    break\n"
+            f"        finally:\n"
+            f"            await _wrapped.aclose()"
         )
 
         # For sync version, use yield from for efficiency

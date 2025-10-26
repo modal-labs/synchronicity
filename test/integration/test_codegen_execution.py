@@ -494,3 +494,100 @@ def test_two_way_generator_send():
         print("✓ Multiplier generator with parameter works correctly")
 
         print("\n=== All two-way generator tests passed! ===")
+
+
+def test_generator_aclose_forwarding():
+    """Test that aclose() is properly forwarded to ensure cleanup happens.
+
+    This is critical to:
+    1. Prevent dangling async generators in separate threads
+    2. Ensure finalization logic (try/finally blocks) executes
+    3. Wait for cleanup before returning to caller
+    """
+    from synchronicity.module import Module
+
+    print("\n=== Testing aclose() forwarding ===")
+
+    # Import the implementation module
+    from test.support_files import two_way_generator
+
+    # Create synchronizer module
+    lib = Module("test_aclose")
+
+    # Wrap the cleanup generator function
+    lib.wrap_function(two_way_generator.generator_with_cleanup)
+
+    # Compile the module
+    modules_code = compile_modules([lib], "test_sync")
+    generated_code = modules_code["test_aclose"]
+
+    # Test execution with generated module
+    with generated_module(generated_code, "test_aclose") as mod:
+        # Test 1: Async interface (aclose)
+        print("\n--- Test 1: Async interface with aclose() ---")
+
+        async def test_async_aclose():
+            # Get the wrapped generator via .aio()
+            gen = mod.generator_with_cleanup.aio()
+
+            # Consume a couple of values
+            result = await gen.asend(None)
+            assert result == "first", f"Expected 'first', got {result}"
+            print(f"  First value: {result}")
+
+            result = await gen.asend(None)
+            assert result == "second", f"Expected 'second', got {result}"
+            print(f"  Second value: {result}")
+
+            # Verify cleanup hasn't happened yet
+            assert len(two_way_generator.cleanup_tracker) == 0, "Cleanup should not have happened yet"
+            print("  Verified: No cleanup yet")
+
+            # Close the generator
+            await gen.aclose()
+            print("  Called aclose()")
+
+            # Verify cleanup happened
+            assert (
+                len(two_way_generator.cleanup_tracker) == 1
+            ), f"Expected cleanup once, got {two_way_generator.cleanup_tracker}"
+            assert (
+                two_way_generator.cleanup_tracker[0] == "cleanup_called"
+            ), f"Expected 'cleanup_called', got {two_way_generator.cleanup_tracker[0]}"
+            print("  ✓ Cleanup was properly forwarded and executed")
+
+        asyncio.run(test_async_aclose())
+
+        # Test 2: Sync interface (close)
+        print("\n--- Test 2: Sync interface with close() ---")
+
+        # Get the wrapped generator via sync interface
+        gen = mod.generator_with_cleanup()
+
+        # Consume a couple of values
+        result = gen.send(None)
+        assert result == "first", f"Expected 'first', got {result}"
+        print(f"  First value: {result}")
+
+        result = gen.send(None)
+        assert result == "second", f"Expected 'second', got {result}"
+        print(f"  Second value: {result}")
+
+        # Verify cleanup hasn't happened yet
+        assert len(two_way_generator.cleanup_tracker) == 0, "Cleanup should not have happened yet"
+        print("  Verified: No cleanup yet")
+
+        # Close the generator
+        gen.close()
+        print("  Called close()")
+
+        # Verify cleanup happened
+        assert (
+            len(two_way_generator.cleanup_tracker) == 1
+        ), f"Expected cleanup once, got {two_way_generator.cleanup_tracker}"
+        assert (
+            two_way_generator.cleanup_tracker[0] == "cleanup_called"
+        ), f"Expected 'cleanup_called', got {two_way_generator.cleanup_tracker[0]}"
+        print("  ✓ Cleanup was properly forwarded and executed")
+
+        print("\n=== All aclose() forwarding tests passed! ===")

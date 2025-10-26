@@ -487,33 +487,42 @@ class AsyncGeneratorTransformer(TypeTransformer):
         # Generate both async and sync helpers with send() support
         # For two-way generators, we need to manually iterate using asend()/send()
         # to preserve the bidirectional communication
+        # Wrap in try/finally to ensure aclose() is forwarded properly
         async_helper = f"""{indent}@staticmethod
 {indent}async def {helper_name}(_gen):
 {indent}    _wrapped = get_synchronizer('{synchronizer_name}')._run_generator_async(_gen)
 {indent}    _sent = None
-{indent}    while True:
-{indent}        try:
-{indent}            _item = await _wrapped.asend(_sent)
-{indent}            _sent = yield {wrap_expr}
-{indent}        except StopAsyncIteration:
-{indent}            break"""
+{indent}    try:
+{indent}        while True:
+{indent}            try:
+{indent}                _item = await _wrapped.asend(_sent)
+{indent}                _sent = yield {wrap_expr}
+{indent}            except StopAsyncIteration:
+{indent}                break
+{indent}    finally:
+{indent}        await _wrapped.aclose()"""
 
         # For sync helper, use yield from if no wrapping needed (more efficient)
+        # Note: yield from automatically forwards close(), so no try/finally needed
         if wrap_expr == "_item":
             sync_helper = f"""{indent}@staticmethod
 {indent}def {helper_name}_sync(_gen):
 {indent}    yield from get_synchronizer('{synchronizer_name}')._run_generator_sync(_gen)"""
         else:
+            # When wrapping is needed, use try/finally to ensure close() is forwarded
             sync_helper = f"""{indent}@staticmethod
 {indent}def {helper_name}_sync(_gen):
 {indent}    _wrapped = get_synchronizer('{synchronizer_name}')._run_generator_sync(_gen)
 {indent}    _sent = None
-{indent}    while True:
-{indent}        try:
-{indent}            _item = _wrapped.send(_sent)
-{indent}            _sent = yield {wrap_expr}
-{indent}        except StopIteration:
-{indent}            break"""
+{indent}    try:
+{indent}        while True:
+{indent}            try:
+{indent}                _item = _wrapped.send(_sent)
+{indent}                _sent = yield {wrap_expr}
+{indent}            except StopIteration:
+{indent}                break
+{indent}    finally:
+{indent}        _wrapped.close()"""
 
         helpers[helper_name] = async_helper
         helpers[f"{helper_name}_sync"] = sync_helper
@@ -596,22 +605,26 @@ class SyncGeneratorTransformer(TypeTransformer):
             wrap_expr = "_item"
 
         # Generate sync helper with send() support
-        # Use yield from if no wrapping needed (automatically forwards send() values)
+        # Use yield from if no wrapping needed (automatically forwards send() and close())
         if wrap_expr == "_item":
             helper_code = f"""{indent}@staticmethod
 {indent}def {helper_name}(_gen):
 {indent}    yield from _gen"""
         else:
             # Manual iteration with send() to preserve bidirectional communication while wrapping
+            # Wrap in try/finally to ensure close() is forwarded
             helper_code = f"""{indent}@staticmethod
 {indent}def {helper_name}(_gen):
 {indent}    _sent = None
-{indent}    while True:
-{indent}        try:
-{indent}            _item = _gen.send(_sent)
-{indent}            _sent = yield {wrap_expr}
-{indent}        except StopIteration:
-{indent}            break"""
+{indent}    try:
+{indent}        while True:
+{indent}            try:
+{indent}                _item = _gen.send(_sent)
+{indent}                _sent = yield {wrap_expr}
+{indent}            except StopIteration:
+{indent}                break
+{indent}    finally:
+{indent}        _gen.close()"""
         helpers[helper_name] = helper_code
 
         return helpers

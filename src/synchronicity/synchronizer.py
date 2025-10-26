@@ -227,36 +227,51 @@ class Synchronizer:
 
     def _run_generator_sync(self, gen):
         value, is_exc = None, False
-        while True:
-            try:
-                if is_exc:
-                    value = self._run_function_sync(gen.athrow(value))
-                else:
-                    value = self._run_function_sync(gen.asend(value))
-            except StopAsyncIteration:
-                break
+        try:
+            while True:
+                try:
+                    if is_exc:
+                        value = self._run_function_sync(gen.athrow(value))
+                    else:
+                        value = self._run_function_sync(gen.asend(value))
+                except StopAsyncIteration:
+                    break
 
-            try:
-                value = yield value
-                is_exc = False
-            except BaseException as exc:
-                value = exc
-                is_exc = True
+                try:
+                    value = yield value
+                    is_exc = False
+                except GeneratorExit:
+                    # GeneratorExit signals cleanup - don't forward via athrow, just propagate
+                    raise
+                except BaseException as exc:
+                    value = exc
+                    is_exc = True
+        finally:
+            # Ensure the underlying async generator is properly closed
+            # Need to run the aclose in the event loop thread
+            self._run_function_sync(gen.aclose())
 
     async def _run_generator_async(self, gen: typing.AsyncGenerator):
         value, is_exc = None, False
-        while True:
-            try:
-                if is_exc:
-                    value = await self._run_function_async(gen.athrow(value))
-                else:
-                    value = await self._run_function_async(gen.asend(value))
-            except StopAsyncIteration:
-                break
+        try:
+            while True:
+                try:
+                    if is_exc:
+                        value = await self._run_function_async(gen.athrow(value))
+                    else:
+                        value = await self._run_function_async(gen.asend(value))
+                except StopAsyncIteration:
+                    break
 
-            try:
-                value = yield value
-                is_exc = False
-            except BaseException as exc:
-                value = exc
-                is_exc = True
+                try:
+                    value = yield value
+                    is_exc = False
+                except GeneratorExit:
+                    # GeneratorExit signals cleanup - don't forward via athrow, just propagate
+                    raise
+                except BaseException as exc:
+                    value = exc
+                    is_exc = True
+        finally:
+            # Ensure the underlying generator is properly closed
+            await gen.aclose()
