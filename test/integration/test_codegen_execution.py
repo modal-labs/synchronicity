@@ -7,7 +7,6 @@ including type translation, caching, and async execution.
 import asyncio
 import sys
 import tempfile
-import typing
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -255,112 +254,84 @@ def test_nested_async_generators_in_tuple():
     This tests the case where a function returns a tuple containing async generators,
     verifying that both sync and async interfaces work correctly.
     """
-    from synchronicity.module import Module
-
-    # Create test module with nested async generator function
-    lib = Module("test_nested_gen")
-
-    @lib.wrap_function
-    async def nested_async_generator(
-        i: int,
-    ) -> tuple[typing.AsyncGenerator[str, None], typing.AsyncGenerator[int, None]]:
-        """Return tuple of two async generators."""
-
-        async def f():
-            for _ in range(i):
-                yield "hello"
-
-        async def g():
-            for j in range(i):
-                yield j
-
-        return (f(), g())
+    from test.support_files import nested_generators
 
     # Compile the module
-    modules_code = compile_modules([lib], "test_sync")
-    generated_code = modules_code["test_nested_gen"]
+    modules_code = compile_modules([nested_generators.wrapper_module], "test_sync")
+    generated_code = modules_code["nested_generators"]
 
     # Verify helper functions are generated for nested generators
     assert "@staticmethod" in generated_code
     assert "async def _wrap_async_gen" in generated_code
     assert "yield _item" in generated_code
 
-    # Inject the implementation function into the test module so generated code can import it
-    current_module = sys.modules[__name__]
-    current_module.nested_async_generator = nested_async_generator
+    # Test execution with generated module
+    with generated_module(generated_code, "nested_generators") as mod:
+        # Test 1: Sync interface returns async generators (wrapped)
+        # Note: For nested generators in return values, the sync interface still returns
+        # async generator objects that need to be iterated asynchronously
+        str_gen_async, int_gen_async = mod.nested_async_generator(3)
 
-    try:
-        # Test execution with generated module
-        with generated_module(generated_code, "test_nested_gen") as mod:
-            # Test 1: Sync interface returns async generators (wrapped)
-            # Note: For nested generators in return values, the sync interface still returns
-            # async generator objects that need to be iterated asynchronously
-            str_gen_async, int_gen_async = mod.nested_async_generator(3)
+        # Verify they are async generators
+        assert hasattr(str_gen_async, "__anext__"), "Should be an async generator"
+        assert hasattr(int_gen_async, "__anext__"), "Should be an async generator"
 
-            # Verify they are async generators
-            assert hasattr(str_gen_async, "__anext__"), "Should be an async generator"
-            assert hasattr(int_gen_async, "__anext__"), "Should be an async generator"
+        async def consume_sync_result():
+            str_results = []
+            async for s in str_gen_async:
+                str_results.append(s)
 
-            async def consume_sync_result():
-                str_results = []
-                async for s in str_gen_async:
-                    str_results.append(s)
+            int_results = []
+            async for i in int_gen_async:
+                int_results.append(i)
 
-                int_results = []
-                async for i in int_gen_async:
-                    int_results.append(i)
+            return str_results, int_results
 
-                return str_results, int_results
+        str_results, int_results = asyncio.run(consume_sync_result())
+        assert str_results == [
+            "hello",
+            "hello",
+            "hello",
+        ], f"Expected ['hello', 'hello', 'hello'], got {str_results}"
+        assert int_results == [0, 1, 2], f"Expected [0, 1, 2], got {int_results}"
+        print(f"✓ Sync interface (returns async gens): str_gen yielded {str_results}")
+        print(f"✓ Sync interface (returns async gens): int_gen yielded {int_results}")
 
-            str_results, int_results = asyncio.run(consume_sync_result())
-            assert str_results == [
-                "hello",
-                "hello",
-                "hello",
-            ], f"Expected ['hello', 'hello', 'hello'], got {str_results}"
-            assert int_results == [0, 1, 2], f"Expected [0, 1, 2], got {int_results}"
-            print(f"✓ Sync interface (returns async gens): str_gen yielded {str_results}")
-            print(f"✓ Sync interface (returns async gens): int_gen yielded {int_results}")
+        # Test 2: Async interface - iterate over both generators
+        async def test_async():
+            str_gen, int_gen = await mod.nested_async_generator.aio(2)
 
-            # Test 2: Async interface - iterate over both generators
-            async def test_async():
-                str_gen, int_gen = await mod.nested_async_generator.aio(2)
+            str_results = []
+            async for s in str_gen:
+                str_results.append(s)
 
-                str_results = []
-                async for s in str_gen:
-                    str_results.append(s)
+            int_results = []
+            async for i in int_gen:
+                int_results.append(i)
 
-                int_results = []
-                async for i in int_gen:
-                    int_results.append(i)
+            assert str_results == ["hello", "hello"], f"Expected ['hello', 'hello'], got {str_results}"
+            assert int_results == [0, 1], f"Expected [0, 1], got {int_results}"
+            return str_results, int_results
 
-                assert str_results == ["hello", "hello"], f"Expected ['hello', 'hello'], got {str_results}"
-                assert int_results == [0, 1], f"Expected [0, 1], got {int_results}"
-                return str_results, int_results
+        str_results, int_results = asyncio.run(test_async())
+        print(f"✓ Async interface: str_gen yielded {str_results}")
+        print(f"✓ Async interface: int_gen yielded {int_results}")
 
-            str_results, int_results = asyncio.run(test_async())
-            print(f"✓ Async interface: str_gen yielded {str_results}")
-            print(f"✓ Async interface: int_gen yielded {int_results}")
+        # Test 3: Verify generators in tuple are independent
+        async def test_independence():
+            str_gen1, int_gen1 = mod.nested_async_generator(1)
+            # Consume only str_gen1
+            async for _ in str_gen1:
+                pass
+            # int_gen1 should still work independently
+            int_results = []
+            async for i in int_gen1:
+                int_results.append(i)
+            return int_results
 
-            # Test 3: Verify generators in tuple are independent
-            async def test_independence():
-                str_gen1, int_gen1 = mod.nested_async_generator(1)
-                # Consume only str_gen1
-                async for _ in str_gen1:
-                    pass
-                # int_gen1 should still work independently
-                int_results = []
-                async for i in int_gen1:
-                    int_results.append(i)
-                return int_results
-
-            int_results = asyncio.run(test_independence())
-            assert int_results == [0], f"Expected [0], got {int_results}"
-            print("✓ Generators in tuple are independent")
-    finally:
-        # Clean up: remove the injected function
-        if hasattr(current_module, "nested_async_generator"):
-            delattr(current_module, "nested_async_generator")
+        int_results = asyncio.run(test_independence())
+        assert int_results == [0], f"Expected [0], got {int_results}"
+        print("✓ Generators in tuple are independent")
 
 
 def test_two_way_generator_send():
@@ -372,22 +343,11 @@ def test_two_way_generator_send():
     3. State is maintained correctly across send() calls
     4. Type annotations correctly reflect AsyncGenerator[YieldType, SendType]
     """
-    from synchronicity.module import Module
-
-    # Import the implementation module
     from test.support_files import two_way_generator
 
-    # Create synchronizer module
-    lib = Module("test_two_way")
-
-    # Wrap the two-way generator functions
-    lib.wrap_function(two_way_generator.echo_generator)
-    lib.wrap_function(two_way_generator.accumulator_generator)
-    lib.wrap_function(two_way_generator.multiplier_generator)
-
     # Compile the module
-    modules_code = compile_modules([lib], "test_sync")
-    generated_code = modules_code["test_two_way"]
+    modules_code = compile_modules([two_way_generator.wrapper_module], "test_sync")
+    generated_code = modules_code["two_way_generator"]
 
     # Verify helper functions use send() (not simple iteration)
     assert "@staticmethod" in generated_code
@@ -395,7 +355,7 @@ def test_two_way_generator_send():
     print("✓ Generated helpers use send() for bidirectional communication")
 
     # Test execution with generated module
-    with generated_module(generated_code, "test_two_way") as mod:
+    with generated_module(generated_code, "two_way_generator") as mod:
         # Test 1: Echo generator with sync interface
         print("\n=== Test 1: Echo generator (sync interface) ===")
 
@@ -504,21 +464,17 @@ def test_generator_aclose_forwarding():
     2. Ensure finalization logic (try/finally blocks) executes
     3. Wait for cleanup before returning to caller
     """
-    from synchronicity.module import Module
+    from test.support_files import two_way_generator
 
     print("\n=== Testing aclose() forwarding ===")
 
-    # Import the implementation module
-    from test.support_files import two_way_generator
+    # Compile just the cleanup generator
+    from synchronicity import Module
 
-    # Create synchronizer module
-    lib = Module("test_aclose")
+    cleanup_module = Module("test_aclose")
+    cleanup_module.wrap_function(two_way_generator.generator_with_cleanup)
 
-    # Wrap the cleanup generator function
-    lib.wrap_function(two_way_generator.generator_with_cleanup)
-
-    # Compile the module
-    modules_code = compile_modules([lib], "test_sync")
+    modules_code = compile_modules([cleanup_module], "test_sync")
     generated_code = modules_code["test_aclose"]
 
     # Test execution with generated module
