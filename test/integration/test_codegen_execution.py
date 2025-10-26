@@ -527,6 +527,8 @@ def test_generator_aclose_forwarding():
         print("\n--- Test 1: Async interface with aclose() ---")
 
         async def test_async_aclose():
+            import time
+
             # Get the wrapped generator via .aio()
             gen = mod.generator_with_cleanup.aio()
 
@@ -543,9 +545,15 @@ def test_generator_aclose_forwarding():
             assert len(two_way_generator.cleanup_tracker) == 0, "Cleanup should not have happened yet"
             print("  Verified: No cleanup yet")
 
-            # Close the generator
+            # Close the generator and measure time
+            start_time = time.time()
             await gen.aclose()
-            print("  Called aclose()")
+            elapsed_time = time.time() - start_time
+            print(f"  Called aclose() (took {elapsed_time:.2f}s)")
+
+            # Verify cleanup took at least 1 second (async operation was awaited)
+            assert elapsed_time >= 1.0, f"aclose() should have taken at least 1 second (actual: {elapsed_time:.2f}s)"
+            print(f"  ✓ Cleanup was properly awaited (blocked for {elapsed_time:.2f}s)")
 
             # Verify cleanup happened
             assert (
@@ -560,6 +568,8 @@ def test_generator_aclose_forwarding():
 
         # Test 2: Sync interface (close)
         print("\n--- Test 2: Sync interface with close() ---")
+
+        import time
 
         # Get the wrapped generator via sync interface
         gen = mod.generator_with_cleanup()
@@ -577,9 +587,15 @@ def test_generator_aclose_forwarding():
         assert len(two_way_generator.cleanup_tracker) == 0, "Cleanup should not have happened yet"
         print("  Verified: No cleanup yet")
 
-        # Close the generator
+        # Close the generator and measure time
+        start_time = time.time()
         gen.close()
-        print("  Called close()")
+        elapsed_time = time.time() - start_time
+        print(f"  Called close() (took {elapsed_time:.2f}s)")
+
+        # Verify cleanup took at least 1 second (async operation was synchronized)
+        assert elapsed_time >= 1.0, f"close() should have taken at least 1 second (actual: {elapsed_time:.2f}s)"
+        print(f"  ✓ Cleanup was properly synchronized across threads (blocked for {elapsed_time:.2f}s)")
 
         # Verify cleanup happened
         assert (
