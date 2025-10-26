@@ -174,12 +174,13 @@ def test_compile_class_async_generators(test_synchronizer, async_generator_class
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
 
-    # Verify async generator methods use generator runtime methods
-    # Sync methods use _run_generator_sync
+    # Verify async generator methods use generator runtime methods with inline helpers
     assert "_run_generator_sync" in generated_code
-    assert "yield from" in generated_code
-    # Async aio() methods iterate directly (no need for _run_generator_async wrapper)
-    assert "async for item in" in generated_code
+    assert "_run_generator_async" in generated_code
+    # With inline helpers, we use "yield _item" instead of "yield from"
+    assert "yield _item" in generated_code
+    assert "async for _item in" in generated_code
+    assert "@staticmethod" in generated_code  # Helpers are static methods
 
 
 def test_compile_class_mixed_methods(test_synchronizer, mixed_class):

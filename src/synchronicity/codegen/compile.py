@@ -111,49 +111,6 @@ def _build_call_with_wrap(
         return f"{indent}return {call_expr}"
 
 
-def _build_generator_with_wrap(
-    gen_expr: str,
-    return_transformer,
-    synchronized_types: dict[type, tuple[str, str]],
-    current_target_module: str,
-    iterator_expr: str,
-    indent: str = "    ",
-) -> str:
-    """
-    Build a generator iteration with optional yielded value wrapping.
-
-    Args:
-        gen_expr: Expression to create the generator
-        return_transformer: GeneratorTransformer for the return type
-        synchronizer: The Synchronizer instance
-        current_target_module: Current target module
-        iterator_expr: How to iterate (e.g., "for item in gen" or "async for item in gen")
-        indent: Indentation string
-
-    Returns:
-        Code string with generator iteration and optional wrapping
-    """
-    if isinstance(return_transformer, GeneratorTransformer) and return_transformer.needs_translation():
-        # Get wrap expression for each yielded item
-        wrap_expr = return_transformer.get_yield_wrap_expr(synchronized_types, current_target_module, "item")
-        return f"""{indent}gen = {gen_expr}
-{indent}{iterator_expr}:
-{indent}    yield {wrap_expr}"""
-
-    # No wrapping needed
-    if iterator_expr.startswith("async"):
-        # Async generators need explicit loop
-        return f"""{indent}gen = {gen_expr}
-{indent}{iterator_expr}:
-{indent}    yield item"""
-    else:
-        # Sync generators can use yield from (more efficient)
-        # Extract the iterable from "for item in <iterable>"
-        iterable = iterator_expr.split(" in ", 1)[1]
-        return f"""{indent}gen = {gen_expr}
-{indent}yield from {iterable}"""
-
-
 def _format_return_annotation(
     return_transformer,
     synchronized_types: dict[type, tuple[str, str]],
@@ -290,26 +247,28 @@ def compile_function(
     # Generate the wrapper class
     wrapper_class_name = f"_{f.__name__}"
 
+    # Collect inline helper functions needed by return type
+    inline_helpers = return_transformer.get_wrapper_helpers(
+        synchronized_types, current_target_module, synchronizer_name, indent="    "
+    )
+    helpers_code = "\n".join(inline_helpers) if inline_helpers else ""
+
     # Build both sync and async bodies
     if is_async_gen:
-        # For async generators, wrap each yielded item
-        aio_runner = f"get_synchronizer('{synchronizer_name}')._run_generator_async"
-        aio_body = _build_generator_with_wrap(
-            f"impl_function({call_args_str})",
-            return_transformer,
-            synchronized_types,
-            current_target_module,
-            f"async for item in {aio_runner}(gen)",
-            indent="        ",
+        # For async generators, iterate over helper (can't return generators from async functions)
+        wrap_expr = return_transformer.wrap_expr(synchronized_types, current_target_module, "gen")
+        aio_body = (
+            f"        gen = impl_function({call_args_str})\n"
+            f"        async for _item in {wrap_expr}:\n"
+            f"            yield _item"
         )
-        sync_function_body = _build_generator_with_wrap(
-            f"impl_function({call_args_str})",
-            return_transformer,
-            synchronized_types,
-            current_target_module,
-            f"for item in get_synchronizer('{synchronizer_name}')._run_generator_sync(gen)",
-            indent="    ",
-        )
+
+        # For sync version, use yield from for efficiency
+        if isinstance(return_transformer, GeneratorTransformer):
+            sync_wrap_expr = return_transformer.wrap_expr_sync(synchronized_types, current_target_module, "gen")
+        else:
+            sync_wrap_expr = return_transformer.wrap_expr(synchronized_types, current_target_module, "gen")
+        sync_function_body = f"    gen = impl_function({call_args_str})\n    yield from {sync_wrap_expr}"
     elif is_async_func:
         # For regular async functions
         aio_runner = f"get_synchronizer('{synchronizer_name}')._run_function_async"
@@ -371,7 +330,10 @@ def compile_function(
     # Adjust sync_function_body indentation (was 4 spaces, now needs 8 for __call__)
     sync_body_indented = "\n".join("    " + line if line.strip() else line for line in sync_function_body.split("\n"))
 
-    wrapper_class_code = f"""class {wrapper_class_name}:
+    # Build wrapper class with inline helpers at the top
+    helpers_section = f"\n{helpers_code}\n" if helpers_code else ""
+
+    wrapper_class_code = f"""class {wrapper_class_name}:{helpers_section}
     def __call__(self, {param_str}){sync_return_str}:{call_unwrap}
 {sync_body_indented}
 
@@ -456,25 +418,25 @@ def compile_method_wrapper(
     # Generate the wrapper class
     wrapper_class_name = f"{class_name}_{method_name}"
 
+    # Collect inline helper functions needed by return type
+    inline_helpers = return_transformer.get_wrapper_helpers(
+        synchronized_types, current_target_module, synchronizer_name, indent="    "
+    )
+    helpers_code = "\n".join(inline_helpers) if inline_helpers else ""
+
     # Build both sync and async bodies
     if is_async_gen:
-        # For async generator methods
-        aio_body = _build_generator_with_wrap(
-            f"impl_method(self._wrapper_instance._impl_instance, {call_args_str})",
-            return_transformer,
-            synchronized_types,
-            current_target_module,
-            "async for item in self._wrapper_instance._synchronizer._run_generator_async(gen)",
-            indent="        ",
-        )
-        sync_method_body = _build_generator_with_wrap(
-            f"impl_method(self._wrapper_instance._impl_instance, {call_args_str})",
-            return_transformer,
-            synchronized_types,
-            current_target_module,
-            "for item in self._wrapper_instance._synchronizer._run_generator_sync(gen)",
-            indent="        ",
-        )
+        # For async generator methods, iterate over helper (can't return generators from async functions)
+        gen_call = f"impl_method(self._wrapper_instance._impl_instance, {call_args_str})"
+        wrap_expr = return_transformer.wrap_expr(synchronized_types, current_target_module, "gen")
+        aio_body = f"        gen = {gen_call}\n" f"        async for _item in {wrap_expr}:\n" f"            yield _item"
+
+        # For sync version, use yield from for efficiency
+        if isinstance(return_transformer, GeneratorTransformer):
+            sync_wrap_expr = return_transformer.wrap_expr_sync(synchronized_types, current_target_module, "gen")
+        else:
+            sync_wrap_expr = return_transformer.wrap_expr(synchronized_types, current_target_module, "gen")
+        sync_method_body = f"        gen = {gen_call}\n        yield from {sync_wrap_expr}"
     else:
         # For regular async methods
         aio_call_expr = (
@@ -516,10 +478,13 @@ def compile_method_wrapper(
 
     # The sync_method_body is already indented with 8 spaces, just use it directly
     # Simple __init__ just stores wrapper_instance
+    # Build wrapper class with inline helpers after __init__
+    helpers_section = f"\n{helpers_code}\n" if helpers_code else ""
+
     wrapper_class_code = f"""class {wrapper_class_name}:
     def __init__(self, wrapper_instance):
         self._wrapper_instance = wrapper_instance
-
+{helpers_section}
     def __call__(self, {param_str}){sync_return_str}:{sync_unwrap}
 {sync_method_body}
 

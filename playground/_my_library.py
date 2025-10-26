@@ -1,16 +1,16 @@
 import typing
 
-from synchronicity import get_synchronizer
+from synchronicity import Module
 
-lib = get_synchronizer("my_library")
+lib = Module("my_library")
 
 
-@lib.wrap()
+@lib.wrap_function
 async def foo() -> typing.AsyncGenerator[int, None]:
     yield 1
 
 
-@lib.wrap()
+@lib.wrap_class
 class Bar:
     a: str
 
@@ -25,19 +25,26 @@ class Bar:
         return b
 
 
-@lib.wrap()
+@lib.wrap_function
 async def accepts_bar(b: Bar) -> Bar:
     assert isinstance(b, Bar)
     return b
 
 
-@lib.wrap()
+@lib.wrap_class
 def accepts_bar_sync(b: Bar) -> Bar:
     assert isinstance(b, Bar)
     return b
 
 
-@lib.wrap()
-async def crazy(i: int) -> typing.AsyncGenerator[str]:
-    for _ in range(i):
-        yield "hej"
+@lib.wrap_function
+async def nested_async_generator(i: int) -> tuple[typing.AsyncGenerator[str]]:
+    async def f():
+        for _ in range(i):
+            yield "hello"
+
+    async def g():
+        for _ in range(i):
+            yield "world"
+
+    return (f(), g())

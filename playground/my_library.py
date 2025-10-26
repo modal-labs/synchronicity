@@ -11,22 +11,32 @@ class Bar_moo:
     def __init__(self, wrapper_instance):
         self._wrapper_instance = wrapper_instance
 
-    def __call__(self, s: str) -> typing.Generator[str, None, None]:
-        impl_method = _my_library.Bar.moo
-        gen = impl_method(self._wrapper_instance._impl_instance, s)
-        yield from self._wrapper_instance._synchronizer._run_generator_sync(gen)
+    @staticmethod
+    async def _wrap_async_gen_str(_gen):
+        async for _item in get_synchronizer("blah")._run_generator_async(_gen):
+            yield _item
 
-    async def aio(self, s: str) -> typing.AsyncGenerator[str, None]:
+    @staticmethod
+    def _wrap_async_gen_str_sync(_gen):
+        for _item in get_synchronizer("blah")._run_generator_sync(_gen):
+            yield _item
+
+    def __call__(self, s: str) -> "typing.Generator[str, None, None]":
         impl_method = _my_library.Bar.moo
         gen = impl_method(self._wrapper_instance._impl_instance, s)
-        async for item in self._wrapper_instance._synchronizer._run_generator_async(gen):
-            yield item
+        yield from self._wrap_async_gen_str_sync(gen)
+
+    async def aio(self, s: str) -> "typing.AsyncGenerator[str, None]":
+        impl_method = _my_library.Bar.moo
+        gen = impl_method(self._wrapper_instance._impl_instance, s)
+        async for _item in self._wrap_async_gen_str(gen):
+            yield _item
 
 
 class Bar:
     """Wrapper class for _my_library.Bar with sync/async method support"""
 
-    _synchronizer = get_synchronizer("my_library")
+    _synchronizer = get_synchronizer("blah")
     _instance_cache: weakref.WeakValueDictionary = weakref.WeakValueDictionary()
 
     def __init__(self, a: str):
@@ -61,34 +71,51 @@ class Bar:
         self._impl_instance.a = value
 
     @wrapped_method(Bar_moo)
-    def moo(self, s: str) -> typing.Generator[str, None, None]:
+    def moo(self, s: str) -> "typing.Generator[str, None, None]":
         # Dummy method for type checkers and IDE navigation
         # Actual implementation is in Bar_moo.__call__
         return self.moo(s)
 
 
+def accepts_bar_sync(b: Bar) -> "Bar":
+    impl_function = _my_library.accepts_bar_sync
+    b_impl = b._impl_instance
+    result = impl_function(b_impl)
+    return Bar._from_impl(result)
+
+
 class _foo:
+    @staticmethod
+    async def _wrap_async_gen_int(_gen):
+        async for _item in get_synchronizer("blah")._run_generator_async(_gen):
+            yield _item
+
+    @staticmethod
+    def _wrap_async_gen_int_sync(_gen):
+        for _item in get_synchronizer("blah")._run_generator_sync(_gen):
+            yield _item
+
     def __call__(
         self,
-    ) -> typing.Generator[int, None, None]:
+    ) -> "typing.Generator[int, None, None]":
         impl_function = _my_library.foo
         gen = impl_function()
-        yield from get_synchronizer("my_library")._run_generator_sync(gen)
+        yield from self._wrap_async_gen_int_sync(gen)
 
     async def aio(
         self,
-    ) -> typing.AsyncGenerator[int, None]:
+    ) -> "typing.AsyncGenerator[int, None]":
         impl_function = _my_library.foo
         gen = impl_function()
-        async for item in get_synchronizer("my_library")._run_generator_async(gen):
-            yield item
+        async for _item in self._wrap_async_gen_int(gen):
+            yield _item
 
 
 _foo_instance = _foo()
 
 
 @replace_with(_foo_instance)
-def foo() -> typing.Generator[int, None, None]:
+def foo() -> "typing.Generator[int, None, None]":
     # Dummy function for type checkers and IDE navigation
     # Actual implementation is in _foo.__call__
     return _foo_instance()
@@ -98,13 +125,13 @@ class _accepts_bar:
     def __call__(self, b: Bar) -> "Bar":
         impl_function = _my_library.accepts_bar
         b_impl = b._impl_instance
-        result = get_synchronizer("my_library")._run_function_sync(impl_function(b_impl))
+        result = get_synchronizer("blah")._run_function_sync(impl_function(b_impl))
         return Bar._from_impl(result)
 
     async def aio(self, b: Bar) -> "Bar":
         impl_function = _my_library.accepts_bar
         b_impl = b._impl_instance
-        result = await get_synchronizer("my_library")._run_function_async(impl_function(b_impl))
+        result = await get_synchronizer("blah")._run_function_async(impl_function(b_impl))
         return Bar._from_impl(result)
 
 
@@ -118,31 +145,23 @@ def accepts_bar(b: Bar) -> "Bar":
     return _accepts_bar_instance(b)
 
 
-def accepts_bar_sync(b: Bar) -> "Bar":
-    impl_function = _my_library.accepts_bar_sync
-    b_impl = b._impl_instance
-    result = impl_function(b_impl)
-    return Bar._from_impl(result)
-
-
 class _crazy:
-    def __call__(self, i: int) -> typing.Generator[str, None, None]:
+    def __call__(self, i: int) -> "tuple[typing.AsyncGenerator[str, None], ...]":
         impl_function = _my_library.crazy
-        gen = impl_function(i)
-        yield from get_synchronizer("my_library")._run_generator_sync(gen)
+        result = get_synchronizer("blah")._run_function_sync(impl_function(i))
+        return tuple(self._wrap_async_gen_str(x) for x in result)
 
-    async def aio(self, i: int) -> typing.AsyncGenerator[str, None]:
+    async def aio(self, i: int) -> "tuple[typing.AsyncGenerator[str, None], ...]":
         impl_function = _my_library.crazy
-        gen = impl_function(i)
-        async for item in get_synchronizer("my_library")._run_generator_async(gen):
-            yield item
+        result = await get_synchronizer("blah")._run_function_async(impl_function(i))
+        return tuple(self._wrap_async_gen_str(x) for x in result)
 
 
 _crazy_instance = _crazy()
 
 
 @replace_with(_crazy_instance)
-def crazy(i: int) -> typing.Generator[str, None, None]:
+def crazy(i: int) -> "tuple[typing.AsyncGenerator[str, None], ...]":
     # Dummy function for type checkers and IDE navigation
     # Actual implementation is in _crazy.__call__
     return _crazy_instance(i)

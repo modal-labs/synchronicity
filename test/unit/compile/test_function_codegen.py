@@ -230,20 +230,22 @@ class TestAsyncGenerators:
         assert "_run_generator_async" in generated_code
         assert "_run_function_sync" not in generated_code
 
-        # Verify it yields from the generator instead of returning
-        assert "yield from get_synchronizer" in generated_code
-        assert (
-            "async for item in get_synchronizer" in generated_code
-        )  # aio() should use get_synchronizer, not self._synchronizer
-        assert "_run_generator_async(gen)" in generated_code
-        assert "yield item" in generated_code
+        # Verify it generates inline helper functions for generators
+        assert "async def _wrap_async_gen" in generated_code  # Async helper
+        assert "def _wrap_async_gen" in generated_code  # Sync helper (note: both contain this string)
+        assert "async for _item in get_synchronizer" in generated_code  # Async iteration in helper
+        assert "for _item in get_synchronizer" in generated_code  # Sync iteration in helper
+        assert "_run_generator_async(_gen)" in generated_code
+        assert "_run_generator_sync(_gen)" in generated_code
+        assert "yield _item" in generated_code  # Helpers yield items
         assert "gen = impl_function" in generated_code
+        # Methods iterate over helpers (can't return generators from async functions)
+        assert "yield from self._wrap_async_gen" in generated_code  # Sync uses yield from
+        assert "async for _item in self._wrap_async_gen" in generated_code  # Async iterates
 
         # Verify return type annotations for generators
-        assert "-> typing.Generator[str" in generated_code  # Sync version returns Generator
-        assert (
-            "-> typing.AsyncGenerator[str, None]" in generated_code
-        )  # Async version returns AsyncGenerator with type args
+        assert "typing.Generator[str" in generated_code  # Sync version returns Generator
+        assert "typing.AsyncGenerator[str" in generated_code  # Async version returns AsyncGenerator
 
         # Verify parameter types are preserved
         assert "items: list" in generated_code
@@ -268,7 +270,8 @@ class TestAsyncGenerators:
 
         # Verify the structure is correct for generators
         assert "gen = impl_function(" in generated_code
-        assert "yield from" in generated_code
+        # With inline helpers, we use "yield _item" in helpers instead of "yield from"
+        assert "yield _item" in generated_code
         assert "async for" in generated_code
 
     def test_compile_async_generator_with_wrapped_type_quoting(self, test_synchronizer):

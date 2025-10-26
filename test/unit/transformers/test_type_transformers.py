@@ -344,19 +344,20 @@ class TestGeneratorTransformer:
         assert transformer.wrapped_type(sync, "test_module") == "typing.Generator[str, None, None]"
 
     def test_needs_translation(self, sync, wrapped_class):
-        # Generator of primitives doesn't need translation
+        # Async generators ALWAYS need translation (for synchronizer integration)
         transformer1 = GeneratorTransformer(IdentityTransformer(int), is_async=True)
-        assert transformer1.needs_translation() is False
+        assert transformer1.needs_translation() is True
 
-        # Generator of wrapped classes needs translation
+        # Generator of wrapped classes also needs translation
         transformer2 = GeneratorTransformer(WrappedClassTransformer(wrapped_class), is_async=True)
         assert transformer2.needs_translation() is True
 
-    def test_get_yield_wrap_expr(self, sync, wrapped_class):
-        yield_transformer = WrappedClassTransformer(wrapped_class)
-        transformer = GeneratorTransformer(yield_transformer, is_async=True)
-        result = transformer.get_yield_wrap_expr(sync, "test_module", "item")
-        assert result == "TestClass._from_impl(item)"
+        # Sync generators only need translation if yield type needs translation
+        transformer3 = GeneratorTransformer(IdentityTransformer(int), is_async=False)
+        assert transformer3.needs_translation() is False
+
+        transformer4 = GeneratorTransformer(WrappedClassTransformer(wrapped_class), is_async=False)
+        assert transformer4.needs_translation() is True
 
 
 class TestCreateTransformer:
