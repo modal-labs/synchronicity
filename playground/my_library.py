@@ -156,22 +156,55 @@ class _nested_async_generator:
         for _item in get_synchronizer("blah")._run_generator_sync(_gen):
             yield _item
 
-    def __call__(self, i: int) -> "tuple[typing.AsyncGenerator[str, None], ...]":
+    def __call__(self, i: int) -> "tuple[typing.Generator[str, None, None], typing.Generator[str, None, None]]":
         impl_function = _my_library.nested_async_generator
         result = get_synchronizer("blah")._run_function_sync(impl_function(i))
-        return tuple(self._wrap_async_gen_str(x) for x in result)
+        return (self._wrap_async_gen_str(result[0]), self._wrap_async_gen_str(result[1]))
 
-    async def aio(self, i: int) -> "tuple[typing.AsyncGenerator[str, None], ...]":
+    async def aio(self, i: int) -> "tuple[typing.AsyncGenerator[str, None], typing.AsyncGenerator[str, None]]":
         impl_function = _my_library.nested_async_generator
         result = await get_synchronizer("blah")._run_function_async(impl_function(i))
-        return tuple(self._wrap_async_gen_str(x) for x in result)
+        return (self._wrap_async_gen_str(result[0]), self._wrap_async_gen_str(result[1]))
 
 
 _nested_async_generator_instance = _nested_async_generator()
 
 
 @replace_with(_nested_async_generator_instance)
-def nested_async_generator(i: int) -> "tuple[typing.AsyncGenerator[str, None], ...]":
+def nested_async_generator(i: int) -> "tuple[typing.Generator[str, None, None], typing.Generator[str, None, None]]":
     # Dummy function for type checkers and IDE navigation
     # Actual implementation is in _nested_async_generator.__call__
     return _nested_async_generator_instance(i)
+
+
+class _two_way_gen:
+    @staticmethod
+    async def _wrap_async_gen_int(_gen):
+        async for _item in get_synchronizer("blah")._run_generator_async(_gen):
+            yield _item
+
+    @staticmethod
+    def _wrap_async_gen_int_sync(_gen):
+        for _item in get_synchronizer("blah")._run_generator_sync(_gen):
+            yield _item
+
+    def __call__(self, i: int) -> "typing.Generator[int, None, None]":
+        impl_function = _my_library.two_way_gen
+        gen = impl_function(i)
+        yield from self._wrap_async_gen_int_sync(gen)
+
+    async def aio(self, i: int) -> "typing.AsyncGenerator[int, str]":
+        impl_function = _my_library.two_way_gen
+        gen = impl_function(i)
+        async for _item in self._wrap_async_gen_int(gen):
+            yield _item
+
+
+_two_way_gen_instance = _two_way_gen()
+
+
+@replace_with(_two_way_gen_instance)
+def two_way_gen(i: int) -> "typing.Generator[int, None, None]":
+    # Dummy function for type checkers and IDE navigation
+    # Actual implementation is in _two_way_gen.__call__
+    return _two_way_gen_instance(i)

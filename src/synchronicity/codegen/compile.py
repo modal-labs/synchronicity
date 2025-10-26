@@ -236,10 +236,10 @@ def compile_function(
     wrapper_class_name = f"_{f.__name__}"
 
     # Collect inline helper functions needed by return type
-    inline_helpers = return_transformer.get_wrapper_helpers(
+    inline_helpers_dict = return_transformer.get_wrapper_helpers(
         synchronized_types, current_target_module, synchronizer_name, indent="    "
     )
-    helpers_code = "\n".join(inline_helpers) if inline_helpers else ""
+    helpers_code = "\n".join(inline_helpers_dict.values()) if inline_helpers_dict else ""
 
     # Build both sync and async bodies
     if is_async_gen:
@@ -404,10 +404,10 @@ def compile_method_wrapper(
     wrapper_class_name = f"{class_name}_{method_name}"
 
     # Collect inline helper functions needed by return type
-    inline_helpers = return_transformer.get_wrapper_helpers(
+    inline_helpers_dict = return_transformer.get_wrapper_helpers(
         synchronized_types, current_target_module, synchronizer_name, indent="    "
     )
-    helpers_code = "\n".join(inline_helpers) if inline_helpers else ""
+    helpers_code = "\n".join(inline_helpers_dict.values()) if inline_helpers_dict else ""
 
     # Build both sync and async bodies
     if is_async_gen:

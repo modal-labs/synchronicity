@@ -38,13 +38,17 @@ def accepts_bar_sync(b: Bar) -> Bar:
 
 
 @lib.wrap_function
-async def nested_async_generator(i: int) -> tuple[typing.AsyncGenerator[str], typing.AsyncGenerator[int]]:
+async def nested_async_generator(i: int) -> tuple[typing.AsyncGenerator[str], typing.AsyncGenerator[str]]:
     async def f():
         for _ in range(i):
             yield "hello"
 
     async def g():
         for j in range(i):
-            yield j
+            yield "world"
 
     return (f(), g())
+
+
+@lib.wrap_function
+async def two_way_gen(i: int) -> typing.AsyncGenerator[int, str]: ...

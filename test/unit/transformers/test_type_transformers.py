@@ -11,7 +11,6 @@ import pytest
 
 from synchronicity.codegen.type_transformer import (
     DictTransformer,
-    GeneratorTransformer,
     IdentityTransformer,
     ListTransformer,
     OptionalTransformer,
@@ -328,35 +327,47 @@ class TestGeneratorTransformer:
     """Test GeneratorTransformer for Generator/AsyncGenerator types."""
 
     def test_wrapped_type_async_generator(self, sync, wrapped_class):
+        from synchronicity.codegen.type_transformer import AsyncGeneratorTransformer
+
         yield_transformer = WrappedClassTransformer(wrapped_class)
-        transformer = GeneratorTransformer(yield_transformer, is_async=True, send_type_str="None")
-        assert transformer.wrapped_type(sync, "test_module") == "typing.AsyncGenerator[TestClass, None]"
+        transformer = AsyncGeneratorTransformer(yield_transformer, send_type_str="None")
+        assert transformer.wrapped_type(sync, "test_module", is_async=True) == "typing.AsyncGenerator[TestClass, None]"
+        assert (
+            transformer.wrapped_type(sync, "test_module", is_async=False) == "typing.Generator[TestClass, None, None]"
+        )
 
     def test_wrapped_type_async_iterator_no_send(self, sync):
         """AsyncIterator doesn't have send type."""
+        from synchronicity.codegen.type_transformer import AsyncGeneratorTransformer
+
         yield_transformer = IdentityTransformer(int)
-        transformer = GeneratorTransformer(yield_transformer, is_async=True, send_type_str=None)
-        assert transformer.wrapped_type(sync, "test_module") == "typing.AsyncGenerator[int]"
+        transformer = AsyncGeneratorTransformer(yield_transformer, send_type_str=None)
+        assert transformer.wrapped_type(sync, "test_module", is_async=True) == "typing.AsyncGenerator[int]"
+        assert transformer.wrapped_type(sync, "test_module", is_async=False) == "typing.Generator[int, None, None]"
 
     def test_wrapped_type_sync_generator(self, sync):
+        from synchronicity.codegen.type_transformer import SyncGeneratorTransformer
+
         yield_transformer = IdentityTransformer(str)
-        transformer = GeneratorTransformer(yield_transformer, is_async=False)
+        transformer = SyncGeneratorTransformer(yield_transformer)
         assert transformer.wrapped_type(sync, "test_module") == "typing.Generator[str, None, None]"
 
     def test_needs_translation(self, sync, wrapped_class):
+        from synchronicity.codegen.type_transformer import AsyncGeneratorTransformer, SyncGeneratorTransformer
+
         # Async generators ALWAYS need translation (for synchronizer integration)
-        transformer1 = GeneratorTransformer(IdentityTransformer(int), is_async=True)
+        transformer1 = AsyncGeneratorTransformer(IdentityTransformer(int))
         assert transformer1.needs_translation() is True
 
         # Generator of wrapped classes also needs translation
-        transformer2 = GeneratorTransformer(WrappedClassTransformer(wrapped_class), is_async=True)
+        transformer2 = AsyncGeneratorTransformer(WrappedClassTransformer(wrapped_class))
         assert transformer2.needs_translation() is True
 
         # Sync generators only need translation if yield type needs translation
-        transformer3 = GeneratorTransformer(IdentityTransformer(int), is_async=False)
+        transformer3 = SyncGeneratorTransformer(IdentityTransformer(int))
         assert transformer3.needs_translation() is False
 
-        transformer4 = GeneratorTransformer(WrappedClassTransformer(wrapped_class), is_async=False)
+        transformer4 = SyncGeneratorTransformer(WrappedClassTransformer(wrapped_class))
         assert transformer4.needs_translation() is True
 
 
@@ -401,9 +412,10 @@ class TestCreateTransformer:
     def test_create_async_generator(self, sync):
         from typing import AsyncGenerator
 
+        from synchronicity.codegen.type_transformer import AsyncGeneratorTransformer
+
         transformer = create_transformer(AsyncGenerator[str, None], sync)
-        assert isinstance(transformer, GeneratorTransformer)
-        assert transformer.is_async is True
+        assert isinstance(transformer, AsyncGeneratorTransformer)
 
     def test_nested_list_of_optional_wrapped(self, sync, wrapped_class):
         """Test nested type: list[Optional[WrappedClass]]."""
