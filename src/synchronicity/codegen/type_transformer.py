@@ -484,16 +484,30 @@ class AsyncGeneratorTransformer(TypeTransformer):
         else:
             wrap_expr = "_item"
 
-        # Generate both async and sync helpers
+        # Generate both async and sync helpers with send() support
+        # For two-way generators, we need to manually iterate using asend()/send()
+        # to preserve the bidirectional communication
         async_helper = f"""{indent}@staticmethod
 {indent}async def {helper_name}(_gen):
-{indent}    async for _item in get_synchronizer('{synchronizer_name}')._run_generator_async(_gen):
-{indent}        yield {wrap_expr}"""
+{indent}    _wrapped = get_synchronizer('{synchronizer_name}')._run_generator_async(_gen)
+{indent}    _sent = None
+{indent}    while True:
+{indent}        try:
+{indent}            _item = await _wrapped.asend(_sent)
+{indent}            _sent = yield {wrap_expr}
+{indent}        except StopAsyncIteration:
+{indent}            break"""
 
         sync_helper = f"""{indent}@staticmethod
 {indent}def {helper_name}_sync(_gen):
-{indent}    for _item in get_synchronizer('{synchronizer_name}')._run_generator_sync(_gen):
-{indent}        yield {wrap_expr}"""
+{indent}    _wrapped = get_synchronizer('{synchronizer_name}')._run_generator_sync(_gen)
+{indent}    _sent = None
+{indent}    while True:
+{indent}        try:
+{indent}            _item = _wrapped.send(_sent)
+{indent}            _sent = yield {wrap_expr}
+{indent}        except StopIteration:
+{indent}            break"""
 
         helpers[helper_name] = async_helper
         helpers[f"{helper_name}_sync"] = sync_helper
@@ -575,11 +589,17 @@ class SyncGeneratorTransformer(TypeTransformer):
         else:
             wrap_expr = "_item"
 
-        # Generate sync helper (no synchronizer needed for sync generators)
+        # Generate sync helper with send() support
+        # Use manual iteration with send() to preserve bidirectional communication
         helper_code = f"""{indent}@staticmethod
 {indent}def {helper_name}(_gen):
-{indent}    for _item in _gen:
-{indent}        yield {wrap_expr}"""
+{indent}    _sent = None
+{indent}    while True:
+{indent}        try:
+{indent}            _item = _gen.send(_sent)
+{indent}            _sent = yield {wrap_expr}
+{indent}        except StopIteration:
+{indent}            break"""
         helpers[helper_name] = helper_code
 
         return helpers

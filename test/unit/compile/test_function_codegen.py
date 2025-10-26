@@ -230,18 +230,18 @@ class TestAsyncGenerators:
         assert "_run_generator_async" in generated_code
         assert "_run_function_sync" not in generated_code
 
-        # Verify it generates inline helper functions for generators
+        # Verify it generates inline helper functions for generators with send() support
         assert "async def _wrap_async_gen" in generated_code  # Async helper
         assert "def _wrap_async_gen" in generated_code  # Sync helper (note: both contain this string)
-        assert "async for _item in get_synchronizer" in generated_code  # Async iteration in helper
-        assert "for _item in get_synchronizer" in generated_code  # Sync iteration in helper
+        assert "_wrapped.asend(_sent)" in generated_code  # Async helper uses asend() for two-way generators
+        assert "_wrapped.send(_sent)" in generated_code  # Sync helper uses send() for two-way generators
         assert "_run_generator_async(_gen)" in generated_code
         assert "_run_generator_sync(_gen)" in generated_code
-        assert "yield _item" in generated_code  # Helpers yield items
+        assert "_sent = yield _item" in generated_code  # Helpers capture sent values
         assert "gen = impl_function" in generated_code
         # Methods iterate over helpers (can't return generators from async functions)
         assert "yield from self._wrap_async_gen" in generated_code  # Sync uses yield from
-        assert "async for _item in self._wrap_async_gen" in generated_code  # Async iterates
+        assert "await _wrapped.asend(_sent)" in generated_code  # Async uses asend() to forward send values
 
         # Verify return type annotations for generators
         assert "typing.Generator[str" in generated_code  # Sync version returns Generator
@@ -268,11 +268,11 @@ class TestAsyncGenerators:
         for element in template_elements:
             assert element in generated_code, f"Generated code should contain '{element}'"
 
-        # Verify the structure is correct for generators
+        # Verify the structure is correct for generators with send() support
         assert "gen = impl_function(" in generated_code
-        # With inline helpers, we use "yield _item" in helpers instead of "yield from"
-        assert "yield _item" in generated_code
-        assert "async for" in generated_code
+        # With send() support, we use "await _wrapped.asend(_sent)" instead of "async for"
+        assert "_sent = yield _item" in generated_code
+        assert "await _wrapped.asend(_sent)" in generated_code
 
     def test_compile_async_generator_with_wrapped_type_quoting(self, test_synchronizer):
         """Test that async generators with wrapped types quote the entire return type annotation.

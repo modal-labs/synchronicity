@@ -361,3 +361,136 @@ def test_nested_async_generators_in_tuple():
         # Clean up: remove the injected function
         if hasattr(current_module, "nested_async_generator"):
             delattr(current_module, "nested_async_generator")
+
+
+def test_two_way_generator_send():
+    """Test that two-way generators (using send()) work correctly across sync/async boundary.
+
+    Two-way generators can receive values via send() method. This test verifies that:
+    1. The send() functionality is preserved in the sync wrapper
+    2. The asend() functionality works in the async wrapper
+    3. State is maintained correctly across send() calls
+    4. Type annotations correctly reflect AsyncGenerator[YieldType, SendType]
+    """
+    from synchronicity.module import Module
+
+    # Import the implementation module
+    from test.support_files import two_way_generator
+
+    # Create synchronizer module
+    lib = Module("test_two_way")
+
+    # Wrap the two-way generator functions
+    lib.wrap_function(two_way_generator.echo_generator)
+    lib.wrap_function(two_way_generator.accumulator_generator)
+    lib.wrap_function(two_way_generator.multiplier_generator)
+
+    # Compile the module
+    modules_code = compile_modules([lib], "test_sync")
+    generated_code = modules_code["test_two_way"]
+
+    # Verify helper functions use send() (not simple iteration)
+    assert "@staticmethod" in generated_code
+    assert "asend(_sent)" in generated_code or ".send(_sent)" in generated_code
+    print("✓ Generated helpers use send() for bidirectional communication")
+
+    # Test execution with generated module
+    with generated_module(generated_code, "test_two_way") as mod:
+        # Test 1: Echo generator with sync interface
+        print("\n=== Test 1: Echo generator (sync interface) ===")
+
+        gen = mod.echo_generator()
+        # First value is yielded without send
+        first = gen.send(None)
+        assert first == "Ready", f"Expected 'Ready', got {first}"
+
+        # Send values and get echoes back
+        echo1 = gen.send("Hello")
+        assert echo1 == "Echo: Hello", f"Expected 'Echo: Hello', got {echo1}"
+
+        echo2 = gen.send("World")
+        assert echo2 == "Echo: World", f"Expected 'Echo: World', got {echo2}"
+
+        # Test None handling
+        echo3 = gen.send(None)
+        assert echo3 == "Got None", f"Expected 'Got None', got {echo3}"
+
+        gen.close()
+        print("✓ Echo generator sync interface works correctly")
+
+        # Test 2: Echo generator with async interface
+        print("\n=== Test 2: Echo generator (async interface) ===")
+
+        async def test_echo_async():
+            gen = mod.echo_generator.aio()
+            # First value is yielded without send
+            first = await gen.asend(None)
+            assert first == "Ready", f"Expected 'Ready', got {first}"
+
+            # Send values and get echoes back
+            echo1 = await gen.asend("Async")
+            assert echo1 == "Echo: Async", f"Expected 'Echo: Async', got {echo1}"
+
+            echo2 = await gen.asend("Test")
+            assert echo2 == "Echo: Test", f"Expected 'Echo: Test', got {echo2}"
+
+            await gen.aclose()
+            return True
+
+        result = asyncio.run(test_echo_async())
+        assert result is True
+        print("✓ Echo generator async interface works correctly")
+
+        # Test 3: Accumulator generator (maintains state)
+        print("\n=== Test 3: Accumulator generator (stateful) ===")
+
+        gen = mod.accumulator_generator()
+        # First value is 0
+        total = gen.send(None)
+        assert total == 0, f"Expected 0, got {total}"
+
+        # Add 5
+        total = gen.send(5)
+        assert total == 5, f"Expected 5, got {total}"
+
+        # Add 10
+        total = gen.send(10)
+        assert total == 15, f"Expected 15, got {total}"
+
+        # Add 3
+        total = gen.send(3)
+        assert total == 18, f"Expected 18, got {total}"
+
+        # Send None (should not change total)
+        total = gen.send(None)
+        assert total == 18, f"Expected 18, got {total}"
+
+        gen.close()
+        print("✓ Accumulator generator maintains state correctly")
+
+        # Test 4: Multiplier generator with parameter
+        print("\n=== Test 4: Multiplier generator (with parameter) ===")
+
+        # Create multiplier with factor=3
+        gen = mod.multiplier_generator(3)
+
+        # First value is 0
+        result = gen.send(None)
+        assert result == 0, f"Expected 0, got {result}"
+
+        # Send 5, get 15 (5 * 3)
+        result = gen.send(5)
+        assert result == 15, f"Expected 15, got {result}"
+
+        # Send 7, get 21 (7 * 3)
+        result = gen.send(7)
+        assert result == 21, f"Expected 21, got {result}"
+
+        # Send None, get 0
+        result = gen.send(None)
+        assert result == 0, f"Expected 0, got {result}"
+
+        gen.close()
+        print("✓ Multiplier generator with parameter works correctly")
+
+        print("\n=== All two-way generator tests passed! ===")

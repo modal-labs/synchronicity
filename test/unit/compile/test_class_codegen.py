@@ -177,9 +177,9 @@ def test_compile_class_async_generators(test_synchronizer, async_generator_class
     # Verify async generator methods use generator runtime methods with inline helpers
     assert "_run_generator_sync" in generated_code
     assert "_run_generator_async" in generated_code
-    # With inline helpers, we use "yield _item" instead of "yield from"
-    assert "yield _item" in generated_code
-    assert "async for _item in" in generated_code
+    # With send() support, helpers use asend()/_sent pattern
+    assert "_sent = yield _item" in generated_code
+    assert "await _wrapped.asend(_sent)" in generated_code
     assert "@staticmethod" in generated_code  # Helpers are static methods
 
 

@@ -243,12 +243,18 @@ def compile_function(
 
     # Build both sync and async bodies
     if is_async_gen:
-        # For async generators, iterate over helper (can't return generators from async functions)
+        # For async generators, manually iterate with asend() to support two-way generators
         wrap_expr = return_transformer.wrap_expr(synchronized_types, current_target_module, "gen")
         aio_body = (
             f"        gen = impl_function({call_args_str})\n"
-            f"        async for _item in {wrap_expr}:\n"
-            f"            yield _item"
+            f"        _wrapped = {wrap_expr}\n"
+            f"        _sent = None\n"
+            f"        while True:\n"
+            f"            try:\n"
+            f"                _item = await _wrapped.asend(_sent)\n"
+            f"                _sent = yield _item\n"
+            f"            except StopAsyncIteration:\n"
+            f"                break"
         )
 
         # For sync version, use yield from for efficiency
@@ -411,10 +417,20 @@ def compile_method_wrapper(
 
     # Build both sync and async bodies
     if is_async_gen:
-        # For async generator methods, iterate over helper (can't return generators from async functions)
+        # For async generator methods, manually iterate with asend() to support two-way generators
         gen_call = f"impl_method(self._wrapper_instance._impl_instance, {call_args_str})"
         wrap_expr = return_transformer.wrap_expr(synchronized_types, current_target_module, "gen")
-        aio_body = f"        gen = {gen_call}\n" f"        async for _item in {wrap_expr}:\n" f"            yield _item"
+        aio_body = (
+            f"        gen = {gen_call}\n"
+            f"        _wrapped = {wrap_expr}\n"
+            f"        _sent = None\n"
+            f"        while True:\n"
+            f"            try:\n"
+            f"                _item = await _wrapped.asend(_sent)\n"
+            f"                _sent = yield _item\n"
+            f"            except StopAsyncIteration:\n"
+            f"                break"
+        )
 
         # For sync version, use yield from for efficiency
         sync_wrap_expr = return_transformer.wrap_expr(synchronized_types, current_target_module, "gen", is_async=False)
