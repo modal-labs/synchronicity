@@ -9,9 +9,11 @@ import asyncio
 def test_event_loop_execution(generated_wrappers):
     """Test that .aio() methods run in the synchronizer's event loop."""
 
+    import event_loop_check
+
     # Test 1: Function .aio()
     async def test_function_aio():
-        result = await generated_wrappers.event_loop_check.async_function.aio(5)
+        result = await event_loop_check.async_function.aio(5)
         return result
 
     result1 = asyncio.run(test_function_aio())
@@ -21,7 +23,7 @@ def test_event_loop_execution(generated_wrappers):
     # Test 2: Generator function .aio()
     async def test_generator_aio():
         results = []
-        async for val in generated_wrappers.event_loop_check.async_generator.aio(3):
+        async for val in event_loop_check.async_generator.aio(3):
             results.append(val)
         return results
 
@@ -30,7 +32,7 @@ def test_event_loop_execution(generated_wrappers):
     print(f"✓ Generator function .aio() runs in synchronizer event loop: {result2}")
 
     # Test 3: Method .aio()
-    checker = generated_wrappers.event_loop_check.EventLoopChecker(10)
+    checker = event_loop_check.EventLoopChecker(10)
 
     async def test_method_aio():
         result = await checker.async_method.aio()

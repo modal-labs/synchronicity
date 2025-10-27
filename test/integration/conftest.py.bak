@@ -103,7 +103,7 @@ def generated_wrappers():
         from synchronicity import Module
         from synchronicity.codegen.compile import compile_modules
         from synchronicity.codegen.writer import write_modules
-        from test.support_files import two_way_generator_impl
+        import two_way_generator_impl
 
         cleanup_module = Module("test_aclose")
         cleanup_module.wrap_function(two_way_generator_impl.generator_with_cleanup)

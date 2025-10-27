@@ -12,33 +12,22 @@ def test_nested_async_generators_in_tuple(generated_wrappers):
     This tests the case where a function returns a tuple containing async generators,
     verifying that both sync and async interfaces work correctly.
     """
-    # Verify helper functions are generated for nested generators
-    generated_code = generated_wrappers.generated_code["nested_generators"]
-    assert "@staticmethod" in generated_code
-    assert "async def _wrap_async_gen" in generated_code
-    assert "yield _item" in generated_code
-
-    # Test 1: Sync interface returns async generators (wrapped)
+    # Test 1: Sync interface returns sync generators (wrapped)
     # Note: For nested generators in return values, the sync interface still returns
     # async generator objects that need to be iterated asynchronously
-    str_gen_async, int_gen_async = generated_wrappers.nested_generators.nested_async_generator(3)
+    import nested_generators
 
-    # Verify they are async generators
-    assert hasattr(str_gen_async, "__anext__"), "Should be an async generator"
-    assert hasattr(int_gen_async, "__anext__"), "Should be an async generator"
+    # test sync interface:
+    str_gen_async, int_gen_async = nested_generators.nested_async_generator(3)
 
-    async def consume_sync_result():
-        str_results = []
-        async for s in str_gen_async:
-            str_results.append(s)
+    str_results = []
+    for s in str_gen_async:
+        str_results.append(s)
 
-        int_results = []
-        async for i in int_gen_async:
-            int_results.append(i)
+    int_results = []
+    for i in int_gen_async:
+        int_results.append(i)
 
-        return str_results, int_results
-
-    str_results, int_results = asyncio.run(consume_sync_result())
     assert str_results == [
         "hello",
         "hello",
@@ -50,7 +39,7 @@ def test_nested_async_generators_in_tuple(generated_wrappers):
 
     # Test 2: Async interface - iterate over both generators
     async def test_async():
-        str_gen, int_gen = await generated_wrappers.nested_generators.nested_async_generator.aio(2)
+        str_gen, int_gen = await nested_generators.nested_async_generator.aio(2)
 
         str_results = []
         async for s in str_gen:

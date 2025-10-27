@@ -119,7 +119,7 @@ def test_generator_aclose_forwarding(generated_wrappers):
     2. Ensure finalization logic (try/finally blocks) executes
     3. Wait for cleanup before returning to caller
     """
-    from test.support_files import two_way_generator_impl
+    import two_way_generator_impl
 
     print("\n=== Testing aclose() forwarding ===")
 

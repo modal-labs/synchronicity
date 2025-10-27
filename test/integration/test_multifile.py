@@ -32,7 +32,7 @@ def test_multifile_execution(generated_wrappers):
     print("✓ Multifile execution test passed")
 
 
-def test_multifile_imports(generated_wrappers):
+def test_codegen_module_not_imported_at_runtime(generated_wrappers):
     """Test that importing generated wrappers does NOT import synchronicity.codegen.
 
     This ensures build-time code (codegen) is separate from runtime code (synchronizer).
@@ -103,75 +103,31 @@ print("IMPORT_CHECK_SUCCESS")
 
 def test_multifile_type_checking(generated_wrappers):
     """Test that generated code from multiple modules passes type checking."""
-    import shutil
-    import subprocess
-    import tempfile
     from pathlib import Path
 
     support_files_path = Path(__file__).parent.parent / "support_files"
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmppath = Path(tmpdir)
+    usage_sync_src = support_files_path / "multifile_usage_sync.py"
+    usage_async_src = support_files_path / "multifile_usage_async.py"
 
-        # Copy generated multifile modules to temp directory
-        generated_multifile = generated_wrappers.output_dir / "multifile"
-        target_multifile = tmppath / "multifile"
-        shutil.copytree(generated_multifile, target_multifile)
+    result_sync = check_pyright([usage_sync_src])
+    print(f"Pyright output (sync):\n{result_sync}")
 
-        # Copy impl modules needed for imports
-        impl_module_a = support_files_path / "multifile_impl/_a.py"
-        impl_module_b = support_files_path / "multifile_impl/_b.py"
-        shutil.copy(impl_module_a, target_multifile / "_a.py")
-        shutil.copy(impl_module_b, target_multifile / "_b.py")
+    output_sync = result_sync
+    assert 'Type of "a" is "A"' in output_sync
+    assert 'Type of "b" is "B"' in output_sync
+    assert 'Type of "val" is "int"' in output_sync
 
-        # Copy usage test files
-        usage_sync_src = support_files_path / "multifile_usage_sync.py"
-        usage_async_src = support_files_path / "multifile_usage_async.py"
-        usage_sync = tmppath / "usage_sync.py"
-        usage_async = tmppath / "usage_async.py"
-        shutil.copy(usage_sync_src, usage_sync)
-        shutil.copy(usage_async_src, usage_async)
-
-        # Run pyright on sync usage
-        result_sync = subprocess.run(
-            ["pyright", str(usage_sync)],
-            capture_output=True,
-            text=True,
-            cwd=str(tmppath),
-        )
-
-        print(f"Pyright output (sync):\n{result_sync.stdout}")
-
-        if result_sync.returncode != 0:
-            print(f"Pyright stderr:\n{result_sync.stderr}")
-            assert False, f"Pyright type checking failed for sync usage with exit code {result_sync.returncode}"
-
-        output_sync = result_sync.stdout
-        assert 'Type of "a" is "A"' in output_sync
-        assert 'Type of "b" is "B"' in output_sync
-        assert 'Type of "val" is "int"' in output_sync
-
-        # Run pyright on async usage
-        result_async = subprocess.run(
-            ["pyright", str(usage_async)],
-            capture_output=True,
-            text=True,
-            cwd=str(tmppath),
-        )
-
-        print(f"Pyright output (async):\n{result_async.stdout}")
-
-        if result_async.returncode != 0:
-            print(f"Pyright stderr:\n{result_async.stderr}")
-            assert False, f"Pyright type checking failed for async usage with exit code {result_async.returncode}"
-
-        output_async = result_async.stdout
-        # Async type inference is limited due to descriptor pattern
-        # Pyright sees .aio as Any, so types after await are also Any
-        # But we can verify that the classes themselves are correctly typed
-        assert 'Type of "A" is "type[A]"' in output_async
-        assert 'Type of "B" is "type[B]"' in output_async
-        assert 'Type of "a" is "A"' in output_async
+    # Run pyright on async usage
+    result_sync = check_pyright([usage_async_src])
+    print(f"Pyright output (async):\n{result_sync}")
+    output_async = result_sync
+    # Async type inference is limited due to descriptor pattern
+    # Pyright sees .aio as Any, so types after await are also Any
+    # But we can verify that the classes themselves are correctly typed
+    assert 'Type of "A" is "type[A]"' in output_async
+    assert 'Type of "B" is "type[B]"' in output_async
+    assert 'Type of "a" is "A"' in output_async
 
     print("✓ Type checking test passed")
 
@@ -181,9 +137,9 @@ def test_multifile_generated_modules(generated_wrappers):
     from pathlib import Path
 
     # Get generated multifile module paths
-    generated_dir = generated_wrappers.output_dir
-    module_a = generated_dir / "multifile/a.py"
-    module_b = generated_dir / "multifile/b.py"
+    generated_dir = generated_wrappers
+    module_a: Path = generated_dir / "multifile/a.py"
+    module_b: Path = generated_dir / "multifile/b.py"
 
     assert module_a.exists(), f"Module a.py not found at {module_a}"
     assert module_b.exists(), f"Module b.py not found at {module_b}"
@@ -195,10 +151,14 @@ def test_multifile_generated_modules(generated_wrappers):
     pythonpath = f"{project_root}:{support_files}"
     check_pyright([module_a, module_b], pythonpath)
 
+    module_a_src = module_a.read_text()
+    module_b_src = module_b.read_text()
     # Verify generated code contains expected classes and functions
-    assert "class A:" in generated_wrappers.generated_code["multifile.a"]
-    assert "class B:" in generated_wrappers.generated_code["multifile.b"]
-    assert "def get_b(" in generated_wrappers.generated_code["multifile.a"]
-    assert "def get_a(" in generated_wrappers.generated_code["multifile.b"]
+    assert "class A:" in module_a_src
+    assert "class B:" in module_b_src
+    assert "class A" not in module_b_src
+    assert "class B" not in module_a_src
+    assert "def get_b(" in module_a_src
+    assert "def get_a(" in module_b_src
 
     print("✓ Generated modules test passed")

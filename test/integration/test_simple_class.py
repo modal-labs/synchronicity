@@ -55,7 +55,7 @@ def test_method_wrapper_aio_execution(generated_wrappers):
 
 def test_pyright_simple_class(tmpdir):
     """Test that simple class generation passes pyright."""
-    from test.support_files import simple_class_impl
+    import simple_class_impl
 
     # Generate wrapper code
     modules = compile_modules([simple_class_impl.wrapper_module], "s")

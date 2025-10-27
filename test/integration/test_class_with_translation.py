@@ -15,7 +15,9 @@ from test.integration.test_utils import check_pyright
 def test_generated_code_execution_with_translation(generated_wrappers):
     """Test that type translation works at runtime."""
     # Create a node
-    node = generated_wrappers.class_with_translation.create_node(42)
+    import class_with_translation
+
+    node = class_with_translation.create_node(42)
     assert node.value == 42, f"Expected node.value=42, got {node.value}"
 
     # Create a child node
@@ -23,7 +25,7 @@ def test_generated_code_execution_with_translation(generated_wrappers):
     assert child.value == 99, f"Expected child.value=99, got {child.value}"
 
     # Connect nodes - this tests that wrapped objects can be passed as arguments
-    result_parent, result_child = generated_wrappers.class_with_translation.connect_nodes(node, child)
+    result_parent, result_child = class_with_translation.connect_nodes(node, child)
     assert result_parent.value == 42, "Expected result_parent.value=42"
     assert result_child.value == 99, "Expected result_child.value=99"
 
@@ -37,10 +39,12 @@ def test_generated_code_execution_with_translation(generated_wrappers):
 def test_wrapper_identity_preservation(generated_wrappers):
     """Test that wrapper identity is preserved through translation."""
     # Create a node
-    node = generated_wrappers.class_with_translation.create_node(1)
+    import class_with_translation
+
+    node = class_with_translation.create_node(1)
 
     # Pass through a function that should preserve identity
-    returned_node, _ = generated_wrappers.class_with_translation.connect_nodes(node, node)
+    returned_node, _ = class_with_translation.connect_nodes(node, node)
 
     # Verify identity is preserved when passing through wrapper boundary
     assert returned_node is node, "Wrapper identity should be preserved through function calls"
@@ -50,7 +54,7 @@ def test_wrapper_identity_preservation(generated_wrappers):
 
 def test_pyright_class_with_translation(tmpdir):
     """Test that class with type translation passes pyright."""
-    from test.support_files import class_with_translation_impl
+    import class_with_translation_impl
 
     # Generate wrapper code
     modules = compile_modules([class_with_translation_impl.wrapper_module], "s")
@@ -62,7 +66,7 @@ def test_pyright_class_with_translation(tmpdir):
 
 def test_pyright_type_inference():
     """Test that generated code type checks correctly with pyright using reveal_type."""
-    from test.support_files import class_with_translation_impl
+    import class_with_translation_impl
 
     # Generate wrapper code
     modules = compile_modules([class_with_translation_impl.wrapper_module], "s")
@@ -144,7 +148,7 @@ def test_pyright_keyword_arguments():
     With the new approach using explicit __call__ signatures, pyright should
     properly infer types for keyword argument calls.
     """
-    from test.support_files import class_with_translation_impl
+    import class_with_translation_impl
 
     # Generate wrapper code
     modules = compile_modules([class_with_translation_impl.wrapper_module], "s")

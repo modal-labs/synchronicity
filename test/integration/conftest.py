@@ -8,7 +8,6 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 
 
 @pytest.fixture(scope="session")
@@ -86,55 +85,11 @@ def generated_wrappers():
             raise RuntimeError(f"Failed to generate wrapper code: {result.stderr}")
 
         # Add paths to sys.path:
-        # - project_root: so we can import generated.*
         # - support_files_path: so generated code can import impl modules (e.g., multifile_impl._a)
         # - generated_dir: so multifile.* can be imported directly
         sys.path.insert(0, str(support_files_path))
         sys.path.insert(0, str(generated_dir))
-
-        # Import all generated modules
-        result_ns = SimpleNamespace()
-        result_ns.simple_function = __import__("simple_function", fromlist=[""])
-        result_ns.simple_class = __import__("simple_class", fromlist=[""])
-        result_ns.class_with_translation = __import__("class_with_translation", fromlist=[""])
-        result_ns.event_loop_check = __import__("event_loop_check", fromlist=[""])
-        result_ns.nested_generators = __import__("nested_generators", fromlist=[""])
-        result_ns.two_way_generator = __import__("two_way_generator", fromlist=[""])
-
-        # Import multifile modules (can now import via multifile.* or multifile.*)
-        result_ns.multifile_a = __import__("multifile.a", fromlist=[""])
-        result_ns.multifile_b = __import__("multifile.b", fromlist=[""])
-
-        # For the aclose test, generate a separate module with just that function
-        from synchronicity import Module
-        from synchronicity.codegen.compile import compile_modules
-        from synchronicity.codegen.writer import write_modules
-        from test.support_files import two_way_generator_impl
-
-        cleanup_module = Module("test_aclose")
-        cleanup_module.wrap_function(two_way_generator_impl.generator_with_cleanup)
-        modules = compile_modules([cleanup_module], "sync_aclose")
-        aclose_modules = {f"{k}": v for k, v in modules.items()}
-        list(write_modules(project_root, aclose_modules))
-
-        result_ns.test_aclose = __import__("test_aclose", fromlist=[""])
-
-        # Store paths for tests that need them
-        result_ns.output_dir = generated_dir
-
-        # Store generated code for verification tests
-        result_ns.generated_code = {}
-        for module_name, target_name in module_specs:
-            gen_file = generated_dir / f"{target_name.replace('.', '/')}.py"
-            if gen_file.exists():
-                result_ns.generated_code[f"{target_name}"] = gen_file.read_text()
-
-        # Add aclose code
-        aclose_file = generated_dir / "test_aclose.py"
-        if aclose_file.exists():
-            result_ns.generated_code["test_aclose"] = aclose_file.read_text()
-
-        yield result_ns
+        yield generated_dir
     finally:
         pass
     # Note: We do NOT delete the generated/ directory - keep files for manual inspection

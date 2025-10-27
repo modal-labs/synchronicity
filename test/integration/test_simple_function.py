@@ -21,7 +21,7 @@ def test_generated_code_execution_simple(generated_wrappers):
 
 def test_pyright_simple_function(tmpdir):
     """Test that simple function generation passes pyright."""
-    from test.support_files import simple_function_impl
+    import simple_function_impl
 
     # Generate wrapper code
     modules = compile_modules([simple_function_impl.wrapper_module], "s")
