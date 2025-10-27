@@ -50,7 +50,7 @@ class Synchronizer:
         for attr in self._PICKLE_ATTRS:
             setattr(self, attr, d[attr])
 
-    def _start_loop(self):
+    def _start_loop(self) -> asyncio.AbstractEventLoop:
         with self._loop_creation_lock:
             if self._loop and self._loop.is_running():
                 # in case of a race between two _start_loop, the loop might already
@@ -80,15 +80,19 @@ class Synchronizer:
             thread.start()
             is_ready.wait()  # TODO: this might block for a very short time
             self._thread = thread
+            assert self._loop
             return self._loop
 
     def _close_loop(self):
         # Use getattr to protect against weird gc races when we get here via __del__
         if getattr(self, "_thread", None) is not None:
-            if not self._loop.is_closed():
+            if self._loop and not self._loop.is_closed() and self._stopping:
                 # This also serves the purpose of waking up an idle loop
                 self._loop.call_soon_threadsafe(self._stopping.set)
-            self._thread.join()
+
+            if self._thread:
+                self._thread.join()
+
             self._thread = None
             self._loop = None
             self._owner_pid = None
