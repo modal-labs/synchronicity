@@ -113,10 +113,10 @@ write_modules(Path('./'), modules)
 "
 
 # Using CLI (searches for Module objects in imported modules)
-python -m synchronicity.cli -m _my_library my_library_sync -o ./generated/
+python -m synchronicity.codegen -m _my_library my_library_sync -o ./generated/
 
 # Multi-module projects
-python -m synchronicity.cli \
+python -m synchronicity.codegen \
     -m package._impl_a \
     -m package._impl_b \
     package_sync \
@@ -153,38 +153,51 @@ asyncio.run(main())
 ```
 /Users/elias/code/synchronicity/
 ├── src/synchronicity/               # Main package
-│   ├── __init__.py                   # Public API: Module, get_synchronizer
-│   ├── synchronizer.py               # Module + Synchronizer classes
-│   ├── cli.py                        # CLI entry point
+│   ├── __init__.py                   # Public API: Module, Synchronizer, get_synchronizer
+│   ├── module.py                     # Module class for build-time registration
+│   ├── synchronizer.py               # Synchronizer class for runtime execution
 │   ├── descriptor.py                 # Python descriptors for method binding
 │   └── codegen/                      # Code generation utilities
 │       ├── __init__.py
+│       ├── __main__.py               # Allows python -m synchronicity.codegen
+│       ├── cli.py                    # CLI entry point
 │       ├── compile.py                # Code generation engine
+│       ├── signature_utils.py        # Signature inspection utilities
 │       ├── type_transformer.py       # Type annotation transformation
 │       └── writer.py                 # File writing utilities
-├── test/synchronicity2_tests/        # Comprehensive test suite (98 tests)
-│   ├── compile_function_test.py      # Function wrapper generation
-│   ├── compile_sync_function_test.py # Sync function tests
-│   ├── wrapper_class_test.py         # Class wrapper generation
-│   ├── type_transformers_test.py     # Type transformation tests
-│   ├── translation_integration_test.py  # Type translation pipeline
-│   ├── codegen_integration_test.py   # End-to-end generation
-│   ├── multifile_integration_test.py # Multi-module tests
-│   └── support_files/                # Test fixtures (all use Module)
+├── test/                             # Test suite
+│   ├── unit/                         # Unit tests
+│   │   ├── compile/                  # Code generation tests
+│   │   │   ├── test_function_codegen.py
+│   │   │   ├── test_class_codegen.py
+│   │   │   └── test_type_translation_codegen.py
+│   │   └── transformers/
+│   │       └── test_type_transformers.py
+│   ├── integration/                  # Integration tests
+│   │   ├── test_simple_function.py
+│   │   ├── test_simple_class.py
+│   │   ├── test_class_with_translation.py
+│   │   ├── test_multifile.py
+│   │   ├── test_nested_generators.py
+│   │   ├── test_event_loop_check.py
+│   │   └── test_utils.py
+│   └── support_files/                # Test fixtures
 │       ├── _simple_function.py
 │       ├── _simple_class.py
 │       ├── _class_with_translation.py
+│       ├── _test_impl.py
+│       ├── _event_loop_check.py
 │       └── multifile/
 │           ├── _a.py
 │           └── _b.py
 ├── README.md                         # User documentation
 ├── pyproject.toml                    # Package configuration
-└── SYNCHRONICITY2.md                 # This file
+└── synchronicity2.md                 # This file
 ```
 
 ## Key Components Deep Dive
 
-### 1. Module Class ([src/synchronicity/synchronizer.py](src/synchronicity/synchronizer.py))
+### 1. Module Class ([src/synchronicity/module.py](src/synchronicity/module.py))
 
 **Purpose:** Lightweight build-time registration for code generation
 
@@ -270,15 +283,17 @@ class MyClass:
 - `_run_generator_sync(agen)` - Wraps async generator as sync generator
 - `_run_generator_async(agen)` - Wraps async generator for async iteration
 
-### 3. CLI Tool ([src/synchronicity/cli.py](src/synchronicity/cli.py))
+### 3. CLI Tool ([src/synchronicity/codegen/cli.py](src/synchronicity/codegen/cli.py))
 
-**Entry Point:** `python -m synchronicity.cli`
+**Entry Point:** `python -m synchronicity.codegen`
 
 **Command-line Arguments:**
 ```
--m/--modules: Implementation module paths (e.g., _my_library)
+-m/--module: Implementation module paths (can be specified multiple times)
 synchronizer_name: Synchronizer name for generated code (e.g., my_library_sync)
--o/--output: Output directory (optional, stdout if omitted)
+-o/--output-dir: Output directory (default: current directory)
+--stdout: Print to stdout instead of writing files
+--ruff: Run ruff to format generated code
 ```
 
 **Workflow:**
@@ -595,8 +610,8 @@ write_modules(Path("./package/"), modules)
 ## Test Suite Overview
 
 **Location:** [test/](test/)
-**Total Tests:** 101 tests across 7 test files organized by abstraction layer
-**Pass Rate:** 101 passing (100%)
+**Test Organization:** Unit tests and integration tests organized by functionality
+**Coverage:** Functions, classes, generators, type transformers, and multi-module scenarios
 
 ### Running Tests
 
@@ -625,10 +640,6 @@ pytest test/ -v
 pytest test/ --cov=synchronicity
 ```
 
-**Note:** Some tests require `pyright` for type checking validation:
-```bash
-npm install -g pyright  # Install pyright globally
-```
 
 ### Test Organization
 
@@ -636,20 +647,24 @@ Tests are organized by abstraction layers for clear separation of concerns:
 
 ```
 test/
-├── unit/                          # Pure unit tests (no execution, no I/O)
-│   ├── compile/                   # Code generation units
-│   │   ├── test_function_codegen.py    # 26 tests - async/sync/generator functions
-│   │   ├── test_class_codegen.py       # 10 tests - class wrapper generation
-│   │   └── test_module_codegen.py      # 3 tests - module-level compilation
+├── unit/                          # Pure unit tests
+│   ├── compile/                   # Code generation tests
+│   │   ├── test_function_codegen.py
+│   │   ├── test_class_codegen.py
+│   │   └── test_type_translation_codegen.py
 │   │
-│   └── transformers/              # Type transformation units
-│       └── test_type_transformers.py   # 53 tests - all transformer types
+│   └── transformers/              # Type transformation tests
+│       └── test_type_transformers.py
 │
 ├── integration/                   # Integration tests (execution, I/O)
-│   ├── test_codegen_execution.py       # 6 tests - execute generated code
-│   ├── test_type_translation.py        # 5 tests - type translation runtime
-│   ├── test_multifile.py               # 2 tests - multi-module scenarios
-│   └── test_type_checking.py           # 5 tests - pyright validation (requires pyright)
+│   ├── test_simple_function.py         # Function execution tests
+│   ├── test_simple_class.py            # Class execution tests
+│   ├── test_class_with_translation.py  # Type translation runtime
+│   ├── test_multifile.py               # Multi-module scenarios
+│   ├── test_nested_generators.py       # Generator nesting tests
+│   ├── test_event_loop_check.py        # Event loop validation
+│   ├── test_two_way_generator.py       # Bidirectional generator tests
+│   └── test_utils.py                   # Test utilities
 │
 └── support_files/                 # Test fixtures using Module API
     ├── _simple_function.py             # Basic functions
@@ -669,9 +684,12 @@ test/
 - **Function compilation** → `test/unit/compile/test_function_codegen.py`
 - **Class compilation** → `test/unit/compile/test_class_codegen.py`
 - **Type transformers** → `test/unit/transformers/test_type_transformers.py`
-- **Execution/runtime** → `test/integration/test_codegen_execution.py`
-- **Type checking** → `test/integration/test_type_checking.py`
+- **Type translation** → `test/unit/compile/test_type_translation_codegen.py`
+- **Function execution** → `test/integration/test_simple_function.py`
+- **Class execution** → `test/integration/test_simple_class.py`
+- **Type translation runtime** → `test/integration/test_class_with_translation.py`
 - **Multi-module** → `test/integration/test_multifile.py`
+- **Generators** → `test/integration/test_nested_generators.py` or `test/integration/test_two_way_generator.py`
 
 ### Test Fixtures (All Use Module API)
 
@@ -775,10 +793,12 @@ Only generated code uses Synchronizer.
 ## Quick Reference
 
 ### Key Files
-1. [src/synchronicity/synchronizer.py](src/synchronicity/synchronizer.py) - Module + Synchronizer classes
-2. [src/synchronicity/codegen/compile.py](src/synchronicity/codegen/compile.py) - Code generation
-3. [src/synchronicity/codegen/type_transformer.py](src/synchronicity/codegen/type_transformer.py) - Type handling
-4. [README.md](README.md) - User documentation
+1. [src/synchronicity/module.py](src/synchronicity/module.py) - Module class for build-time registration
+2. [src/synchronicity/synchronizer.py](src/synchronicity/synchronizer.py) - Synchronizer class for runtime
+3. [src/synchronicity/codegen/compile.py](src/synchronicity/codegen/compile.py) - Code generation
+4. [src/synchronicity/codegen/type_transformer.py](src/synchronicity/codegen/type_transformer.py) - Type handling
+5. [src/synchronicity/codegen/cli.py](src/synchronicity/codegen/cli.py) - CLI tool
+6. [README.md](README.md) - User documentation
 
 ### Key Concepts
 - **Module:** Build-time registration (use in implementation)
@@ -792,7 +812,7 @@ Only generated code uses Synchronizer.
 - **Implementation:** `from synchronicity import Module`
 - **Generated code:** `from synchronicity import get_synchronizer`
 - **Build script:** `from synchronicity.codegen.compile import compile_modules`
-- **CLI:** `python -m synchronicity.cli`
+- **CLI:** `python -m synchronicity.codegen`
 - **Tests:** `source .venv/bin/activate && pytest test/`
 
 ---
@@ -867,6 +887,5 @@ Only generated code uses Synchronizer.
 
 ---
 
-**Last Updated:** 2025-01-25
+**Last Updated:** 2025-10-27
 **Codebase Branch:** `freider/synchronicity2-vibes`
-**Test Status:** 101/101 passing (100%) 🎉
