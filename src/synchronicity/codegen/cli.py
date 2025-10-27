@@ -22,11 +22,35 @@ Examples:
 
 import argparse
 import importlib
+import subprocess
 import sys
+import tempfile
 import typing
 from pathlib import Path
 
 from .writer import write_modules
+
+
+def run_ruff_on_file(file_path: Path) -> None:
+    """
+    Run ruff check --fix and ruff format on a single file.
+
+    Args:
+        file_path: Path to the file to format
+    """
+    # Run ruff check --fix for autofixes
+    subprocess.run(
+        ["ruff", "check", "--fix", str(file_path)],
+        capture_output=True,
+        text=True,
+    )
+
+    # Run ruff format
+    subprocess.run(
+        ["ruff", "format", str(file_path)],
+        capture_output=True,
+        text=True,
+    )
 
 
 def import_module(module_name: str) -> None:
@@ -93,6 +117,10 @@ Examples:
   python -m synchronicity.codegen -m my.package._module my_sync -o output/
   synchronicity -m my.package._module my_sync -o output/
 
+  # Generate and format with ruff
+  python -m synchronicity.codegen -m my.package._module my_sync --ruff
+  synchronicity -m my.package._module my_sync --ruff
+
   # Print all modules to stdout
   python -m synchronicity.codegen -m my.package._module my_sync --stdout
   synchronicity -m my.package._module my_sync --stdout
@@ -112,7 +140,7 @@ Examples:
     )
     parser.add_argument(
         "synchronizer_name",
-        help="Name of the synchronizer to generate wrappers for",
+        help="Name of the synchronizer to use in the generated wrappers",
     )
     parser.add_argument(
         "-o",
@@ -124,6 +152,11 @@ Examples:
         "--stdout",
         action="store_true",
         help="Print all modules to stdout with file headers instead of writing files",
+    )
+    parser.add_argument(
+        "--ruff",
+        action="store_true",
+        help="Run ruff to autofix and format the generated files (works with both file output and --stdout)",
     )
 
     args = parser.parse_args()
@@ -194,15 +227,51 @@ Examples:
 
     if args.stdout:
         # Print to stdout with file headers
-        for module_name in sorted(modules.keys()):
-            module_path = module_name.replace(".", "/") + ".py"
-            print(f"# File: {module_path}\n")
-            print(modules[module_name])
-            print()  # Blank line between modules
+        if args.ruff:
+            print("Running ruff to format generated files...", file=sys.stderr)
+            # Use a temporary directory to format the code
+            with tempfile.TemporaryDirectory() as tmpdir:
+                tmppath = Path(tmpdir)
+                # Write all modules to temp files
+                temp_files = {}
+                for module_path in write_modules(tmppath, modules):
+                    module_name = module_path.stem
+                    temp_files[module_name] = module_path
+
+                # Format each temp file with ruff
+                for module_name in sorted(temp_files.keys()):
+                    file_path = temp_files[module_name]
+                    run_ruff_on_file(file_path)
+                    print(f"  Formatted: {module_name}", file=sys.stderr)
+
+                # Read formatted content and print to stdout
+                for module_name in sorted(temp_files.keys()):
+                    file_path = temp_files[module_name]
+                    module_path_str = module_name.replace(".", "/") + ".py"
+                    print(f"# File: {module_path_str}\n")
+                    print(file_path.read_text())
+                    print()  # Blank line between modules
+        else:
+            # Print unformatted to stdout
+            for module_name in sorted(modules.keys()):
+                module_path = module_name.replace(".", "/") + ".py"
+                print(f"# File: {module_path}\n")
+                print(modules[module_name])
+                print()  # Blank line between modules
     else:
         output_dir = Path(args.output_dir)
+        written_files = []
         for module_path in write_modules(output_dir, modules):
+            written_files.append(module_path)
             print(f"  Wrote: {module_path}", file=sys.stderr)
+
+        # Run ruff on all generated files if requested
+        if args.ruff:
+            print("\nRunning ruff to format generated files...", file=sys.stderr)
+            for file_path in written_files:
+                run_ruff_on_file(file_path)
+                print(f"  Formatted: {file_path}", file=sys.stderr)
+
         print("\nCompilation completed successfully!", file=sys.stderr)
 
 
