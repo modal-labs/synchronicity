@@ -6,15 +6,15 @@ Tests execution and type checking of generated code for simple async classes.
 import asyncio
 from pathlib import Path
 
-from synchronicity.codegen.compile import compile_modules
-from synchronicity.codegen.writer import write_modules
 from test.integration.test_utils import check_pyright
 
 
 def test_generated_code_execution_class(generated_wrappers):
     """Test that generated class wrappers work correctly."""
     # Test the wrapper class
-    counter = generated_wrappers.simple_class.Counter(10)
+    import simple_class
+
+    counter = simple_class.Counter(10)
     assert counter.count == 10, f"Expected count=10, got {counter.count}"
 
     # Test method call
@@ -32,7 +32,9 @@ def test_generated_code_execution_class(generated_wrappers):
 def test_method_wrapper_aio_execution(generated_wrappers):
     """Test that generated method wrappers execute correctly with .aio()."""
     # Test method wrapper .aio() calls run properly
-    counter = generated_wrappers.simple_class.Counter(5)
+    import simple_class
+
+    counter = simple_class.Counter(5)
 
     async def test_async_method():
         result = await counter.increment.aio()
@@ -53,13 +55,9 @@ def test_method_wrapper_aio_execution(generated_wrappers):
     print(f"✓ Method wrapper .aio() execution: async generator returned {result}")
 
 
-def test_pyright_simple_class(tmpdir):
+def test_pyright_simple_class(generated_wrappers):
     """Test that simple class generation passes pyright."""
-    import simple_class_impl
-
-    # Generate wrapper code
-    modules = compile_modules([simple_class_impl.wrapper_module], "s")
-    module_paths = list(write_modules(Path(tmpdir), modules))
+    import simple_class
 
     # Verify type correctness with pyright
-    check_pyright(module_paths, str(tmpdir))
+    check_pyright([Path(simple_class.__file__)])

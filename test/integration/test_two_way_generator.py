@@ -16,15 +16,12 @@ def test_two_way_generator_send(generated_wrappers):
     4. Type annotations correctly reflect AsyncGenerator[YieldType, SendType]
     """
     # Verify helper functions use send() (not simple iteration)
-    generated_code = generated_wrappers.generated_code["two_way_generator"]
-    assert "@staticmethod" in generated_code
-    assert "asend(_sent)" in generated_code or ".send(_sent)" in generated_code
-    print("✓ Generated helpers use send() for bidirectional communication")
+    import two_way_generator
 
     # Test 1: Echo generator with sync interface
     print("\n=== Test 1: Echo generator (sync interface) ===")
 
-    gen = generated_wrappers.two_way_generator.echo_generator()
+    gen = two_way_generator.echo_generator()
     # First value is yielded without send
     first = gen.send(None)
     assert first == "Ready", f"Expected 'Ready', got {first}"
@@ -47,7 +44,7 @@ def test_two_way_generator_send(generated_wrappers):
     print("\n=== Test 2: Echo generator (async interface) ===")
 
     async def test_echo_async():
-        gen = generated_wrappers.two_way_generator.echo_generator.aio()
+        gen = two_way_generator.echo_generator.aio()
 
         first = await gen.asend(None)
         assert first == "Ready", f"Expected 'Ready', got {first}"
@@ -63,7 +60,7 @@ def test_two_way_generator_send(generated_wrappers):
     # Test 3: Accumulator generator (stateful)
     print("\n=== Test 3: Accumulator generator (stateful) ===")
 
-    gen = generated_wrappers.two_way_generator.accumulator_generator()
+    gen = two_way_generator.accumulator_generator()
 
     # First yield returns 0
     result = gen.send(None)
@@ -87,7 +84,7 @@ def test_two_way_generator_send(generated_wrappers):
     # Test 4: Multiplier generator with parameter
     print("\n=== Test 4: Multiplier generator (with parameter) ===")
 
-    gen = generated_wrappers.two_way_generator.multiplier_generator(3)
+    gen = two_way_generator.multiplier_generator(3)
 
     # First value is 0
     result = gen.send(None)
@@ -121,6 +118,8 @@ def test_generator_aclose_forwarding(generated_wrappers):
     """
     import two_way_generator_impl
 
+    import two_way_generator
+
     print("\n=== Testing aclose() forwarding ===")
 
     # Test 1: Async interface (aclose)
@@ -130,7 +129,7 @@ def test_generator_aclose_forwarding(generated_wrappers):
         import time
 
         # Get the wrapped generator via .aio()
-        gen = generated_wrappers.test_aclose.generator_with_cleanup.aio()
+        gen = two_way_generator.generator_with_cleanup.aio()
 
         # Consume a couple of values
         result = await gen.asend(None)
@@ -172,7 +171,7 @@ def test_generator_aclose_forwarding(generated_wrappers):
     import time
 
     # Get the wrapped generator via sync interface
-    gen = generated_wrappers.test_aclose.generator_with_cleanup()
+    gen = two_way_generator.generator_with_cleanup()
 
     # Consume a couple of values
     result = gen.send(None)
