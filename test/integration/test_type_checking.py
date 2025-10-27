@@ -54,10 +54,10 @@ def check_pyright(module_paths: list[Path], extra_pythonpath: str = None) -> str
 def test_pyright_simple_function(tmpdir):
     """Test that simple function generation passes pyright."""
     from synchronicity.codegen.writer import write_modules
-    from test.support_files import _simple_function
+    from test.support_files import simple_function_impl
 
     # Generate wrapper code
-    modules = compile_modules([_simple_function.wrapper_module], "s")
+    modules = compile_modules([simple_function_impl.wrapper_module], "s")
     module_paths = list(write_modules(Path(tmpdir), modules))
 
     # Verify type correctness with pyright
@@ -67,10 +67,10 @@ def test_pyright_simple_function(tmpdir):
 def test_pyright_simple_class(tmpdir):
     """Test that simple class generation passes pyright."""
     from synchronicity.codegen.writer import write_modules
-    from test.support_files import _simple_class
+    from test.support_files import simple_class_impl
 
     # Generate wrapper code
-    modules = compile_modules([_simple_class.wrapper_module], "s")
+    modules = compile_modules([simple_class_impl.wrapper_module], "s")
     module_paths = list(write_modules(Path(tmpdir), modules))
 
     # Verify type correctness with pyright
@@ -80,10 +80,10 @@ def test_pyright_simple_class(tmpdir):
 def test_pyright_class_with_translation(tmpdir):
     """Test that class with type translation passes pyright."""
     from synchronicity.codegen.writer import write_modules
-    from test.support_files import _class_with_translation
+    from test.support_files import class_with_translation_impl
 
     # Generate wrapper code
-    modules = compile_modules([_class_with_translation.wrapper_module], "s")
+    modules = compile_modules([class_with_translation_impl.wrapper_module], "s")
     module_paths = list(write_modules(Path(tmpdir), modules))
 
     # Verify type correctness with pyright
@@ -92,10 +92,10 @@ def test_pyright_class_with_translation(tmpdir):
 
 def test_pyright_type_inference():
     """Test that generated code type checks correctly with pyright using reveal_type."""
-    from test.support_files import _class_with_translation
+    from test.support_files import class_with_translation_impl
 
     # Generate wrapper code
-    modules = compile_modules([_class_with_translation.wrapper_module], "s")
+    modules = compile_modules([class_with_translation_impl.wrapper_module], "s")
     generated_code = list(modules.values())[0]  # Extract the single module
 
     # Get paths to support files
@@ -174,10 +174,10 @@ def test_pyright_keyword_arguments():
     With the new approach using explicit __call__ signatures, pyright should
     properly infer types for keyword argument calls.
     """
-    from test.support_files import _class_with_translation
+    from test.support_files import class_with_translation_impl
 
     # Generate wrapper code
-    modules = compile_modules([_class_with_translation.wrapper_module], "s")
+    modules = compile_modules([class_with_translation_impl.wrapper_module], "s")
     generated_code = list(modules.values())[0]
 
     # Get path to keyword args test file

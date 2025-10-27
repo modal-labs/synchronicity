@@ -332,7 +332,7 @@ def test_generator_aclose_forwarding(generated_wrappers):
     2. Ensure finalization logic (try/finally blocks) executes
     3. Wait for cleanup before returning to caller
     """
-    from test.support_files import two_way_generator
+    from test.support_files import two_way_generator_impl
 
     print("\n=== Testing aclose() forwarding ===")
 
@@ -355,7 +355,7 @@ def test_generator_aclose_forwarding(generated_wrappers):
         print(f"  Second value: {result}")
 
         # Verify cleanup hasn't happened yet
-        assert len(two_way_generator.cleanup_tracker) == 0, "Cleanup should not have happened yet"
+        assert len(two_way_generator_impl.cleanup_tracker) == 0, "Cleanup should not have happened yet"
         print("  Verified: No cleanup yet")
 
         # Close the generator and measure time
@@ -370,11 +370,11 @@ def test_generator_aclose_forwarding(generated_wrappers):
 
         # Verify cleanup happened
         assert (
-            len(two_way_generator.cleanup_tracker) == 1
-        ), f"Expected cleanup once, got {two_way_generator.cleanup_tracker}"
+            len(two_way_generator_impl.cleanup_tracker) == 1
+        ), f"Expected cleanup once, got {two_way_generator_impl.cleanup_tracker}"
         assert (
-            two_way_generator.cleanup_tracker[0] == "cleanup_called"
-        ), f"Expected 'cleanup_called', got {two_way_generator.cleanup_tracker[0]}"
+            two_way_generator_impl.cleanup_tracker[0] == "cleanup_called"
+        ), f"Expected 'cleanup_called', got {two_way_generator_impl.cleanup_tracker[0]}"
         print("  ✓ Cleanup was properly forwarded and executed")
 
     asyncio.run(test_async_aclose())
@@ -397,7 +397,7 @@ def test_generator_aclose_forwarding(generated_wrappers):
     print(f"  Second value: {result}")
 
     # Verify cleanup hasn't happened yet
-    assert len(two_way_generator.cleanup_tracker) == 0, "Cleanup should not have happened yet"
+    assert len(two_way_generator_impl.cleanup_tracker) == 0, "Cleanup should not have happened yet"
     print("  Verified: No cleanup yet")
 
     # Close the generator and measure time
@@ -412,11 +412,11 @@ def test_generator_aclose_forwarding(generated_wrappers):
 
     # Verify cleanup happened
     assert (
-        len(two_way_generator.cleanup_tracker) == 1
-    ), f"Expected cleanup once, got {two_way_generator.cleanup_tracker}"
+        len(two_way_generator_impl.cleanup_tracker) == 1
+    ), f"Expected cleanup once, got {two_way_generator_impl.cleanup_tracker}"
     assert (
-        two_way_generator.cleanup_tracker[0] == "cleanup_called"
-    ), f"Expected 'cleanup_called', got {two_way_generator.cleanup_tracker[0]}"
+        two_way_generator_impl.cleanup_tracker[0] == "cleanup_called"
+    ), f"Expected 'cleanup_called', got {two_way_generator_impl.cleanup_tracker[0]}"
     print("  ✓ Cleanup was properly forwarded and executed")
 
     print("\n=== All aclose() forwarding tests passed! ===")

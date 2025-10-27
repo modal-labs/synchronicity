@@ -12,22 +12,22 @@ from synchronicity.codegen.writer import write_modules
 
 def test_simple_function_generation(tmpdir, monkeypatch):
     """Test generation of simple functions without dependencies."""
-    from test.support_files import _simple_function
+    from test.support_files import simple_function_impl
 
     # Generate wrapper code
-    modules = compile_modules([_simple_function.wrapper_module], "s")
+    modules = compile_modules([simple_function_impl.wrapper_module], "s")
     assert len(modules) == 1
     module_paths = list(write_modules(Path(tmpdir), modules))
     print(module_paths)
 
     # Verify that files can be imported
     monkeypatch.syspath_prepend(tmpdir)
-    test_support = __import__("test_support")
-    assert test_support.simple_add(2, 4) == 6
+    simple_function = __import__("simple_function")
+    assert simple_function.simple_add(2, 4) == 6
 
     import inspect
 
-    gen = test_support.simple_generator()
+    gen = simple_function.simple_generator()
     assert inspect.isgenerator(gen)
     assert list(gen) == [0, 1, 2]
 
@@ -36,10 +36,10 @@ def test_simple_function_generation(tmpdir, monkeypatch):
 
 def test_simple_class_generation(tmpdir):
     """Test generation of a simple class without translation needs."""
-    from test.support_files import _simple_class
+    from test.support_files import simple_class_impl
 
     # Generate wrapper code
-    modules = compile_modules([_simple_class.wrapper_module], "s")
+    modules = compile_modules([simple_class_impl.wrapper_module], "s")
     assert len(modules) == 1
 
     # Write to temporary directory
@@ -51,17 +51,17 @@ def test_simple_class_generation(tmpdir):
 
 def test_class_with_translation_generation(tmpdir):
     """Test generation of classes and functions that need type translation."""
-    from test.support_files import _class_with_translation
+    from test.support_files import class_with_translation_impl
 
     # Generate wrapper code
-    modules = compile_modules([_class_with_translation.wrapper_module], "s")
+    modules = compile_modules([class_with_translation_impl.wrapper_module], "s")
     generated_code = list(modules.values())[0]  # Extract the single module
 
     # Verify weakref import
     assert "import weakref" in generated_code
 
     # Verify _from_impl classmethod generation with class-level cache
-    assert "def _from_impl(cls, impl_instance: test.support_files._class_with_translation.Node)" in generated_code
+    assert "def _from_impl(cls, impl_instance: test.support_files.class_with_translation_impl.Node)" in generated_code
     assert "_instance_cache: weakref.WeakValueDictionary" in generated_code
     assert "if cache_key in cls._instance_cache:" in generated_code
     assert "wrapper = cls.__new__(cls)" in generated_code
