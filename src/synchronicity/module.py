@@ -10,6 +10,8 @@ import typing
 from typing import Callable, Optional
 
 T = typing.TypeVar("T", bound=typing.Union[type, Callable])
+F = typing.TypeVar("F", bound=types.FunctionType)
+C = typing.TypeVar("C", bound=type)
 
 
 class Module:
@@ -118,7 +120,7 @@ class Module:
 
         return deduped_result
 
-    def wrap_function(self, f: T) -> T:
+    def wrap_function(self, f: F) -> F:
         """Decorator to mark a function for wrapper generation.
 
         This decorator registers the function for wrapper code generation but
@@ -137,7 +139,7 @@ class Module:
         self._global_registered_functions[f] = (self._target_module, f.__name__)
         return f
 
-    def wrap_class(self, cls: T) -> T:
+    def wrap_class(self, cls: C) -> C:
         """Decorator to mark a class for wrapper generation.
 
         This decorator registers the class for wrapper code generation but

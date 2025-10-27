@@ -26,7 +26,7 @@ class WrappedMethodDescriptor(typing.Generic[T]):
     def __get__(self, wrapper_instance, owner) -> T:
         if wrapper_instance is None:
             # For class access, return self to allow descriptor access
-            return self
+            return self  # type: ignore
 
         # Create instance with wrapper_instance bound
         return self.method_wrapper_type(wrapper_instance)

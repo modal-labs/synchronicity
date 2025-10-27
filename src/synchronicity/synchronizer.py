@@ -59,8 +59,8 @@ class Synchronizer:
 
             is_ready = threading.Event()
 
-            def thread_inner():
-                async def loop_inner():
+            def thread_inner() -> None:
+                async def loop_inner() -> None:
                     self._loop = asyncio.get_running_loop()
                     self._stopping = asyncio.Event()
                     is_ready.set()
@@ -97,7 +97,7 @@ class Synchronizer:
             self._loop = None
             self._owner_pid = None
 
-    def _get_loop(self, start=False) -> asyncio.AbstractEventLoop:
+    def _get_loop(self, start: bool = False) -> Optional[asyncio.AbstractEventLoop]:
         if self._thread and not self._thread.is_alive():
             if self._owner_pid == os.getpid():
                 # warn - thread died without us forking
@@ -108,6 +108,7 @@ class Synchronizer:
 
         if self._loop is None and start:
             return self._start_loop()
+
         return self._loop
 
     def _get_running_loop(self):
@@ -230,11 +231,14 @@ class Synchronizer:
         return value
 
     def _run_generator_sync(self, gen):
-        value, is_exc = None, False
+        value: typing.Any = None
+        is_exc = False
         try:
             while True:
                 try:
                     if is_exc:
+                        # When is_exc is True, value is always a BaseException
+                        assert isinstance(value, BaseException)
                         value = self._run_function_sync(gen.athrow(value))
                     else:
                         value = self._run_function_sync(gen.asend(value))
@@ -256,11 +260,14 @@ class Synchronizer:
             self._run_function_sync(gen.aclose())
 
     async def _run_generator_async(self, gen: typing.AsyncGenerator):
-        value, is_exc = None, False
+        value: typing.Any = None
+        is_exc = False
         try:
             while True:
                 try:
                     if is_exc:
+                        # When is_exc is True, value is always a BaseException
+                        assert isinstance(value, BaseException)
                         value = await self._run_function_async(gen.athrow(value))
                     else:
                         value = await self._run_function_async(gen.asend(value))
