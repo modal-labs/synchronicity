@@ -13,7 +13,7 @@ def test_nested_async_generators_in_tuple(generated_wrappers):
     verifying that both sync and async interfaces work correctly.
     """
     # Verify helper functions are generated for nested generators
-    generated_code = generated_wrappers.generated_code["generated.nested_generators"]
+    generated_code = generated_wrappers.generated_code["nested_generators"]
     assert "@staticmethod" in generated_code
     assert "async def _wrap_async_gen" in generated_code
     assert "yield _item" in generated_code

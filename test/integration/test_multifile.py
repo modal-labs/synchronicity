@@ -196,9 +196,9 @@ def test_multifile_generated_modules(generated_wrappers):
     check_pyright([module_a, module_b], pythonpath)
 
     # Verify generated code contains expected classes and functions
-    assert "class A:" in generated_wrappers.generated_code["generated.multifile.a"]
-    assert "class B:" in generated_wrappers.generated_code["generated.multifile.b"]
-    assert "def get_b(" in generated_wrappers.generated_code["generated.multifile.a"]
-    assert "def get_a(" in generated_wrappers.generated_code["generated.multifile.b"]
+    assert "class A:" in generated_wrappers.generated_code["multifile.a"]
+    assert "class B:" in generated_wrappers.generated_code["multifile.b"]
+    assert "def get_b(" in generated_wrappers.generated_code["multifile.a"]
+    assert "def get_a(" in generated_wrappers.generated_code["multifile.b"]
 
     print("✓ Generated modules test passed")

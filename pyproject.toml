@@ -66,3 +66,6 @@ filterwarnings = [
     "ignore::DeprecationWarning",
     "ignore::PendingDeprecationWarning",
 ]
+
+[tool.pyright]
+extraPaths = ["generated", "test/support_files"]

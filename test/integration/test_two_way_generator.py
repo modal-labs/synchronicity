@@ -16,7 +16,7 @@ def test_two_way_generator_send(generated_wrappers):
     4. Type annotations correctly reflect AsyncGenerator[YieldType, SendType]
     """
     # Verify helper functions use send() (not simple iteration)
-    generated_code = generated_wrappers.generated_code["generated.two_way_generator"]
+    generated_code = generated_wrappers.generated_code["two_way_generator"]
     assert "@staticmethod" in generated_code
     assert "asend(_sent)" in generated_code or ".send(_sent)" in generated_code
     print("✓ Generated helpers use send() for bidirectional communication")

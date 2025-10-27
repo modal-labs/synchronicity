@@ -89,20 +89,19 @@ def generated_wrappers():
         # - project_root: so we can import generated.*
         # - support_files_path: so generated code can import impl modules (e.g., multifile_impl._a)
         # - generated_dir: so multifile.* can be imported directly
-        sys.path.insert(0, str(project_root))
         sys.path.insert(0, str(support_files_path))
         sys.path.insert(0, str(generated_dir))
 
         # Import all generated modules
         result_ns = SimpleNamespace()
-        result_ns.simple_function = __import__("generated.simple_function", fromlist=[""])
-        result_ns.simple_class = __import__("generated.simple_class", fromlist=[""])
-        result_ns.class_with_translation = __import__("generated.class_with_translation", fromlist=[""])
-        result_ns.event_loop_check = __import__("generated.event_loop_check", fromlist=[""])
-        result_ns.nested_generators = __import__("generated.nested_generators", fromlist=[""])
-        result_ns.two_way_generator = __import__("generated.two_way_generator", fromlist=[""])
+        result_ns.simple_function = __import__("simple_function", fromlist=[""])
+        result_ns.simple_class = __import__("simple_class", fromlist=[""])
+        result_ns.class_with_translation = __import__("class_with_translation", fromlist=[""])
+        result_ns.event_loop_check = __import__("event_loop_check", fromlist=[""])
+        result_ns.nested_generators = __import__("nested_generators", fromlist=[""])
+        result_ns.two_way_generator = __import__("two_way_generator", fromlist=[""])
 
-        # Import multifile modules (can now import via generated.multifile.* or multifile.*)
+        # Import multifile modules (can now import via multifile.* or multifile.*)
         result_ns.multifile_a = __import__("multifile.a", fromlist=[""])
         result_ns.multifile_b = __import__("multifile.b", fromlist=[""])
 
@@ -115,10 +114,10 @@ def generated_wrappers():
         cleanup_module = Module("test_aclose")
         cleanup_module.wrap_function(two_way_generator_impl.generator_with_cleanup)
         modules = compile_modules([cleanup_module], "sync_aclose")
-        aclose_modules = {f"generated.{k}": v for k, v in modules.items()}
+        aclose_modules = {f"{k}": v for k, v in modules.items()}
         list(write_modules(project_root, aclose_modules))
 
-        result_ns.test_aclose = __import__("generated.test_aclose", fromlist=[""])
+        result_ns.test_aclose = __import__("test_aclose", fromlist=[""])
 
         # Store paths for tests that need them
         result_ns.output_dir = generated_dir
@@ -128,40 +127,14 @@ def generated_wrappers():
         for module_name, target_name in module_specs:
             gen_file = generated_dir / f"{target_name.replace('.', '/')}.py"
             if gen_file.exists():
-                result_ns.generated_code[f"generated.{target_name}"] = gen_file.read_text()
+                result_ns.generated_code[f"{target_name}"] = gen_file.read_text()
 
         # Add aclose code
         aclose_file = generated_dir / "test_aclose.py"
         if aclose_file.exists():
-            result_ns.generated_code["generated.test_aclose"] = aclose_file.read_text()
+            result_ns.generated_code["test_aclose"] = aclose_file.read_text()
 
         yield result_ns
-
     finally:
-        # Clean up: remove from sys.path
-        if str(project_root) in sys.path:
-            sys.path.remove(str(project_root))
-        if str(support_files_path) in sys.path:
-            sys.path.remove(str(support_files_path))
-        if str(generated_dir) in sys.path:
-            sys.path.remove(str(generated_dir))
-
-        # Remove imported modules from sys.modules
-        modules_to_remove = [
-            "generated.simple_function",
-            "generated.simple_class",
-            "generated.class_with_translation",
-            "generated.event_loop_check",
-            "generated.nested_generators",
-            "generated.two_way_generator",
-            "multifile.a",
-            "multifile.b",
-            "generated.test_aclose",
-            "generated.multifile",
-            "generated",
-        ]
-        for mod_name in modules_to_remove:
-            if mod_name in sys.modules:
-                del sys.modules[mod_name]
-
-        # Note: We do NOT delete the generated/ directory - keep files for manual inspection
+        pass
+    # Note: We do NOT delete the generated/ directory - keep files for manual inspection
