@@ -3,14 +3,13 @@
 Tests execution and type checking of generated code for classes requiring type translation.
 """
 
-import os
-import pytest
 import subprocess
 import tempfile
 from pathlib import Path
 
 from synchronicity.codegen.compile import compile_modules
 from synchronicity.codegen.writer import write_modules
+from test.integration.test_utils import check_pyright
 
 
 def test_generated_code_execution_with_translation(generated_wrappers):
@@ -53,38 +52,12 @@ def test_pyright_class_with_translation(tmpdir):
     """Test that class with type translation passes pyright."""
     from test.support_files import class_with_translation_impl
 
-    def check_pyright(module_paths: list[Path], extra_pythonpath: str = None) -> str:
-        """Run pyright on generated code to check for type errors."""
-        pythonpath = os.environ.get("PYTHONPATH", "")
-        if extra_pythonpath:
-            if pythonpath:
-                pythonpath += f":{extra_pythonpath}"
-            else:
-                pythonpath = extra_pythonpath
-
-        result = subprocess.run(
-            ["pyright"] + [str(p) for p in module_paths],
-            capture_output=True,
-            text=True,
-            env={**os.environ, "PYTHONPATH": pythonpath},
-        )
-
-        if result.returncode != 0:
-            print("  ✗ Pyright validation failed!")
-            print(f"    Output: {result.stdout}")
-            if result.stderr:
-                print(f"    Stderr: {result.stderr}")
-            pytest.fail("Pyright validation failed")
-
-        print("  ✓ Pyright validation passed")
-        return result.stdout
-
     # Generate wrapper code
     modules = compile_modules([class_with_translation_impl.wrapper_module], "s")
     module_paths = list(write_modules(Path(tmpdir), modules))
 
     # Verify type correctness with pyright
-    check_pyright(module_paths, tmpdir)
+    check_pyright(module_paths, str(tmpdir))
 
 
 def test_pyright_type_inference():

@@ -1,195 +1,51 @@
-"""Integration tests for multifile code generation."""
+"""Integration tests for multifile code generation.
 
-import os
-import pytest
-import subprocess
-import sys
-import tempfile
-from pathlib import Path
+Tests that multiple interdependent modules can be compiled together and work correctly.
+"""
+
+from test.integration.test_utils import check_pyright
 
 
-@pytest.fixture
-def support_files_path():
-    """Get the path to support_files directory."""
-    return Path(__file__).parent.parent / "support_files"
-
-
-def test_multifile_generation(monkeypatch, support_files_path):
-    """Test generating code from multiple interdependent modules."""
-    # Add support_files to sys.path so we can use shorter imports
-    monkeypatch.syspath_prepend(str(support_files_path))
-
-    # Set up environment for subprocess with support_files on PYTHONPATH
-    project_root = Path(__file__).parent.parent.parent
-    env = os.environ.copy()
-    pythonpath_parts = [str(support_files_path), str(project_root)]
-    if "PYTHONPATH" in env:
-        pythonpath_parts.append(env["PYTHONPATH"])
-    env["PYTHONPATH"] = ":".join(pythonpath_parts)
-
-    # Generate code using the CLI with --stdout
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "synchronicity.codegen",
-            "-m",
-            "multifile._a",
-            "-m",
-            "multifile._b",
-            "s",
-            "--stdout",
-        ],
-        capture_output=True,
-        text=True,
-        env=env,
-    )
-
-    assert result.returncode == 0, f"CLI failed: {result.stderr}"
-    generated_code = result.stdout
-
-    # Verify the generated code contains expected classes and functions
-    assert "class A:" in generated_code
-    assert "class B:" in generated_code
-    assert "def get_a(" in generated_code
-    assert "def get_b(" in generated_code
-
-    # Verify imports are correct (now using shorter paths)
-    assert "import multifile._a" in generated_code
-
-    # Verify file headers are present
-    assert "# File:" in generated_code
-
-    # Note: We don't compile the combined stdout output since it contains multiple modules
-    # with headers. Individual modules would compile separately.
-
-
-def test_multifile_execution(support_files_path):
+def test_multifile_execution(generated_wrappers):
     """Test that generated code from multiple modules is runnable."""
-    # Create a temporary directory and generate files there
+    # Access the pre-generated multifile modules
+    from multifile import a as multifile_a, b as multifile_b
+
+    # Test synchronous usage
+    a = multifile_a.A(value=100)
+    print(f"A value: {a.get_value()}")
+    assert a.get_value() == 100
+
+    b = multifile_b.B(name="test_b")
+    print(f"B name: {b.get_name()}")
+    assert b.get_name() == "test_b"
+
+    # Test cross-module functions
+    b_from_a = multifile_a.get_b()
+    print(f"B from get_b: {b_from_a.get_name()}")
+    assert b_from_a.get_name() == "test"
+
+    a_from_b = multifile_b.get_a()
+    print(f"A from get_a: {a_from_b.get_value()}")
+    assert a_from_b.get_value() == 42
+
+    print("✓ Multifile execution test passed")
+
+
+def test_multifile_imports(generated_wrappers):
+    """Test that importing generated wrappers does NOT import synchronicity.codegen.
+
+    This ensures build-time code (codegen) is separate from runtime code (synchronizer).
+    """
+    import subprocess
+    import sys
+    import tempfile
+    from pathlib import Path
+
     with tempfile.TemporaryDirectory() as tmpdir:
         tmppath = Path(tmpdir)
 
-        # Set up environment with support_files on PYTHONPATH
-        env = os.environ.copy()
-        project_root = Path(__file__).parent.parent.parent
-        pythonpath_parts = [str(support_files_path), str(project_root)]
-        if "PYTHONPATH" in env:
-            pythonpath_parts.append(env["PYTHONPATH"])
-        env["PYTHONPATH"] = ":".join(pythonpath_parts)
-
-        # Generate code using the CLI to write files
-        result = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "synchronicity.codegen",
-                "-m",
-                "multifile._a",
-                "-m",
-                "multifile._b",
-                "s",
-                "-o",
-                str(tmppath),
-            ],
-            capture_output=True,
-            text=True,
-            env=env,
-        )
-
-        assert result.returncode == 0, f"CLI failed: {result.stderr}"
-
-        # Verify files were created (now using shorter paths)
-        module_a = tmppath / "multifile/a.py"
-        module_b = tmppath / "multifile/b.py"
-
-        assert module_a.exists(), f"Module a.py not created at {module_a}"
-        assert module_b.exists(), f"Module b.py not created at {module_b}"
-
-        # Verify generated modules are type-correct by running pyright
-        # Check module_a
-        result_a = subprocess.run(
-            ["pyright", str(module_a)],
-            capture_output=True,
-            text=True,
-            cwd=str(tmppath),
-        )
-        if result_a.returncode != 0:
-            print(f"  ✗ Generated module a.py has type errors:\n{result_a.stdout}")
-        else:
-            print("  ✓ Generated module a.py passes pyright")
-
-        # Check module_b
-        result_b = subprocess.run(
-            ["pyright", str(module_b)],
-            capture_output=True,
-            text=True,
-            cwd=str(tmppath),
-        )
-        if result_b.returncode != 0:
-            print(f"  ✗ Generated module b.py has type errors:\n{result_b.stdout}")
-        else:
-            print("  ✓ Generated module b.py passes pyright")
-
-        # Copy implementation modules to tmpdir so they can be imported
-        impl_module_a = support_files_path / "multifile/_a.py"
-        impl_module_b = support_files_path / "multifile/_b.py"
-        target_dir = tmppath / "multifile"
-
-        import shutil
-
-        shutil.copy(impl_module_a, target_dir / "_a.py")
-        shutil.copy(impl_module_b, target_dir / "_b.py")
-
-        # Create a test script that uses the generated code
-        test_script = tmppath / "test_usage.py"
-        test_script.write_text(
-            """
-from multifile.a import A, get_b
-from multifile.b import B, get_a
-
-# Test synchronous usage
-a = A(value=100)
-print(f"A value: {a.get_value()}")
-
-b = B(name="test_b")
-print(f"B name: {b.get_name()}")
-
-# Test cross-module functions
-b_from_a = get_b()
-print(f"B from get_b: {b_from_a.get_name()}")
-
-a_from_b = get_a()
-print(f"A from get_a: {a_from_b.get_value()}")
-
-print("SUCCESS")
-"""
-        )
-
-        # Run the test script with PYTHONPATH set to include tmpdir and project root
-        env = os.environ.copy()
-        pythonpath_parts = [str(tmppath), str(project_root)]
-        if "PYTHONPATH" in env:
-            pythonpath_parts.append(env["PYTHONPATH"])
-        env["PYTHONPATH"] = ":".join(pythonpath_parts)
-
-        result = subprocess.run(
-            [sys.executable, str(test_script)],
-            capture_output=True,
-            text=True,
-            cwd=str(tmppath),
-            env=env,
-        )
-
-        print(f"Test script output:\n{result.stdout}")
-        if result.returncode != 0:
-            print(f"Test script stderr:\n{result.stderr}")
-
-        assert result.returncode == 0, f"Test script failed with exit code {result.returncode}"
-        assert "SUCCESS" in result.stdout
-
-        # Verify that importing generated wrappers does NOT import synchronicity.codegen
-        # This ensures build-time code (codegen) is separate from runtime code (synchronizer)
+        # Create a script to check imports
         check_imports_script = tmppath / "check_imports.py"
         check_imports_script.write_text(
             """
@@ -211,12 +67,26 @@ print("IMPORT_CHECK_SUCCESS")
 """
         )
 
+        # Get project root and support files for PYTHONPATH
+        project_root = Path(__file__).parent.parent.parent
+        support_files = Path(__file__).parent.parent / "support_files"
+        generated_dir = project_root / "generated"
+
+        # Set up environment with PYTHONPATH
+        import os
+
+        env = os.environ.copy()
+        pythonpath_parts = [str(project_root), str(support_files), str(generated_dir)]
+        if "PYTHONPATH" in env:
+            pythonpath_parts.append(env["PYTHONPATH"])
+        env["PYTHONPATH"] = ":".join(pythonpath_parts)
+
         # Run import check in fresh subprocess
         result_imports = subprocess.run(
             [sys.executable, str(check_imports_script)],
             capture_output=True,
             text=True,
-            cwd=str(tmppath),
+            cwd=str(project_root),
             env=env,
         )
 
@@ -228,117 +98,41 @@ print("IMPORT_CHECK_SUCCESS")
         assert "IMPORT_CHECK_SUCCESS" in result_imports.stdout
         assert "synchronicity.codegen" not in result_imports.stdout
 
+    print("✓ Import check test passed")
 
-def test_multifile_type_checking(support_files_path):
+
+def test_multifile_type_checking(generated_wrappers):
     """Test that generated code from multiple modules passes type checking."""
-    # Create a temporary directory and generate files there
+    import shutil
+    import subprocess
+    import tempfile
+    from pathlib import Path
+
+    support_files_path = Path(__file__).parent.parent / "support_files"
+
     with tempfile.TemporaryDirectory() as tmpdir:
         tmppath = Path(tmpdir)
 
-        # Set up environment with support_files on PYTHONPATH
-        env = os.environ.copy()
-        project_root = Path(__file__).parent.parent.parent
-        pythonpath_parts = [str(support_files_path), str(project_root)]
-        if "PYTHONPATH" in env:
-            pythonpath_parts.append(env["PYTHONPATH"])
-        env["PYTHONPATH"] = ":".join(pythonpath_parts)
+        # Copy generated multifile modules to temp directory
+        generated_multifile = generated_wrappers.output_dir / "multifile"
+        target_multifile = tmppath / "multifile"
+        shutil.copytree(generated_multifile, target_multifile)
 
-        # Generate code using the CLI to write files
-        result = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "synchronicity.codegen",
-                "-m",
-                "multifile._a",
-                "-m",
-                "multifile._b",
-                "s",
-                "-o",
-                str(tmppath),
-            ],
-            capture_output=True,
-            text=True,
-            env=env,
-        )
+        # Copy impl modules needed for imports
+        impl_module_a = support_files_path / "multifile_impl/_a.py"
+        impl_module_b = support_files_path / "multifile_impl/_b.py"
+        shutil.copy(impl_module_a, target_multifile / "_a.py")
+        shutil.copy(impl_module_b, target_multifile / "_b.py")
 
-        assert result.returncode == 0, f"CLI failed: {result.stderr}"
-
-        # Verify files were created (now using shorter paths)
-        module_a = tmppath / "multifile/a.py"
-        module_b = tmppath / "multifile/b.py"
-
-        assert module_a.exists(), f"Module a.py not created at {module_a}"
-        assert module_b.exists(), f"Module b.py not created at {module_b}"
-
-        # Create a usage file for type checking (sync)
+        # Copy usage test files
+        usage_sync_src = support_files_path / "multifile_usage_sync.py"
+        usage_async_src = support_files_path / "multifile_usage_async.py"
         usage_sync = tmppath / "usage_sync.py"
-        usage_sync.write_text(
-            """
-from multifile.a import A, get_b
-from multifile.b import B, get_a
-
-# Sync usage
-reveal_type(A)
-reveal_type(B)
-reveal_type(get_a)
-reveal_type(get_b)
-
-a = A(value=42)
-reveal_type(a)
-reveal_type(a.get_value)
-
-val = a.get_value()
-reveal_type(val)
-
-b = get_b()
-reveal_type(b)
-
-a2 = get_a()
-reveal_type(a2)
-"""
-        )
-
-        # Create a usage file for type checking (async)
         usage_async = tmppath / "usage_async.py"
-        usage_async.write_text(
-            """
-from multifile.a import A, get_b
-from multifile.b import B, get_a
+        shutil.copy(usage_sync_src, usage_sync)
+        shutil.copy(usage_async_src, usage_async)
 
-async def test():
-    # Async usage - classes are instantiated normally, methods have .aio
-    reveal_type(A)
-    reveal_type(B)
-    reveal_type(get_a.aio)
-    reveal_type(get_b.aio)
-
-    a = A(value=42)
-    reveal_type(a)
-    reveal_type(a.get_value.aio)
-
-    val = await a.get_value.aio()
-    reveal_type(val)
-
-    b = await get_b.aio()
-    reveal_type(b)
-
-    a2 = await get_a.aio()
-    reveal_type(a2)
-"""
-        )
-
-        # Copy implementation modules to tmpdir
-        impl_module_a = support_files_path / "multifile/_a.py"
-        impl_module_b = support_files_path / "multifile/_b.py"
-        target_dir = tmppath / "multifile"
-
-        import shutil
-
-        shutil.copy(impl_module_a, target_dir / "_a.py")
-        shutil.copy(impl_module_b, target_dir / "_b.py")
-
-        # Run pyright from virtualenv (it will automatically use the venv's Python)
+        # Run pyright on sync usage
         result_sync = subprocess.run(
             ["pyright", str(usage_sync)],
             capture_output=True,
@@ -378,4 +172,33 @@ async def test():
         assert 'Type of "A" is "type[A]"' in output_async
         assert 'Type of "B" is "type[B]"' in output_async
         assert 'Type of "a" is "A"' in output_async
-        # Note: b and val will be "Any" due to .aio returning Any in type system
+
+    print("✓ Type checking test passed")
+
+
+def test_multifile_generated_modules(generated_wrappers):
+    """Test that multifile modules are correctly generated using pyright."""
+    from pathlib import Path
+
+    # Get generated multifile module paths
+    generated_dir = generated_wrappers.output_dir
+    module_a = generated_dir / "multifile/a.py"
+    module_b = generated_dir / "multifile/b.py"
+
+    assert module_a.exists(), f"Module a.py not found at {module_a}"
+    assert module_b.exists(), f"Module b.py not found at {module_b}"
+
+    # Verify the generated modules pass pyright
+    # Need both project root and support_files in PYTHONPATH
+    project_root = generated_dir.parent
+    support_files = Path(__file__).parent.parent / "support_files"
+    pythonpath = f"{project_root}:{support_files}"
+    check_pyright([module_a, module_b], pythonpath)
+
+    # Verify generated code contains expected classes and functions
+    assert "class A:" in generated_wrappers.generated_code["generated.multifile.a"]
+    assert "class B:" in generated_wrappers.generated_code["generated.multifile.b"]
+    assert "def get_b(" in generated_wrappers.generated_code["generated.multifile.a"]
+    assert "def get_a(" in generated_wrappers.generated_code["generated.multifile.b"]
+
+    print("✓ Generated modules test passed")

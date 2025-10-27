@@ -55,7 +55,6 @@ def import_modules_two_pass(module_names: list[str]) -> list:
     Returns:
         List of imported module objects
     """
-    import os
 
     # First pass: Normal imports to register wrapped items
     imported_modules = []
@@ -66,17 +65,15 @@ def import_modules_two_pass(module_names: list[str]) -> list:
 
     # Second pass: Reload with TYPE_CHECKING=True to resolve all type annotations
     # This allows us to evaluate annotations even if they're in TYPE_CHECKING blocks
+    # Classes/functions will register again with their reloaded identities, which is fine
+    # since they map to the same target modules/names
     original_type_checking = typing.TYPE_CHECKING
     try:
         typing.TYPE_CHECKING = True
-        # Set an environment marker to prevent re-registration during reload
-        os.environ["_SYNCHRONICITY_SKIP_REGISTRATION"] = "1"
         for module in imported_modules:
             importlib.reload(module)
     finally:
         typing.TYPE_CHECKING = original_type_checking
-        if "_SYNCHRONICITY_SKIP_REGISTRATION" in os.environ:
-            del os.environ["_SYNCHRONICITY_SKIP_REGISTRATION"]
 
     return imported_modules
 
@@ -135,38 +132,37 @@ Examples:
 
     print(f"Importing modules for synchronizer '{synchronizer_name}'...", file=sys.stderr)
 
-    # Import modules and collect Module objects BEFORE the reload pass
+    # Import modules and collect Module objects
+
     from synchronicity.module import Module
 
     from .compile import compile_modules
 
     # First pass: Normal imports to register wrapped items
-    module_objects = []
     for module_name in args.modules:
         print(f"  Importing module: {module_name}", file=sys.stderr)
         importlib.import_module(module_name)
-        imported_module = sys.modules[module_name]
 
-        # Collect Module objects immediately after import (before reload)
+    # Second pass: Reload with TYPE_CHECKING=True to resolve forward references
+    # This creates new Module instances with reloaded class objects that have
+    # fully-evaluatable type annotations
+    original_type_checking = typing.TYPE_CHECKING
+    try:
+        typing.TYPE_CHECKING = True
+        for module_name in args.modules:
+            importlib.reload(sys.modules[module_name])
+    finally:
+        typing.TYPE_CHECKING = original_type_checking
+
+    # Collect Module objects after reload (so they have the correct class objects)
+    module_objects = []
+    for module_name in args.modules:
+        imported_module = sys.modules[module_name]
         for attr_name in dir(imported_module):
             attr = getattr(imported_module, attr_name)
             if isinstance(attr, Module):
                 module_objects.append(attr)
                 print(f"  Found Module: {attr.target_module} with {len(attr.module_items())} items", file=sys.stderr)
-
-    # Now do the TYPE_CHECKING reload pass (but Module objects are already collected)
-    import os
-
-    original_type_checking = typing.TYPE_CHECKING
-    try:
-        typing.TYPE_CHECKING = True
-        os.environ["_SYNCHRONICITY_SKIP_REGISTRATION"] = "1"
-        for module_name in args.modules:
-            importlib.reload(sys.modules[module_name])
-    finally:
-        typing.TYPE_CHECKING = original_type_checking
-        if "_SYNCHRONICITY_SKIP_REGISTRATION" in os.environ:
-            del os.environ["_SYNCHRONICITY_SKIP_REGISTRATION"]
 
     if not module_objects:
         print(

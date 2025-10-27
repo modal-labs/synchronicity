@@ -3,12 +3,13 @@
 Provides session-scoped fixtures that generate wrapper code once and reuse it across all tests.
 """
 
-import pytest
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
+
+import pytest
 
 
 @pytest.fixture(scope="session")
@@ -57,8 +58,8 @@ def generated_wrappers():
             ("event_loop_check_impl", "event_loop_check"),
             ("nested_generators_impl", "nested_generators"),
             ("two_way_generator_impl", "two_way_generator"),
-            ("multifile_impl._a", "multifile.a"),
-            ("multifile_impl._b", "multifile.b"),
+            ("multifile._a", "multifile.a"),
+            ("multifile._b", "multifile.b"),
         ]
 
         for module_name, _ in module_specs:
@@ -85,13 +86,9 @@ def generated_wrappers():
             print(f"CLI stdout: {result.stdout}")
             raise RuntimeError(f"Failed to generate wrapper code: {result.stderr}")
 
-        # Add paths to sys.path:
-        # - project_root: so we can import generated.*
-        # - support_files_path: so generated code can import impl modules (e.g., multifile_impl._a)
-        # - generated_dir: so multifile.* can be imported directly
+        # Add both project root and support_files to sys.path so generated code can import impl modules
         sys.path.insert(0, str(project_root))
         sys.path.insert(0, str(support_files_path))
-        sys.path.insert(0, str(generated_dir))
 
         # Import all generated modules
         result_ns = SimpleNamespace()
@@ -101,10 +98,6 @@ def generated_wrappers():
         result_ns.event_loop_check = __import__("generated.event_loop_check", fromlist=[""])
         result_ns.nested_generators = __import__("generated.nested_generators", fromlist=[""])
         result_ns.two_way_generator = __import__("generated.two_way_generator", fromlist=[""])
-
-        # Import multifile modules (can now import via generated.multifile.* or multifile.*)
-        result_ns.multifile_a = __import__("multifile.a", fromlist=[""])
-        result_ns.multifile_b = __import__("multifile.b", fromlist=[""])
 
         # For the aclose test, generate a separate module with just that function
         from synchronicity import Module
@@ -143,8 +136,6 @@ def generated_wrappers():
             sys.path.remove(str(project_root))
         if str(support_files_path) in sys.path:
             sys.path.remove(str(support_files_path))
-        if str(generated_dir) in sys.path:
-            sys.path.remove(str(generated_dir))
 
         # Remove imported modules from sys.modules
         modules_to_remove = [
@@ -154,8 +145,8 @@ def generated_wrappers():
             "generated.event_loop_check",
             "generated.nested_generators",
             "generated.two_way_generator",
-            "multifile.a",
-            "multifile.b",
+            "generated.multifile.a",
+            "generated.multifile.b",
             "generated.test_aclose",
             "generated.multifile",
             "generated",
