@@ -90,26 +90,29 @@ def _build_call_with_wrap(
     synchronizer_name: str,
     current_target_module: str,
     indent: str = "    ",
+    is_async: bool = True,
 ) -> str:
     """
     Build a function call with optional return value wrapping.
 
-    This is used for non-generator return types. For nested generators inside
-    return values (e.g., tuple[AsyncGenerator, ...]), we always use is_async=True
-    so they remain async generators even in sync calling contexts.
+    This is used for non-generator return types. Nested generators inside
+    return values (e.g., tuple[AsyncGenerator, ...]) are properly wrapped
+    according to the is_async context.
 
     Args:
         call_expr: The function call expression
         return_transformer: TypeTransformer for the return type
-        synchronizer: The Synchronizer instance
+        synchronized_types: Dict mapping implementation types to (target_module, wrapper_name)
+        synchronizer_name: Name of the synchronizer
         current_target_module: Current target module
         indent: Indentation string
+        is_async: Whether this is an async context (affects generator wrapping)
 
     Returns:
         Code string with the call and optional wrapping
     """
     if return_transformer.needs_translation():
-        wrap_expr = return_transformer.wrap_expr(synchronized_types, current_target_module, "result", is_async=True)
+        wrap_expr = return_transformer.wrap_expr(synchronized_types, current_target_module, "result", is_async=is_async)
         return f"""{indent}result = {call_expr}
 {indent}return {wrap_expr}"""
     else:
@@ -210,7 +213,7 @@ def compile_function(
             return_transformer, synchronized_types, synchronizer_name, current_target_module
         )
 
-        # Build function body with wrapping
+        # Build function body with wrapping (sync context, so is_async=False)
         function_body = _build_call_with_wrap(
             f"impl_function({call_args_str})",
             return_transformer,
@@ -218,6 +221,7 @@ def compile_function(
             synchronizer_name,
             current_target_module,
             indent="    ",
+            is_async=False,
         )
 
         # Add impl_function reference and unwrap statements
@@ -278,6 +282,7 @@ def compile_function(
             synchronizer_name,
             current_target_module,
             indent="        ",
+            is_async=True,
         )
         sync_runner = f"get_synchronizer('{synchronizer_name}')._run_function_sync"
         sync_function_body = _build_call_with_wrap(
@@ -287,6 +292,7 @@ def compile_function(
             synchronizer_name,
             current_target_module,
             indent="    ",
+            is_async=False,
         )
     else:
         # For non-async functions (shouldn't reach here)
@@ -297,6 +303,7 @@ def compile_function(
             synchronizer_name,
             current_target_module,
             indent="        ",
+            is_async=True,
         )
         sync_function_body = _build_call_with_wrap(
             f"impl_function({call_args_str})",
@@ -305,6 +312,7 @@ def compile_function(
             synchronizer_name,
             current_target_module,
             indent="    ",
+            is_async=False,
         )
 
     # Build unwrap section for aio() if needed
@@ -464,6 +472,7 @@ def compile_method_wrapper(
             synchronizer_name,
             current_target_module,
             indent="        ",
+            is_async=True,
         )
         sync_call_expr = (
             f"self._wrapper_instance._synchronizer._run_function_sync("
@@ -476,6 +485,7 @@ def compile_method_wrapper(
             synchronizer_name,
             current_target_module,
             indent="        ",
+            is_async=False,
         )
 
     # Build unwrap section for __call__() if needed

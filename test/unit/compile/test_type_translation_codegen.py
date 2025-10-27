@@ -177,10 +177,121 @@ def test_no_translation_for_primitives():
     print("✓ Primitive types not translated")
 
 
+def test_async_generator_wrapping():
+    """Test that async generators are wrapped correctly in sync and async contexts."""
+
+    async def simple_generator() -> typing.AsyncGenerator[str, None]:
+        for i in range(3):
+            yield f"item_{i}"
+
+    compiled_code = compile_function(simple_generator, "test_module", "s", {})
+
+    # Check that helper functions are generated for both sync and async contexts
+    assert "_wrap_async_gen_str" in compiled_code
+    assert "_wrap_async_gen_str_sync" in compiled_code
+
+    # Check async helper uses await and async for
+    assert "async def _wrap_async_gen_str(_gen):" in compiled_code
+    assert "await _wrapped.asend(_sent)" in compiled_code
+    assert "await _wrapped.aclose()" in compiled_code
+
+    # Check sync helper uses regular for (yield from)
+    assert "def _wrap_async_gen_str_sync(_gen):" in compiled_code
+    assert "yield from get_synchronizer('s')._run_generator_sync(_gen)" in compiled_code
+
+    # Check that async context (__call__ in aio) uses async helper
+    assert "async def aio(self, ) -> " in compiled_code
+
+    # Check return type annotations
+    assert '-> "typing.Generator[str, None, None]":' in compiled_code  # sync context
+    assert '-> "typing.AsyncGenerator[str, None]":' in compiled_code  # async context
+
+    print("✓ Async generator wrapping generated correctly")
+
+
+def test_tuple_of_generators():
+    """Test that tuples of async generators are wrapped correctly."""
+
+    async def tuple_generators() -> tuple[typing.AsyncGenerator[str, None], typing.AsyncGenerator[int, None]]:
+        async def gen_str():
+            yield "hello"
+
+        async def gen_int():
+            yield 42
+
+        return (gen_str(), gen_int())
+
+    compiled_code = compile_function(tuple_generators, "test_module", "s", {})
+
+    # Check that both generator types have wrappers
+    assert "_wrap_async_gen_str" in compiled_code
+    assert "_wrap_async_gen_int" in compiled_code
+    assert "_wrap_async_gen_str_sync" in compiled_code
+    assert "_wrap_async_gen_int_sync" in compiled_code
+
+    # Check that tuple wrapping uses appropriate helpers in sync context
+    # The sync __call__ method should use *_sync helpers
+    assert (
+        'def __call__(self, ) -> "tuple[typing.Generator[str, None, None], typing.Generator[int, None, None]]":'
+        in compiled_code
+    )
+
+    # Check async context uses async helpers
+    assert (
+        'async def aio(self, ) -> "tuple[typing.AsyncGenerator[str, None], typing.AsyncGenerator[int, None]]":'
+        in compiled_code
+    )
+
+    # Verify the tuple wrapping expressions reference the helpers
+    # In sync context, should call _wrap_async_gen_*_sync
+    assert "self._wrap_async_gen_str_sync" in compiled_code or "_wrap_async_gen_str_sync" in compiled_code
+    assert "self._wrap_async_gen_int_sync" in compiled_code or "_wrap_async_gen_int_sync" in compiled_code
+
+    # In async context, should call _wrap_async_gen_* (without _sync suffix)
+    assert "self._wrap_async_gen_str" in compiled_code or "_wrap_async_gen_str(" in compiled_code
+    assert "self._wrap_async_gen_int" in compiled_code or "_wrap_async_gen_int(" in compiled_code
+
+    print("✓ Tuple of generators wrapping generated correctly")
+
+
+def test_generator_with_wrapped_types():
+    """Test that generators yielding wrapped types work correctly."""
+
+    class GenNode:
+        """Test node for generator."""
+
+        def __init__(self, value: int):
+            self.value = value
+
+    async def node_generator() -> typing.AsyncGenerator[GenNode, None]:
+        yield GenNode(1)
+        yield GenNode(2)
+
+    synchronized_types = {GenNode: ("test_module", "GenNode")}
+    local_ns = {"GenNode": GenNode}
+
+    compiled_code = compile_function(node_generator, "test_module", "s", synchronized_types, globals_dict=local_ns)
+
+    # Check that generator wrapper is created
+    assert "_wrap_async_gen" in compiled_code
+
+    # Check that the yielded items are wrapped with _from_impl
+    assert "GenNode._from_impl(_item)" in compiled_code
+
+    # Verify sync and async helpers are both generated
+    assert "async def _wrap_async_gen" in compiled_code
+    assert "def _wrap_async_gen" in compiled_code  # sync version (has both async and non-async defs)
+
+    print("✓ Generator with wrapped types generated correctly")
+
+
 if __name__ == "__main__":
     test_compile_with_translation()
     test_wrapper_helpers_generated()
     test_unwrap_expressions_in_functions()
     test_translation_with_collections()
     test_no_translation_for_primitives()
+    test_async_generator_wrapping()
+    test_tuple_of_generators()
+    test_generator_with_wrapped_types()
     print("\n✅ All unit tests passed!")

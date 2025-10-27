@@ -13,19 +13,17 @@ def test_nested_async_generators_in_tuple(generated_wrappers):
     verifying that both sync and async interfaces work correctly.
     """
     # Test 1: Sync interface returns sync generators (wrapped)
-    # Note: For nested generators in return values, the sync interface still returns
-    # async generator objects that need to be iterated asynchronously
     import nested_generators
 
-    # test sync interface:
-    str_gen_async, int_gen_async = nested_generators.nested_async_generator(3)
+    # Test sync interface:
+    str_gen_sync, int_gen_sync = nested_generators.nested_async_generator(3)
 
     str_results = []
-    for s in str_gen_async:
+    for s in str_gen_sync:
         str_results.append(s)
 
     int_results = []
-    for i in int_gen_async:
+    for i in int_gen_sync:
         int_results.append(i)
 
     assert str_results == [
@@ -34,8 +32,8 @@ def test_nested_async_generators_in_tuple(generated_wrappers):
         "hello",
     ], f"Expected ['hello', 'hello', 'hello'], got {str_results}"
     assert int_results == [0, 1, 2], f"Expected [0, 1, 2], got {int_results}"
-    print(f"✓ Sync interface (returns async gens): str_gen yielded {str_results}")
-    print(f"✓ Sync interface (returns async gens): int_gen yielded {int_results}")
+    print(f"✓ Sync interface: str_gen yielded {str_results}")
+    print(f"✓ Sync interface: int_gen yielded {int_results}")
 
     # Test 2: Async interface - iterate over both generators
     async def test_async():
@@ -59,7 +57,7 @@ def test_nested_async_generators_in_tuple(generated_wrappers):
 
     # Test 3: Verify generators in tuple are independent
     async def test_independence():
-        str_gen1, int_gen1 = generated_wrappers.nested_generators.nested_async_generator(1)
+        str_gen1, int_gen1 = await nested_generators.nested_async_generator.aio(1)
         # Consume only str_gen1
         async for _ in str_gen1:
             pass
