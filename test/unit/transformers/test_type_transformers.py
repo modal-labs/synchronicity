@@ -332,6 +332,7 @@ class TestGeneratorTransformer:
         yield_transformer = WrappedClassTransformer(wrapped_class)
         transformer = AsyncGeneratorTransformer(yield_transformer, send_type_str="None")
         assert transformer.wrapped_type(sync, "test_module", is_async=True) == "typing.AsyncGenerator[TestClass, None]"
+        # Sync context should preserve send type (even if it's just None)
         assert (
             transformer.wrapped_type(sync, "test_module", is_async=False) == "typing.Generator[TestClass, None, None]"
         )
@@ -351,6 +352,44 @@ class TestGeneratorTransformer:
         yield_transformer = IdentityTransformer(str)
         transformer = SyncGeneratorTransformer(yield_transformer)
         assert transformer.wrapped_type(sync, "test_module") == "typing.Generator[str, None, None]"
+
+    def test_two_way_generator_with_send_type(self, sync):
+        """Test that two-way generators preserve send type in both contexts."""
+        from synchronicity.codegen.type_transformer import AsyncGeneratorTransformer
+
+        yield_transformer = IdentityTransformer(str)
+        # Two-way generator: yields str, accepts str via send
+        transformer = AsyncGeneratorTransformer(yield_transformer, send_type_str="str")
+
+        # Async context: AsyncGenerator[str, str]
+        assert transformer.wrapped_type(sync, "test_module", is_async=True) == "typing.AsyncGenerator[str, str]"
+
+        # Sync context: Generator[str, str, None]
+        # Should preserve send type to support two-way generators
+        assert transformer.wrapped_type(sync, "test_module", is_async=False) == "typing.Generator[str, str, None]"
+
+    def test_two_way_generator_with_int_send_type(self, sync):
+        """Test two-way generator with int send type."""
+        from synchronicity.codegen.type_transformer import AsyncGeneratorTransformer
+
+        yield_transformer = IdentityTransformer(int)
+        transformer = AsyncGeneratorTransformer(yield_transformer, send_type_str="int")
+
+        # Both contexts should preserve send type
+        assert transformer.wrapped_type(sync, "test_module", is_async=True) == "typing.AsyncGenerator[int, int]"
+        assert transformer.wrapped_type(sync, "test_module", is_async=False) == "typing.Generator[int, int, None]"
+
+    def test_one_way_generator_send_none(self, sync):
+        """Test one-way generator (send type is None, no send support needed)."""
+        from synchronicity.codegen.type_transformer import AsyncGeneratorTransformer
+
+        yield_transformer = IdentityTransformer(str)
+        # One-way generator: yields str, doesn't use send
+        transformer = AsyncGeneratorTransformer(yield_transformer, send_type_str="None")
+
+        # Both should have None as send type
+        assert transformer.wrapped_type(sync, "test_module", is_async=True) == "typing.AsyncGenerator[str, None]"
+        assert transformer.wrapped_type(sync, "test_module", is_async=False) == "typing.Generator[str, None, None]"
 
     def test_needs_translation(self, sync, wrapped_class):
         from synchronicity.codegen.type_transformer import AsyncGeneratorTransformer, SyncGeneratorTransformer

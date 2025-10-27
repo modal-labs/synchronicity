@@ -5,6 +5,8 @@ Tests two-way generators (using send()) and cleanup (aclose forwarding).
 
 import asyncio
 
+from .test_utils import check_pyright
+
 
 def test_two_way_generator_send(generated_wrappers):
     """Test that two-way generators (using send()) work correctly across sync/async boundary.
@@ -116,9 +118,8 @@ def test_generator_aclose_forwarding(generated_wrappers):
     2. Ensure finalization logic (try/finally blocks) executes
     3. Wait for cleanup before returning to caller
     """
-    import two_way_generator_impl
-
     import two_way_generator
+    import two_way_generator_impl
 
     print("\n=== Testing aclose() forwarding ===")
 
@@ -206,3 +207,7 @@ def test_generator_aclose_forwarding(generated_wrappers):
     print("  ✓ Cleanup was properly forwarded and executed")
 
     print("\n=== All aclose() forwarding tests passed! ===")
+
+
+def test_two_way_generator_pyright(generated_wrappers, support_files):
+    check_pyright([support_files / "two_way_generator_typecheck.py"])

@@ -408,18 +408,23 @@ class AsyncGeneratorTransformer(TypeTransformer):
     def wrapped_type(
         self, synchronized_types: dict[type, tuple[str, str]], target_module: str, is_async: bool = True
     ) -> str:
-        """Return AsyncGenerator[T, S] for async context, Generator[T, None, None] for sync context."""
+        """Return AsyncGenerator[T, S] for async context, Generator[T, S, None] for sync context.
+
+        Note: Both async and sync generators preserve the send type to support two-way generators.
+        """
         yield_type_str = self.yield_transformer.wrapped_type(synchronized_types, target_module, is_async)
 
         if is_async:
-            # Async context: return AsyncGenerator
+            # Async context: return AsyncGenerator[YieldType, SendType]
             if self.send_type_str is None:
                 return f"typing.AsyncGenerator[{yield_type_str}]"
             else:
                 return f"typing.AsyncGenerator[{yield_type_str}, {self.send_type_str}]"
         else:
-            # Sync context: return regular Generator (for sync wrapper methods)
-            return f"typing.Generator[{yield_type_str}, None, None]"
+            # Sync context: return Generator[YieldType, SendType, None]
+            # Preserve send type to support two-way generators in sync context
+            send_type_for_sync = self.send_type_str if self.send_type_str is not None else "None"
+            return f"typing.Generator[{yield_type_str}, {send_type_for_sync}, None]"
 
     def unwrap_expr(self, synchronized_types: dict[type, tuple[str, str]], var_name: str) -> str:
         """Generators don't unwrap at the parameter level."""

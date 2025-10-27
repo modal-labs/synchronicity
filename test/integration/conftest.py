@@ -93,3 +93,8 @@ def generated_wrappers():
     finally:
         pass
     # Note: We do NOT delete the generated/ directory - keep files for manual inspection
+
+
+@pytest.fixture(scope="session")
+def support_files():
+    return Path(__file__).parent.parent / "support_files"
