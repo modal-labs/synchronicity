@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import inspect
 import types
+import typing
 from typing import TYPE_CHECKING
 
 from synchronicity.module import Module
@@ -156,6 +157,8 @@ def compile_function(
     target_module: str,
     synchronizer_name: str,
     synchronized_types: dict[type, tuple[str, str]],
+    *,
+    globals_dict: dict[str, typing.Any] | None = None,
 ) -> str:
     """
     Compile a function into a wrapper class that provides both sync and async versions.
@@ -165,6 +168,7 @@ def compile_function(
         target_module: Target module where this function will be generated
         synchronizer_name: Name of the synchronizer for async operations
         synchronized_types: Dict mapping impl types to (target_module, wrapper_name)
+        globals_dict: Optional globals dict for resolving forward references
 
     Returns:
         String containing the generated wrapper class and decorated function code
@@ -173,7 +177,7 @@ def compile_function(
     current_target_module = target_module
 
     # Resolve all type annotations
-    annotations = inspect.get_annotations(f, eval_str=True)
+    annotations = inspect.get_annotations(f, eval_str=True, globals=globals_dict)
 
     # Get function signature
     sig = inspect.signature(f)
@@ -359,6 +363,8 @@ def compile_method_wrapper(
     origin_module: str,
     class_name: str,
     current_target_module: str,
+    *,
+    globals_dict: dict[str, typing.Any] | None = None,
 ) -> tuple[str, str]:
     """
     Compile a method wrapper class that provides both sync and async versions.
@@ -366,16 +372,18 @@ def compile_method_wrapper(
     Args:
         method: The method to wrap
         method_name: The name of the method
-        synchronizer: The Synchronizer instance
+        synchronizer_name: Name of the synchronizer for async operations
+        synchronized_types: Dict mapping impl types to (target_module, wrapper_name)
         origin_module: The module where the original class is defined
         class_name: The name of the class containing the method
         current_target_module: The target module for the wrapper
+        globals_dict: Optional globals dict for resolving forward references
 
     Returns:
         Tuple of (wrapper_class_code, sync_method_code)
     """
     # Resolve all type annotations
-    annotations = inspect.get_annotations(method, eval_str=True)
+    annotations = inspect.get_annotations(method, eval_str=True, globals=globals_dict)
 
     # Get method signature
     sig = inspect.signature(method)
@@ -517,13 +525,18 @@ def compile_class(
     target_module: str,
     synchronizer_name: str,
     synchronized_types: dict[type, tuple[str, str]],
+    *,
+    globals_dict: dict[str, typing.Any] | None = None,
 ) -> str:
     """
     Compile a class into a wrapper class where all methods are wrapped.
 
     Args:
         cls: The class to compile
-        synchronizer: The Synchronizer instance
+        target_module: Target module where this class will be generated
+        synchronizer_name: Name of the synchronizer for async operations
+        synchronized_types: Dict mapping impl types to (target_module, wrapper_name)
+        globals_dict: Optional globals dict for resolving forward references
 
     Returns:
         String containing the generated wrapper class code
@@ -539,7 +552,7 @@ def compile_class(
 
     # Get class attributes from annotations
     attributes = []
-    class_annotations = inspect.get_annotations(cls, eval_str=True)
+    class_annotations = inspect.get_annotations(cls, eval_str=True, globals=globals_dict)
     for name, annotation in class_annotations.items():
         if not name.startswith("_"):
             transformer = create_transformer(annotation, synchronized_types)
@@ -559,6 +572,7 @@ def compile_class(
             origin_module,
             cls.__name__,
             current_target_module,
+            globals_dict=globals_dict,
         )
         if wrapper_class_code:
             method_wrapper_classes.append(wrapper_class_code)
@@ -568,7 +582,7 @@ def compile_class(
     init_method = getattr(cls, "__init__", None)
     if init_method and init_method is not object.__init__:
         sig = inspect.signature(init_method)
-        init_annotations = inspect.get_annotations(init_method, eval_str=True)
+        init_annotations = inspect.get_annotations(init_method, eval_str=True, globals=globals_dict)
 
         # Parse parameters (skip self)
         init_params = []
