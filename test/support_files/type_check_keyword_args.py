@@ -7,7 +7,7 @@ checking for keyword argument calls.
 
 from typing import reveal_type
 
-from translation_lib import Node, connect_nodes, create_node
+from class_with_translation import Node, connect_nodes, create_node
 
 # Test positional arguments
 node1 = create_node(42)

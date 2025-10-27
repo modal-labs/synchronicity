@@ -97,6 +97,12 @@ class Synchronizer:
             self._loop = None
             self._owner_pid = None
 
+    @typing.overload
+    def _get_loop(self, start: typing.Literal[True]) -> asyncio.AbstractEventLoop: ...
+
+    @typing.overload
+    def _get_loop(self, start: bool = False) -> Optional[asyncio.AbstractEventLoop]: ...
+
     def _get_loop(self, start: bool = False) -> Optional[asyncio.AbstractEventLoop]:
         if self._thread and not self._thread.is_alive():
             if self._owner_pid == os.getpid():
@@ -167,7 +173,7 @@ class Synchronizer:
                 expected_cancellation.__suppress_context__ = True
                 raise exc  # if cancel - re-raise the original KeyboardInterrupt again
 
-        return value
+        return value  # type: ignore
 
     async def _run_function_async(self, coro):
         loop = self._get_loop(start=True)
@@ -228,7 +234,7 @@ class Synchronizer:
                     if shielded_task:
                         shielded_task.cancel()  # cancel the shielded task, preventing timeouts
 
-        return value
+        return value  # type: ignore
 
     def _run_generator_sync(self, gen):
         value: typing.Any = None

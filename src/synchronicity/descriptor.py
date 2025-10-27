@@ -12,18 +12,30 @@ via .aio() (e.g., foo.aio()).
 
 import typing
 
-T = typing.TypeVar("T")
+from synchronicity import Synchronizer
 
 
-class WrappedMethodDescriptor(typing.Generic[T]):
+class ClassWrapperProtocol(typing.Protocol):
+    _impl_instance: typing.Any
+    _synchronizer: Synchronizer
+
+
+class MethodWrapperProtocol(typing.Protocol):
+    def __init__(self, wrapper_instance: ClassWrapperProtocol): ...
+
+
+METHOD_WRAPPER_TYPE = typing.TypeVar("METHOD_WRAPPER_TYPE", bound=MethodWrapperProtocol)
+
+
+class WrappedMethodDescriptor(typing.Generic[METHOD_WRAPPER_TYPE]):
     """Descriptor that provides both sync and async method variants via .aio()"""
 
-    method_wrapper_type: type[T]
+    method_wrapper_type: type[METHOD_WRAPPER_TYPE]
 
-    def __init__(self, method_wrapper_type):
+    def __init__(self, method_wrapper_type: type[METHOD_WRAPPER_TYPE]):
         self.method_wrapper_type = method_wrapper_type
 
-    def __get__(self, wrapper_instance, owner) -> T:
+    def __get__(self, wrapper_instance, owner) -> METHOD_WRAPPER_TYPE:
         if wrapper_instance is None:
             # For class access, return self to allow descriptor access
             return self  # type: ignore
@@ -32,7 +44,7 @@ class WrappedMethodDescriptor(typing.Generic[T]):
         return self.method_wrapper_type(wrapper_instance)
 
 
-def wrapped_method(method_wrapper_type: type[T]):
+def wrapped_method(method_wrapper_type: type[METHOD_WRAPPER_TYPE]):
     """
     Decorator that creates a WrappedMethodDescriptor for a method.
 
@@ -43,11 +55,16 @@ def wrapped_method(method_wrapper_type: type[T]):
         A WrappedMethodDescriptor that will create method_wrapper_type instances
     """
 
-    def decorator(_dummy_method) -> WrappedMethodDescriptor[T]:
+    def decorator(_dummy_method) -> WrappedMethodDescriptor[METHOD_WRAPPER_TYPE]:
         # The dummy method is ignored - the actual implementation is in the wrapper class
+        # which is in the "outer" decorator specification. The dummy is only
+        # to point language servers to something reasonable as the definition
         return WrappedMethodDescriptor(method_wrapper_type)
 
     return decorator
+
+
+T = typing.TypeVar("T")
 
 
 def replace_with(wrapper: T) -> typing.Callable[[typing.Callable[..., typing.Any]], T]:

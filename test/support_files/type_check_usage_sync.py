@@ -1,6 +1,6 @@
 from typing import reveal_type
 
-from translation_lib import Node, connect_nodes, create_node
+from class_with_translation import Node, connect_nodes, create_node
 
 # Test function object types
 reveal_type(create_node)  # Should be a callable returning Node
@@ -14,6 +14,7 @@ node = create_node(42)
 reveal_type(node)  # Should be Node
 
 # Test method types
+node.create_child
 child = node.create_child(100)
 reveal_type(child)  # Should be Node
 

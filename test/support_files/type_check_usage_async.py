@@ -1,6 +1,6 @@
 from typing import reveal_type
 
-from translation_lib import connect_nodes, create_node
+from class_with_translation import connect_nodes, create_node
 
 # Test .aio attribute types for functions
 reveal_type(create_node.aio)  # Should be async callable returning Node
