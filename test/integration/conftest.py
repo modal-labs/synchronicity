@@ -53,6 +53,7 @@ def generated_wrappers():
             ("simple_function_impl", "simple_function"),
             ("simple_class_impl", "simple_class"),
             ("class_with_translation_impl", "class_with_translation"),
+            ("class_with_inheritance_impl", "class_with_inheritance"),
             ("event_loop_check_impl", "event_loop_check"),
             ("nested_generators_impl", "nested_generators"),
             ("two_way_generator_impl", "two_way_generator"),

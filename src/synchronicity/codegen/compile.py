@@ -725,18 +725,32 @@ def compile_class(
     origin_module = cls.__module__
     current_target_module = target_module
 
-    # Get all methods from the class
+    # Detect wrapped base classes for inheritance
+    wrapped_bases = []
+    for base in cls.__bases__:
+        if base is not object and base in synchronized_types:
+            base_target_module, base_wrapper_name = synchronized_types[base]
+            if base_target_module == current_target_module:
+                wrapped_bases.append(base_wrapper_name)
+            else:
+                wrapped_bases.append(f"{base_target_module}.{base_wrapper_name}")
+
+    # Get only methods defined in THIS class (not inherited)
     methods = []
     for name, method in inspect.getmembers(cls, predicate=inspect.isfunction):
-        if not name.startswith("_"):
+        if not name.startswith("_") and name in cls.__dict__:
             methods.append((name, method))
 
-    # Get class attributes from annotations
+    # Get only attributes defined in THIS class (not inherited)
     attributes = []
-    class_annotations = inspect.get_annotations(cls, eval_str=True, globals=globals_dict)
+    # Use cls.__annotations__ directly to get only this class's annotations
+    class_annotations = cls.__annotations__ if hasattr(cls, "__annotations__") else {}
     for name, annotation in class_annotations.items():
         if not name.startswith("_"):
-            transformer = create_transformer(annotation, synchronized_types)
+            # Resolve forward references using inspect
+            annotations_resolved = inspect.get_annotations(cls, eval_str=True, globals=globals_dict)
+            resolved_annotation = annotations_resolved.get(name, annotation)
+            transformer = create_transformer(resolved_annotation, synchronized_types)
             attr_type = transformer.wrapped_type(synchronized_types, current_target_module)
             attributes.append((name, attr_type))
 
@@ -821,8 +835,9 @@ def compile_class(
     properties_section = "\n\n".join(property_definitions) if property_definitions else ""
     methods_section = "\n\n".join(method_definitions) if method_definitions else ""
 
-    # Generate _from_impl classmethod
-    from_impl_method = f"""    @classmethod
+    # Generate _from_impl classmethod (only for root classes without wrapped bases)
+    if not wrapped_bases:
+        from_impl_method = f"""    @classmethod
     def _from_impl(cls, impl_instance: {origin_module}.{cls.__name__}) -> "{cls.__name__}":
         \"\"\"Create wrapper from implementation instance, preserving identity via cache.\"\"\"
         # Use id() as cache key since impl instances are Python objects
@@ -840,15 +855,45 @@ def compile_class(
         cls._instance_cache[cache_key] = wrapper
 
         return wrapper"""
+    else:
+        # Derived classes inherit _from_impl from base
+        from_impl_method = ""
 
-    wrapper_class_code = f"""class {cls.__name__}:
-    \"\"\"Wrapper class for {origin_module}.{cls.__name__} with sync/async method support\"\"\"
+    # Generate class declaration with inheritance
+    if wrapped_bases:
+        bases_str = ", ".join(wrapped_bases)
+        class_declaration = f"""class {cls.__name__}({bases_str}):"""
+    else:
+        class_declaration = f"""class {cls.__name__}:"""
+
+    # Generate class attributes (only for root classes without wrapped bases)
+    if not wrapped_bases:
+        class_attrs = (
+            f"""    \"\"\"Wrapper class for {origin_module}.{cls.__name__} """
+            f"""with sync/async method support\"\"\"
 
     _synchronizer = get_synchronizer('{synchronizer_name}')
-    _instance_cache: weakref.WeakValueDictionary = weakref.WeakValueDictionary()
+    _instance_cache: weakref.WeakValueDictionary = weakref.WeakValueDictionary()"""
+        )
+    else:
+        class_attrs = (
+            f"""    \"\"\"Wrapper class for {origin_module}.{cls.__name__} with sync/async method support\"\"\""""
+        )
 
-    def __init__(self, {init_signature}):
-        self._impl_instance = {origin_module}.{cls.__name__}({init_call})
+    # Generate __init__ method (call super if there are wrapped bases)
+    if wrapped_bases:
+        init_method = f"""    def __init__(self, {init_signature}):
+        super().__init__({init_call})
+        # Update to more specific derived type
+        self._impl_instance = {origin_module}.{cls.__name__}({init_call})"""
+    else:
+        init_method = f"""    def __init__(self, {init_signature}):
+        self._impl_instance = {origin_module}.{cls.__name__}({init_call})"""
+
+    wrapper_class_code = f"""{class_declaration}
+{class_attrs}
+
+{init_method}
 
 {from_impl_method}
 
