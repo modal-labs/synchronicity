@@ -776,6 +776,11 @@ def _format_annotation_str(annotation) -> str:
     if isinstance(annotation, typing.ParamSpec):
         return annotation.__name__
 
+    # Handle lists (used in Callable parameter lists, e.g., Callable[[str, int], bool])
+    if isinstance(annotation, list):
+        formatted_items = [_format_annotation_str(item) for item in annotation]
+        return f"[{', '.join(formatted_items)}]"
+
     # Handle generic types
     origin = typing.get_origin(annotation)
     args = typing.get_args(annotation)

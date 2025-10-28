@@ -991,12 +991,22 @@ from synchronicity.synchronizer import get_synchronizer
         elif isinstance(o, types.FunctionType):
             functions.append(o)
 
-    # Collect all TypeVars and ParamSpecs used in functions
+    # Collect all TypeVars and ParamSpecs used in functions and class methods
     module_typevars: dict[str, typing.TypeVar | typing.ParamSpec] = {}
+
+    # Extract from standalone functions
     for func in functions:
         annotations = inspect.get_annotations(func, eval_str=True)
         func_typevars = _extract_typevars_from_function(func, annotations)
         module_typevars.update(func_typevars)
+
+    # Extract from class methods
+    for cls in classes:
+        for name, method in inspect.getmembers(cls, predicate=inspect.isfunction):
+            if not name.startswith("_"):
+                annotations = inspect.get_annotations(method, eval_str=True)
+                method_typevars = _extract_typevars_from_function(method, annotations)
+                module_typevars.update(method_typevars)
 
     # Generate typevar definitions if any were found
     if module_typevars:
