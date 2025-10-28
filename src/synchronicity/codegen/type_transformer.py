@@ -770,6 +770,12 @@ def _format_annotation_str(annotation) -> str:
     if annotation is type(None) or annotation is None:
         return "None"
 
+    # Handle TypeVar and ParamSpec - just return their names
+    if isinstance(annotation, typing.TypeVar):
+        return annotation.__name__
+    if isinstance(annotation, typing.ParamSpec):
+        return annotation.__name__
+
     # Handle generic types
     origin = typing.get_origin(annotation)
     args = typing.get_args(annotation)

@@ -56,6 +56,7 @@ def generated_wrappers():
             ("event_loop_check_impl", "event_loop_check"),
             ("nested_generators_impl", "nested_generators"),
             ("two_way_generator_impl", "two_way_generator"),
+            ("functions_with_typevars_impl", "functions_with_typevars"),
             ("multifile_impl._a", "multifile.a"),
             ("multifile_impl._b", "multifile.b"),
         ]

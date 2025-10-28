@@ -16,6 +16,177 @@ if TYPE_CHECKING:
     pass
 
 
+def _extract_typevars_from_annotation(annotation, collected: dict[str, typing.TypeVar | typing.ParamSpec]) -> None:
+    """Recursively extract TypeVar and ParamSpec instances from a type annotation.
+
+    Args:
+        annotation: Type annotation to extract from
+        collected: Dict to store found typevars (name -> typevar instance)
+    """
+    # Handle TypeVar and ParamSpec directly
+    if isinstance(annotation, typing.TypeVar):
+        collected[annotation.__name__] = annotation
+        return
+    if isinstance(annotation, typing.ParamSpec):
+        collected[annotation.__name__] = annotation
+        return
+
+    # Recursively process generic types
+    args = typing.get_args(annotation)
+
+    if args:
+        for arg in args:
+            _extract_typevars_from_annotation(arg, collected)
+
+
+def _extract_typevars_from_function(
+    f: types.FunctionType, annotations: dict[str, typing.Any]
+) -> dict[str, typing.TypeVar | typing.ParamSpec]:
+    """Extract all TypeVar and ParamSpec instances used in a function's signature.
+
+    Args:
+        f: The function to extract from
+        annotations: Resolved annotations dict from inspect.get_annotations
+
+    Returns:
+        Dict mapping typevar name to typevar instance
+    """
+    collected: dict[str, typing.TypeVar | typing.ParamSpec] = {}
+
+    # Extract from all parameter annotations
+    sig = inspect.signature(f)
+    for param_name, param in sig.parameters.items():
+        param_annotation = annotations.get(param_name, param.annotation)
+        if param_annotation != inspect.Signature.empty:
+            _extract_typevars_from_annotation(param_annotation, collected)
+
+    # Extract from return annotation
+    return_annotation = annotations.get("return", sig.return_annotation)
+    if return_annotation != inspect.Signature.empty:
+        _extract_typevars_from_annotation(return_annotation, collected)
+
+    return collected
+
+
+def _translate_typevar_bound(
+    bound: type | str, synchronized_types: dict[type, tuple[str, str]], target_module: str
+) -> str:
+    """Translate a TypeVar bound to the wrapper type if it's a wrapped class.
+
+    Args:
+        bound: The bound value (can be a type, string, ForwardRef, or None)
+        synchronized_types: Dict mapping implementation types to (target_module, wrapper_name)
+        target_module: Current target module for local vs cross-module refs
+
+    Returns:
+        String representation of the bound for code generation
+    """
+    # Handle ForwardRef objects (from string annotations)
+    if hasattr(bound, "__forward_arg__"):
+        # Extract the string from the ForwardRef
+        forward_str = bound.__forward_arg__  # type: ignore
+        # Try to find if this string matches any wrapped class name
+        for impl_type, (wrapper_target_module, wrapper_name) in synchronized_types.items():
+            if impl_type.__name__ == forward_str:
+                # Translate to wrapper name, always use string for forward compatibility
+                if wrapper_target_module == target_module:
+                    return f'"{wrapper_name}"'
+                else:
+                    return f'"{wrapper_target_module}.{wrapper_name}"'
+        # Not a wrapped class, return as-is
+        return f'"{forward_str}"'
+
+    # Handle string forward references
+    if isinstance(bound, str):
+        # Try to find if this string matches any wrapped class name
+        for impl_type, (wrapper_target_module, wrapper_name) in synchronized_types.items():
+            if impl_type.__name__ == bound:
+                # Translate to wrapper name
+                if wrapper_target_module == target_module:
+                    return wrapper_name
+                else:
+                    return f"{wrapper_target_module}.{wrapper_name}"
+        # Not a wrapped class, return as-is
+        return f'"{bound}"'
+
+    # Handle direct type references
+    if isinstance(bound, type):
+        if bound in synchronized_types:
+            # For wrapped classes, always use string forward reference
+            # since the class may not be defined yet when TypeVar is declared
+            wrapper_target_module, wrapper_name = synchronized_types[bound]
+            if wrapper_target_module == target_module:
+                return f'"{wrapper_name}"'
+            else:
+                return f'"{wrapper_target_module}.{wrapper_name}"'
+        # Not a wrapped class, return qualified name (not quoted since it should be imported)
+        return f"{bound.__module__}.{bound.__name__}" if bound.__module__ != "builtins" else bound.__name__
+
+    # For other types, use repr
+    return repr(bound)
+
+
+def _generate_typevar_definitions(
+    typevars: dict[str, typing.TypeVar | typing.ParamSpec],
+    synchronized_types: dict[type, tuple[str, str]],
+    target_module: str,
+) -> list[str]:
+    """Generate Python code to recreate TypeVar and ParamSpec definitions.
+
+    Args:
+        typevars: Dict mapping typevar name to typevar instance
+        synchronized_types: Dict mapping implementation types to (target_module, wrapper_name)
+        target_module: Current target module for translating bounds
+
+    Returns:
+        List of definition strings like 'T = typing.TypeVar("T", bound=SomeClass)'
+    """
+    definitions = []
+
+    for name, typevar in typevars.items():
+        if isinstance(typevar, typing.ParamSpec):
+            # ParamSpec is simpler - just name
+            definitions.append(f'{name} = typing.ParamSpec("{name}")')
+        elif isinstance(typevar, typing.TypeVar):
+            # TypeVar can have bounds, constraints, and variance
+            args = [f'"{name}"']
+
+            # Handle constraints (e.g., TypeVar('T', int, str))
+            if hasattr(typevar, "__constraints__") and typevar.__constraints__:
+                for constraint in typevar.__constraints__:
+                    if isinstance(constraint, type):
+                        if constraint in synchronized_types:
+                            wrapper_target_module, wrapper_name = synchronized_types[constraint]
+                            if wrapper_target_module == target_module:
+                                args.append(wrapper_name)
+                            else:
+                                args.append(f"{wrapper_target_module}.{wrapper_name}")
+                        else:
+                            constraint_name = (
+                                f"{constraint.__module__}.{constraint.__name__}"
+                                if constraint.__module__ != "builtins"
+                                else constraint.__name__
+                            )
+                            args.append(constraint_name)
+                    else:
+                        args.append(repr(constraint))
+
+            # Handle bound (e.g., TypeVar('T', bound=SomeClass))
+            if hasattr(typevar, "__bound__") and typevar.__bound__ is not None:
+                bound_str = _translate_typevar_bound(typevar.__bound__, synchronized_types, target_module)
+                args.append(f"bound={bound_str}")
+
+            # Handle covariant/contravariant
+            if hasattr(typevar, "__covariant__") and typevar.__covariant__:
+                args.append("covariant=True")
+            if hasattr(typevar, "__contravariant__") and typevar.__contravariant__:
+                args.append("contravariant=True")
+
+            definitions.append(f"{name} = typing.TypeVar({', '.join(args)})")
+
+    return definitions
+
+
 def _parse_parameters_with_transformers(
     sig: inspect.Signature,
     annotations: dict,
@@ -819,6 +990,21 @@ from synchronicity.synchronizer import get_synchronizer
             classes.append(o)
         elif isinstance(o, types.FunctionType):
             functions.append(o)
+
+    # Collect all TypeVars and ParamSpecs used in functions
+    module_typevars: dict[str, typing.TypeVar | typing.ParamSpec] = {}
+    for func in functions:
+        annotations = inspect.get_annotations(func, eval_str=True)
+        func_typevars = _extract_typevars_from_function(func, annotations)
+        module_typevars.update(func_typevars)
+
+    # Generate typevar definitions if any were found
+    if module_typevars:
+        typevar_defs = _generate_typevar_definitions(module_typevars, synchronized_types, module.target_module)
+        compiled_code.append("# TypeVar and ParamSpec definitions")
+        for definition in typevar_defs:
+            compiled_code.append(definition)
+        compiled_code.append("")  # Add blank line
 
     # Compile all classes first
     for cls in classes:
