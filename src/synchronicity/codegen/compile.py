@@ -725,10 +725,33 @@ def compile_class(
     origin_module = cls.__module__
     current_target_module = target_module
 
-    # Detect wrapped base classes for inheritance
+    # Detect wrapped base classes for inheritance and Generic base
     wrapped_bases = []
-    for base in cls.__bases__:
-        if base is not object and base in synchronized_types:
+    generic_base = None
+    generic_typevars = {}  # Collect TypeVars from Generic base
+
+    # Use __orig_bases__ to preserve Generic type parameters
+    bases_to_check = getattr(cls, "__orig_bases__", cls.__bases__)
+
+    for base in bases_to_check:
+        # Check for typing.Generic base
+        origin = typing.get_origin(base)
+        # Generic classes have __origin__ set to typing.Generic
+        if origin is not None and origin.__name__ == "Generic":
+            # This is Generic[T, P, ...] - extract the TypeVars
+            args = typing.get_args(base)
+            if args:
+                # Collect TypeVars from Generic parameters
+                for arg in args:
+                    if isinstance(arg, typing.TypeVar) or isinstance(arg, typing.ParamSpec):
+                        generic_typevars[arg.__name__] = arg
+
+                # Format Generic base with TypeVar names
+                typevar_names = [arg.__name__ for arg in args if isinstance(arg, (typing.TypeVar, typing.ParamSpec))]
+                if typevar_names:
+                    generic_base = f"typing.Generic[{', '.join(typevar_names)}]"
+        # Check for wrapped base classes (use actual __bases__ for this since we need real types)
+        elif base is not object and base in synchronized_types:
             base_target_module, base_wrapper_name = synchronized_types[base]
             if base_target_module == current_target_module:
                 wrapped_bases.append(base_wrapper_name)
@@ -859,9 +882,15 @@ def compile_class(
         # Derived classes inherit _from_impl from base
         from_impl_method = ""
 
-    # Generate class declaration with inheritance
+    # Generate class declaration with inheritance (including Generic if present)
+    all_bases = []
     if wrapped_bases:
-        bases_str = ", ".join(wrapped_bases)
+        all_bases.extend(wrapped_bases)
+    if generic_base:
+        all_bases.append(generic_base)
+
+    if all_bases:
+        bases_str = ", ".join(all_bases)
         class_declaration = f"""class {cls.__name__}({bases_str}):"""
     else:
         class_declaration = f"""class {cls.__name__}:"""
@@ -1047,6 +1076,17 @@ from synchronicity.synchronizer import get_synchronizer
 
     # Extract from class methods
     for cls in classes:
+        # Extract TypeVars from Generic base class if present (use __orig_bases__)
+        bases_to_check = getattr(cls, "__orig_bases__", cls.__bases__)
+        for base in bases_to_check:
+            origin = typing.get_origin(base)
+            if origin is not None and hasattr(origin, "__name__") and origin.__name__ == "Generic":
+                args = typing.get_args(base)
+                for arg in args:
+                    if isinstance(arg, typing.TypeVar) or isinstance(arg, typing.ParamSpec):
+                        module_typevars[arg.__name__] = arg
+
+        # Extract TypeVars from method signatures
         for name, method in inspect.getmembers(cls, predicate=inspect.isfunction):
             if not name.startswith("_"):
                 annotations = inspect.get_annotations(method, eval_str=True)

@@ -497,7 +497,6 @@ class TestSyncFunctions:
             return f"{a}, {b}, {c}"
 
         code = compile_function(with_defaults, "test_module", "test_synchronizer", test_synchronizer)
-
         # Verify generated code compiles
         compile(code, "<string>", "exec")
 
@@ -507,3 +506,18 @@ class TestSyncFunctions:
 
         # Check that it calls impl_function directly
         assert "return impl_function(a, b, c)" in code
+
+    def test_compile_function_varargs(self):
+        """Test compiling a synchronous function with default arguments."""
+
+        def with_varargs(posonly, a: int, b: int = 10, *extra: int, c, **extrakwargs) -> str: ...
+
+        code = compile_function(with_varargs, "test_module", "test_synchronizer", {})
+        # Verify generated code compiles
+        compile(code, "<string>", "exec")
+
+        # Check that default values are preserved
+        assert "a: int, b: int = 10, *extra: int, c, **extrakwargs" in code
+
+        # Check that it calls impl_function directly
+        assert "return impl_function(a, b, *extra, c=c, **extrakwargs)" in code

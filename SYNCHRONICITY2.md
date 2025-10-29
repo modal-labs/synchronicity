@@ -826,10 +826,14 @@ Only generated code uses Synchronizer.
   - Support both `with` (sync) and `async with` (async) usage
   - Test with real-world use cases (database connections, file handles)
 
-- [ ] **Add support for wrapping generic types**
-  - Support `TypeVar` and generic class parameters
-  - Handle `Generic[T]` base classes correctly
-  - Preserve generic type information in generated signatures
+- [x] **Add support for wrapping generic types** (Completed)
+  - [x] Support `TypeVar` and generic class parameters
+  - [x] Handle `Generic[T]` base classes correctly
+  - [x] Preserve generic type information in generated signatures
+  - [ ] **Fix Generic method signatures to be generic**
+    - Methods on `Generic[T]` classes should inherit the type parameter
+    - Method wrappers should also be `Generic[T]` when the class is generic
+    - Example: `Container[T].get()` should return `T`, not just use `T` without the class being generic
 
 - [ ] **Add tests that generated code is valid across Python 3.9+ versions**
   - Test code generation on Python 3.9, 3.10, 3.11, 3.12, 3.13
@@ -843,6 +847,19 @@ Only generated code uses Synchronizer.
   - Measure and document performance improvement
 
 ### Medium Priority
+
+- [ ] **Preserve function signature markers in generated code**
+  - [ ] **Transfer variadicity of arguments** (`*args`, `**kwargs`)
+    - Currently `*args: P.args, **kwargs: P.kwargs` becomes `args: P.args, kwargs: P.kwargs`
+    - Method wrapper classes should preserve `*` and `**` in signatures
+    - Properly handle ParamSpec expansion in method wrappers
+  - [ ] **Preserve positional-only markers** (`/`)
+    - Parameters before `/` should remain positional-only in wrappers
+    - Example: `def foo(a, b, /, c)` → wrapper should preserve `/` marker
+  - [ ] **Preserve keyword-only markers** (`*`)
+    - Parameters after bare `*` should remain keyword-only in wrappers
+    - Example: `def foo(a, *, b, c)` → wrapper should preserve `*` marker
+  - Impact: Better type safety and API consistency with wrapped functions
 
 - [ ] **Improve error messages in code generation**
   - Better diagnostics when type annotations are missing
@@ -887,5 +904,5 @@ Only generated code uses Synchronizer.
 
 ---
 
-**Last Updated:** 2025-10-27
+**Last Updated:** 2025-10-28
 **Codebase Branch:** `freider/synchronicity2-vibes`
