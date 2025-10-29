@@ -1,4 +1,4 @@
-from typing import Callable, Generic, ParamSpec, TypeVar
+from typing import Callable, Generic, ParamSpec, Self, TypeVar
 
 import synchronicity
 
@@ -37,3 +37,6 @@ class FunctionWrapper(Generic[P, R]):
 
     async def call(self, *args: P.args, **kwargs: P.kwargs) -> R:
         return self.f(*args, **kwargs)
+
+    def clone(self) -> Self:
+        return self

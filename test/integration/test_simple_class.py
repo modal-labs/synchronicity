@@ -4,6 +4,7 @@ Tests execution and type checking of generated code for simple async classes.
 """
 
 import asyncio
+import pytest
 from pathlib import Path
 
 from test.integration.test_utils import check_pyright
@@ -26,6 +27,9 @@ def test_generated_code_execution_class(generated_wrappers):
     multiples = list(counter.get_multiples(3))
     assert multiples == [0, 11, 22], f"Expected [0, 11, 22], got {multiples}"
 
+    assert counter.sync_method() == 11
+    with pytest.raises(AttributeError):
+        assert not hasattr(counter.sync_method.aio)  # type: ignore
     print("✓ Generated class execution test passed")
 
 

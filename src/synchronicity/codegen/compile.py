@@ -16,6 +16,53 @@ if TYPE_CHECKING:
     pass
 
 
+def _contains_self_type(annotation) -> bool:
+    """Check if a type annotation contains typing.Self.
+
+    Args:
+        annotation: Type annotation to check
+
+    Returns:
+        True if typing.Self is found anywhere in the annotation
+    """
+    # Check for typing.Self directly
+    if annotation is typing.Self:
+        return True
+
+    # Check for generic types with typing.Self as an argument
+    origin = typing.get_origin(annotation)
+    if origin is not None:
+        args = typing.get_args(annotation)
+        for arg in args:
+            if _contains_self_type(arg):
+                return True
+
+    return False
+
+
+def _replace_self_with_class(type_str: str, class_name: str, original_class_name: str | None = None) -> str:
+    """Replace 'typing.Self' or wrapper class name with target type in a type string.
+
+    Args:
+        type_str: Type annotation string (may contain quoted or unquoted class names)
+        class_name: Target class name to use (e.g., "OWNER_TYPE" or "ClassName[T, U]")
+        original_class_name: Original class name to replace (e.g., "FunctionWrapper")
+
+    Returns:
+        Modified string with Self or class name replaced
+    """
+    # Replace typing.Self (unquoted)
+    result = type_str.replace("typing.Self", class_name)
+    result = result.replace("Self", class_name)
+
+    # If original_class_name provided, replace quoted occurrences of it
+    if original_class_name:
+        # Replace quoted original class name with quoted target class name
+        result = result.replace(f'"{original_class_name}"', f'"{class_name}"')
+
+    return result
+
+
 def _extract_typevars_from_annotation(annotation, collected: dict[str, typing.TypeVar | typing.ParamSpec]) -> None:
     """Recursively extract TypeVar and ParamSpec instances from a type annotation.
 
@@ -642,8 +689,27 @@ def compile_method_wrapper(
     sig = inspect.signature(method)
     return_annotation = annotations.get("return", sig.return_annotation)
 
+    # Check if typing.Self is used in any annotation
+    uses_self_type = _contains_self_type(return_annotation) or any(
+        _contains_self_type(ann) for ann in annotations.values()
+    )
+
+    # Get the impl class from synchronized_types for Self resolution
+    impl_class = None
+    for cls_key, (mod, name) in synchronized_types.items():
+        if mod == current_target_module and name == class_name:
+            impl_class = cls_key
+            break
+
+    # Replace Self with the actual class for transformer creation
+    transformer_annotation = return_annotation
+    if uses_self_type and impl_class is not None:
+        # Replace typing.Self with the actual impl class for proper wrapping
+        if return_annotation is typing.Self:
+            transformer_annotation = impl_class
+
     # Create transformer for return type
-    return_transformer = create_transformer(return_annotation, synchronized_types)
+    return_transformer = create_transformer(transformer_annotation, synchronized_types)
 
     # Parse parameters using transformers (skip 'self' for methods)
     param_str, call_args_str, unwrap_code = _parse_parameters_with_transformers(
@@ -656,20 +722,25 @@ def compile_method_wrapper(
         unwrap_indent="        ",
     )
 
+    # Replace typing.Self with OWNER_TYPE in parameter strings if used
+    if uses_self_type:
+        param_str = _replace_self_with_class(param_str, "OWNER_TYPE", class_name)
+
     # Check if it's an async generator
     is_async_gen = is_async_generator(method, return_annotation)
 
     # Check if it's async
     is_async = inspect.iscoroutinefunction(method) or is_async_gen
 
-    # If not async at all, return empty strings (no wrapper needed)
-    if not is_async:
-        return "", ""
-
     # Format return types
     sync_return_str, async_return_str = _format_return_annotation(
         return_transformer, synchronized_types, synchronizer_name, current_target_module
     )
+
+    # Replace typing.Self with OWNER_TYPE in return annotations if used
+    if uses_self_type:
+        sync_return_str = _replace_self_with_class(sync_return_str, "OWNER_TYPE", class_name)
+        async_return_str = _replace_self_with_class(async_return_str, "OWNER_TYPE", class_name)
 
     # Generate the wrapper class
     wrapper_class_name = f"{class_name}_{method_name}"
@@ -680,8 +751,21 @@ def compile_method_wrapper(
     )
     helpers_code = "\n".join(inline_helpers_dict.values()) if inline_helpers_dict else ""
 
-    # Build both sync and async bodies
-    if is_async_gen:
+    # Build both sync and async bodies (or just sync for non-async methods)
+    if not is_async:
+        # For sync methods, just call directly without synchronizer
+        sync_call_expr = f"impl_method(self._wrapper_instance._impl_instance, {call_args_str})"
+        sync_method_body = _build_call_with_wrap(
+            sync_call_expr,
+            return_transformer,
+            synchronized_types,
+            synchronizer_name,
+            current_target_module,
+            indent="        ",
+            is_async=False,
+        )
+        aio_body = None  # No async version for sync methods
+    elif is_async_gen:
         # For async generator methods, manually iterate with asend() to support two-way generators
         # Wrap in try/finally to ensure proper cleanup on aclose()
         gen_call = f"impl_method(self._wrapper_instance._impl_instance, {call_args_str})"
@@ -750,18 +834,32 @@ def compile_method_wrapper(
     # Build wrapper class with inline helpers after __init__
     helpers_section = f"\n{helpers_code}\n" if helpers_code else ""
 
-    # Build Generic base for method wrapper if parent class is generic
+    # Build Generic base for method wrapper
     generic_typevars = generic_typevars or {}
     wrapper_generic_base = ""
-    if generic_typevars:
-        typevar_names = list(generic_typevars.keys())
+    typevar_names = []
+
+    # Add OWNER_TYPE first if method uses Self
+    if uses_self_type:
+        typevar_names.append("OWNER_TYPE")
+
+    # Then add parent class's type variables
+    typevar_names.extend(list(generic_typevars.keys()))
+
+    if typevar_names:
         wrapper_generic_base = f"(typing.Generic[{', '.join(typevar_names)}])"
-        wrapper_instance_type = f'"{class_name}[{", ".join(typevar_names)}]"'
+
+    # Wrapper instance type uses parent's typevars (not including OWNER_TYPE)
+    if generic_typevars:
+        parent_typevars = list(generic_typevars.keys())
+        wrapper_instance_type = f'"{class_name}[{", ".join(parent_typevars)}]"'
     else:
-        # Always quote the type to avoid forward reference issues
         wrapper_instance_type = f'"{class_name}"'
 
-    wrapper_class_code = f"""class {wrapper_class_name}{wrapper_generic_base}:
+    # Build the wrapper class with or without .aio() method
+    if aio_body is not None:
+        # Async method: include both __call__ and aio()
+        wrapper_class_code = f"""class {wrapper_class_name}{wrapper_generic_base}:
     def __init__(self, wrapper_instance: {wrapper_instance_type}):
         self._wrapper_instance = wrapper_instance
 {helpers_section}
@@ -770,6 +868,15 @@ def compile_method_wrapper(
 
     async def aio(self, {param_str}){async_return_str}:{aio_unwrap}
 {aio_body}
+"""
+    else:
+        # Sync method: only __call__(), no aio()
+        wrapper_class_code = f"""class {wrapper_class_name}{wrapper_generic_base}:
+    def __init__(self, wrapper_instance: {wrapper_instance_type}):
+        self._wrapper_instance = wrapper_instance
+{helpers_section}
+    def __call__(self, {param_str}){sync_return_str}:{sync_unwrap}
+{sync_method_body}
 """
 
     # Extract parameter names (excluding 'self') for the call, with proper varargs handling
@@ -789,9 +896,18 @@ def compile_method_wrapper(
 
     # Build parameterized wrapper class name for @wrapped_method decorator
     wrapper_class_ref = wrapper_class_name
+    decorator_typevars = []
+
+    # Add typing.Self for OWNER_TYPE if method uses Self
+    if uses_self_type:
+        decorator_typevars.append("typing.Self")
+
+    # Add parent class's type variables
     if generic_typevars:
-        typevar_names = list(generic_typevars.keys())
-        wrapper_class_ref = f"{wrapper_class_name}[{', '.join(typevar_names)}]"
+        decorator_typevars.extend(list(generic_typevars.keys()))
+
+    if decorator_typevars:
+        wrapper_class_ref = f"{wrapper_class_name}[{', '.join(decorator_typevars)}]"
 
     # Generate dummy method with descriptor that calls through to wrapper
     sync_method_code = f"""    @wrapped_method({wrapper_class_ref})
@@ -879,6 +995,11 @@ def compile_class(
             attr_type = transformer.wrapped_type(synchronized_types, current_target_module)
             attributes.append((name, attr_type))
 
+    # Register this class in synchronized_types so Self references work
+    # This allows methods returning Self to be properly wrapped
+    synchronized_types_with_self = synchronized_types.copy()
+    synchronized_types_with_self[cls] = (current_target_module, cls.__name__)
+
     # Generate method wrapper classes and method code
     method_wrapper_classes = []
     method_definitions = []
@@ -888,7 +1009,7 @@ def compile_class(
             method,
             method_name,
             synchronizer_name,
-            synchronized_types,
+            synchronized_types_with_self,  # Use the version with self registered
             origin_module,
             cls.__name__,
             current_target_module,
@@ -1170,6 +1291,7 @@ from synchronicity.synchronizer import get_synchronizer
 
     # Collect all TypeVars and ParamSpecs used in functions and class methods
     module_typevars: dict[str, typing.TypeVar | typing.ParamSpec] = {}
+    uses_self_type = False
 
     # Extract from standalone functions
     for func in functions:
@@ -1179,6 +1301,17 @@ from synchronicity.synchronizer import get_synchronizer
 
     # Extract from class methods
     for cls in classes:
+        # Check if any methods use typing.Self
+        for name, method in inspect.getmembers(cls, predicate=inspect.isfunction):
+            if not name.startswith("_") and name in cls.__dict__:
+                annotations = inspect.get_annotations(method, eval_str=True)
+                sig = inspect.signature(method)
+                return_annotation = annotations.get("return", sig.return_annotation)
+                has_self_in_return = _contains_self_type(return_annotation)
+                has_self_in_params = any(_contains_self_type(ann) for ann in annotations.values())
+                if has_self_in_return or has_self_in_params:
+                    uses_self_type = True
+
         # Extract TypeVars from Generic base class if present (use __orig_bases__)
         bases_to_check = getattr(cls, "__orig_bases__", cls.__bases__)
         for base in bases_to_check:
@@ -1195,6 +1328,12 @@ from synchronicity.synchronizer import get_synchronizer
                 annotations = inspect.get_annotations(method, eval_str=True)
                 method_typevars = _extract_typevars_from_function(method, annotations)
                 module_typevars.update(method_typevars)
+
+    # Add OWNER_TYPE if any methods use typing.Self
+    if uses_self_type:
+        compiled_code.append("# OWNER_TYPE for methods using typing.Self")
+        compiled_code.append('OWNER_TYPE = typing.TypeVar("OWNER_TYPE")')
+        compiled_code.append("")  # Add blank line
 
     # Generate typevar definitions if any were found
     if module_typevars:

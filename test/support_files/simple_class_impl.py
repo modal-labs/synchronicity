@@ -25,3 +25,6 @@ class Counter:
         """Generate multiples of the count."""
         for i in range(n):
             yield self.count * i
+
+    def sync_method(self) -> int:
+        return self.count

@@ -18,3 +18,10 @@ assert_type(sync_res, float)
 async def foo():
     async_res = await wrapped_func.call.aio(a=10)
     assert_type(async_res, float)
+
+
+copy = wrapped_func.clone()
+
+reveal_type(copy)
+
+assert_type(copy.call(a=11), float)
