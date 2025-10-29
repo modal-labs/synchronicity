@@ -616,6 +616,7 @@ def compile_method_wrapper(
     current_target_module: str,
     *,
     globals_dict: dict[str, typing.Any] | None = None,
+    generic_typevars: dict[str, typing.TypeVar | typing.ParamSpec] | None = None,
 ) -> tuple[str, str]:
     """
     Compile a method wrapper class that provides both sync and async versions.
@@ -629,6 +630,7 @@ def compile_method_wrapper(
         class_name: The name of the class containing the method
         current_target_module: The target module for the wrapper
         globals_dict: Optional globals dict for resolving forward references
+        generic_typevars: TypeVars/ParamSpecs from parent class's Generic base (if any)
 
     Returns:
         Tuple of (wrapper_class_code, sync_method_code)
@@ -748,8 +750,19 @@ def compile_method_wrapper(
     # Build wrapper class with inline helpers after __init__
     helpers_section = f"\n{helpers_code}\n" if helpers_code else ""
 
-    wrapper_class_code = f"""class {wrapper_class_name}:
-    def __init__(self, wrapper_instance):
+    # Build Generic base for method wrapper if parent class is generic
+    generic_typevars = generic_typevars or {}
+    wrapper_generic_base = ""
+    if generic_typevars:
+        typevar_names = list(generic_typevars.keys())
+        wrapper_generic_base = f"(typing.Generic[{', '.join(typevar_names)}])"
+        wrapper_instance_type = f'"{class_name}[{", ".join(typevar_names)}]"'
+    else:
+        # Always quote the type to avoid forward reference issues
+        wrapper_instance_type = f'"{class_name}"'
+
+    wrapper_class_code = f"""class {wrapper_class_name}{wrapper_generic_base}:
+    def __init__(self, wrapper_instance: {wrapper_instance_type}):
         self._wrapper_instance = wrapper_instance
 {helpers_section}
     def __call__(self, {param_str}){sync_return_str}:{sync_unwrap}
@@ -774,8 +787,14 @@ def compile_method_wrapper(
             param_call_parts.append(name)
     param_call = ", ".join(param_call_parts)
 
+    # Build parameterized wrapper class name for @wrapped_method decorator
+    wrapper_class_ref = wrapper_class_name
+    if generic_typevars:
+        typevar_names = list(generic_typevars.keys())
+        wrapper_class_ref = f"{wrapper_class_name}[{', '.join(typevar_names)}]"
+
     # Generate dummy method with descriptor that calls through to wrapper
-    sync_method_code = f"""    @wrapped_method({wrapper_class_name})
+    sync_method_code = f"""    @wrapped_method({wrapper_class_ref})
     def {method_name}(self, {param_str}){sync_return_str}:
         # Dummy method for type checkers and IDE navigation
         # Actual implementation is in {wrapper_class_name}.__call__
@@ -874,6 +893,7 @@ def compile_class(
             cls.__name__,
             current_target_module,
             globals_dict=globals_dict,
+            generic_typevars=generic_typevars if generic_typevars else None,
         )
         if wrapper_class_code:
             method_wrapper_classes.append(wrapper_class_code)
