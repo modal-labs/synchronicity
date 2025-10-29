@@ -4,9 +4,14 @@ import synchronicity
 
 P = ParamSpec("P")
 R = TypeVar("R")
-T = TypeVar("T", bound="Container")
+T = TypeVar("T", bound="WrappedType")
 
 mod = synchronicity.Module("generic_class")
+
+
+@mod.wrap_class
+class WrappedType:
+    pass
 
 
 @mod.wrap_class

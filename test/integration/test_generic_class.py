@@ -86,7 +86,8 @@ def test_generic_inheritance_check(generated_wrappers):
 
     # Check that the wrapper classes inherit from Generic
     # This is checked indirectly through pyright type checking
-    container = generic_class.Container(123)
+    container = generic_class.Container(generic_class.WrappedType())
+
     assert hasattr(container, "get")
     assert hasattr(container, "set")
 
