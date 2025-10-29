@@ -12,19 +12,7 @@ via .aio() (e.g., foo.aio()).
 
 import typing
 
-from synchronicity import Synchronizer
-
-
-class ClassWrapperProtocol(typing.Protocol):
-    _impl_instance: typing.Any
-    _synchronizer: Synchronizer
-
-
-class MethodWrapperProtocol(typing.Protocol):
-    def __init__(self, wrapper_instance: ClassWrapperProtocol): ...
-
-
-METHOD_WRAPPER_TYPE = typing.TypeVar("METHOD_WRAPPER_TYPE", bound=MethodWrapperProtocol)
+METHOD_WRAPPER_TYPE = typing.TypeVar("METHOD_WRAPPER_TYPE")
 
 
 class WrappedMethodDescriptor(typing.Generic[METHOD_WRAPPER_TYPE]):
@@ -41,7 +29,11 @@ class WrappedMethodDescriptor(typing.Generic[METHOD_WRAPPER_TYPE]):
             return self  # type: ignore
 
         # Create instance with wrapper_instance bound
-        return self.method_wrapper_type(wrapper_instance)
+        # There seem to be a pyright limitation in not being able to specify
+        # a protocol bound to the METHOD_WRAPPER_TYPE that maintains
+        # generic type vars on the underlying type? So we have to add
+        # type: ignore on the following line
+        return self.method_wrapper_type(wrapper_instance)  # type: ignore
 
 
 def wrapped_method(method_wrapper_type: type[METHOD_WRAPPER_TYPE]):

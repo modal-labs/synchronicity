@@ -3,8 +3,6 @@
 Tests execution and type checking of generated code for classes with typing.Generic.
 """
 
-from pathlib import Path
-
 from test.integration.test_utils import check_pyright
 
 
@@ -97,7 +95,7 @@ def test_generic_inheritance_check(generated_wrappers):
     print("✓ Generic inheritance check test passed")
 
 
-def test_pyright_generic_class(generated_wrappers):
+def test_pyright_generic_class(generated_wrappers, support_files):
     """Test that Generic class generation passes pyright type checking.
 
     Note: Currently skipped due to known limitations with ParamSpec.args/kwargs
@@ -107,11 +105,5 @@ def test_pyright_generic_class(generated_wrappers):
     The functionality works correctly at runtime, but pyright correctly flags
     the type annotations as invalid.
     """
-    import pytest
-
-    pytest.skip("ParamSpec.args/kwargs in non-variadic parameters - known limitation")
-
-    import generic_class
-
     # Verify type correctness with pyright
-    check_pyright([Path(generic_class.__file__)])
+    check_pyright([support_files / "generic_class_typecheck.py"])
