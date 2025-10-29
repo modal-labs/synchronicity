@@ -759,16 +759,27 @@ def compile_method_wrapper(
 {aio_body}
 """
 
-    # Extract parameter names (excluding 'self') for the call
-    param_names = [name for name in sig.parameters.keys() if name != "self"]
-    param_call = ", ".join(param_names)
+    # Extract parameter names (excluding 'self') for the call, with proper varargs handling
+    param_call_parts = []
+    for name, param in sig.parameters.items():
+        if name == "self":
+            continue
+        if param.kind == inspect.Parameter.VAR_POSITIONAL:
+            param_call_parts.append(f"*{name}")
+        elif param.kind == inspect.Parameter.VAR_KEYWORD:
+            param_call_parts.append(f"**{name}")
+        elif param.kind == inspect.Parameter.KEYWORD_ONLY:
+            param_call_parts.append(f"{name}={name}")
+        else:
+            param_call_parts.append(name)
+    param_call = ", ".join(param_call_parts)
 
     # Generate dummy method with descriptor that calls through to wrapper
     sync_method_code = f"""    @wrapped_method({wrapper_class_name})
     def {method_name}(self, {param_str}){sync_return_str}:
         # Dummy method for type checkers and IDE navigation
         # Actual implementation is in {wrapper_class_name}.__call__
-        return self.{method_name}({param_call})"""
+        return self.{method_name}.__call__({param_call})"""
 
     return wrapper_class_code, sync_method_code
 
