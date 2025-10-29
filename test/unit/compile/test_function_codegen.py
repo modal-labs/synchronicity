@@ -508,16 +508,29 @@ class TestSyncFunctions:
         assert "return impl_function(a, b, c)" in code
 
     def test_compile_function_varargs(self):
-        """Test compiling a synchronous function with default arguments."""
+        """Test compiling a synchronous function with varargs and keyword-only arguments."""
 
         def with_varargs(posonly, a: int, b: int = 10, *extra: int, c, **extrakwargs) -> str: ...
 
         code = compile_function(with_varargs, "test_module", "test_synchronizer", {})
+
+        # Check that varargs markers are preserved
+        assert "def with_varargs(posonly, a: int, b: int = 10, *extra: int, c, **extrakwargs)" in code
+        assert "return impl_function(posonly, a, b, *extra, c=c, **extrakwargs)" in code
         # Verify generated code compiles
         compile(code, "<string>", "exec")
 
-        # Check that default values are preserved
-        assert "a: int, b: int = 10, *extra: int, c, **extrakwargs" in code
+    def test_compile_function_positional_only(self):
+        """Test compiling a function with positional-only parameters."""
 
-        # Check that it calls impl_function directly
-        assert "return impl_function(a, b, *extra, c=c, **extrakwargs)" in code
+        def with_posonly(a, b, /, c, d=10) -> int: ...
+
+        code = compile_function(with_posonly, "test_module", "test_synchronizer", {})
+
+        # Check that positional-only marker is preserved
+        assert "def with_posonly(a, b, /, c, d = 10)" in code
+
+        # Check that it calls impl_function with all parameters
+        assert "return impl_function(a, b, c, d)" in code
+        # Verify generated code compiles
+        compile(code, "<string>", "exec")

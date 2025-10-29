@@ -213,10 +213,20 @@ def _parse_parameters_with_transformers(
     params = []
     call_args = []
     unwrap_stmts = []
+    seen_positional_only = False
+    seen_var_positional = False
 
     for name, param in sig.parameters.items():
         if skip_self and name == "self":
             continue
+
+        # Check if we need to insert positional-only marker (/)
+        if not seen_positional_only and param.kind != inspect.Parameter.POSITIONAL_ONLY:
+            # We've transitioned past positional-only params
+            if any(p.kind == inspect.Parameter.POSITIONAL_ONLY for p in sig.parameters.values()):
+                # There were positional-only params before this one
+                params.append("/")
+            seen_positional_only = True
 
         # Get resolved annotation for this parameter
         param_annotation = annotations.get(name, param.annotation)
@@ -224,26 +234,88 @@ def _parse_parameters_with_transformers(
         # Create transformer for this parameter
         transformer = create_transformer(param_annotation, synchronized_types)
 
-        # Build parameter declaration
-        if param_annotation != param.empty:
-            wrapper_type_str = transformer.wrapped_type(synchronized_types, current_target_module)
-            param_str = f"{name}: {wrapper_type_str}"
+        # Build parameter declaration based on parameter kind
+        if param.kind == inspect.Parameter.VAR_POSITIONAL:
+            # Handle *args
+            seen_var_positional = True
+            if param_annotation != param.empty:
+                wrapper_type_str = transformer.wrapped_type(synchronized_types, current_target_module)
+                param_str = f"*{name}: {wrapper_type_str}"
+            else:
+                param_str = f"*{name}"
 
-            # Generate unwrap code if needed
+            # For call args, use unpacking
             if transformer.needs_translation():
                 unwrap_expr = transformer.unwrap_expr(synchronized_types, name)
                 unwrap_stmts.append(f"{unwrap_indent}{name}_impl = {unwrap_expr}")
-                call_args.append(f"{name}_impl")
+                call_args.append(f"*{name}_impl")
             else:
-                call_args.append(name)
-        else:
-            param_str = name
-            call_args.append(name)
+                call_args.append(f"*{name}")
 
-        # Handle default values
-        if param.default is not param.empty:
-            default_val = repr(param.default)
-            param_str += f" = {default_val}"
+        elif param.kind == inspect.Parameter.VAR_KEYWORD:
+            # Handle **kwargs
+            if param_annotation != param.empty:
+                wrapper_type_str = transformer.wrapped_type(synchronized_types, current_target_module)
+                param_str = f"**{name}: {wrapper_type_str}"
+            else:
+                param_str = f"**{name}"
+
+            # For call args, use unpacking
+            if transformer.needs_translation():
+                unwrap_expr = transformer.unwrap_expr(synchronized_types, name)
+                unwrap_stmts.append(f"{unwrap_indent}{name}_impl = {unwrap_expr}")
+                call_args.append(f"**{name}_impl")
+            else:
+                call_args.append(f"**{name}")
+
+        elif param.kind == inspect.Parameter.KEYWORD_ONLY:
+            # Handle keyword-only parameters
+            # If we haven't seen *args, insert bare * marker
+            if not seen_var_positional:
+                params.append("*")
+                seen_var_positional = True
+
+            # Build parameter declaration
+            if param_annotation != param.empty:
+                wrapper_type_str = transformer.wrapped_type(synchronized_types, current_target_module)
+                param_str = f"{name}: {wrapper_type_str}"
+            else:
+                param_str = name
+
+            # Handle default values
+            if param.default is not param.empty:
+                default_val = repr(param.default)
+                param_str += f" = {default_val}"
+
+            # For call args, use keyword syntax
+            if transformer.needs_translation():
+                unwrap_expr = transformer.unwrap_expr(synchronized_types, name)
+                unwrap_stmts.append(f"{unwrap_indent}{name}_impl = {unwrap_expr}")
+                call_args.append(f"{name}={name}_impl")
+            else:
+                call_args.append(f"{name}={name}")
+
+        else:
+            # Handle regular parameters (POSITIONAL_ONLY, POSITIONAL_OR_KEYWORD)
+            if param_annotation != param.empty:
+                wrapper_type_str = transformer.wrapped_type(synchronized_types, current_target_module)
+                param_str = f"{name}: {wrapper_type_str}"
+
+                # Generate unwrap code if needed
+                if transformer.needs_translation():
+                    unwrap_expr = transformer.unwrap_expr(synchronized_types, name)
+                    unwrap_stmts.append(f"{unwrap_indent}{name}_impl = {unwrap_expr}")
+                    call_args.append(f"{name}_impl")
+                else:
+                    call_args.append(name)
+            else:
+                param_str = name
+                call_args.append(name)
+
+            # Handle default values
+            if param.default is not param.empty:
+                default_val = repr(param.default)
+                param_str += f" = {default_val}"
 
         params.append(param_str)
 
