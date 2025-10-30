@@ -826,83 +826,48 @@ Only generated code uses Synchronizer.
   - Support both `with` (sync) and `async with` (async) usage
   - Test with real-world use cases (database connections, file handles)
 
-- [x] **Add support for wrapping generic types** (Completed)
-  - [x] Support `TypeVar` and generic class parameters
-  - [x] Handle `Generic[T]` base classes correctly
-  - [x] Preserve generic type information in generated signatures
-  - [ ] **Fix Generic method signatures to be generic**
-    - Methods on `Generic[T]` classes should inherit the type parameter
-    - Method wrappers should also be `Generic[T]` when the class is generic
-    - Example: `Container[T].get()` should return `T`, not just use `T` without the class being generic
-
 - [ ] **Add tests that generated code is valid across Python 3.9+ versions**
-  - Test code generation on Python 3.9, 3.10, 3.11, 3.12, 3.13
-  - Verify type annotation syntax compatibility (e.g., `list[T]` vs `List[T]`)
-  - Test with different typing features per version
+  - Code generation could require a newer Python version
+  - Output types needs to still be backwards compatible with Python 3.10+ for now
+  - Test generated code across Python versions
 
-- [ ] **Restructure integration tests to use session-scoped fixtures**
-  - Generate wrapper code once per test session (significant speedup)
-  - Cache compiled modules as fixtures
-  - Reuse generated code across multiple tests
-  - Measure and document performance improvement
+- [ ] Add support for classmethod and staticmethod
+- [ ] Add support for explicit @property
 
 ### Medium Priority
-
-- [ ] **Preserve function signature markers in generated code**
-  - [ ] **Transfer variadicity of arguments** (`*args`, `**kwargs`)
-    - Currently `*args: P.args, **kwargs: P.kwargs` becomes `args: P.args, kwargs: P.kwargs`
-    - Method wrapper classes should preserve `*` and `**` in signatures
-    - Properly handle ParamSpec expansion in method wrappers
-  - [ ] **Preserve positional-only markers** (`/`)
-    - Parameters before `/` should remain positional-only in wrappers
-    - Example: `def foo(a, b, /, c)` → wrapper should preserve `/` marker
-  - [ ] **Preserve keyword-only markers** (`*`)
-    - Parameters after bare `*` should remain keyword-only in wrappers
-    - Example: `def foo(a, *, b, c)` → wrapper should preserve `*` marker
-  - Impact: Better type safety and API consistency with wrapped functions
-
+- [ ] Transfer docstrings to generated wrappers
+- [ ] Backport some of the traceback stripping (if needed?)
 - [ ] **Improve error messages in code generation**
   - Better diagnostics when type annotations are missing
   - Clear error messages for unsupported type constructs
   - Helpful suggestions for common mistakes
+- [ ] Add inclusion/exclusion overrides for both properties and methods (default excludes _-prefixed)
+- [ ] Add option for renaming the output entity itself, not just the module (function name or class name)
+- [ ] Add Module.auto(__name__) for auto-inferring output modules as sibling of current (_-prefix or _impl suffix)
 
-- [ ] **Add support for property setters**
-  - Currently only getters are supported
-  - Generate property setter wrappers for mutable attributes
-  - Handle property deletion (`@property.deleter`)
-
-- [ ] **Optimize generated code size**
-  - Reduce boilerplate in generated wrappers
+- [ ] **Clean up generated code**
   - Share common code between similar wrappers
   - Consider template-based generation
 
-- [ ] **Add Python 3.13+ improvements**
-  - Support new type annotation syntax
-  - Leverage performance improvements in asyncio
+- [ ] **Add Python 3.14+ improvements**
   - Test with free-threaded Python
+
+- [ ] **IDE support**
+  - Verify PyCharm/VSCode jump-to-definition
+  - Check compatibility with MyPy and ty
 
 ### Low Priority
 
 - [ ] **Better CLI ergonomics**
   - Add `--watch` mode for development
   - Support glob patterns for module discovery
-  - Add `--check` mode to verify without writing files
-
-- [ ] **Documentation improvements**
-  - Add video walkthrough
-  - More real-world examples
-  - Migration guide from other async/sync bridging solutions
 
 - [ ] **Performance profiling**
   - Benchmark thread overhead
   - Optimize hot paths in Synchronizer
   - Consider alternative execution strategies for high-performance use cases
 
-- [ ] **IDE support**
-  - Verify PyCharm/VSCode jump-to-definition
-  - Better type checking integration
-
 ---
 
-**Last Updated:** 2025-10-28
+**Last Updated:** 2025-10-30
 **Codebase Branch:** `freider/synchronicity2-vibes`
