@@ -69,3 +69,4 @@ filterwarnings = [
 
 [tool.pyright]
 extraPaths = ["generated", "test/support_files"]
+reportGeneralTypeIssues = "warning"

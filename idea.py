@@ -68,15 +68,13 @@ def aio_enriched_method(
     return decorator
 
 
+# Generic library code above
+
+
+# Generated code below
 async def some_method_aio(self: "SomeClass", x: int) -> float: ...
 
 
 class SomeClass:
     @aio_enriched_method(some_method_aio)
     def some_method(self, x: int) -> float: ...
-
-
-sc = SomeClass()
-
-sc.some_method
-res = sc.some_method.aio(10)

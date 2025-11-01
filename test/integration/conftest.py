@@ -61,6 +61,7 @@ def generated_wrappers():
             ("functions_with_typevars_impl", "functions_with_typevars"),
             ("multifile_impl._a", "multifile.a"),
             ("multifile_impl._b", "multifile.b"),
+            ("classmethod_staticmethod_impl", "test_support"),
         ]
 
         for module_name, _ in module_specs:
