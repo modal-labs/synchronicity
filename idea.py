@@ -53,14 +53,10 @@ class WrappedMethodDescriptor(typing.Generic[P, R, AIO_P, AIO_R]):
     def __get__(self, wrapper_instance, owner) -> MethodWrapper[T, P, R, AIO_P, AIO_R] | typing.Self:
         if wrapper_instance is None:
             # For class access, return self to allow descriptor access
-            return self  # type: ignore
+            return self
 
         # Create instance with wrapper_instance bound
         return MethodWrapper(wrapper_instance, self.sync_wrapper, self.aio_wrapper)
-
-
-AIO_METHOD_TYPE = typing.TypeVar("AIO_METHOD_TYPE")
-SYTNC_METHOD_TYPE = typing.TypeVar("SYNC_METHOD_TYPE")
 
 
 def aio_enriched_method(
