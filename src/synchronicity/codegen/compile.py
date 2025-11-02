@@ -757,10 +757,49 @@ def compile_method_wrapper(
         return_transformer, synchronized_types, synchronizer_name, current_target_module
     )
 
-    # Replace typing.Self with OWNER_TYPE in return annotations if used
+    # Replace typing.Self in return annotations
+    # For async methods, use OWNER_TYPE (will be resolved by descriptor)
+    # For sync-only methods, use actual class name (with type parameters if generic)
     if uses_self_type:
-        sync_return_str = _replace_self_with_class(sync_return_str, "OWNER_TYPE", class_name)
-        async_return_str = _replace_self_with_class(async_return_str, "OWNER_TYPE", class_name)
+        # Build the actual class name with type parameters if it's generic
+        actual_class_name = class_name
+        if generic_typevars:
+            typevar_names = list(generic_typevars.keys())
+            actual_class_name = f"{class_name}[{', '.join(typevar_names)}]"
+
+        # For sync-only methods (no async), use actual class name
+        # For async methods, use OWNER_TYPE which will be resolved by the descriptor
+        if is_async:
+            # Async methods: use OWNER_TYPE (will be resolved via descriptor's generic)
+            sync_return_str = _replace_self_with_class(sync_return_str, "OWNER_TYPE", class_name)
+            async_return_str = _replace_self_with_class(async_return_str, "OWNER_TYPE", class_name)
+        else:
+            # Sync-only methods: use actual class name directly
+            # _format_return_annotation already quotes the type if needs_translation()
+            # Replace OWNER_TYPE inside the quoted string (between -> " and ")
+            # Pattern: -> "OWNER_TYPE" -> -> "FunctionWrapper[P, R]"
+            if ' -> "' in sync_return_str:
+                # Extract the type part inside quotes
+                start_idx = sync_return_str.find(' -> "') + 5
+                end_idx = sync_return_str.rfind('"')
+                if end_idx > start_idx:
+                    quoted_type = sync_return_str[start_idx:end_idx]
+                    # Replace OWNER_TYPE or class_name with actual_class_name (no extra quotes)
+                    new_quoted_type = quoted_type.replace("OWNER_TYPE", actual_class_name).replace(
+                        class_name, actual_class_name
+                    )
+                    sync_return_str = sync_return_str[:start_idx] + new_quoted_type + sync_return_str[end_idx:]
+                else:
+                    # Fallback: simple replace
+                    sync_return_str = sync_return_str.replace("OWNER_TYPE", actual_class_name).replace(
+                        class_name, actual_class_name
+                    )
+            else:
+                # Not quoted, just replace
+                sync_return_str = sync_return_str.replace("OWNER_TYPE", actual_class_name).replace(
+                    class_name, actual_class_name
+                )
+            async_return_str = None  # Not used for sync-only
 
     # Generate the wrapper class
     wrapper_class_name = f"{class_name}_{method_name}"
@@ -811,8 +850,10 @@ def compile_method_wrapper(
         elif is_async_gen:
             # For async generator instance methods
             gen_call = call_expr_prefix
-            wrap_expr = return_transformer.wrap_expr(synchronized_types, current_target_module, "gen")
-            impl_method_line = f"    impl_method = {origin_module}.{class_name}.{method_name}"
+            wrap_expr_raw = return_transformer.wrap_expr(synchronized_types, current_target_module, "gen")
+            # Replace self with wrapper_instance for async wrapper function
+            wrap_expr = wrap_expr_raw.replace("self.", "wrapper_instance.")
+            impl_method_line = f"impl_method = {origin_module}.{class_name}.{method_name}"
             aio_body = (
                 f"    {impl_method_line}\n"
                 f"    gen = {gen_call}\n"
@@ -829,10 +870,13 @@ def compile_method_wrapper(
                 f"        await _wrapped.aclose()"
             )
             # For sync version, use yield from for efficiency
-            sync_wrap_expr = return_transformer.wrap_expr(
+            sync_wrap_expr_raw = return_transformer.wrap_expr(
                 synchronized_types, current_target_module, "gen", is_async=False
             )
-            sync_method_body = f"    {impl_method_line}\n    gen = {gen_call}\n    yield from {sync_wrap_expr}"
+            # Replace self with self for sync method (will be replaced later when putting in method body)
+            sync_wrap_expr = sync_wrap_expr_raw
+            impl_method_line_sync = f"    {impl_method_line}"
+            sync_method_body = f"{impl_method_line_sync}\n    gen = {gen_call}\n    yield from {sync_wrap_expr}"
         else:
             # For regular async instance methods - need synchronizer from wrapper_instance
             impl_method_line = f"    impl_method = {origin_module}.{class_name}.{method_name}"
@@ -877,7 +921,9 @@ def compile_method_wrapper(
         elif is_async_gen:
             # Async generator classmethod
             gen_call = call_expr_prefix
-            wrap_expr = return_transformer.wrap_expr(synchronized_types, current_target_module, "gen")
+            wrap_expr_raw = return_transformer.wrap_expr(synchronized_types, current_target_module, "gen")
+            # Replace self with wrapper_class for async wrapper function
+            wrap_expr = wrap_expr_raw.replace("self.", "wrapper_class.")
             aio_body = (
                 f"    gen = {gen_call}\n"
                 f"    _wrapped = {wrap_expr}\n"
@@ -892,9 +938,11 @@ def compile_method_wrapper(
                 f"    finally:\n"
                 f"        await _wrapped.aclose()"
             )
-            sync_wrap_expr = return_transformer.wrap_expr(
+            sync_wrap_expr_raw = return_transformer.wrap_expr(
                 synchronized_types, current_target_module, "gen", is_async=False
             )
+            # Will be replaced with cls when putting in method body
+            sync_wrap_expr = sync_wrap_expr_raw
             sync_method_body = f"    gen = {gen_call}\n    yield from {sync_wrap_expr}"
         else:
             # Regular async classmethod - use wrapper_class._synchronizer
@@ -937,7 +985,25 @@ def compile_method_wrapper(
         elif is_async_gen:
             # Async generator staticmethod
             gen_call = call_expr_prefix
-            wrap_expr = return_transformer.wrap_expr(synchronized_types, current_target_module, "gen")
+            wrap_expr_raw = return_transformer.wrap_expr(synchronized_types, current_target_module, "gen")
+            # For staticmethods, helpers are instance methods but we don't have self
+            # We need to create a temporary instance or access via class
+            # For now, use the class name to access static helper - but helpers are instance methods
+            # Actually, for staticmethods we might need to use a different pattern
+            # Let's use the class to call as a bound method: {class_name}()._wrap_async_gen_...
+            # Or better: access via a temporary instance
+            # For now, replace self with a pattern that creates temp instance
+            helper_name = (
+                wrap_expr_raw.replace("self.", "").split("(")[0] if "self." in wrap_expr_raw else wrap_expr_raw
+            )
+            if "self." in wrap_expr_raw:
+                # Extract helper name and create expression that uses class to create instance
+                # Actually, simpler: use the class directly and create instance on the fly
+                # Or even simpler: helpers should be accessible via the class itself if they're @staticmethod
+                # But they're instance methods... Let's use {class_name}()._helper_name pattern
+                wrap_expr = wrap_expr_raw.replace("self.", f"{class_name}()._").replace("_(", "(")
+            else:
+                wrap_expr = wrap_expr_raw
             aio_body = (
                 f"    gen = {gen_call}\n"
                 f"    _wrapped = {wrap_expr}\n"
@@ -952,9 +1018,14 @@ def compile_method_wrapper(
                 f"    finally:\n"
                 f"        await _wrapped.aclose()"
             )
-            sync_wrap_expr = return_transformer.wrap_expr(
+            sync_wrap_expr_raw = return_transformer.wrap_expr(
                 synchronized_types, current_target_module, "gen", is_async=False
             )
+            # For sync staticmethod, replace self when putting in method body
+            if "self." in sync_wrap_expr_raw:
+                sync_wrap_expr = sync_wrap_expr_raw.replace("self.", f"{class_name}()._").replace("_(", "(")
+            else:
+                sync_wrap_expr = sync_wrap_expr_raw
             sync_method_body = f"    gen = {gen_call}\n    yield from {sync_wrap_expr}"
         else:
             # Regular async staticmethod - use get_synchronizer directly
@@ -1233,7 +1304,35 @@ def compile_class(
     method_wrapper_classes = []
     method_definitions = []
 
+    # Collect helpers from all methods
+    all_helpers_dict = {}
+
     for method_name, method, method_type in methods:
+        # Get helpers for this method's return type
+        annotations = inspect.get_annotations(method, eval_str=True, globals=globals_dict)
+        sig = inspect.signature(method)
+        return_annotation = annotations.get("return", sig.return_annotation)
+        # Check if typing.Self is used
+        uses_self_type = _contains_self_type(return_annotation) or any(
+            _contains_self_type(ann) for ann in annotations.values()
+        )
+        # Get impl class for Self resolution
+        impl_class = None
+        for cls_key, (mod, name) in synchronized_types_with_self.items():
+            if mod == current_target_module and name == cls.__name__:
+                impl_class = cls_key
+                break
+        transformer_annotation = return_annotation
+        if uses_self_type and impl_class is not None:
+            if return_annotation is typing.Self:
+                transformer_annotation = impl_class
+        return_transformer = create_transformer(transformer_annotation, synchronized_types)
+        method_helpers = return_transformer.get_wrapper_helpers(
+            synchronized_types_with_self, current_target_module, synchronizer_name, indent="    "
+        )
+        # Merge into all_helpers_dict (deduplicates by key)
+        all_helpers_dict.update(method_helpers)
+
         wrapper_functions_code, sync_method_code = compile_method_wrapper(
             method,
             method_name,
@@ -1249,6 +1348,10 @@ def compile_class(
         if wrapper_functions_code:
             method_wrapper_classes.append(wrapper_functions_code)
         method_definitions.append(sync_method_code)
+
+    # Generate helpers section for the class
+    helpers_code = "\n".join(all_helpers_dict.values()) if all_helpers_dict else ""
+    helpers_section = f"\n{helpers_code}\n" if helpers_code else ""
 
     # Get __init__ signature
     init_method = getattr(cls, "__init__", None)
@@ -1374,7 +1477,7 @@ def compile_class(
         self._impl_instance = {origin_module}.{cls.__name__}({init_call})"""
 
     wrapper_class_code = f"""{class_declaration}
-{class_attrs}
+{class_attrs}{helpers_section}
 
 {init_method}
 

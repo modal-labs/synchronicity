@@ -72,9 +72,10 @@ def aio_enriched_method(
 
 
 # Generated code below
-async def some_method_aio(self: "SomeClass", x: int) -> float: ...
 
 
 class SomeClass:
-    @aio_enriched_method(some_method_aio)
+    async def __some_method_aio(self: "SomeClass", x: int) -> float: ...
+
+    @aio_enriched_method(__some_method_aio)
     def some_method(self, x: int) -> float: ...
