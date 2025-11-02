@@ -138,14 +138,11 @@ def test_compile_class_method_descriptors(test_synchronizer, simple_class):
     """Test that method descriptors are properly generated"""
 
     generated_code = compile_class(simple_class, "test_module", "test_synchronizer", test_synchronizer)
-
+    print(generated_code)
     # Verify method wrapper classes are generated
-    assert "TestClass_get_value" in generated_code
-    assert "async def aio(self" in generated_code
-    assert "def __call__(self" in generated_code
-    # Method wrapper pattern has changed
-    assert "def __call__(self" in generated_code
-    assert "async def aio(self" in generated_code
+    assert "@wrapped_method(__add_to_value_aio)" in generated_code
+    assert 'async def __add_to_value_aio(self: "TestClass", amount: int) -> int' in generated_code
+    assert "def add_to_value(self, amount: int) -> int" in generated_code
 
 
 def test_compile_class_complex_types(test_synchronizer, complex_class):
@@ -211,19 +208,6 @@ def test_compile_class_type_annotations_preserved(test_synchronizer, simple_clas
     assert "amount: int" in generated_code
     assert "-> int" in generated_code
     assert "-> None" in generated_code
-
-
-def test_compile_class_instance_binding(test_synchronizer, simple_class):
-    """Test that the generated code properly handles instance binding"""
-
-    generated_code = compile_class(simple_class, "test_module", "test_synchronizer", test_synchronizer)
-
-    # Verify method wrapper classes are present (new decorator pattern)
-    assert "class TestClass_" in generated_code  # Method wrapper classes
-    assert "def __call__(self" in generated_code
-    assert "async def aio(self" in generated_code
-    assert "@wrapped_method(" in generated_code
-    assert "impl_method = " in generated_code  # Method implementation reference
 
 
 def test_compile_class_impl_instance_access(test_synchronizer, simple_class):
