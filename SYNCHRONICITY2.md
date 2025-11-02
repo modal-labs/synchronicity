@@ -841,6 +841,11 @@ Only generated code uses Synchronizer.
   - Better diagnostics when type annotations are missing
   - Clear error messages for unsupported type constructs
   - Helpful suggestions for common mistakes
+- [ ] **Investigate translation of TypeVar bounds that reference wrapped classes**
+  - Example: `T = typing.TypeVar("T", bound="SomeClass")` where `SomeClass` is a wrapped class
+  - Current behavior uses forward reference that resolves to wrapper class
+  - Consider whether bounds should be translated to wrapper classes explicitly
+  - Evaluate edge cases and type checking compatibility
 - [ ] Add inclusion/exclusion overrides for both properties and methods (default excludes _-prefixed)
 - [ ] Add option for renaming the output entity itself, not just the module (function name or class name)
 - [ ] Add Module.auto(__name__) for auto-inferring output modules as sibling of current (_-prefix or _impl suffix)
