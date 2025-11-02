@@ -993,9 +993,6 @@ def compile_method_wrapper(
             # Let's use the class to call as a bound method: {class_name}()._wrap_async_gen_...
             # Or better: access via a temporary instance
             # For now, replace self with a pattern that creates temp instance
-            helper_name = (
-                wrap_expr_raw.replace("self.", "").split("(")[0] if "self." in wrap_expr_raw else wrap_expr_raw
-            )
             if "self." in wrap_expr_raw:
                 # Extract helper name and create expression that uses class to create instance
                 # Actually, simpler: use the class directly and create instance on the fly
@@ -1051,43 +1048,58 @@ def compile_method_wrapper(
                 is_async=False,
             )
 
-    # Generate async wrapper functions only (sync logic goes in method body)
-    # For instance methods, generate async wrapper functions that take wrapper_instance as first param
+    # Generate async wrapper methods inside the class (not module-level functions)
+    # This allows them to use Self and class generics properly
+    # Use __{method_name}_aio naming pattern (double underscore prefix)
+    aio_method_name = f"__{method_name}_aio"
+
     if method_type == "instance":
         if aio_body is not None:
-            # Async method: generate async wrapper function
-            aio_wrapper_func = (
-                f"async def {wrapper_class_name}_aio"
-                f"""(wrapper_instance: "{class_name}", {param_str}){async_return_str}:
-{aio_body}
-"""
+            # Async instance method: generate async method with self
+            # Replace wrapper_instance with self in the body
+            # aio_body is indented with 4 spaces, needs 8 spaces for method body
+            aio_body_with_self = aio_body.replace("wrapper_instance", "self")
+            aio_body_lines = aio_body_with_self.split("\n")
+            # Add 4 more spaces to each line (8 total for method body)
+            aio_body_indented = "\n".join("        " + line if line.strip() else "" for line in aio_body_lines)
+            aio_wrapper_method = (
+                f'    async def {aio_method_name}(self: "{class_name}", {param_str}){async_return_str}:\n'
+                f"{aio_body_indented}"
             )
-            wrapper_functions_code = aio_wrapper_func
+            wrapper_functions_code = aio_wrapper_method
         else:
             # Sync-only method: no async wrapper needed
             wrapper_functions_code = ""
             aio_body = None
     elif method_type == "classmethod":
         if aio_body is not None:
-            # Async classmethod: generate async wrapper function
-            aio_wrapper_func = (
-                f"async def {wrapper_class_name}_aio"
-                f"""(wrapper_class: type["{class_name}"], {param_str}){async_return_str}:
-{aio_body}
-"""
+            # Async classmethod: generate async method with cls
+            # Replace wrapper_class with cls in the body
+            # aio_body is indented with 4 spaces, needs 8 spaces for method body
+            aio_body_with_cls = aio_body.replace("wrapper_class", "cls")
+            aio_body_lines = aio_body_with_cls.split("\n")
+            # Add 4 more spaces to each line (8 total for method body)
+            aio_body_indented = "\n".join("        " + line if line.strip() else "" for line in aio_body_lines)
+            aio_wrapper_method = (
+                f'    async def {aio_method_name}(cls: type["{class_name}"], {param_str}){async_return_str}:\n'
+                f"{aio_body_indented}"
             )
-            wrapper_functions_code = aio_wrapper_func
+            wrapper_functions_code = aio_wrapper_method
         else:
             # Sync-only classmethod: no async wrapper needed
             wrapper_functions_code = ""
             aio_body = None
     elif method_type == "staticmethod":
         if aio_body is not None:
-            # Async staticmethod: generate async wrapper function
-            aio_wrapper_func = f"""async def {wrapper_class_name}_aio({param_str}){async_return_str}:
-{aio_body}
-"""
-            wrapper_functions_code = aio_wrapper_func
+            # Async staticmethod: generate async method (no self/cls)
+            # aio_body is indented with 4 spaces, needs 8 spaces for method body
+            aio_body_lines = aio_body.split("\n")
+            # Add 4 more spaces to each line (8 total for method body)
+            aio_body_indented = "\n".join("        " + line if line.strip() else "" for line in aio_body_lines)
+            aio_wrapper_method = (
+                f"    async def {aio_method_name}({param_str}){async_return_str}:\n" f"{aio_body_indented}"
+            )
+            wrapper_functions_code = aio_wrapper_method
         else:
             # Sync-only staticmethod: no async wrapper needed
             wrapper_functions_code = ""
@@ -1134,8 +1146,9 @@ def compile_method_wrapper(
     # For sync-only methods, use plain Python decorators (no descriptor magic needed)
 
     if aio_body is not None:
-        # Async method: use descriptor decorator with async wrapper function
-        decorator_line = f"@{decorator_func}({wrapper_class_name}_aio)"
+        # Async method: use descriptor decorator with async wrapper method
+        # Reference the method directly (we're inside the class, so no need for class qualifier)
+        decorator_line = f"@{decorator_func}({aio_method_name})"
         # Method body contains sync wrapper logic
         # For instance methods, need to adjust sync_method_body to work as method body
         # sync_method_body is indented with 4 spaces, method body needs 8 spaces
@@ -1301,7 +1314,8 @@ def compile_class(
     synchronized_types_with_self[cls] = (current_target_module, cls.__name__)
 
     # Generate method wrapper classes and method code
-    method_wrapper_classes = []
+    # Note: async wrapper methods are now generated inside the class, not as module-level functions
+    method_async_wrappers = []  # Collect async wrapper methods to add to class
     method_definitions = []
 
     # Collect helpers from all methods
@@ -1346,12 +1360,18 @@ def compile_class(
             generic_typevars=generic_typevars if generic_typevars else None,
         )
         if wrapper_functions_code:
-            method_wrapper_classes.append(wrapper_functions_code)
+            # Async wrapper methods go inside the class, not as module-level functions
+            method_async_wrappers.append(wrapper_functions_code)
         method_definitions.append(sync_method_code)
 
     # Generate helpers section for the class
     helpers_code = "\n".join(all_helpers_dict.values()) if all_helpers_dict else ""
     helpers_section = f"\n{helpers_code}\n" if helpers_code else ""
+
+    # Generate async wrapper methods section (methods inside the class)
+    async_wrappers_section = "\n".join(method_async_wrappers) if method_async_wrappers else ""
+    if async_wrappers_section:
+        async_wrappers_section = f"\n{async_wrappers_section}"
 
     # Get __init__ signature
     init_method = getattr(cls, "__init__", None)
@@ -1477,7 +1497,7 @@ def compile_class(
         self._impl_instance = {origin_module}.{cls.__name__}({init_call})"""
 
     wrapper_class_code = f"""{class_declaration}
-{class_attrs}{helpers_section}
+{class_attrs}{helpers_section}{async_wrappers_section}
 
 {init_method}
 
@@ -1488,9 +1508,8 @@ def compile_class(
 {methods_section}"""
 
     # Combine all the code
+    # Note: async wrapper methods are now inside the class, so no module-level wrapper functions
     all_code = []
-    all_code.extend(method_wrapper_classes)
-    all_code.append("")  # Add blank line before main class
     all_code.append(wrapper_class_code)
 
     return "\n".join(all_code)
