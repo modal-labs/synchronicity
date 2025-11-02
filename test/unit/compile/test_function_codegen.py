@@ -85,12 +85,13 @@ class TestAsyncFunctions:
         # Verify it contains expected elements
         # Implementation should reference the actual module where func is defined
         assert f"impl_function = {simple_function.__module__}." in generated_code
-        assert f"class _{simple_function.__name__}:" in generated_code  # Wrapper class
-        assert "def __call__(self" in generated_code
-        assert "async def aio(self" in generated_code
+        assert f"async def __{simple_function.__name__}_aio" in generated_code  # Async wrapper function
+        assert (
+            f"@wrapped_function(__{simple_function.__name__}_aio)" in generated_code
+        )  # Uses wrapped_function decorator
+        assert f"def {simple_function.__name__}" in generated_code  # Sync function
         assert "_run_function_sync" in generated_code
         assert "_run_function_async" in generated_code  # aio() should use _run_function_async
-        assert f"@replace_with(_{simple_function.__name__}_instance)" in generated_code  # Uses replace_with decorator
 
         # Verify type annotations are preserved
         assert "x: int" in generated_code
@@ -124,9 +125,9 @@ class TestAsyncFunctions:
         # Verify the generated code compiles
         compile(generated_code, "<string>", "exec")
 
-        # Verify parameters without annotations are handled in aio method
-        assert "async def aio(self, x, y = 42)" in generated_code
-        # __call__ is now generated with explicit signature
+        # Verify parameters without annotations are handled
+        assert f"async def __{no_annotation_function.__name__}_aio" in generated_code
+        assert f"def {no_annotation_function.__name__}" in generated_code
         # No return type annotation since there wasn't one in the original
 
     def test_compile_function_template_pattern(self, test_synchronizer, simple_function):
@@ -136,26 +137,25 @@ class TestAsyncFunctions:
 
         # Check that the generated code contains all expected template elements
         template_elements = [
-            "class _",
-            "def __call__(self",
-            "async def aio(self",
+            f"async def __{simple_function.__name__}_aio",
+            f"@wrapped_function(__{simple_function.__name__}_aio)",
+            f"def {simple_function.__name__}",
             "_run_function_sync",
             "_run_function_async",  # aio() should use _run_function_async
-            "@replace_with",
         ]
 
         for element in template_elements:
             assert element in generated_code, f"Generated code should contain '{element}'"
 
-        # Verify the structure - class definition and replace_with decorator
+        # Verify the structure - async wrapper function and wrapped_function decorator
         lines = generated_code.split("\n")
-        class_line = None
+        async_func_line = None
         for i, line in enumerate(lines):
-            if line.startswith("class _"):
-                class_line = i
+            if f"async def __{simple_function.__name__}_aio" in line:
+                async_func_line = i
                 break
 
-        assert class_line is not None, "Should have a class definition"
+        assert async_func_line is not None, "Should have an async wrapper function"
 
     def test_compile_function_multiple_functions(self, test_synchronizer, simple_function, complex_function):
         """Test compile_function with multiple wrapped functions"""
@@ -167,11 +167,10 @@ class TestAsyncFunctions:
             compile(generated_code, "<string>", "exec")
 
             # Should contain the template pattern
-            assert "class _" in generated_code
-            assert "def __call__(self" in generated_code
+            assert "async def __" in generated_code
+            assert "@wrapped_function" in generated_code
             assert "impl_function = " in generated_code
-            assert "async def aio(" in generated_code
-            assert "@replace_with" in generated_code
+            assert "def " in generated_code  # Sync function
 
     def test_compile_function_generic_types(self, test_synchronizer, generic_types_function, simple_function):
         """Test compile_function with generic type arguments like list[str], dict[str, int]"""
@@ -194,11 +193,10 @@ class TestAsyncFunctions:
         assert "= None" in generated_code
 
         # Verify it contains expected template elements
-        assert "class _" in generated_code
-        assert "def __call__(self" in generated_code
+        assert "async def __" in generated_code
+        assert "@wrapped_function" in generated_code
         assert f"impl_function = {simple_function.__module__}." in generated_code
-        assert "async def aio(self" in generated_code
-        assert "@replace_with" in generated_code
+        assert "def " in generated_code  # Sync function
 
 
 class TestAsyncGenerators:
@@ -240,8 +238,8 @@ class TestAsyncGenerators:
         assert "_run_generator_sync(_gen)" in generated_code
         assert "_sent = yield _item" in generated_code  # Async helper captures sent values
         assert "gen = impl_function" in generated_code
-        # Methods iterate over helpers (can't return generators from async functions)
-        assert "yield from self._wrap_async_gen" in generated_code  # Sync uses yield from
+        # Functions iterate over helpers (can't return generators from async functions)
+        assert "yield from _wrap_async_gen" in generated_code  # Sync uses yield from (no self.)
         assert "await _wrapped.asend(_sent)" in generated_code  # Async uses asend() to forward send values
 
         # Verify return type annotations for generators
@@ -259,11 +257,11 @@ class TestAsyncGenerators:
         )
 
         # Check that the generated code contains all expected template elements
+        func_name = async_generator_function.__name__
         template_elements = [
-            "class _",
-            "def __call__(self",
-            "async def aio(self",
-            "@replace_with",
+            f"async def __{func_name}_aio",
+            f"@wrapped_function(__{func_name}_aio)",
+            f"def {func_name}",
         ]
 
         for element in template_elements:

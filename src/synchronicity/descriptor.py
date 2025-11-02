@@ -3,12 +3,15 @@ Generic infrastructure for wrapped methods and functions.
 
 This module provides:
 - MethodWrapper: A generic wrapper class that provides both sync and async method variants
+- FunctionWrapper: A generic wrapper class that provides both sync and async function variants
 - WrappedMethodDescriptor: A descriptor for instance methods that provides sync/async variants
 - WrappedClassMethodDescriptor: A descriptor for classmethods
 - WrappedStaticMethodDescriptor: A descriptor for staticmethods
+- WrappedFunctionDescriptor: A descriptor for functions that provides sync/async variants
 - wrapped_method: Decorator for wrapping instance methods
 - wrapped_classmethod: Decorator for wrapping classmethods
 - wrapped_staticmethod: Decorator for wrapping staticmethods
+- wrapped_function: Decorator for wrapping functions
 - replace_with: Decorator for swapping dummy function signatures with wrapper instances
 
 The wrapped_method pattern allows calling the sync version directly (e.g., foo()) and the async version
@@ -87,6 +90,27 @@ class StaticMethodWrapper(typing.Generic[P, R, AIO_P, AIO_R]):
         aio_wrapper: Callable[AIO_P, AIO_R],
     ):
         self.bound_class = bound_class
+        self.sync_wrapper = sync_wrapper
+        self.aio_wrapper = aio_wrapper
+
+    def __call__(self, *args: P.args, **kwargs: P.kwargs) -> R:
+        return self.sync_wrapper(*args, **kwargs)
+
+    def aio(self, *args: AIO_P.args, **kwargs: AIO_P.kwargs) -> AIO_R:
+        return self.aio_wrapper(*args, **kwargs)
+
+
+class FunctionWrapper(typing.Generic[P, R, AIO_P, AIO_R]):
+    """Generic wrapper class that provides both sync and async function variants via .aio()"""
+
+    sync_wrapper: Callable[P, R]
+    aio_wrapper: Callable[AIO_P, AIO_R]
+
+    def __init__(
+        self,
+        sync_wrapper: Callable[P, R],
+        aio_wrapper: Callable[AIO_P, AIO_R],
+    ):
         self.sync_wrapper = sync_wrapper
         self.aio_wrapper = aio_wrapper
 
@@ -176,6 +200,27 @@ class WrappedStaticMethodDescriptor(typing.Generic[P, R, AIO_P, AIO_R]):
         return StaticMethodWrapper(owner, self.sync_wrapper, self.aio_wrapper)  # type: ignore
 
 
+class WrappedFunctionDescriptor(typing.Generic[P, R, AIO_P, AIO_R]):
+    """Descriptor that provides both sync and async function variants via .aio()"""
+
+    sync_wrapper: Callable[P, R]
+    aio_wrapper: Callable[AIO_P, AIO_R]
+
+    def __init__(
+        self,
+        sync_wrapper: Callable[P, R],
+        aio_wrapper: Callable[AIO_P, AIO_R],
+    ):
+        self.sync_wrapper = sync_wrapper
+        self.aio_wrapper = aio_wrapper
+
+    def __call__(self, *args: P.args, **kwargs: P.kwargs) -> R:
+        return self.sync_wrapper(*args, **kwargs)
+
+    def aio(self, *args: AIO_P.args, **kwargs: AIO_P.kwargs) -> AIO_R:
+        return self.aio_wrapper(*args, **kwargs)
+
+
 def wrapped_method(
     aio_wrapper: Callable[Concatenate[Any, AIO_P], AIO_R],
 ) -> typing.Callable[[Callable[Concatenate[Any, P], R]], WrappedMethodDescriptor[P, R, AIO_P, AIO_R]]:
@@ -233,6 +278,27 @@ def wrapped_staticmethod(
         sync_wrapper: Callable[P, R],
     ) -> WrappedStaticMethodDescriptor[P, R, AIO_P, AIO_R]:
         return WrappedStaticMethodDescriptor(sync_wrapper, aio_wrapper)
+
+    return decorator
+
+
+def wrapped_function(
+    aio_wrapper: Callable[AIO_P, AIO_R],
+) -> typing.Callable[[Callable[P, R]], WrappedFunctionDescriptor[P, R, AIO_P, AIO_R]]:
+    """
+    Decorator that creates a descriptor for a function.
+
+    Args:
+        aio_wrapper: The async wrapper function (takes args, no bound instance)
+
+    Returns:
+        A decorator that takes the sync wrapper (the function body) and creates a WrappedFunctionDescriptor
+    """
+
+    def decorator(
+        sync_wrapper: Callable[P, R],
+    ) -> WrappedFunctionDescriptor[P, R, AIO_P, AIO_R]:
+        return WrappedFunctionDescriptor(sync_wrapper, aio_wrapper)
 
     return decorator
 

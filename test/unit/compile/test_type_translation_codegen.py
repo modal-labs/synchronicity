@@ -199,8 +199,8 @@ def test_async_generator_wrapping():
     assert "def _wrap_async_gen_str_sync(_gen):" in compiled_code
     assert "yield from get_synchronizer('s')._run_generator_sync(_gen)" in compiled_code
 
-    # Check that async context (__call__ in aio) uses async helper
-    assert "async def aio(self, ) -> " in compiled_code
+    # Check that async wrapper function exists
+    assert "async def __simple_generator_aio" in compiled_code or "async def __" in compiled_code
 
     # Check return type annotations
     assert '-> "typing.Generator[str, None, None]":' in compiled_code  # sync context
@@ -230,15 +230,15 @@ def test_tuple_of_generators():
     assert "_wrap_async_gen_int_sync" in compiled_code
 
     # Check that tuple wrapping uses appropriate helpers in sync context
-    # The sync __call__ method should use *_sync helpers
+    # The sync function should use *_sync helpers (no self.)
     assert (
-        'def __call__(self, ) -> "tuple[typing.Generator[str, None, None], typing.Generator[int, None, None]]":'
+        'def tuple_generators() -> "tuple[typing.Generator[str, None, None], typing.Generator[int, None, None]]":'
         in compiled_code
     )
 
-    # Check async context uses async helpers
+    # Check async wrapper function uses async helpers
     assert (
-        'async def aio(self, ) -> "tuple[typing.AsyncGenerator[str, None], typing.AsyncGenerator[int, None]]":'
+        'async def __tuple_generators_aio() -> "tuple[typing.AsyncGenerator[str, None], typing.AsyncGenerator[int, None]]":'
         in compiled_code
     )
 

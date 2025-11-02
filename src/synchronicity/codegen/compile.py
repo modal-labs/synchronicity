@@ -381,6 +381,8 @@ def _build_call_with_wrap(
     current_target_module: str,
     indent: str = "    ",
     is_async: bool = True,
+    *,
+    is_function: bool = False,
 ) -> str:
     """
     Build a function call with optional return value wrapping.
@@ -397,12 +399,16 @@ def _build_call_with_wrap(
         current_target_module: Current target module
         indent: Indentation string
         is_async: Whether this is an async context (affects generator wrapping)
+        is_function: Whether this is for a module-level function (not a method). If True, strips 'self.' from wrap_expr.
 
     Returns:
         Code string with the call and optional wrapping
     """
     if return_transformer.needs_translation():
         wrap_expr = return_transformer.wrap_expr(synchronized_types, current_target_module, "result", is_async=is_async)
+        # For module-level functions, strip 'self.' prefix from helper calls
+        if is_function:
+            wrap_expr = wrap_expr.replace("self.", "")
         return f"""{indent}result = {call_expr}
 {indent}return {wrap_expr}"""
     else:
@@ -454,7 +460,7 @@ def compile_function(
     globals_dict: dict[str, typing.Any] | None = None,
 ) -> str:
     """
-    Compile a function into a wrapper class that provides both sync and async versions.
+    Compile a function into a wrapper that provides both sync and async versions.
 
     Args:
         f: The function to compile
@@ -464,7 +470,7 @@ def compile_function(
         globals_dict: Optional globals dict for resolving forward references
 
     Returns:
-        String containing the generated wrapper class and decorated function code
+        String containing the generated async wrapper function and decorated sync function
     """
     origin_module = f.__module__
     current_target_module = target_module
@@ -512,6 +518,7 @@ def compile_function(
             current_target_module,
             indent="    ",
             is_async=False,
+            is_function=True,
         )
 
         # Add impl_function reference and unwrap statements
@@ -530,39 +537,62 @@ def compile_function(
         return_transformer, synchronized_types, synchronizer_name, current_target_module
     )
 
-    # Generate the wrapper class
-    wrapper_class_name = f"_{f.__name__}"
-
     # Collect inline helper functions needed by return type
+    # For functions (not methods), we need to strip @staticmethod decorators
     inline_helpers_dict = return_transformer.get_wrapper_helpers(
         synchronized_types, current_target_module, synchronizer_name, indent="    "
     )
-    helpers_code = "\n".join(inline_helpers_dict.values()) if inline_helpers_dict else ""
+    # Strip @staticmethod decorators from helpers for module-level functions
+    if inline_helpers_dict:
+        # Remove @staticmethod and adjust indentation for module-level functions
+        cleaned_helpers = {}
+        for name, helper_code in inline_helpers_dict.items():
+            # Remove @staticmethod decorator lines and reduce indentation by 4 spaces
+            lines = helper_code.split("\n")
+            cleaned_lines = []
+            for line in lines:
+                if line.strip().startswith("@staticmethod"):
+                    continue
+                # Reduce indentation by 4 spaces (was 4 for class method, now 0 for module-level)
+                if line.startswith("    "):
+                    cleaned_lines.append(line[4:])
+                else:
+                    cleaned_lines.append(line)
+            cleaned_helpers[name] = "\n".join(cleaned_lines)
+        helpers_code = "\n".join(cleaned_helpers.values())
+    else:
+        helpers_code = ""
 
-    # Build both sync and async bodies
+    # Generate async wrapper function name (double underscore prefix pattern)
+    aio_function_name = f"__{f.__name__}_aio"
+
+    # Build async wrapper function body
+    aio_impl_ref = f"    impl_function = {origin_module}.{f.__name__}"
+    aio_unwrap_section = aio_impl_ref
+    if unwrap_code:
+        aio_unwrap_section += "\n" + unwrap_code
+
     if is_async_gen:
         # For async generators, manually iterate with asend() to support two-way generators
         # Wrap in try/finally to ensure proper cleanup on aclose()
-        wrap_expr = return_transformer.wrap_expr(synchronized_types, current_target_module, "gen")
+        wrap_expr_raw = return_transformer.wrap_expr(synchronized_types, current_target_module, "gen")
+        # For functions, remove self. prefix (helpers are module-level, not class methods)
+        wrap_expr = wrap_expr_raw.replace("self.", "")
         aio_body = (
-            f"        gen = impl_function({call_args_str})\n"
-            f"        _wrapped = {wrap_expr}\n"
-            f"        _sent = None\n"
-            f"        try:\n"
-            f"            while True:\n"
-            f"                try:\n"
-            f"                    _item = await _wrapped.asend(_sent)\n"
-            f"                    _sent = yield _item\n"
-            f"                except StopAsyncIteration:\n"
-            f"                    break\n"
-            f"        finally:\n"
-            f"            await _wrapped.aclose()"
+            f"    gen = impl_function({call_args_str})\n"
+            f"    _wrapped = {wrap_expr}\n"
+            f"    _sent = None\n"
+            f"    try:\n"
+            f"        while True:\n"
+            f"            try:\n"
+            f"                _item = await _wrapped.asend(_sent)\n"
+            f"                _sent = yield _item\n"
+            f"            except StopAsyncIteration:\n"
+            f"                break\n"
+            f"    finally:\n"
+            f"        await _wrapped.aclose()"
         )
-
-        # For sync version, use yield from for efficiency
-        sync_wrap_expr = return_transformer.wrap_expr(synchronized_types, current_target_module, "gen", is_async=False)
-        sync_function_body = f"    gen = impl_function({call_args_str})\n    yield from {sync_wrap_expr}"
-    elif is_async_func:
+    else:  # is_async_func must be True at this point (non-async functions return early)
         # For regular async functions
         aio_runner = f"get_synchronizer('{synchronizer_name}')._run_function_async"
         aio_body = _build_call_with_wrap(
@@ -571,9 +601,33 @@ def compile_function(
             synchronized_types,
             synchronizer_name,
             current_target_module,
-            indent="        ",
+            indent="    ",
             is_async=True,
+            is_function=True,
         )
+
+    # Generate async wrapper function
+    async_wrapper_code = f"""async def {aio_function_name}({param_str}){async_return_str}:
+{aio_unwrap_section}
+{aio_body}
+"""
+
+    # Build sync function body
+    sync_impl_ref = f"    impl_function = {origin_module}.{f.__name__}"
+    sync_unwrap_section = sync_impl_ref
+    if unwrap_code:
+        sync_unwrap_section += "\n" + unwrap_code
+
+    if is_async_gen:
+        # For sync version of async generator, use yield from for efficiency
+        sync_wrap_expr_raw = return_transformer.wrap_expr(
+            synchronized_types, current_target_module, "gen", is_async=False
+        )
+        # For functions, remove self. prefix (helpers are module-level, not class methods)
+        sync_wrap_expr = sync_wrap_expr_raw.replace("self.", "")
+        sync_function_body = f"    gen = impl_function({call_args_str})\n    yield from {sync_wrap_expr}"
+    else:  # is_async_func must be True at this point (non-async functions return early)
+        # For regular async functions
         sync_runner = f"get_synchronizer('{synchronizer_name}')._run_function_sync"
         sync_function_body = _build_call_with_wrap(
             f"{sync_runner}(impl_function({call_args_str}))",
@@ -583,74 +637,21 @@ def compile_function(
             current_target_module,
             indent="    ",
             is_async=False,
-        )
-    else:
-        # For non-async functions (shouldn't reach here)
-        aio_body = _build_call_with_wrap(
-            f"impl_function({call_args_str})",
-            return_transformer,
-            synchronized_types,
-            synchronizer_name,
-            current_target_module,
-            indent="        ",
-            is_async=True,
-        )
-        sync_function_body = _build_call_with_wrap(
-            f"impl_function({call_args_str})",
-            return_transformer,
-            synchronized_types,
-            synchronizer_name,
-            current_target_module,
-            indent="    ",
-            is_async=False,
+            is_function=True,
         )
 
-    # Build unwrap section for aio() if needed
-    aio_impl_ref = f"        impl_function = {origin_module}.{f.__name__}"
-    aio_unwrap = f"\n{aio_impl_ref}"
-    if unwrap_code:
-        # Adjust indentation for aio method (8 spaces)
-        aio_unwrap_lines = [line.replace("    ", "        ", 1) for line in unwrap_code.split("\n")]
-        aio_unwrap += "\n" + "\n".join(aio_unwrap_lines)
-
-    # Generate wrapper class with both __call__ (sync) and aio (async) methods
-    # This preserves full signatures including parameter names for type checkers
-
-    # Build unwrap section for __call__ (sync) if needed
-    call_impl_ref = f"        impl_function = {origin_module}.{f.__name__}"
-    call_unwrap = f"\n{call_impl_ref}"
-    if unwrap_code:
-        # Adjust indentation for __call__ method (8 spaces)
-        call_unwrap_lines = [line.replace("    ", "        ", 1) for line in unwrap_code.split("\n")]
-        call_unwrap += "\n" + "\n".join(call_unwrap_lines)
-
-    # Adjust sync_function_body indentation (was 4 spaces, now needs 8 for __call__)
-    sync_body_indented = "\n".join("    " + line if line.strip() else line for line in sync_function_body.split("\n"))
-
-    # Build wrapper class with inline helpers at the top
-    helpers_section = f"\n{helpers_code}\n" if helpers_code else ""
-
-    wrapper_class_code = f"""class {wrapper_class_name}:{helpers_section}
-    def __call__(self, {param_str}){sync_return_str}:{call_unwrap}
-{sync_body_indented}
-
-    async def aio(self, {param_str}){async_return_str}:{aio_unwrap}
-{aio_body}
+    # Generate sync function with @wrapped_function decorator
+    sync_function_code = f"""@wrapped_function({aio_function_name})
+def {f.__name__}({param_str}){sync_return_str}:
+{sync_unwrap_section}
+{sync_function_body}
 """
 
-    # Create instance of wrapper class
-    wrapper_instance_name = f"_{f.__name__}_instance"
-    instance_creation = f"{wrapper_instance_name} = {wrapper_class_name}()"
-
-    # Generate dummy function with full signature for type checkers and go-to-definition
-    # The @replace_with decorator swaps this with the actual wrapper instance
-    dummy_function_code = f"""@replace_with({wrapper_instance_name})
-def {f.__name__}({param_str}){sync_return_str}:
-    # Dummy function for type checkers and IDE navigation
-    # Actual implementation is in {wrapper_class_name}.__call__
-    return {wrapper_instance_name}({", ".join(sig.parameters.keys())})"""
-
-    return f"{wrapper_class_code}\n{instance_creation}\n\n{dummy_function_code}"
+    # Combine helpers, async wrapper, and sync function
+    if helpers_code:
+        return f"{helpers_code}\n\n{async_wrapper_code}{sync_function_code}"
+    else:
+        return f"{async_wrapper_code}{sync_function_code}"
 
 
 def compile_method_wrapper(
@@ -800,9 +801,6 @@ def compile_method_wrapper(
                     class_name, actual_class_name
                 )
             async_return_str = None  # Not used for sync-only
-
-    # Generate the wrapper class
-    wrapper_class_name = f"{class_name}_{method_name}"
 
     # Build the call expression based on method type
     # For instance methods, we need to reference wrapper_instance parameter
@@ -1617,7 +1615,13 @@ def compile_module(
 
 {imports}
 
-from synchronicity.descriptor import replace_with, wrapped_classmethod, wrapped_method, wrapped_staticmethod
+from synchronicity.descriptor import (
+    replace_with,
+    wrapped_classmethod,
+    wrapped_function,
+    wrapped_method,
+    wrapped_staticmethod,
+)
 from synchronicity.synchronizer import get_synchronizer
 """
 
