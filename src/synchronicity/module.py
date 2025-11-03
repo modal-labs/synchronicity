@@ -45,11 +45,10 @@ class Module:
         both old and new class objects to be registered (important for TYPE_CHECKING reloads).
     """
 
-    # Class-level registries that persist across module reloads
-    _global_registered_classes: dict[type, tuple[str, str]] = {}
-    _global_registered_functions: dict[types.FunctionType, tuple[str, str]] = {}
-
     _target_module: str
+    # Class-level registries that persist across module reloads
+    _wrapped_classes: dict[type, tuple[str, str]] = {}
+    _wrapped_functions: dict[types.FunctionType, tuple[str, str]] = {}
 
     def __init__(self, target_module: Optional[str]):
         """Initialize a Module for wrapper registration.
@@ -66,7 +65,7 @@ class Module:
             # or suffixed with "_impl" -> default to output in same dir
             raise NotImplementedError("Auto module not implemented")
 
-        self._target_module: str = target_module
+        self._target_module = target_module
 
     @property
     def target_module(self) -> str:
@@ -79,7 +78,7 @@ class Module:
 
         Filters the global registry to return only classes for this target module.
         """
-        return {cls: info for cls, info in self._global_registered_classes.items() if info[0] == self._target_module}
+        return {cls: info for cls, info in self._wrapped_classes.items() if info[0] == self._target_module}
 
     @property
     def _registered_functions(self) -> dict[types.FunctionType, tuple[str, str]]:
@@ -87,9 +86,7 @@ class Module:
 
         Filters the global registry to return only functions for this target module.
         """
-        return {
-            func: info for func, info in self._global_registered_functions.items() if info[0] == self._target_module
-        }
+        return {func: info for func, info in self._wrapped_functions.items() if info[0] == self._target_module}
 
     def module_items(self) -> dict[typing.Union[type, types.FunctionType], tuple[str, str]]:
         """Get all registered classes and functions with their target module and name.
@@ -136,7 +133,7 @@ class Module:
             If a function is registered multiple times (e.g., during module reloads),
             all registrations map to the same target, so this is safe.
         """
-        self._global_registered_functions[f] = (self._target_module, f.__name__)
+        self._wrapped_functions[f] = (self._target_module, f.__name__)
         return f
 
     def wrap_class(self, cls: C) -> C:
@@ -155,5 +152,5 @@ class Module:
             If a class is registered multiple times (e.g., during module reloads),
             all registrations map to the same target, so this is safe.
         """
-        self._global_registered_classes[cls] = (self._target_module, cls.__name__)
+        self._wrapped_classes[cls] = (self._target_module, cls.__name__)
         return cls

@@ -8,13 +8,7 @@ from synchronicity.codegen.compile import compile_class, compile_module
 
 # Test fixtures
 @pytest.fixture
-def test_synchronizer():
-    """Empty synchronized_types dict for testing (replaces Synchronizer._wrapped)."""
-    return {}
-
-
-@pytest.fixture
-def simple_class(test_synchronizer):
+def simple_class():
     """Simple class with basic async methods"""
 
     class TestClass:
@@ -34,13 +28,11 @@ def simple_class(test_synchronizer):
             self.value += amount
             return self.value
 
-    # Register the class in synchronized_types
-    test_synchronizer[TestClass] = ("test_module", "TestClass")
     return TestClass
 
 
 @pytest.fixture
-def complex_class(test_synchronizer):
+def complex_class():
     """Class with complex type annotations"""
 
     class ComplexClass:
@@ -59,13 +51,11 @@ def complex_class(test_synchronizer):
             await asyncio.sleep(0.01)
             return len(self.data)
 
-    # Register the class in synchronized_types
-    test_synchronizer[ComplexClass] = ("test_module", "ComplexClass")
     return ComplexClass
 
 
 @pytest.fixture
-def async_generator_class(test_synchronizer):
+def async_generator_class():
     """Class with async generator methods"""
 
     class AsyncGeneratorClass:
@@ -83,13 +73,11 @@ def async_generator_class(test_synchronizer):
                     await asyncio.sleep(0.01)
                     yield item
 
-    # Register the class in synchronized_types
-    test_synchronizer[AsyncGeneratorClass] = ("test_module", "AsyncGeneratorClass")
     return AsyncGeneratorClass
 
 
 @pytest.fixture
-def mixed_class(test_synchronizer):
+def mixed_class():
     """Class with mixed method types"""
 
     class MixedClass:
@@ -109,17 +97,16 @@ def mixed_class(test_synchronizer):
             # This should be ignored by the wrapper since it's not async
             return f"sync_{item}"
 
-    # Register the class in synchronized_types
-    test_synchronizer[MixedClass] = ("test_module", "MixedClass")
     return MixedClass
 
 
 # Test basic class compilation
-def test_compile_class_basic(test_synchronizer, simple_class):
+def test_compile_class_basic(simple_class):
     """Test basic class compilation"""
 
+    synchronized_types = {simple_class: ("test_module", "TestClass")}
     # Generate code
-    generated_code = compile_class(simple_class, "test_module", "test_synchronizer", test_synchronizer)
+    generated_code = compile_class(simple_class, "test_module", "test_synchronizer", synchronized_types)
 
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
@@ -134,10 +121,11 @@ def test_compile_class_basic(test_synchronizer, simple_class):
     assert "impl_method = " in generated_code
 
 
-def test_compile_class_method_descriptors(test_synchronizer, simple_class):
+def test_compile_class_method_descriptors(simple_class):
     """Test that method descriptors are properly generated"""
 
-    generated_code = compile_class(simple_class, "test_module", "test_synchronizer", test_synchronizer)
+    synchronized_types = {simple_class: ("test_module", "TestClass")}
+    generated_code = compile_class(simple_class, "test_module", "test_synchronizer", synchronized_types)
     print(generated_code)
     # Verify method wrapper classes are generated
     assert "@wrapped_method(__add_to_value_aio)" in generated_code
@@ -145,10 +133,11 @@ def test_compile_class_method_descriptors(test_synchronizer, simple_class):
     assert "def add_to_value(self, amount: int) -> int" in generated_code
 
 
-def test_compile_class_complex_types(test_synchronizer, complex_class):
+def test_compile_class_complex_types(complex_class):
     """Test class compilation with complex type annotations"""
 
-    generated_code = compile_class(complex_class, "test_module", "test_synchronizer", test_synchronizer)
+    synchronized_types = {complex_class: ("test_module", "ComplexClass")}
+    generated_code = compile_class(complex_class, "test_module", "test_synchronizer", synchronized_types)
 
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
@@ -163,10 +152,11 @@ def test_compile_class_complex_types(test_synchronizer, complex_class):
     assert "-> list[str]" in generated_code
 
 
-def test_compile_class_async_generators(test_synchronizer, async_generator_class):
+def test_compile_class_async_generators(async_generator_class):
     """Test class compilation with async generator methods"""
 
-    generated_code = compile_class(async_generator_class, "test_module", "test_synchronizer", test_synchronizer)
+    synchronized_types = {async_generator_class: ("test_module", "AsyncGeneratorClass")}
+    generated_code = compile_class(async_generator_class, "test_module", "test_synchronizer", synchronized_types)
 
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
@@ -180,10 +170,11 @@ def test_compile_class_async_generators(test_synchronizer, async_generator_class
     assert "@staticmethod" in generated_code  # Helpers are static methods
 
 
-def test_compile_class_mixed_methods(test_synchronizer, mixed_class):
+def test_compile_class_mixed_methods(mixed_class):
     """Test class compilation with mixed method types"""
 
-    generated_code = compile_class(mixed_class, "test_module", "test_synchronizer", test_synchronizer)
+    synchronized_types = {mixed_class: ("test_module", "MixedClass")}
+    generated_code = compile_class(mixed_class, "test_module", "test_synchronizer", synchronized_types)
 
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
@@ -198,10 +189,11 @@ def test_compile_class_mixed_methods(test_synchronizer, mixed_class):
     # But it should still be accessible through __getattr__
 
 
-def test_compile_class_type_annotations_preserved(test_synchronizer, simple_class):
+def test_compile_class_type_annotations_preserved(simple_class):
     """Test that method type annotations are preserved"""
 
-    generated_code = compile_class(simple_class, "test_module", "test_synchronizer", test_synchronizer)
+    synchronized_types = {simple_class: ("test_module", "TestClass")}
+    generated_code = compile_class(simple_class, "test_module", "test_synchronizer", synchronized_types)
 
     # Verify type annotations are preserved
     assert "new_value: int" in generated_code
@@ -210,10 +202,11 @@ def test_compile_class_type_annotations_preserved(test_synchronizer, simple_clas
     assert "-> None" in generated_code
 
 
-def test_compile_class_impl_instance_access(test_synchronizer, simple_class):
+def test_compile_class_impl_instance_access(simple_class):
     """Test that the generated class provides access to the original instance"""
 
-    generated_code = compile_class(simple_class, "test_module", "test_synchronizer", test_synchronizer)
+    synchronized_types = {simple_class: ("test_module", "TestClass")}
+    generated_code = compile_class(simple_class, "test_module", "test_synchronizer", synchronized_types)
 
     # Verify original instance is created and accessible
     # Should reference the actual module where the class is defined
@@ -223,15 +216,19 @@ def test_compile_class_impl_instance_access(test_synchronizer, simple_class):
     assert "_synchronizer = get_synchronizer(" in generated_code
 
 
-def test_compile_class_multiple_classes(test_synchronizer, simple_class, complex_class):
+def test_compile_class_multiple_classes(simple_class, complex_class):
     """Test compilation of multiple classes"""
 
+    synchronized_types = {
+        simple_class: ("test_module", "TestClass"),
+        complex_class: ("test_module", "ComplexClass"),
+    }
     # Should have 2 wrapped classes
-    assert len(test_synchronizer) == 2
+    assert len(synchronized_types) == 2
 
     # Each should generate valid code
-    for cls, (target_module, target_name) in test_synchronizer.items():
-        generated_code = compile_class(cls, "test_module", "test_synchronizer", test_synchronizer)
+    for cls, (target_module, target_name) in synchronized_types.items():
+        generated_code = compile_class(cls, "test_module", "test_synchronizer", synchronized_types)
 
         # Should compile without errors
         compile(generated_code, "<string>", "exec")
@@ -244,7 +241,6 @@ def test_compile_class_multiple_classes(test_synchronizer, simple_class, complex
 
 def test_compile_class_no_methods():
     """Test compilation of a class with no async methods"""
-    test_synchronizer = {}
 
     class EmptyClass:
         def __init__(self, value: int):
@@ -254,9 +250,9 @@ def test_compile_class_no_methods():
             return self.value
 
     # Register the class
-    test_synchronizer[EmptyClass] = ("test_module", "EmptyClass")
+    synchronized_types = {EmptyClass: ("test_module", "EmptyClass")}
 
-    generated_code = compile_class(EmptyClass, "test_module", "test_synchronizer", test_synchronizer)
+    generated_code = compile_class(EmptyClass, "test_module", "test_synchronizer", synchronized_types)
 
     # Should still generate a valid wrapper class
     compile(generated_code, "<string>", "exec")
@@ -265,7 +261,7 @@ def test_compile_class_no_methods():
     # Should not have any method wrapper assignments since no async methods
 
 
-def test_compile_class_method_with_varargs(test_synchronizer):
+def test_compile_class_method_with_varargs():
     """Test compiling a class with methods that have varargs and keyword-only parameters."""
 
     class VarArgsClass:
@@ -275,9 +271,9 @@ def test_compile_class_method_with_varargs(test_synchronizer):
         async def method_with_posonly(self, x, y, /, z, w=10) -> int:
             return 42
 
-    test_synchronizer[VarArgsClass] = ("test_module", "VarArgsClass")
+    synchronized_types = {VarArgsClass: ("test_module", "VarArgsClass")}
 
-    generated_code = compile_class(VarArgsClass, "test_module", "test_synchronizer", test_synchronizer)
+    generated_code = compile_class(VarArgsClass, "test_module", "test_synchronizer", synchronized_types)
     print(generated_code)
     # Check that varargs markers are preserved in method signatures
     assert "*args: str" in generated_code
@@ -296,35 +292,24 @@ def test_compile_class_method_with_varargs(test_synchronizer):
     assert "impl_method(self._impl_instance, a, *args, b=b, **kwargs)" in generated_code
 
 
-def test_compile_module_multiple_classes_separation(test_synchronizer, simple_class, complex_class):
+def test_compile_module_multiple_classes_separation(simple_class, complex_class):
     """Test that multiple classes in a module are separated by blank lines."""
+    from synchronicity.module import Module
 
-    # Create a mock Module object for testing
-    class MockModule:
-        def __init__(self, target_module, items):
-            self._target_module = target_module
-            self._items = items
+    # Create a real Module
+    test_module = Module("test_module")
 
-        @property
-        def target_module(self):
-            return self._target_module
+    # Register classes directly in the global registry
+    test_module.wrap_class(simple_class)
+    test_module.wrap_class(complex_class)
 
-        @property
-        def _registered_classes(self):
-            return {k: v for k, v in self._items.items() if isinstance(k, type)}
-
-        def module_items(self):
-            return self._items
-
-    # Create module with both classes
-    module_items = {
+    synchronized_types = {
         simple_class: ("test_module", "TestClass"),
         complex_class: ("test_module", "ComplexClass"),
     }
-    mock_module = MockModule("test_module", module_items)
 
     # Compile the module
-    generated_code = compile_module(mock_module, test_synchronizer, "test_synchronizer")
+    generated_code = compile_module(test_module, synchronized_types, "test_synchronizer")
 
     # Verify the code compiles
     compile(generated_code, "<string>", "exec")
