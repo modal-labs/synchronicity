@@ -109,7 +109,5 @@ def test_pyright_generic_class(generated_wrappers, support_files):
     out = check_pyright([support_files / "generic_class_typecheck.py"])
     print(out)
     assert 'Type of "wrapped_func" is "FunctionWrapper[(a: int), float]"' in out
-    expected_pyright_type = (
-        "MethodWrapper[FunctionWrapper[(a: int), float], (a: int), float, (a: int), CoroutineType[Any, Any, float]]"
-    )
+    expected_pyright_type = "FunctionWithAio[(a: int), float, (a: int), CoroutineType[Any, Any, float]]"
     assert f'Type of "wrapped_func.call" is "{expected_pyright_type}"' in out

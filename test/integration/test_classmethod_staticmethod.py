@@ -72,9 +72,6 @@ def test_pyright_classmethod_staticmethod(generated_wrappers):
     """Test that generated classmethod and staticmethod code passes pyright."""
     import test_support
 
-    # Verify type correctness with pyright
-    # Note: reportGeneralTypeIssues is set to "warning" in pyproject.toml
-    # to handle false positives from dummy method definitions
     check_pyright([Path(test_support.__file__)])
 
 
