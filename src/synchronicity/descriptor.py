@@ -1,23 +1,3 @@
-"""
-Generic infrastructure for wrapped methods and functions.
-
-This module provides:
-- MethodWrapper: A generic wrapper class that provides both sync and async method variants
-- FunctionWrapper: A generic wrapper class that provides both sync and async function variants
-- WrappedMethodDescriptor: A descriptor for instance methods that provides sync/async variants
-- WrappedMethodDescriptor: A descriptor for classmethods
-- WrappedStaticMethodDescriptor: A descriptor for staticmethods
-- FunctionWrapper: A descriptor for functions that provides sync/async variants
-- wrapped_method: Decorator for wrapping instance methods
-- wrapped_classmethod: Decorator for wrapping classmethods
-- wrapped_staticmethod: Decorator for wrapping staticmethods
-- wrapped_function: Decorator for wrapping functions
-- replace_with: Decorator for swapping dummy function signatures with wrapper instances
-
-The wrapped_method pattern allows calling the sync version directly (e.g., foo()) and the async version
-via .aio() (e.g., foo.aio()).
-"""
-
 import typing
 from typing import Any, Callable, Concatenate, ParamSpec, TypeVar, overload
 
@@ -218,36 +198,5 @@ def wrapped_function(
         sync_wrapper: Callable[P, R],
     ) -> FunctionWithAio[P, R, AIO_P, AIO_R]:
         return FunctionWithAio(sync_wrapper, aio_wrapper)
-
-    return decorator
-
-
-T = typing.TypeVar("T")
-
-
-def replace_with(wrapper: T) -> typing.Callable[[typing.Callable[..., typing.Any]], T]:
-    """
-    Decorator that replaces a dummy function signature with an actual wrapper instance.
-
-    This is used to preserve full function signatures (including parameter names) for
-    type checkers and go-to-definition, while swapping in the actual wrapper instance
-    at runtime.
-
-    Args:
-        wrapper: The actual wrapper instance to use
-
-    Returns:
-        A decorator that ignores the dummy function and returns the wrapper
-
-    Example:
-        @replace_with(MyWrapper())
-        def my_func(x: int, y: str) -> Result:
-            # This dummy implementation is never called
-            # It exists only for type checkers and IDE navigation
-            return MyWrapper().__call__(x, y)
-    """
-
-    def decorator(_dummy_sync_signature: typing.Callable[..., typing.Any]) -> T:
-        return wrapper
 
     return decorator

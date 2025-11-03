@@ -1637,7 +1637,6 @@ def compile_module(
 {imports}
 
 from synchronicity.descriptor import (
-    replace_with,
     wrapped_classmethod,
     wrapped_function,
     wrapped_method,
