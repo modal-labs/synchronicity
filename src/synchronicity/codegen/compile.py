@@ -1061,8 +1061,7 @@ def compile_method_wrapper(
             # Add 4 more spaces to each line (8 total for method body)
             aio_body_indented = "\n".join("        " + line if line.strip() else "" for line in aio_body_lines)
             aio_wrapper_method = (
-                f'    async def {aio_method_name}(self: "{class_name}", {param_str}){async_return_str}:\n'
-                f"{aio_body_indented}"
+                f"    async def {aio_method_name}(self, {param_str}){async_return_str}:\n" f"{aio_body_indented}"
             )
             wrapper_functions_code = aio_wrapper_method
         else:
@@ -1078,9 +1077,11 @@ def compile_method_wrapper(
             aio_body_lines = aio_body_with_cls.split("\n")
             # Add 4 more spaces to each line (8 total for method body)
             aio_body_indented = "\n".join("        " + line if line.strip() else "" for line in aio_body_lines)
-            # Use type annotation for cls (pyright needs it, but use forward reference)
+            # Add @classmethod decorator to the async wrapper
+            # No type annotation needed on cls - it's inferred from context
             aio_wrapper_method = (
-                f'    async def {aio_method_name}(cls: type["{class_name}"], {param_str}){async_return_str}:\n'
+                f"    @classmethod\n"
+                f"    async def {aio_method_name}(cls, {param_str}){async_return_str}:\n"
                 f"{aio_body_indented}"
             )
             wrapper_functions_code = aio_wrapper_method
@@ -1095,7 +1096,12 @@ def compile_method_wrapper(
             aio_body_lines = aio_body.split("\n")
             # Add 4 more spaces to each line (8 total for method body)
             aio_body_indented = "\n".join("        " + line if line.strip() else "" for line in aio_body_lines)
-            aio_wrapper_method = f"    async def {aio_method_name}({param_str}){async_return_str}:\n{aio_body_indented}"
+            # Add @staticmethod decorator to the async wrapper
+            aio_wrapper_method = (
+                f"    @staticmethod\n"
+                f"    async def {aio_method_name}({param_str}){async_return_str}:\n"
+                f"{aio_body_indented}"
+            )
             wrapper_functions_code = aio_wrapper_method
         else:
             # Sync-only staticmethod: no async wrapper needed
@@ -1146,8 +1152,11 @@ def compile_method_wrapper(
         # Async method: use descriptor decorator with async wrapper method
         # Reference the method directly (we're inside the class, so no need for class qualifier)
         # For classmethods, stack @classmethod with @wrapped_classmethod
+        # For staticmethods, stack @staticmethod with @wrapped_staticmethod
         if method_type == "classmethod":
             decorator_line = f"@{decorator_func}({aio_method_name})\n    @classmethod"
+        elif method_type == "staticmethod":
+            decorator_line = f"@{decorator_func}({aio_method_name})\n    @staticmethod"
         else:
             decorator_line = f"@{decorator_func}({aio_method_name})"
         # Method body contains sync wrapper logic

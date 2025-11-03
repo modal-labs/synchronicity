@@ -141,7 +141,7 @@ def test_compile_class_method_descriptors(test_synchronizer, simple_class):
     print(generated_code)
     # Verify method wrapper classes are generated
     assert "@wrapped_method(__add_to_value_aio)" in generated_code
-    assert 'async def __add_to_value_aio(self: "TestClass", amount: int) -> int' in generated_code
+    assert "async def __add_to_value_aio(self, amount: int) -> int" in generated_code
     assert "def add_to_value(self, amount: int) -> int" in generated_code
 
 

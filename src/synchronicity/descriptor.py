@@ -135,14 +135,18 @@ class WrappedClassMethodDescriptor(typing.Generic[T, P, R, AIO_P, AIO_R]):
     def __init__(
         self,
         sync_wrapper: Callable[Concatenate[type[T], P], R] | classmethod,
-        aio_wrapper: Callable[Concatenate[type[T], AIO_P], AIO_R],
+        aio_wrapper: Callable[Concatenate[type[T], AIO_P], AIO_R] | classmethod,
     ):
         # If sync_wrapper is already a classmethod descriptor, unwrap it
         if isinstance(sync_wrapper, classmethod):
             self.sync_wrapper = sync_wrapper.__func__  # type: ignore
         else:
             self.sync_wrapper = sync_wrapper  # type: ignore
-        self.aio_wrapper = aio_wrapper
+        # If aio_wrapper is already a classmethod descriptor, unwrap it
+        if isinstance(aio_wrapper, classmethod):
+            self.aio_wrapper = aio_wrapper.__func__  # type: ignore
+        else:
+            self.aio_wrapper = aio_wrapper  # type: ignore
 
     @overload
     def __get__(self, wrapper_instance: None, owner: type[T]) -> ClassMethodWrapper[T, P, R, AIO_P, AIO_R]: ...
@@ -162,11 +166,19 @@ class WrappedStaticMethodDescriptor(typing.Generic[P, R, AIO_P, AIO_R]):
 
     def __init__(
         self,
-        sync_wrapper: Callable[P, R],
-        aio_wrapper: Callable[AIO_P, AIO_R],
+        sync_wrapper: Callable[P, R] | staticmethod,
+        aio_wrapper: Callable[AIO_P, AIO_R] | staticmethod,
     ):
-        self.sync_wrapper = sync_wrapper
-        self.aio_wrapper = aio_wrapper
+        # If sync_wrapper is already a staticmethod descriptor, unwrap it
+        if isinstance(sync_wrapper, staticmethod):
+            self.sync_wrapper = sync_wrapper.__func__  # type: ignore
+        else:
+            self.sync_wrapper = sync_wrapper  # type: ignore
+        # If aio_wrapper is already a staticmethod descriptor, unwrap it
+        if isinstance(aio_wrapper, staticmethod):
+            self.aio_wrapper = aio_wrapper.__func__  # type: ignore
+        else:
+            self.aio_wrapper = aio_wrapper  # type: ignore
 
     @overload
     def __get__(self, wrapper_instance: None, owner: type) -> StaticMethodWrapper[P, R, AIO_P, AIO_R]: ...
@@ -219,7 +231,7 @@ def wrapped_method(
 
 
 def wrapped_classmethod(
-    aio_wrapper: Callable[Concatenate[type[T], AIO_P], AIO_R],
+    aio_wrapper: Callable[Concatenate[type[T], AIO_P], AIO_R] | classmethod,
 ) -> typing.Callable[
     [
         Callable[Concatenate[type[T], P], R] | classmethod,
@@ -230,7 +242,7 @@ def wrapped_classmethod(
     Decorator that creates a descriptor for a classmethod.
 
     Args:
-        aio_wrapper: The async wrapper function (takes bound class + args)
+        aio_wrapper: The async wrapper function (takes bound class + args) or a @classmethod descriptor
 
     Returns:
         A decorator that takes the sync wrapper (the method body or a @classmethod descriptor)
@@ -247,21 +259,23 @@ def wrapped_classmethod(
 
 
 def wrapped_staticmethod(
-    aio_wrapper: Callable[AIO_P, AIO_R],
-) -> typing.Callable[[Callable[P, R]], WrappedStaticMethodDescriptor[P, R, AIO_P, AIO_R]]:
+    aio_wrapper: Callable[AIO_P, AIO_R] | staticmethod,
+) -> typing.Callable[[Callable[P, R] | staticmethod], WrappedStaticMethodDescriptor[P, R, AIO_P, AIO_R]]:
     """
     Decorator that creates a descriptor for a staticmethod.
 
     Args:
-        aio_wrapper: The async wrapper function (takes args, no bound instance)
+        aio_wrapper: The async wrapper function (takes args, no bound instance) or a @staticmethod descriptor
 
     Returns:
-        A decorator that takes the sync wrapper (the method body) and creates a WrappedStaticMethodDescriptor
+        A decorator that takes the sync wrapper (the method body or a @staticmethod descriptor)
+        and creates a WrappedStaticMethodDescriptor
     """
 
     def decorator(
-        sync_wrapper: Callable[P, R],
+        sync_wrapper: Callable[P, R] | staticmethod,
     ) -> WrappedStaticMethodDescriptor[P, R, AIO_P, AIO_R]:
+        # Handle both raw functions and @staticmethod-wrapped functions
         return WrappedStaticMethodDescriptor(sync_wrapper, aio_wrapper)
 
     return decorator
