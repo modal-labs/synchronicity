@@ -1094,9 +1094,7 @@ def compile_method_wrapper(
             aio_body_lines = aio_body.split("\n")
             # Add 4 more spaces to each line (8 total for method body)
             aio_body_indented = "\n".join("        " + line if line.strip() else "" for line in aio_body_lines)
-            aio_wrapper_method = (
-                f"    async def {aio_method_name}({param_str}){async_return_str}:\n" f"{aio_body_indented}"
-            )
+            aio_wrapper_method = f"    async def {aio_method_name}({param_str}){async_return_str}:\n{aio_body_indented}"
             wrapper_functions_code = aio_wrapper_method
         else:
             # Sync-only staticmethod: no async wrapper needed
