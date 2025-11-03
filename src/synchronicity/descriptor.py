@@ -141,10 +141,10 @@ class WrappedMethodDescriptor(typing.Generic[P, R, AIO_P, AIO_R]):
     @overload
     def __get__(self, wrapper_instance: T, owner: type) -> MethodWrapper[T, P, R, AIO_P, AIO_R]: ...
 
-    def __get__(self, wrapper_instance, owner) -> MethodWrapper[T, P, R, AIO_P, AIO_R] | typing.Self:
+    def __get__(self, wrapper_instance, owner):
         if wrapper_instance is None:
             # For class access, return self to allow descriptor access
-            return self  # type: ignore
+            return self
 
         # Create instance with wrapper_instance bound
         return MethodWrapper(wrapper_instance, self.sync_wrapper, self.aio_wrapper)
@@ -173,7 +173,7 @@ class WrappedClassMethodDescriptor(typing.Generic[P, R, AIO_P, AIO_R]):
     def __get__(
         self, wrapper_instance: typing.Any | None, owner: type
     ) -> ClassOrStaticMethodWrapper[P, R, AIO_P, AIO_R]:
-        return ClassOrStaticMethodWrapper(owner, self.sync_wrapper, self.aio_wrapper)  # type: ignore
+        return ClassOrStaticMethodWrapper(owner, self.sync_wrapper, self.aio_wrapper)
 
 
 class WrappedStaticMethodDescriptor(typing.Generic[P, R, AIO_P, AIO_R]):
@@ -197,7 +197,7 @@ class WrappedStaticMethodDescriptor(typing.Generic[P, R, AIO_P, AIO_R]):
     def __get__(self, wrapper_instance: typing.Any, owner: type) -> StaticMethodWrapper[P, R, AIO_P, AIO_R]: ...
 
     def __get__(self, wrapper_instance: typing.Any | None, owner: type) -> StaticMethodWrapper[P, R, AIO_P, AIO_R]:
-        return StaticMethodWrapper(owner, self.sync_wrapper, self.aio_wrapper)  # type: ignore
+        return StaticMethodWrapper(owner, self.sync_wrapper, self.aio_wrapper)
 
 
 class WrappedFunctionDescriptor(typing.Generic[P, R, AIO_P, AIO_R]):
