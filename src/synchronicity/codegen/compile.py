@@ -1078,6 +1078,7 @@ def compile_method_wrapper(
             aio_body_lines = aio_body_with_cls.split("\n")
             # Add 4 more spaces to each line (8 total for method body)
             aio_body_indented = "\n".join("        " + line if line.strip() else "" for line in aio_body_lines)
+            # Use type annotation for cls (pyright needs it, but use forward reference)
             aio_wrapper_method = (
                 f'    async def {aio_method_name}(cls: type["{class_name}"], {param_str}){async_return_str}:\n'
                 f"{aio_body_indented}"
@@ -1144,7 +1145,11 @@ def compile_method_wrapper(
     if aio_body is not None:
         # Async method: use descriptor decorator with async wrapper method
         # Reference the method directly (we're inside the class, so no need for class qualifier)
-        decorator_line = f"@{decorator_func}({aio_method_name})"
+        # For classmethods, stack @classmethod with @wrapped_classmethod
+        if method_type == "classmethod":
+            decorator_line = f"@{decorator_func}({aio_method_name})\n    @classmethod"
+        else:
+            decorator_line = f"@{decorator_func}({aio_method_name})"
         # Method body contains sync wrapper logic
         # For instance methods, need to adjust sync_method_body to work as method body
         # sync_method_body is indented with 4 spaces, method body needs 8 spaces
@@ -1193,8 +1198,17 @@ def compile_method_wrapper(
 
     # Build the function definition line
     if method_type in ("classmethod", "staticmethod"):
-        # Use dummy_param_str which includes cls for classmethods (for type checking only)
-        def_line = f"    def {method_name}({dummy_param_str}){sync_return_str}:"
+        # For classmethods, use plain cls (not cls: type["Class"]) since @classmethod handles binding
+        if method_type == "classmethod":
+            # Remove type annotation from cls parameter
+            if param_str:
+                plain_param_str = f"cls, {param_str}"
+            else:
+                plain_param_str = "cls"
+            def_line = f"    def {method_name}({plain_param_str}){sync_return_str}:"
+        else:
+            # Use dummy_param_str for staticmethods
+            def_line = f"    def {method_name}({dummy_param_str}){sync_return_str}:"
     else:
         # For instance methods, add self parameter to signature for dummy method
         # (param_str already excludes self since it was skipped, but body uses self)
