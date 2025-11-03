@@ -3,7 +3,7 @@ import pytest
 import typing
 from typing import Dict, List, Optional
 
-from synchronicity.codegen.compile import compile_class
+from synchronicity.codegen.compile import compile_class, compile_module
 
 
 # Test fixtures
@@ -294,3 +294,56 @@ def test_compile_class_method_with_varargs(test_synchronizer):
 
     # Verify the actual implementation methods use proper unpacking
     assert "impl_method(self._impl_instance, a, *args, b=b, **kwargs)" in generated_code
+
+
+def test_compile_module_multiple_classes_separation(test_synchronizer, simple_class, complex_class):
+    """Test that multiple classes in a module are separated by blank lines."""
+
+    # Create a mock Module object for testing
+    class MockModule:
+        def __init__(self, target_module, items):
+            self._target_module = target_module
+            self._items = items
+
+        @property
+        def target_module(self):
+            return self._target_module
+
+        @property
+        def _registered_classes(self):
+            return {k: v for k, v in self._items.items() if isinstance(k, type)}
+
+        def module_items(self):
+            return self._items
+
+    # Create module with both classes
+    module_items = {
+        simple_class: ("test_module", "TestClass"),
+        complex_class: ("test_module", "ComplexClass"),
+    }
+    mock_module = MockModule("test_module", module_items)
+
+    # Compile the module
+    generated_code = compile_module(mock_module, test_synchronizer, "test_synchronizer")
+
+    # Verify the code compiles
+    compile(generated_code, "<string>", "exec")
+
+    # Split by "class " to find all class declarations
+    import re
+
+    class_pattern = r"^class\s+\w+"
+    lines = generated_code.split("\n")
+    class_line_indices = [i for i, line in enumerate(lines) if re.match(class_pattern, line.strip())]
+
+    # Verify there are at least 2 classes
+    assert len(class_line_indices) >= 2, "Should have at least 2 classes"
+
+    # Check that each class (except the first) has at least 2 newlines before it
+    # (i.e., at least one blank line)
+    for idx in class_line_indices[1:]:  # Skip the first class
+        # Should have at least one blank line before the class
+        # Check that the previous line is empty (represents blank line from 2 newlines)
+        prev_line_idx = idx - 1
+        assert prev_line_idx >= 0, f"Class at line {idx + 1} should have a line before it"
+        assert lines[prev_line_idx].strip() == ""

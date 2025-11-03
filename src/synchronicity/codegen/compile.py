@@ -1058,8 +1058,17 @@ def compile_method_wrapper(
             # aio_body is indented with 4 spaces, needs 8 spaces for method body
             aio_body_with_self = aio_body.replace("wrapper_instance", "self")
             aio_body_lines = aio_body_with_self.split("\n")
-            # Add 4 more spaces to each line (8 total for method body)
-            aio_body_indented = "\n".join("        " + line if line.strip() else "" for line in aio_body_lines)
+            # Remove 4 spaces from start (base indent) and add 8 spaces, preserving relative indentation
+            aio_body_indented = "\n".join(
+                (
+                    "        " + line[4:]
+                    if line.strip() and len(line) > 4 and line.startswith("    ")
+                    else "        " + line.lstrip()
+                    if line.strip()
+                    else ""
+                )
+                for line in aio_body_lines
+            )
             aio_wrapper_method = (
                 f"    async def {aio_method_name}(self, {param_str}){async_return_str}:\n" f"{aio_body_indented}"
             )
@@ -1075,8 +1084,17 @@ def compile_method_wrapper(
             # aio_body is indented with 4 spaces, needs 8 spaces for method body
             aio_body_with_cls = aio_body.replace("wrapper_class", "cls")
             aio_body_lines = aio_body_with_cls.split("\n")
-            # Add 4 more spaces to each line (8 total for method body)
-            aio_body_indented = "\n".join("        " + line if line.strip() else "" for line in aio_body_lines)
+            # Remove 4 spaces from start (base indent) and add 8 spaces, preserving relative indentation
+            aio_body_indented = "\n".join(
+                (
+                    "        " + line[4:]
+                    if line.strip() and len(line) > 4 and line.startswith("    ")
+                    else "        " + line.lstrip()
+                    if line.strip()
+                    else ""
+                )
+                for line in aio_body_lines
+            )
             # Add @classmethod decorator to the async wrapper
             # No type annotation needed on cls - it's inferred from context
             aio_wrapper_method = (
@@ -1094,8 +1112,17 @@ def compile_method_wrapper(
             # Async staticmethod: generate async method (no self/cls)
             # aio_body is indented with 4 spaces, needs 8 spaces for method body
             aio_body_lines = aio_body.split("\n")
-            # Add 4 more spaces to each line (8 total for method body)
-            aio_body_indented = "\n".join("        " + line if line.strip() else "" for line in aio_body_lines)
+            # Remove 4 spaces from start (base indent) and add 8 spaces, preserving relative indentation
+            aio_body_indented = "\n".join(
+                (
+                    "        " + line[4:]
+                    if line.strip() and len(line) > 4 and line.startswith("    ")
+                    else "        " + line.lstrip()
+                    if line.strip()
+                    else ""
+                )
+                for line in aio_body_lines
+            )
             # Add @staticmethod decorator to the async wrapper
             aio_wrapper_method = (
                 f"    @staticmethod\n"
@@ -1334,8 +1361,8 @@ def compile_class(
 
     # Generate method wrapper classes and method code
     # Note: async wrapper methods are now generated inside the class, not as module-level functions
-    method_async_wrappers = []  # Collect async wrapper methods to add to class
-    method_definitions = []
+    # Pair async wrappers with their sync methods so they appear together
+    method_definitions_with_async = []
 
     # Collect helpers from all methods
     all_helpers_dict = {}
@@ -1378,19 +1405,16 @@ def compile_class(
             globals_dict=globals_dict,
             generic_typevars=generic_typevars if generic_typevars else None,
         )
+        # Combine async wrapper (if any) with sync method, placing async above sync
         if wrapper_functions_code:
-            # Async wrapper methods go inside the class, not as module-level functions
-            method_async_wrappers.append(wrapper_functions_code)
-        method_definitions.append(sync_method_code)
+            # Async wrapper methods go right above their sync methods
+            method_definitions_with_async.append(f"{wrapper_functions_code}\n\n{sync_method_code}")
+        else:
+            method_definitions_with_async.append(sync_method_code)
 
     # Generate helpers section for the class
     helpers_code = "\n".join(all_helpers_dict.values()) if all_helpers_dict else ""
     helpers_section = f"\n{helpers_code}\n" if helpers_code else ""
-
-    # Generate async wrapper methods section (methods inside the class)
-    async_wrappers_section = "\n".join(method_async_wrappers) if method_async_wrappers else ""
-    if async_wrappers_section:
-        async_wrappers_section = f"\n{async_wrappers_section}"
 
     # Get __init__ signature
     init_method = getattr(cls, "__init__", None)
@@ -1452,7 +1476,7 @@ def compile_class(
 
     # Generate the wrapper class
     properties_section = "\n\n".join(property_definitions) if property_definitions else ""
-    methods_section = "\n\n".join(method_definitions) if method_definitions else ""
+    methods_section = "\n\n".join(method_definitions_with_async) if method_definitions_with_async else ""
 
     # Generate _from_impl classmethod (only for root classes without wrapped bases)
     if not wrapped_bases:
@@ -1516,7 +1540,7 @@ def compile_class(
         self._impl_instance = {origin_module}.{cls.__name__}({init_call})"""
 
     wrapper_class_code = f"""{class_declaration}
-{class_attrs}{helpers_section}{async_wrappers_section}
+{class_attrs}{helpers_section}
 
 {init_method}
 
@@ -1720,8 +1744,10 @@ from synchronicity.synchronizer import get_synchronizer
         compiled_code.append("")  # Add blank line
 
     # Compile all classes first
-    for cls in classes:
+    for i, cls in enumerate(classes):
         code = compile_class(cls, module.target_module, synchronizer_name, synchronized_types)
+        if i > 0:  # Add blank line before each class except the first
+            compiled_code.append("")  # Add blank line (2 newlines when joined)
         compiled_code.append(code)
 
     # Then compile all functions
