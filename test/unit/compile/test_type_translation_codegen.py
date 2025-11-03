@@ -238,8 +238,8 @@ def test_tuple_of_generators():
 
     # Check async wrapper function uses async helpers
     assert (
-        'async def __tuple_generators_aio() -> "tuple[typing.AsyncGenerator[str, None], typing.AsyncGenerator[int, None]]":'
-        in compiled_code
+        "async def __tuple_generators_aio() -> "
+        '"tuple[typing.AsyncGenerator[str, None], typing.AsyncGenerator[int, None]]":' in compiled_code
     )
 
     # Verify the tuple wrapping expressions reference the helpers
