@@ -171,26 +171,13 @@ Examples:
 
     from .compile import compile_modules
 
-    # First pass: Normal imports to register wrapped items
-    for module_name in args.modules:
-        print(f"  Importing module: {module_name}", file=sys.stderr)
-        importlib.import_module(module_name)
-
-    # Second pass: Reload with TYPE_CHECKING=True to resolve forward references
-    # This creates new Module instances with reloaded class objects that have
-    # fully-evaluatable type annotations
-    original_type_checking = typing.TYPE_CHECKING
-    try:
-        typing.TYPE_CHECKING = True
-        for module_name in args.modules:
-            importlib.reload(sys.modules[module_name])
-    finally:
-        typing.TYPE_CHECKING = original_type_checking
-
-    # Collect Module objects after reload (so they have the correct class objects)
+    # Import modules to register wrapped items
     module_objects = []
     for module_name in args.modules:
-        imported_module = sys.modules[module_name]
+        print(f"  Importing module: {module_name}", file=sys.stderr)
+        imported_module = importlib.import_module(module_name)
+
+        # Collect Module objects from this module
         for attr_name in dir(imported_module):
             attr = getattr(imported_module, attr_name)
             if isinstance(attr, Module):

@@ -5,7 +5,7 @@ import typing
 from synchronicity import Module
 
 if typing.TYPE_CHECKING:
-    from ._a import A
+    import multifile_impl._a
 
 wrapper_module = Module("multifile.b")
 
@@ -22,7 +22,7 @@ class B:
 
 
 @wrapper_module.wrap_function
-async def get_a() -> "A":
+async def get_a() -> "multifile_impl._a.A":
     """Create and return an A instance."""
     from ._a import A
 

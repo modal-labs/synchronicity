@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+import sys
 import types
 import typing
 from typing import TYPE_CHECKING
@@ -475,8 +476,8 @@ def compile_function(
     origin_module = f.__module__
     current_target_module = target_module
 
-    # Resolve all type annotations
-    annotations = inspect.get_annotations(f, eval_str=True, globals=globals_dict)
+    # Resolve all type annotations (with fallback for TYPE_CHECKING imports)
+    annotations = _safe_get_annotations(f, globals_dict)
 
     # Get function signature
     sig = inspect.signature(f)
@@ -687,8 +688,8 @@ def compile_method_wrapper(
         - wrapper_functions_code: Generated wrapper functions
         - sync_method_code: The dummy method with descriptor decorator
     """
-    # Resolve all type annotations
-    annotations = inspect.get_annotations(method, eval_str=True, globals=globals_dict)
+    # Resolve all type annotations (with fallback for TYPE_CHECKING imports)
+    annotations = _safe_get_annotations(method, globals_dict)
 
     # Get method signature
     sig = inspect.signature(method)
@@ -1347,8 +1348,8 @@ def compile_class(
     class_annotations = cls.__annotations__ if hasattr(cls, "__annotations__") else {}
     for name, annotation in class_annotations.items():
         if not name.startswith("_"):
-            # Resolve forward references using inspect
-            annotations_resolved = inspect.get_annotations(cls, eval_str=True, globals=globals_dict)
+            # Resolve forward references using inspect (with fallback for TYPE_CHECKING imports)
+            annotations_resolved = _safe_get_annotations(cls, globals_dict)
             resolved_annotation = annotations_resolved.get(name, annotation)
             transformer = create_transformer(resolved_annotation, synchronized_types)
             attr_type = transformer.wrapped_type(synchronized_types, current_target_module)
@@ -1368,8 +1369,8 @@ def compile_class(
     all_helpers_dict = {}
 
     for method_name, method, method_type in methods:
-        # Get helpers for this method's return type
-        annotations = inspect.get_annotations(method, eval_str=True, globals=globals_dict)
+        # Get helpers for this method's return type (with fallback for TYPE_CHECKING imports)
+        annotations = _safe_get_annotations(method, globals_dict)
         sig = inspect.signature(method)
         return_annotation = annotations.get("return", sig.return_annotation)
         # Check if typing.Self is used
@@ -1420,7 +1421,7 @@ def compile_class(
     init_method = getattr(cls, "__init__", None)
     if init_method and init_method is not object.__init__:
         sig = inspect.signature(init_method)
-        init_annotations = inspect.get_annotations(init_method, eval_str=True, globals=globals_dict)
+        init_annotations = _safe_get_annotations(init_method, globals_dict)
 
         # Parse parameters (skip self)
         init_params = []
@@ -1558,6 +1559,51 @@ def compile_class(
     return "\n".join(all_code)
 
 
+def _safe_get_annotations(obj, globals_dict=None):
+    """
+    Safely get annotations, with fallback for forward references under TYPE_CHECKING.
+
+    For forward references that can't be resolved (NameError), we try to import the
+    module from fully qualified names (e.g., "my_mod.SomeType").
+    """
+    try:
+        return inspect.get_annotations(obj, eval_str=True, globals=globals_dict)
+    except NameError:
+        # Forward reference can't be resolved - try importing from qualified names
+        # Get raw string annotations
+        raw_annotations = inspect.get_annotations(obj, eval_str=False, globals=globals_dict)
+
+        # Build an extended globals dict with imports for qualified names
+        extended_globals = (globals_dict or {}).copy()
+
+        for key, annotation_str in raw_annotations.items():
+            if isinstance(annotation_str, str) and "." in annotation_str:
+                # Extract module path from qualified name (e.g., "my_mod.sub.SomeType" -> "my_mod.sub")
+                parts = annotation_str.split(".")
+                if len(parts) >= 2:
+                    # Import the full module path (all parts except the last, which is the class name)
+                    module_path = ".".join(parts[:-1])
+                    try:
+                        # Try to import the module
+                        import importlib
+
+                        importlib.import_module(module_path)
+                        # Add the top-level module to extended_globals
+                        # For "a.b.c.Class", add "a" -> sys.modules["a"]
+                        top_level_module = parts[0]
+                        if top_level_module not in extended_globals:
+                            extended_globals[top_level_module] = sys.modules.get(top_level_module)
+                    except ImportError:
+                        pass  # Skip if module can't be imported
+
+        # Try again with extended globals
+        try:
+            return inspect.get_annotations(obj, eval_str=True, globals=extended_globals)
+        except (NameError, AttributeError):
+            # Still can't resolve - return string annotations
+            return raw_annotations
+
+
 def _get_cross_module_imports(
     module_name: str,
     module_items: dict,
@@ -1580,7 +1626,7 @@ def _get_cross_module_imports(
     for obj in module_items.keys():
         # Get signature if it's a function or class with methods
         if isinstance(obj, types.FunctionType):
-            annotations = inspect.get_annotations(obj, eval_str=True)
+            annotations = _safe_get_annotations(obj)
             for annotation in annotations.values():
                 _check_annotation_for_cross_refs(annotation, module_name, synchronized_types, cross_module_refs)
         elif isinstance(obj, type):
@@ -1588,7 +1634,7 @@ def _get_cross_module_imports(
             for method_name, method in inspect.getmembers(obj, predicate=inspect.isfunction):
                 if method_name.startswith("_"):
                     continue
-                annotations = inspect.get_annotations(method, eval_str=True)
+                annotations = _safe_get_annotations(method)
                 for annotation in annotations.values():
                     _check_annotation_for_cross_refs(annotation, module_name, synchronized_types, cross_module_refs)
 
@@ -1695,7 +1741,7 @@ from synchronicity.synchronizer import get_synchronizer
 
     # Extract from standalone functions
     for func in functions:
-        annotations = inspect.get_annotations(func, eval_str=True)
+        annotations = _safe_get_annotations(func)
         func_typevars = _extract_typevars_from_function(func, annotations)
         module_typevars.update(func_typevars)
 
@@ -1704,7 +1750,7 @@ from synchronicity.synchronizer import get_synchronizer
         # Check if any methods use typing.Self
         for name, method in inspect.getmembers(cls, predicate=inspect.isfunction):
             if not name.startswith("_") and name in cls.__dict__:
-                annotations = inspect.get_annotations(method, eval_str=True)
+                annotations = _safe_get_annotations(method)
                 sig = inspect.signature(method)
                 return_annotation = annotations.get("return", sig.return_annotation)
                 has_self_in_return = _contains_self_type(return_annotation)
@@ -1725,7 +1771,7 @@ from synchronicity.synchronizer import get_synchronizer
         # Extract TypeVars from method signatures
         for name, method in inspect.getmembers(cls, predicate=inspect.isfunction):
             if not name.startswith("_"):
-                annotations = inspect.get_annotations(method, eval_str=True)
+                annotations = _safe_get_annotations(method)
                 method_typevars = _extract_typevars_from_function(method, annotations)
                 module_typevars.update(method_typevars)
 
@@ -1752,7 +1798,11 @@ from synchronicity.synchronizer import get_synchronizer
 
     # Then compile all functions
     for func in functions:
-        code = compile_function(func, module.target_module, synchronizer_name, synchronized_types)
+        # Use the current module's globals (from sys.modules) to get reloaded class objects
+        module_globals = sys.modules[func.__module__].__dict__ if func.__module__ in sys.modules else func.__globals__
+        code = compile_function(
+            func, module.target_module, synchronizer_name, synchronized_types, globals_dict=module_globals
+        )
         compiled_code.append(code)
         compiled_code.append("")  # Add blank line
 

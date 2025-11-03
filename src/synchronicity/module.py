@@ -39,16 +39,7 @@ class Module:
 
     Attributes:
         _target_module: The module name where wrapper code will be generated
-
-    Note:
-        Registration dicts are class-level to persist across module reloads, allowing
-        both old and new class objects to be registered (important for TYPE_CHECKING reloads).
     """
-
-    _target_module: str
-    # Class-level registries that persist across module reloads
-    _wrapped_classes: dict[type, tuple[str, str]] = {}
-    _wrapped_functions: dict[types.FunctionType, tuple[str, str]] = {}
 
     def __init__(self, target_module: Optional[str]):
         """Initialize a Module for wrapper registration.
@@ -65,7 +56,10 @@ class Module:
             # or suffixed with "_impl" -> default to output in same dir
             raise NotImplementedError("Auto module not implemented")
 
-        self._target_module = target_module
+        self._target_module: str = target_module
+        # Instance-level registries - each Module tracks its own wrapped items
+        self._wrapped_classes: dict[type, tuple[str, str]] = {}
+        self._wrapped_functions: dict[types.FunctionType, tuple[str, str]] = {}
 
     @property
     def target_module(self) -> str:
@@ -74,19 +68,13 @@ class Module:
 
     @property
     def _registered_classes(self) -> dict[type, tuple[str, str]]:
-        """Get registered classes for this module's target.
-
-        Filters the global registry to return only classes for this target module.
-        """
-        return {cls: info for cls, info in self._wrapped_classes.items() if info[0] == self._target_module}
+        """Get registered classes for this module."""
+        return self._wrapped_classes
 
     @property
     def _registered_functions(self) -> dict[types.FunctionType, tuple[str, str]]:
-        """Get registered functions for this module's target.
-
-        Filters the global registry to return only functions for this target module.
-        """
-        return {func: info for func, info in self._wrapped_functions.items() if info[0] == self._target_module}
+        """Get registered functions for this module."""
+        return self._wrapped_functions
 
     def module_items(self) -> dict[typing.Union[type, types.FunctionType], tuple[str, str]]:
         """Get all registered classes and functions with their target module and name.
@@ -94,28 +82,11 @@ class Module:
         Returns:
             Dict mapping registered items (classes or functions) to tuples of
             (target_module, name) for code generation.
-
-        Note:
-            If multiple objects (from different reload cycles) map to the same name,
-            only the most recent one is returned (deterministic via dict ordering).
         """
         result = {}
         result.update(self._registered_classes)
         result.update(self._registered_functions)
-
-        # Deduplicate by target name (keep most recent registration for each name)
-        # Build reverse mapping: (target_module, name) -> object
-        by_name: dict[tuple[str, str], typing.Union[type, types.FunctionType]] = {}
-        for obj, (target_mod, name) in result.items():
-            # Later registrations overwrite earlier ones (desired for reloads)
-            by_name[(target_mod, name)] = obj
-
-        # Rebuild result dict with only one object per name
-        deduped_result = {}
-        for (target_mod, name), obj in by_name.items():
-            deduped_result[obj] = (target_mod, name)
-
-        return deduped_result
+        return result
 
     def wrap_function(self, f: F) -> F:
         """Decorator to mark a function for wrapper generation.
@@ -128,10 +99,6 @@ class Module:
 
         Returns:
             The original function, unchanged.
-
-        Note:
-            If a function is registered multiple times (e.g., during module reloads),
-            all registrations map to the same target, so this is safe.
         """
         self._wrapped_functions[f] = (self._target_module, f.__name__)
         return f
@@ -147,10 +114,6 @@ class Module:
 
         Returns:
             The original class, unchanged.
-
-        Note:
-            If a class is registered multiple times (e.g., during module reloads),
-            all registrations map to the same target, so this is safe.
         """
         self._wrapped_classes[cls] = (self._target_module, cls.__name__)
         return cls
