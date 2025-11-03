@@ -8,9 +8,9 @@ from test.integration.test_utils import check_pyright
 
 def test_instance_method(generated_wrappers):
     """Test that instance methods still work."""
-    import test_support
+    import classmethod_staticmethod
 
-    obj = test_support.TestClass(42)
+    obj = classmethod_staticmethod.TestClass(42)
     result = obj.instance_method()
     assert result == 42
 
@@ -24,14 +24,14 @@ def test_instance_method(generated_wrappers):
 
 def test_async_classmethod(generated_wrappers):
     """Test async classmethod."""
-    import test_support
+    import classmethod_staticmethod
 
-    result = test_support.TestClass.async_classmethod(2)
+    result = classmethod_staticmethod.TestClass.async_classmethod(2)
     assert result == 84
 
     # Test async version
     async def test_async():
-        result = await test_support.TestClass.async_classmethod.aio(3)
+        result = await classmethod_staticmethod.TestClass.async_classmethod.aio(3)
         assert result == 126
 
     asyncio.run(test_async())
@@ -39,22 +39,22 @@ def test_async_classmethod(generated_wrappers):
 
 def test_sync_classmethod(generated_wrappers):
     """Test sync classmethod."""
-    import test_support
+    import classmethod_staticmethod
 
-    result = test_support.TestClass.sync_classmethod("test")
+    result = classmethod_staticmethod.TestClass.sync_classmethod("test")
     assert result == "sync_test"
 
 
 def test_async_staticmethod(generated_wrappers):
     """Test async staticmethod."""
-    import test_support
+    import classmethod_staticmethod
 
-    result = test_support.TestClass.async_staticmethod(10, 20)
+    result = classmethod_staticmethod.TestClass.async_staticmethod(10, 20)
     assert result == 30
 
     # Test async version
     async def test_async():
-        result = await test_support.TestClass.async_staticmethod.aio(15, 25)
+        result = await classmethod_staticmethod.TestClass.async_staticmethod.aio(15, 25)
         assert result == 40
 
     asyncio.run(test_async())
@@ -62,17 +62,17 @@ def test_async_staticmethod(generated_wrappers):
 
 def test_sync_staticmethod(generated_wrappers):
     """Test sync staticmethod."""
-    import test_support
+    import classmethod_staticmethod
 
-    result = test_support.TestClass.sync_staticmethod("hello")
+    result = classmethod_staticmethod.TestClass.sync_staticmethod("hello")
     assert result == "static_hello"
 
 
 def test_pyright_classmethod_staticmethod(generated_wrappers):
     """Test that generated classmethod and staticmethod code passes pyright."""
-    import test_support
+    import classmethod_staticmethod
 
-    check_pyright([Path(test_support.__file__)])
+    check_pyright([Path(classmethod_staticmethod.__file__)])
 
 
 def test_pyright_type_inference_classmethod_staticmethod(generated_wrappers, support_files):

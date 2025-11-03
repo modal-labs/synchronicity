@@ -4,7 +4,7 @@ import asyncio
 
 from synchronicity import Module
 
-wrapper_module = Module("test_support")
+wrapper_module = Module("classmethod_staticmethod")
 
 
 @wrapper_module.wrap_class
