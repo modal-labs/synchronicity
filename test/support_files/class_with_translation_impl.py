@@ -48,3 +48,9 @@ async def get_node_list(nodes: typing.List[Node]) -> typing.List[Node]:
 async def get_optional_node(node: typing.Optional[Node]) -> typing.Optional[Node]:
     """Process an optional node."""
     return node
+
+
+@wrapper_module.wrap_class
+class WrappedTypeInConstructor:
+    def __init__(self, node: Node):
+        assert isinstance(node, Node), "node should be unwrapped"

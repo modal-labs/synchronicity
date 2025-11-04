@@ -106,3 +106,9 @@ def test_pyright_keyword_arguments(generated_wrappers, support_files):
     assert 'Type of "result" is "tuple[Node, Node]"' in stdout, "Keyword call result should be typed"
 
     print("✓ Keyword arguments: Properly typed with full signature preservation")
+
+
+def test_type_in_constructor(generated_wrappers):
+    import class_with_translation
+
+    res = class_with_translation.WrappedTypeInConstructor(class_with_translation.Node(10))
