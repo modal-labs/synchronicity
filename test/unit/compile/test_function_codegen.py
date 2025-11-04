@@ -532,3 +532,36 @@ class TestSyncFunctions:
         assert "return impl_function(a, b, c, d)" in code
         # Verify generated code compiles
         compile(code, "<string>", "exec")
+
+    def test_compile_sync_function_returning_coroutine(self, test_synchronizer):
+        """Test that a sync function returning Coroutine is treated as async and gets @wrapped_function decorator."""
+        import typing
+        from typing import Coroutine
+
+        # A sync function (no async def) that returns a Coroutine type
+        def create_coroutine(x: int) -> Coroutine[typing.Any, typing.Any, str]: ...
+
+        code = compile_function(create_coroutine, "test_module", "test_synchronizer", test_synchronizer)
+        print(code)
+
+        assert "@wrapped_function" in code
+        assert "async def __create_coroutine_aio(x: int) -> str" in code
+        assert "def create_coroutine(x: int) -> str" in code
+        assert "_run_function_sync" in code
+        assert "_run_function_async" in code
+
+    def test_compile_sync_function_returning_awaitable(self, test_synchronizer):
+        """Test that a sync function returning Awaitable is treated as async and gets @wrapped_function decorator."""
+        from typing import Awaitable
+
+        # A sync function (no async def) that returns an Awaitable type
+        def create_awaitable(x: int) -> Awaitable[str]: ...
+
+        code = compile_function(create_awaitable, "test_module", "test_synchronizer", test_synchronizer)
+        print(code)
+
+        assert "@wrapped_function" in code
+        assert "async def __create_awaitable_aio(x: int) -> str" in code
+        assert "def create_awaitable(x: int) -> str" in code
+        assert "_run_function_sync" in code
+        assert "_run_function_async" in code

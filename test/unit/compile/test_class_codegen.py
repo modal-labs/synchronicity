@@ -371,3 +371,40 @@ def test_compile_class_constructor_signature_with_types():
     # Verify primitive types (name, count) are passed directly without unwrapping
     assert "name_impl" not in generated_code
     assert "count_impl" not in generated_code
+
+
+def test_compile_class_with_sync_method_returning_coroutine():
+    """Test that a sync method returning Coroutine is treated as async and gets proper wrapper."""
+    from typing import Coroutine
+
+    class TestClass:  # A sync method (no async def) that returns a Coroutine type
+        def create_coroutine(self, x: int) -> Coroutine[None, None, str]: ...
+
+    synchronized_types = {}
+    generated_code = compile_class(TestClass, "test_module", "test_synchronizer", synchronized_types)
+    print(generated_code)
+
+    assert "@wrapped_method" in generated_code
+    assert "def create_coroutine(self, x: int) -> str:" in generated_code
+    assert "async def __create_coroutine_aio(self, x: int) -> str:" in generated_code
+    assert "_run_function_sync" in generated_code, "Should use synchronizer for sync version"
+    assert "_run_function_async" in generated_code, "Should use synchronizer for async version"
+
+
+def test_compile_class_with_sync_method_returning_awaitable():
+    """Test that a sync method returning Awaitable is treated as async and gets proper wrapper."""
+    from typing import Awaitable
+
+    class TestClass:
+        # A sync method (no async def) that returns an Awaitable type
+        def create_awaitable(self, x: int) -> Awaitable[str]: ...
+
+    synchronized_types = {}
+    generated_code = compile_class(TestClass, "test_module", "test_synchronizer", synchronized_types)
+    print(generated_code)
+
+    assert "@wrapped_method" in generated_code
+    assert "def create_awaitable(self, x: int) -> str:" in generated_code
+    assert "async def __create_awaitable_aio(self, x: int) -> str:" in generated_code
+    assert "_run_function_sync" in generated_code, "Should use synchronizer for sync version"
+    assert "_run_function_async" in generated_code, "Should use synchronizer for async version"

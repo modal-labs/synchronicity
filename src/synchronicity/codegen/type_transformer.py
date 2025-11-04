@@ -639,6 +639,74 @@ class SyncGeneratorTransformer(TypeTransformer):
 GeneratorTransformer = AsyncGeneratorTransformer
 
 
+class CoroutineTransformer(TypeTransformer):
+    """Transformer for Coroutine[YieldType, SendType, ReturnType] types.
+
+    When a function returns Coroutine[Any, Any, T], the wrapper functions should
+    have return type T, since:
+    - The async wrapper is declared as `async def` which implicitly makes it awaitable
+    - The sync wrapper uses the synchronizer to unwrap and return T
+    """
+
+    def __init__(self, return_transformer: TypeTransformer):
+        """Initialize with the transformer for the return type (third type arg)."""
+        self.return_transformer = return_transformer
+
+    def wrapped_type(
+        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, is_async: bool = True
+    ) -> str:
+        """Return the unwrapped return type."""
+        return self.return_transformer.wrapped_type(synchronized_types, target_module, is_async)
+
+    def unwrap_expr(self, synchronized_types: dict[type, tuple[str, str]], var_name: str) -> str:
+        """No unwrapping needed - the coroutine itself is passed through."""
+        return var_name
+
+    def wrap_expr(
+        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, var_name: str, is_async: bool = True
+    ) -> str:
+        """No wrapping needed - the coroutine itself is passed through."""
+        return var_name
+
+    def needs_translation(self) -> bool:
+        """Coroutines don't need translation themselves, but their return type might."""
+        return False
+
+
+class AwaitableTransformer(TypeTransformer):
+    """Transformer for Awaitable[T] types.
+
+    When a function returns Awaitable[T], the wrapper functions should
+    have return type T, since:
+    - The async wrapper is declared as `async def` which implicitly makes it awaitable
+    - The sync wrapper uses the synchronizer to unwrap and return T
+    """
+
+    def __init__(self, return_transformer: TypeTransformer):
+        """Initialize with the transformer for the return type."""
+        self.return_transformer = return_transformer
+
+    def wrapped_type(
+        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, is_async: bool = True
+    ) -> str:
+        """Return the unwrapped return type."""
+        return self.return_transformer.wrapped_type(synchronized_types, target_module, is_async)
+
+    def unwrap_expr(self, synchronized_types: dict[type, tuple[str, str]], var_name: str) -> str:
+        """No unwrapping needed - the awaitable itself is passed through."""
+        return var_name
+
+    def wrap_expr(
+        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, var_name: str, is_async: bool = True
+    ) -> str:
+        """No wrapping needed - the awaitable itself is passed through."""
+        return var_name
+
+    def needs_translation(self) -> bool:
+        """Awaitables don't need translation themselves, but their return type might."""
+        return False
+
+
 def create_transformer(annotation, synchronized_types: dict[type, tuple[str, str]]) -> TypeTransformer:
     """Create a transformer from a type annotation.
 
@@ -749,6 +817,23 @@ def create_transformer(annotation, synchronized_types: dict[type, tuple[str, str
             if len(args) > 1:
                 send_type_str = _format_annotation_str(args[1])
             return AsyncGeneratorTransformer(yield_transformer, send_type_str=send_type_str)
+        else:
+            return IdentityTransformer(annotation)
+
+    # Coroutine[YieldType, SendType, ReturnType] - three type args, we want ReturnType
+    if origin is collections.abc.Coroutine:
+        if args and len(args) >= 3:
+            return_transformer = create_transformer(args[2], synchronized_types)
+            return CoroutineTransformer(return_transformer)
+        else:
+            # No type args or incomplete, treat as identity
+            return IdentityTransformer(annotation)
+
+    # Awaitable[T] - one type arg
+    if origin is collections.abc.Awaitable:
+        if args:
+            return_transformer = create_transformer(args[0], synchronized_types)
+            return AwaitableTransformer(return_transformer)
         else:
             return IdentityTransformer(annotation)
 

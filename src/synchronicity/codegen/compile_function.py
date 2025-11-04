@@ -12,7 +12,7 @@ from .compile_utils import (
     _parse_parameters_with_transformers,
     _safe_get_annotations,
 )
-from .signature_utils import is_async_generator
+from .signature_utils import is_async_generator, returns_awaitable
 from .type_transformer import create_transformer
 
 
@@ -65,7 +65,8 @@ def compile_function(
     is_async_gen = is_async_generator(f, return_annotation)
 
     # Check if it's an async function
-    is_async_func = inspect.iscoroutinefunction(f) or is_async_gen
+    # Include functions that return Coroutine/Awaitable types even if not declared as async
+    is_async_func = inspect.iscoroutinefunction(f) or is_async_gen or returns_awaitable(return_annotation)
 
     # For non-async functions, generate simple wrapper without @wrapped_function decorator
     if not is_async_func:
