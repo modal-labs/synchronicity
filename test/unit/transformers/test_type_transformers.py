@@ -472,6 +472,56 @@ class TestCreateTransformer:
         # Check needs translation
         assert transformer.needs_translation() is True
 
+    def test_create_coroutine_with_args(self, sync):
+        """Test Coroutine[Any, Any, str] creates CoroutineTransformer."""
+        from typing import Any, Coroutine
+
+        from synchronicity.codegen.type_transformer import CoroutineTransformer
+
+        transformer = create_transformer(Coroutine[Any, Any, str], sync)
+        assert isinstance(transformer, CoroutineTransformer)
+
+        # Check that return type is unwrapped to str
+        result = transformer.wrapped_type(sync, "test_module")
+        assert result == "str"
+
+    def test_create_coroutine_bare(self, sync):
+        """Test bare Coroutine (no type args) creates CoroutineTransformer with identity return."""
+        from typing import Coroutine
+
+        from synchronicity.codegen.type_transformer import CoroutineTransformer, IdentityTransformer
+
+        transformer = create_transformer(Coroutine, sync)
+        # Should be a CoroutineTransformer, not IdentityTransformer
+        assert isinstance(transformer, CoroutineTransformer)
+        # The return transformer should be identity since no type args
+        assert isinstance(transformer.return_transformer, IdentityTransformer)
+
+    def test_create_awaitable_with_args(self, sync):
+        """Test Awaitable[str] creates AwaitableTransformer."""
+        from typing import Awaitable
+
+        from synchronicity.codegen.type_transformer import AwaitableTransformer
+
+        transformer = create_transformer(Awaitable[str], sync)
+        assert isinstance(transformer, AwaitableTransformer)
+
+        # Check that return type is unwrapped to str
+        result = transformer.wrapped_type(sync, "test_module")
+        assert result == "str"
+
+    def test_create_awaitable_bare(self, sync):
+        """Test bare Awaitable (no type args) creates AwaitableTransformer with identity return."""
+        from typing import Awaitable
+
+        from synchronicity.codegen.type_transformer import AwaitableTransformer, IdentityTransformer
+
+        transformer = create_transformer(Awaitable, sync)
+        # Should be an AwaitableTransformer, not IdentityTransformer
+        assert isinstance(transformer, AwaitableTransformer)
+        # The return transformer should be identity since no type args
+        assert isinstance(transformer.return_transformer, IdentityTransformer)
+
 
 class TestComplexNestedTypes:
     """Test complex nested type transformations."""

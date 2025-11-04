@@ -826,8 +826,8 @@ def create_transformer(annotation, synchronized_types: dict[type, tuple[str, str
             return_transformer = create_transformer(args[2], synchronized_types)
             return CoroutineTransformer(return_transformer)
         else:
-            # No type args or incomplete, treat as identity
-            return IdentityTransformer(annotation)
+            # No type args or incomplete, use identity transformer for return type
+            return CoroutineTransformer(IdentityTransformer(typing.Any))
 
     # Awaitable[T] - one type arg
     if origin is collections.abc.Awaitable:
@@ -835,7 +835,8 @@ def create_transformer(annotation, synchronized_types: dict[type, tuple[str, str
             return_transformer = create_transformer(args[0], synchronized_types)
             return AwaitableTransformer(return_transformer)
         else:
-            return IdentityTransformer(annotation)
+            # No type args, use identity transformer for return type
+            return AwaitableTransformer(IdentityTransformer(typing.Any))
 
     # Fallback for unknown generic types
     return IdentityTransformer(annotation)

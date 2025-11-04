@@ -565,3 +565,19 @@ class TestSyncFunctions:
         assert "def create_awaitable(x: int) -> str" in code
         assert "_run_function_sync" in code
         assert "_run_function_async" in code
+
+    def test_compile_sync_function_returning_bare_awaitable(self, test_synchronizer):
+        """Test that a sync function returning Awaitable is treated as async and gets @wrapped_function decorator."""
+        from typing import Awaitable
+
+        # A sync function (no async def) that returns an Awaitable type
+        def create_awaitable(x: int) -> Awaitable: ...
+
+        code = compile_function(create_awaitable, "test_module", "test_synchronizer", test_synchronizer)
+        print(code)
+
+        assert "@wrapped_function" in code
+        assert "async def __create_awaitable_aio(x: int) -> typing.Any" in code
+        assert "def create_awaitable(x: int) -> typing.Any" in code
+        assert "_run_function_sync" in code
+        assert "_run_function_async" in code
