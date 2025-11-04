@@ -77,7 +77,7 @@ def compile_method_wrapper(
         synchronizer_name,
         current_target_module,
         skip_first_param=skip_first_param,
-        unwrap_indent="        ",
+        unwrap_indent="    ",
     )
 
     # For the wrapper's __call__ method, param_str is correct (cls/self already skipped).
@@ -144,7 +144,10 @@ def compile_method_wrapper(
             )
             # Add impl_method reference
             impl_method_line = f"    impl_method = {origin_module}.{class_name}.{method_name}"
-            sync_method_body = impl_method_line + "\n" + sync_method_body
+            if unwrap_code:
+                sync_method_body = impl_method_line + "\n" + unwrap_code + "\n" + sync_method_body
+            else:
+                sync_method_body = impl_method_line + "\n" + sync_method_body
             aio_body = None  # No async version for sync methods
         elif is_async_gen:
             # For async generator instance methods
@@ -153,8 +156,9 @@ def compile_method_wrapper(
             # Replace self with wrapper_instance for async wrapper function
             wrap_expr = wrap_expr_raw.replace("self.", "wrapper_instance.")
             impl_method_line = f"impl_method = {origin_module}.{class_name}.{method_name}"
+            unwrap_lines = f"\n{unwrap_code}\n" if unwrap_code else "\n"
             aio_body = (
-                f"    {impl_method_line}\n"
+                f"    {impl_method_line}{unwrap_lines}"
                 f"    gen = {gen_call}\n"
                 f"    _wrapped = {wrap_expr}\n"
                 f"    _sent = None\n"
@@ -175,7 +179,12 @@ def compile_method_wrapper(
             # Replace self with self for sync method (will be replaced later when putting in method body)
             sync_wrap_expr = sync_wrap_expr_raw
             impl_method_line_sync = f"    {impl_method_line}"
-            sync_method_body = f"{impl_method_line_sync}\n    gen = {gen_call}\n    yield from {sync_wrap_expr}"
+            if unwrap_code:
+                sync_method_body = (
+                    f"{impl_method_line_sync}\n{unwrap_code}\n" f"    gen = {gen_call}\n    yield from {sync_wrap_expr}"
+                )
+            else:
+                sync_method_body = f"{impl_method_line_sync}\n    gen = {gen_call}\n    yield from {sync_wrap_expr}"
         else:
             # For regular async instance methods - need synchronizer from wrapper_instance
             impl_method_line = f"    impl_method = {origin_module}.{class_name}.{method_name}"
@@ -191,7 +200,10 @@ def compile_method_wrapper(
                 indent="    ",
                 is_async=True,
             )
-            aio_body = impl_method_line + "\n" + aio_body
+            if unwrap_code:
+                aio_body = impl_method_line + "\n" + unwrap_code + "\n" + aio_body
+            else:
+                aio_body = impl_method_line + "\n" + aio_body
             sync_method_body = _build_call_with_wrap(
                 sync_call_expr,
                 return_transformer,
@@ -201,7 +213,10 @@ def compile_method_wrapper(
                 indent="    ",
                 is_async=False,
             )
-            sync_method_body = impl_method_line + "\n" + sync_method_body
+            if unwrap_code:
+                sync_method_body = impl_method_line + "\n" + unwrap_code + "\n" + sync_method_body
+            else:
+                sync_method_body = impl_method_line + "\n" + sync_method_body
     elif method_type == "classmethod":
         # For classmethod wrapper functions
         if not is_async:
@@ -216,6 +231,8 @@ def compile_method_wrapper(
                 indent="    ",
                 is_async=False,
             )
+            if unwrap_code:
+                sync_method_body = unwrap_code + "\n" + sync_method_body
             aio_body = None
         elif is_async_gen:
             # Async generator classmethod
@@ -223,8 +240,9 @@ def compile_method_wrapper(
             wrap_expr_raw = return_transformer.wrap_expr(synchronized_types, current_target_module, "gen")
             # Replace self with wrapper_class for async wrapper function
             wrap_expr = wrap_expr_raw.replace("self.", "wrapper_class.")
+            unwrap_lines = f"{unwrap_code}\n    " if unwrap_code else ""
             aio_body = (
-                f"    gen = {gen_call}\n"
+                f"    {unwrap_lines}gen = {gen_call}\n"
                 f"    _wrapped = {wrap_expr}\n"
                 f"    _sent = None\n"
                 f"    try:\n"
@@ -242,7 +260,10 @@ def compile_method_wrapper(
             )
             # Will be replaced with cls when putting in method body
             sync_wrap_expr = sync_wrap_expr_raw
-            sync_method_body = f"    gen = {gen_call}\n    yield from {sync_wrap_expr}"
+            if unwrap_code:
+                sync_method_body = f"{unwrap_code}\n    gen = {gen_call}\n    yield from {sync_wrap_expr}"
+            else:
+                sync_method_body = f"    gen = {gen_call}\n    yield from {sync_wrap_expr}"
         else:
             # Regular async classmethod - use wrapper_class._synchronizer
             aio_call_expr = f"await wrapper_class._synchronizer._run_function_async({call_expr_prefix})"
@@ -257,6 +278,8 @@ def compile_method_wrapper(
                 indent="    ",
                 is_async=True,
             )
+            if unwrap_code:
+                aio_body = unwrap_code + "\n" + aio_body
             sync_method_body = _build_call_with_wrap(
                 sync_call_expr,
                 return_transformer,
@@ -266,6 +289,8 @@ def compile_method_wrapper(
                 indent="    ",
                 is_async=False,
             )
+            if unwrap_code:
+                sync_method_body = unwrap_code + "\n" + sync_method_body
     elif method_type == "staticmethod":
         # For staticmethod wrapper functions
         if not is_async:
@@ -280,6 +305,8 @@ def compile_method_wrapper(
                 indent="    ",
                 is_async=False,
             )
+            if unwrap_code:
+                sync_method_body = unwrap_code + "\n" + sync_method_body
             aio_body = None
         elif is_async_gen:
             # Async generator staticmethod
@@ -300,8 +327,9 @@ def compile_method_wrapper(
                 wrap_expr = wrap_expr_raw.replace("self.", f"{class_name}()._").replace("_(", "(")
             else:
                 wrap_expr = wrap_expr_raw
+            unwrap_lines = f"{unwrap_code}\n    " if unwrap_code else ""
             aio_body = (
-                f"    gen = {gen_call}\n"
+                f"    {unwrap_lines}gen = {gen_call}\n"
                 f"    _wrapped = {wrap_expr}\n"
                 f"    _sent = None\n"
                 f"    try:\n"
@@ -322,7 +350,10 @@ def compile_method_wrapper(
                 sync_wrap_expr = sync_wrap_expr_raw.replace("self.", f"{class_name}()._").replace("_(", "(")
             else:
                 sync_wrap_expr = sync_wrap_expr_raw
-            sync_method_body = f"    gen = {gen_call}\n    yield from {sync_wrap_expr}"
+            if unwrap_code:
+                sync_method_body = f"{unwrap_code}\n    gen = {gen_call}\n    yield from {sync_wrap_expr}"
+            else:
+                sync_method_body = f"    gen = {gen_call}\n    yield from {sync_wrap_expr}"
         else:
             # Regular async staticmethod - use get_synchronizer directly
             aio_call_expr = f"await get_synchronizer('{synchronizer_name}')._run_function_async({call_expr_prefix})"
@@ -337,6 +368,8 @@ def compile_method_wrapper(
                 indent="    ",
                 is_async=True,
             )
+            if unwrap_code:
+                aio_body = unwrap_code + "\n" + aio_body
             sync_method_body = _build_call_with_wrap(
                 sync_call_expr,
                 return_transformer,
@@ -346,6 +379,8 @@ def compile_method_wrapper(
                 indent="    ",
                 is_async=False,
             )
+            if unwrap_code:
+                sync_method_body = unwrap_code + "\n" + sync_method_body
 
     # Generate async wrapper methods inside the class (not module-level functions)
     # This allows them to use Self and class generics properly
@@ -723,35 +758,20 @@ def compile_class(
         sig = inspect.signature(init_method)
         init_annotations = _safe_get_annotations(init_method, globals_dict)
 
-        # Parse parameters (skip self)
-        init_params = []
-        init_call_args = []
-        for name, param in sig.parameters.items():
-            if name == "self":
-                continue
-
-            # Build parameter with type annotation if available
-            param_annotation = init_annotations.get(name, param.annotation)
-            if param_annotation != param.empty:
-                transformer = create_transformer(param_annotation, synchronized_types)
-                type_str = transformer.wrapped_type(synchronized_types, current_target_module)
-                param_str = f"{name}: {type_str}"
-            else:
-                param_str = name
-
-            # Add default value if present
-            if param.default is not param.empty:
-                default_val = repr(param.default)
-                param_str += f" = {default_val}"
-
-            init_params.append(param_str)
-            init_call_args.append(f"{name}={name}")
-
-        init_signature = ", ".join(init_params)
-        init_call = ", ".join(init_call_args)
+        # Use _parse_parameters_with_transformers to handle unwrapping
+        init_signature, init_call, init_unwrap_code = _parse_parameters_with_transformers(
+            sig,
+            init_annotations,
+            synchronized_types,
+            synchronizer_name,
+            current_target_module,
+            skip_first_param=True,  # Skip 'self'
+            unwrap_indent="        ",  # Indent for __init__ body
+        )
     else:
         init_signature = "*args, **kwargs"
         init_call = "*args, **kwargs"
+        init_unwrap_code = ""
 
     # Generate property definitions for attributes
     property_definitions = []
@@ -832,12 +852,24 @@ def compile_class(
 
     # Generate __init__ method (call super if there are wrapped bases)
     if wrapped_bases:
-        init_method = f"""    def __init__(self, {init_signature}):
+        if init_unwrap_code:
+            init_method = f"""    def __init__(self, {init_signature}):
+{init_unwrap_code}
+        super().__init__({init_call})
+        # Update to more specific derived type
+        self._impl_instance = {origin_module}.{cls.__name__}({init_call})"""
+        else:
+            init_method = f"""    def __init__(self, {init_signature}):
         super().__init__({init_call})
         # Update to more specific derived type
         self._impl_instance = {origin_module}.{cls.__name__}({init_call})"""
     else:
-        init_method = f"""    def __init__(self, {init_signature}):
+        if init_unwrap_code:
+            init_method = f"""    def __init__(self, {init_signature}):
+{init_unwrap_code}
+        self._impl_instance = {origin_module}.{cls.__name__}({init_call})"""
+        else:
+            init_method = f"""    def __init__(self, {init_signature}):
         self._impl_instance = {origin_module}.{cls.__name__}({init_call})"""
 
     wrapper_class_code = f"""{class_declaration}

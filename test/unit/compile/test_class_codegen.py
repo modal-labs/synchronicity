@@ -332,3 +332,42 @@ def test_compile_module_multiple_classes_separation(simple_class, complex_class)
         prev_line_idx = idx - 1
         assert prev_line_idx >= 0, f"Class at line {idx + 1} should have a line before it"
         assert lines[prev_line_idx].strip() == ""
+
+
+def test_compile_class_constructor_signature_with_types():
+    """Test that constructor signature is preserved with proper type annotations and unwrapping."""
+
+    # Create a wrapped class to use as a parameter type
+    class Node:
+        def __init__(self, value: int):
+            self.value = value
+
+    # Create a class that takes a wrapped type in its constructor
+    class Container:
+        def __init__(self, node: Node, name: str, count: int = 5):
+            self.node = node
+            self.name = name
+            self.count = count
+
+    synchronized_types = {
+        Node: ("test_module", "Node"),
+        Container: ("test_module", "Container"),
+    }
+
+    generated_code = compile_class(Container, "test_module", "test_synchronizer", synchronized_types)
+
+    # Verify the generated code compiles
+    compile(generated_code, "<string>", "exec")
+
+    # Check that the constructor signature preserves the wrapper type (Node, not Node._impl_instance)
+    assert "def __init__(self, node: Node, name: str, count: int = 5):" in generated_code
+
+    # Check that the wrapped parameter is unwrapped before passing to impl constructor
+    assert "node_impl = node._impl_instance" in generated_code
+
+    # Check that the impl constructor call uses the unwrapped parameter
+    assert f"self._impl_instance = {Container.__module__}.Container(node_impl, name, count)" in generated_code
+
+    # Verify primitive types (name, count) are passed directly without unwrapping
+    assert "name_impl" not in generated_code
+    assert "count_impl" not in generated_code
