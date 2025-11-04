@@ -1,0 +1,11 @@
+[settings]
+python.uv_venv_auto = true
+
+[tools]
+python = "3.13"
+ruff = "latest"
+uv = "latest"
+
+[env]
+PYTHONPATH = "generated:test/support_files"
+
