@@ -50,21 +50,22 @@ def generated_wrappers():
         # List all modules we want to compile
         module_args = []
         module_specs = [
-            ("simple_function_impl", "simple_function"),
-            ("simple_class_impl", "simple_class"),
-            ("class_with_translation_impl", "class_with_translation"),
-            ("class_with_inheritance_impl", "class_with_inheritance"),
-            ("generic_class_impl", "generic_class"),
-            ("event_loop_check_impl", "event_loop_check"),
-            ("nested_generators_impl", "nested_generators"),
-            ("two_way_generator_impl", "two_way_generator"),
-            ("functions_with_typevars_impl", "functions_with_typevars"),
-            ("multifile_impl._a", "multifile.a"),
-            ("multifile_impl._b", "multifile.b"),
-            ("classmethod_staticmethod_impl", "classmethod_staticmethod"),
+            "simple_function_impl",
+            "simple_class_impl",
+            "class_with_translation_impl",
+            "class_with_inheritance_impl",
+            "generic_class_impl",
+            "event_loop_check_impl",
+            "nested_generators_impl",
+            "two_way_generator_impl",
+            "functions_with_typevars_impl",
+            "multifile_impl._a",
+            "multifile_impl._b",
+            "classmethod_staticmethod_impl",
+            "custom_iterators_impl",
         ]
 
-        for module_name, _ in module_specs:
+        for module_name in module_specs:
             module_args.extend(["-m", module_name])
 
         # Run CLI to generate files
