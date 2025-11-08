@@ -358,6 +358,20 @@ class TestAsyncGenerators:
             ' -> "typing.AsyncGenerator[list[Person]]"' in generated_code
         ), "Async version should quote entire AsyncGenerator type when yield type contains wrapped types"
 
+    def test_declared_bare_iterator(self):
+        """Test that a generator function annotated as AsyncIterator is treated as AsyncGenerator."""
+
+        async def gen() -> typing.AsyncIterator:
+            yield 5
+            yield 2
+
+        src = compile_function(gen, "test_module", "s", {})
+        print(src)
+        # Since this is actually a generator (has yield), it should be treated as AsyncGenerator
+        assert 'async def __gen_aio() -> "typing.AsyncGenerator[typing.Any]"' in src
+        assert "@wrapped_function" in src
+        assert 'def gen() -> "typing.Generator[typing.Any, None, None]"' in src
+
 
 class TestSyncFunctions:
     """Tests for synchronous (non-async) function compilation."""

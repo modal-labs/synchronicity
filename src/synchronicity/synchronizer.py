@@ -292,3 +292,37 @@ class Synchronizer:
         finally:
             # Ensure the underlying generator is properly closed
             await gen.aclose()
+
+    def _run_iterator_sync(self, async_iter):
+        """Run an async iterator in sync mode.
+
+        Unlike generators, iterators don't have asend()/aclose(), just __aiter__() and __anext__().
+        This method simply iterates using anext() without send() support.
+        """
+        try:
+            while True:
+                try:
+                    value = self._run_function_sync(async_iter.__anext__())
+                except StopAsyncIteration:
+                    break
+                yield value
+        finally:
+            # Iterators don't have aclose(), so no cleanup needed
+            pass
+
+    async def _run_iterator_async(self, async_iter):
+        """Run an async iterator in async mode.
+
+        Unlike generators, iterators don't have asend()/aclose(), just __aiter__() and __anext__().
+        This method simply iterates using anext() without send() support.
+        """
+        try:
+            while True:
+                try:
+                    value = await self._run_function_async(async_iter.__anext__())
+                except StopAsyncIteration:
+                    break
+                yield value
+        finally:
+            # Iterators don't have aclose(), so no cleanup needed
+            pass

@@ -408,3 +408,42 @@ def test_compile_class_with_sync_method_returning_awaitable():
     assert "async def __create_awaitable_aio(self, x: int) -> str:" in generated_code
     assert "_run_function_sync" in generated_code, "Should use synchronizer for sync version"
     assert "_run_function_async" in generated_code, "Should use synchronizer for async version"
+
+
+def test_compile_class_with_aiter_has_typed_iter():
+    """Test that classes with __aiter__ generate properly typed __iter__ methods."""
+
+    class AsyncIterableClass:
+        def __aiter__(self) -> typing.AsyncIterator[str]: ...
+
+    synchronized_types = {}
+    generated_code = compile_class(AsyncIterableClass, "test_module", "test_synchronizer", synchronized_types)
+    print(generated_code)
+
+    # Should have typed __iter__ that returns Iterator[str]
+    assert "def __iter__(self) -> typing.Iterator[str]:" in generated_code
+    # Should have typed __aiter__ that returns AsyncIterator[str]
+    assert "def __aiter__(self) -> typing.AsyncIterator[str]:" in generated_code
+
+
+def test_compile_class_with_anext_has_typed_next():
+    """Test that classes with __anext__ generate properly typed __next__ and __anext__ methods."""
+
+    class AsyncIteratorClass:
+        def __aiter__(self) -> typing.Self:
+            return self
+
+        async def __anext__(self) -> int: ...
+
+    synchronized_types = {}
+    generated_code = compile_class(AsyncIteratorClass, "test_module", "test_synchronizer", synchronized_types)
+    print(generated_code)
+
+    # Should have typed __next__ that returns int
+    assert "def __next__(self) -> int:" in generated_code
+    # Should have typed __anext__ that returns int
+    assert "async def __anext__(self) -> int:" in generated_code
+    # Should have typed __iter__ that returns Iterator[int]
+    assert "def __iter__(self) -> typing.Iterator[int]:" in generated_code
+    # Should have __aiter__ that returns self
+    assert "def __aiter__(self) -> typing.AsyncIterator[int]:" in generated_code

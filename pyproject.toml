@@ -41,6 +41,7 @@ exclude = [
 
 [dependency-groups]
 dev = [
+    "mypy>=1.16.1",
     "pre-commit>=3.5.0",
     "pyright>=1.1.406",
     {include-group = "lint"},

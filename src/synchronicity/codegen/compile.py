@@ -276,6 +276,7 @@ def compile_module(
 
 {imports}
 
+import synchronicity.types
 from synchronicity.descriptor import (
     wrapped_classmethod,
     wrapped_function,

@@ -1,5 +1,7 @@
 import pytest
 
+from .test_utils import check_pyright
+
 
 @pytest.mark.usefixtures("generated_wrappers")
 def test_usage_sync():
@@ -28,5 +30,10 @@ async def test_usage_async():
         print(i)
 
     iterable_instance = custom_iterators.CustomAsyncIterable()
-    async for i in iterable_instance():
+    async for i in iterable_instance:
         print(i)
+
+
+@pytest.mark.usefixtures("generated_wrappers")
+def test_pyright_type_safety(support_files):
+    check_pyright([support_files / "custom_iterators_typecheck.py"])

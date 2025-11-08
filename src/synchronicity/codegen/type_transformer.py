@@ -639,6 +639,181 @@ class SyncGeneratorTransformer(TypeTransformer):
 GeneratorTransformer = AsyncGeneratorTransformer
 
 
+class AsyncIteratorTransformer(TypeTransformer):
+    """Transformer for AsyncIterator types (not generators).
+
+    AsyncIterator is more general than AsyncGenerator - it only has __aiter__() and __anext__(),
+    not asend()/aclose(). This transformer handles iterators that aren't generators.
+    """
+
+    def __init__(self, item_transformer: TypeTransformer):
+        self.item_transformer = item_transformer
+
+    def wrapped_type(
+        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, is_async: bool = True
+    ) -> str:
+        """Return SyncOrAsyncIterator[T] - works in both sync and async contexts."""
+        item_type_str = self.item_transformer.wrapped_type(synchronized_types, target_module, is_async)
+        return f"synchronicity.types.SyncOrAsyncIterator[{item_type_str}]"
+
+    def unwrap_expr(self, synchronized_types: dict[type, tuple[str, str]], var_name: str) -> str:
+        """Iterators don't unwrap at the parameter level."""
+        return var_name
+
+    def wrap_expr(
+        self,
+        synchronized_types: dict[type, tuple[str, str]],
+        target_module: str,
+        var_name: str,
+        is_async: bool = True,
+    ) -> str:
+        """Return expression that creates a SyncOrAsyncIterator wrapping an async iterator."""
+        synchronizer_name = "s"  # Default synchronizer name
+
+        if not self.item_transformer.needs_translation():
+            # Items don't need wrapping
+            return f"synchronicity.types.SyncOrAsyncIterator({var_name}, " f"get_synchronizer('{synchronizer_name}'))"
+
+        # Items need wrapping - create a wrapper function
+        item_wrap_expr = self.item_transformer.wrap_expr(synchronized_types, target_module, "_item", is_async=True)
+        # Remove "self." prefix if present (for module-level functions)
+        item_wrap_expr = item_wrap_expr.replace("self.", "")
+
+        helper_name = self._get_helper_name(synchronized_types, target_module)
+        return (
+            f"synchronicity.types.SyncOrAsyncIterator({var_name}, "
+            f"get_synchronizer('{synchronizer_name}'), item_wrapper={helper_name})"
+        )
+
+    def needs_translation(self) -> bool:
+        """AsyncIterators ALWAYS need translation to convert from async to sync."""
+        return True
+
+    def _get_helper_name(self, synchronized_types: dict[type, tuple[str, str]], target_module: str) -> str:
+        """Generate a unique helper function name for this async iterator wrapper."""
+        item_type_str = self.item_transformer.wrapped_type(synchronized_types, target_module)
+        sanitized = item_type_str.replace("[", "_").replace("]", "").replace(".", "_").replace(", ", "_")
+        return f"_wrap_async_iter_{sanitized}"
+
+    def get_wrapper_helpers(
+        self,
+        synchronized_types: dict[type, tuple[str, str]],
+        target_module: str,
+        synchronizer_name: str,
+        indent: str = "    ",
+    ) -> dict[str, str]:
+        """Generate helper functions for wrapping iterator items if needed."""
+        helpers = {}
+
+        # First, collect helpers from item transformer (for nested cases)
+        helpers.update(
+            self.item_transformer.get_wrapper_helpers(synchronized_types, target_module, synchronizer_name, indent)
+        )
+
+        if self.item_transformer.needs_translation():
+            # Generate a simple wrapper function for items
+            helper_name = self._get_helper_name(synchronized_types, target_module)
+            wrap_expr = self.item_transformer.wrap_expr(synchronized_types, target_module, "_item", is_async=True)
+            # Remove "self." prefix for module-level functions
+            wrap_expr = wrap_expr.replace("self.", "")
+
+            # Generate a lambda-style wrapper function
+            helper_func = f"""def {helper_name}(_item):
+    return {wrap_expr}"""
+
+            helpers[helper_name] = helper_func
+
+        return helpers
+
+
+class AsyncIterableTransformer(TypeTransformer):
+    """Transformer for AsyncIterable[T] types.
+
+    AsyncIterable objects have an __aiter__() method that returns an AsyncIterator.
+    For sync wrappers, we convert to regular Iterable[T].
+    For async wrappers, we keep AsyncIterable[T].
+    """
+
+    def __init__(self, item_transformer: TypeTransformer):
+        """Initialize with the transformer for the item type."""
+        self.item_transformer = item_transformer
+
+    def wrapped_type(
+        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, is_async: bool = True
+    ) -> str:
+        """Return SyncOrAsyncIterable[T] - works in both sync and async contexts."""
+        item_type_str = self.item_transformer.wrapped_type(synchronized_types, target_module, is_async)
+        return f"synchronicity.types.SyncOrAsyncIterable[{item_type_str}]"
+
+    def unwrap_expr(self, synchronized_types: dict[type, tuple[str, str]], var_name: str) -> str:
+        """No unwrapping needed for async iterables."""
+        return var_name
+
+    def wrap_expr(
+        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, var_name: str, is_async: bool = True
+    ) -> str:
+        """Return expression that creates a SyncOrAsyncIterable wrapping an async iterable."""
+        synchronizer_name = "s"  # Default synchronizer name
+
+        if not self.item_transformer.needs_translation():
+            # Items don't need wrapping
+            return f"synchronicity.types.SyncOrAsyncIterable({var_name}, " f"get_synchronizer('{synchronizer_name}'))"
+
+        # Items need wrapping - create a wrapper function
+        helper_suffix = (
+            self.item_transformer.wrapped_type(synchronized_types, target_module, is_async)
+            .replace(".", "_")
+            .replace("[", "_")
+            .replace("]", "")
+            .replace(", ", "_")
+            .replace(" ", "")
+        )
+        helper_name = f"_wrap_async_iterable_item_{helper_suffix}"
+        return (
+            f"synchronicity.types.SyncOrAsyncIterable({var_name}, "
+            f"get_synchronizer('{synchronizer_name}'), item_wrapper={helper_name})"
+        )
+
+    def needs_translation(self) -> bool:
+        """AsyncIterable always needs translation to provide sync/async versions."""
+        return True
+
+    def get_wrapper_helpers(
+        self,
+        synchronized_types: dict[type, tuple[str, str]],
+        target_module: str,
+        synchronizer_name: str,
+        indent: str = "    ",
+    ) -> dict[str, str]:
+        """Generate helper functions for wrapping iterable items if needed."""
+        helpers = {}
+
+        # First, collect helpers from item transformer (for nested cases)
+        helpers.update(
+            self.item_transformer.get_wrapper_helpers(synchronized_types, target_module, synchronizer_name, indent)
+        )
+
+        if self.item_transformer.needs_translation():
+            # Generate a simple wrapper function for items
+            wrapped_type = self.item_transformer.wrapped_type(synchronized_types, target_module, is_async=True)
+            helper_suffix = (
+                wrapped_type.replace(".", "_").replace("[", "_").replace("]", "").replace(", ", "_").replace(" ", "")
+            )
+            helper_name = f"_wrap_async_iterable_item_{helper_suffix}"
+
+            item_wrap_expr = self.item_transformer.wrap_expr(synchronized_types, target_module, "_item", is_async=True)
+            # Remove "self." prefix for module-level functions
+            item_wrap_expr = item_wrap_expr.replace("self.", "")
+
+            # Generate a lambda-style wrapper function
+            helper_func = f"""def {helper_name}(_item):
+    return {item_wrap_expr}"""
+
+            helpers[helper_name] = helper_func
+
+        return helpers
+
+
 class CoroutineTransformer(TypeTransformer):
     """Transformer for Coroutine[YieldType, SendType, ReturnType] types.
 
@@ -800,13 +975,23 @@ def create_transformer(annotation, synchronized_types: dict[type, tuple[str, str
             return IdentityTransformer(annotation)
 
     # AsyncIterator[T] - single type arg, no send type
+    # Note: AsyncIterator is NOT the same as AsyncGenerator - iterators don't have asend()/aclose()
     if origin is collections.abc.AsyncIterator:
         if args:
-            yield_transformer = create_transformer(args[0], synchronized_types)
-            # AsyncIterator has no send type in the annotation, omit it from output
-            return AsyncGeneratorTransformer(yield_transformer, send_type_str=None)
+            item_transformer = create_transformer(args[0], synchronized_types)
+            return AsyncIteratorTransformer(item_transformer)
         else:
-            return IdentityTransformer(annotation)
+            # Bare AsyncIterator with no type args
+            return AsyncIteratorTransformer(IdentityTransformer(typing.Any))
+
+    # AsyncIterable[T] - has __aiter__() that returns AsyncIterator[T]
+    if origin is collections.abc.AsyncIterable:
+        if args:
+            item_transformer = create_transformer(args[0], synchronized_types)
+            return AsyncIterableTransformer(item_transformer)
+        else:
+            # Bare AsyncIterable with no type args
+            return AsyncIterableTransformer(IdentityTransformer(typing.Any))
 
     # AsyncGenerator[T, Send] - two type args
     if origin is collections.abc.AsyncGenerator:
