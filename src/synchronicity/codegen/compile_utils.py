@@ -2,12 +2,50 @@
 
 from __future__ import annotations
 
+import collections.abc
 import inspect
 import sys
 import types
 import typing
 
+from .signature_utils import is_async_generator
 from .type_transformer import create_transformer
+
+
+def _normalize_async_annotation(func, return_annotation):
+    """
+    Normalize async function annotations to Awaitable[T] for uniform handling.
+
+    Converts `async def f() -> T` into `def f() -> Awaitable[T]` at the annotation level,
+    allowing the type transformer system to handle async/sync generation uniformly.
+
+    Args:
+        func: The function or method object to check
+        return_annotation: The return type annotation (may be inspect.Signature.empty)
+
+    Returns:
+        The normalized annotation (wrapped in Awaitable if async, otherwise unchanged)
+
+    Note:
+        Async generators are NOT wrapped in Awaitable - they remain as AsyncGenerator[T].
+    """
+    # Check if it's an async generator - these stay as-is
+    # Async generators are special: they're defined with `async def` but they're NOT awaitable
+    if is_async_generator(func, return_annotation):
+        return return_annotation
+
+    # Check if it's an async function (async def)
+    if inspect.iscoroutinefunction(func):
+        # Wrap in Awaitable[T]
+        if return_annotation == inspect.Signature.empty:
+            # No annotation -> Awaitable[Any]
+            return collections.abc.Awaitable[typing.Any]
+        else:
+            # Has annotation T -> Awaitable[T]
+            return collections.abc.Awaitable[return_annotation]
+
+    # Already has explicit Awaitable/Coroutine, or is sync - return as-is
+    return return_annotation
 
 
 def _safe_get_annotations(obj, globals_dict=None):
@@ -290,6 +328,34 @@ def _build_call_with_wrap(
     Returns:
         Code string with the call and optional wrapping
     """
+    # Import here to avoid circular imports
+    from .type_transformer import AwaitableTransformer, CoroutineTransformer
+
+    # Check if this is an awaitable type that needs synchronizer wrapping
+    if isinstance(return_transformer, (AwaitableTransformer, CoroutineTransformer)):
+        # Wrap the call with synchronizer to await/run it
+        if is_async:
+            # For async context: await synchronizer._run_function_async(call_expr)
+            wrapped_call = f"await get_synchronizer('{synchronizer_name}')._run_function_async({call_expr})"
+        else:
+            # For sync context: synchronizer._run_function_sync(call_expr)
+            wrapped_call = f"get_synchronizer('{synchronizer_name}')._run_function_sync({call_expr})"
+
+        # Now apply any additional wrapping from the inner return transformer
+        inner_transformer = return_transformer.return_transformer
+        if inner_transformer.needs_translation():
+            wrap_expr = inner_transformer.wrap_expr(
+                synchronized_types, current_target_module, "result", is_async=is_async
+            )
+            # For module-level functions, strip 'self.' prefix from helper calls
+            if is_function:
+                wrap_expr = wrap_expr.replace("self.", "")
+            return f"""{indent}result = {wrapped_call}
+{indent}return {wrap_expr}"""
+        else:
+            return f"{indent}return {wrapped_call}"
+
+    # Regular wrapping for non-awaitable types
     if return_transformer.needs_translation():
         wrap_expr = return_transformer.wrap_expr(synchronized_types, current_target_module, "result", is_async=is_async)
         # For module-level functions, strip 'self.' prefix from helper calls
@@ -318,6 +384,9 @@ def _format_return_annotation(
     Returns:
         Tuple of (sync_return_str, async_return_str) with " -> " prefix
     """
+    # Import here to avoid circular imports
+    from .type_transformer import AwaitableTransformer, CoroutineTransformer
+
     # Get the wrapped types for both sync and async contexts
     sync_return_type = return_transformer.wrapped_type(synchronized_types, current_target_module, is_async=False)
     async_return_type = return_transformer.wrapped_type(synchronized_types, current_target_module, is_async=True)
@@ -326,7 +395,12 @@ def _format_return_annotation(
         return "", ""
 
     # Quote the entire type annotation if it contains wrapped types
-    should_quote = return_transformer.needs_translation()
+    # For AwaitableTransformer/CoroutineTransformer, check the inner type for quoting
+    if isinstance(return_transformer, (AwaitableTransformer, CoroutineTransformer)):
+        should_quote = return_transformer.return_transformer.needs_translation()
+    else:
+        should_quote = return_transformer.needs_translation()
+
     if should_quote:
         sync_return_str = f' -> "{sync_return_type}"'
         async_return_str = f' -> "{async_return_type}"'

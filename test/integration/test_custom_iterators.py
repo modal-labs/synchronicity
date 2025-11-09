@@ -1,4 +1,5 @@
 import pytest
+import typing
 
 from .test_utils import check_pyright
 
@@ -50,3 +51,6 @@ async def test_usage_async():
 def test_pyright_type_safety(support_files):
     # TODO: add Path(custom_iterators.__file__) to check
     check_pyright([support_files / "custom_iterators_typecheck.py"])
+
+    async def foo() -> typing.AsyncIterable[int]:
+        yield 1

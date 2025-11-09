@@ -844,8 +844,12 @@ class CoroutineTransformer(TypeTransformer):
         return var_name
 
     def needs_translation(self) -> bool:
-        """Coroutines don't need translation themselves, but their return type might."""
-        return False
+        """Coroutines need translation - they must be awaited/run through synchronizer."""
+        return True
+
+    def requires_await(self) -> bool:
+        """Signal that this type needs to be awaited or run through synchronizer."""
+        return True
 
 
 class AwaitableTransformer(TypeTransformer):
@@ -878,8 +882,12 @@ class AwaitableTransformer(TypeTransformer):
         return var_name
 
     def needs_translation(self) -> bool:
-        """Awaitables don't need translation themselves, but their return type might."""
-        return False
+        """Awaitables need translation - they must be awaited/run through synchronizer."""
+        return True
+
+    def requires_await(self) -> bool:
+        """Signal that this type needs to be awaited or run through synchronizer."""
+        return True
 
 
 def create_transformer(annotation, synchronized_types: dict[type, tuple[str, str]]) -> TypeTransformer:

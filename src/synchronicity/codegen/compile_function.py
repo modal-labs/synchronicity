@@ -9,13 +9,11 @@ import typing
 from .compile_utils import (
     _build_call_with_wrap,
     _format_return_annotation,
+    _normalize_async_annotation,
     _parse_parameters_with_transformers,
     _safe_get_annotations,
 )
-from .signature_utils import (
-    is_async_generator,
-    returns_awaitable,
-)
+from .signature_utils import is_async_generator
 from .type_transformer import (
     AsyncGeneratorTransformer,
     AsyncIteratorTransformer,
@@ -54,6 +52,10 @@ def compile_function(
     sig = inspect.signature(f)
     return_annotation = annotations.get("return", sig.return_annotation)
 
+    # Normalize async def annotations to Awaitable[T] for uniform handling
+    # Note: async generators are NOT wrapped in Awaitable
+    return_annotation = _normalize_async_annotation(f, return_annotation)
+
     # Create transformer for return type
     return_transformer = create_transformer(return_annotation, synchronized_types)
 
@@ -69,6 +71,7 @@ def compile_function(
     )
 
     # Check if it's an async generator
+    # Note: After normalization, async generators are NOT wrapped in Awaitable
     is_async_gen = is_async_generator(f, return_annotation)
 
     # If it's actually a generator function, override the return transformer to use AsyncGeneratorTransformer
@@ -80,13 +83,15 @@ def compile_function(
             # Pass send_type_str=None (not "None") to omit the send type from the annotation
             return_transformer = AsyncGeneratorTransformer(return_transformer.item_transformer, send_type_str=None)
 
-    # Check if it's an async function
-    # Include functions that return Coroutine/Awaitable types even if not declared as async
-    # Note: Functions returning AsyncIterator/AsyncIterable are NOT async - they return dual-mode iterators
-    is_async_func = inspect.iscoroutinefunction(f) or is_async_gen or returns_awaitable(return_annotation)
+    # Import here to avoid circular imports
+    from .type_transformer import AwaitableTransformer, CoroutineTransformer
+
+    # Determine if this needs async/sync wrappers based on the transformer type
+    # After normalization, async def functions have AwaitableTransformer
+    needs_async_wrapper = is_async_gen or isinstance(return_transformer, (AwaitableTransformer, CoroutineTransformer))
 
     # For non-async functions, generate simple wrapper without @wrapped_function decorator
-    if not is_async_func:
+    if not needs_async_wrapper:
         # Format return type annotation (only need sync version)
         sync_return_str, _ = _format_return_annotation(
             return_transformer, synchronized_types, synchronizer_name, current_target_module
@@ -150,6 +155,15 @@ def compile_function(
     inline_helpers_dict = return_transformer.get_wrapper_helpers(
         synchronized_types, current_target_module, synchronizer_name, indent="    "
     )
+
+    # For AwaitableTransformer/CoroutineTransformer, also collect helpers from the inner return type
+    from .type_transformer import AwaitableTransformer, CoroutineTransformer
+
+    if isinstance(return_transformer, (AwaitableTransformer, CoroutineTransformer)):
+        inner_helpers = return_transformer.return_transformer.get_wrapper_helpers(
+            synchronized_types, current_target_module, synchronizer_name, indent="    "
+        )
+        inline_helpers_dict.update(inner_helpers)
     # Strip @staticmethod decorators from helpers for module-level functions
     if inline_helpers_dict:
         # Remove @staticmethod and adjust indentation for module-level functions
@@ -200,11 +214,11 @@ def compile_function(
             f"    finally:\n"
             f"        await _wrapped.aclose()"
         )
-    else:  # is_async_func must be True at this point (non-async functions return early)
-        # For regular async functions (including those returning Coroutine/Awaitable)
-        aio_runner = f"get_synchronizer('{synchronizer_name}')._run_function_async"
+    else:
+        # For functions returning Awaitable[T] (from normalized async def)
+        # The _build_call_with_wrap will handle the synchronizer wrapping
         aio_body = _build_call_with_wrap(
-            f"await {aio_runner}(impl_function({call_args_str}))",
+            f"impl_function({call_args_str})",
             return_transformer,
             synchronized_types,
             synchronizer_name,
@@ -234,11 +248,11 @@ def compile_function(
         # For functions, remove self. prefix (helpers are module-level, not class methods)
         sync_wrap_expr = sync_wrap_expr_raw.replace("self.", "")
         sync_function_body = f"    gen = impl_function({call_args_str})\n    yield from {sync_wrap_expr}"
-    else:  # is_async_func must be True at this point (non-async functions return early)
-        # For regular async functions (including those returning Coroutine/Awaitable)
-        sync_runner = f"get_synchronizer('{synchronizer_name}')._run_function_sync"
+    else:
+        # For functions returning Awaitable[T] (from normalized async def)
+        # The _build_call_with_wrap will handle the synchronizer wrapping
         sync_function_body = _build_call_with_wrap(
-            f"{sync_runner}(impl_function({call_args_str}))",
+            f"impl_function({call_args_str})",
             return_transformer,
             synchronized_types,
             synchronizer_name,

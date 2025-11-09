@@ -10,10 +10,11 @@ from .compile_utils import (
     _build_call_with_wrap,
     _contains_self_type,
     _format_return_annotation,
+    _normalize_async_annotation,
     _parse_parameters_with_transformers,
     _safe_get_annotations,
 )
-from .signature_utils import is_async_generator, returns_awaitable
+from .signature_utils import is_async_generator
 from .type_transformer import create_transformer
 
 
@@ -87,6 +88,10 @@ def compile_method_wrapper(
     sig = inspect.signature(method)
     return_annotation = annotations.get("return", sig.return_annotation)
 
+    # Normalize async def annotations to Awaitable[T] for uniform handling
+    # Note: async generators are NOT wrapped in Awaitable
+    return_annotation = _normalize_async_annotation(method, return_annotation)
+
     # Check if typing.Self is used in any annotation
     uses_self_type = _contains_self_type(return_annotation) or any(
         _contains_self_type(ann) for ann in annotations.values()
@@ -123,6 +128,7 @@ def compile_method_wrapper(
             dummy_param_str = f'cls: type["{class_name}"]'
 
     # Check if it's an async generator
+    # Note: After normalization, async generators are NOT wrapped in Awaitable
     is_async_gen = is_async_generator(method, return_annotation)
 
     # If it's actually a generator method, override the return transformer to use AsyncGeneratorTransformer
@@ -136,9 +142,12 @@ def compile_method_wrapper(
             # Pass send_type_str=None (not "None") to omit the send type from the annotation
             return_transformer = AsyncGeneratorTransformer(return_transformer.item_transformer, send_type_str=None)
 
-    # Check if it's async
-    # Include methods that return Coroutine/Awaitable types even if not declared as async
-    is_async = inspect.iscoroutinefunction(method) or is_async_gen or returns_awaitable(return_annotation)
+    # Import here to avoid circular imports
+    from .type_transformer import AwaitableTransformer, CoroutineTransformer
+
+    # Determine if this needs async/sync wrappers based on the transformer type
+    # After normalization, async def methods have AwaitableTransformer
+    is_async = is_async_gen or isinstance(return_transformer, (AwaitableTransformer, CoroutineTransformer))
 
     # Format return types
     sync_return_str, async_return_str = _format_return_annotation(
@@ -228,13 +237,12 @@ def compile_method_wrapper(
             else:
                 sync_method_body = f"{impl_method_line_sync}\n    gen = {gen_call}\n    yield from {sync_wrap_expr}"
         else:
-            # For regular async instance methods - need synchronizer from wrapper_instance
+            # For instance methods returning Awaitable[T] (from normalized async def)
+            # The _build_call_with_wrap will handle the synchronizer wrapping
             impl_method_line = f"    impl_method = {origin_module}.{class_name}.{method_name}"
-            aio_call_expr = f"await wrapper_instance._synchronizer._run_function_async({call_expr_prefix})"
-            sync_call_expr = f"wrapper_instance._synchronizer._run_function_sync({call_expr_prefix})"
 
             aio_body = _build_call_with_wrap(
-                aio_call_expr,
+                call_expr_prefix,
                 return_transformer,
                 synchronized_types,
                 synchronizer_name,
@@ -246,8 +254,9 @@ def compile_method_wrapper(
                 aio_body = impl_method_line + "\n" + unwrap_code + "\n" + aio_body
             else:
                 aio_body = impl_method_line + "\n" + aio_body
+
             sync_method_body = _build_call_with_wrap(
-                sync_call_expr,
+                call_expr_prefix,
                 return_transformer,
                 synchronized_types,
                 synchronizer_name,
@@ -307,12 +316,10 @@ def compile_method_wrapper(
             else:
                 sync_method_body = f"    gen = {gen_call}\n    yield from {sync_wrap_expr}"
         else:
-            # Regular async classmethod - use wrapper_class._synchronizer
-            aio_call_expr = f"await wrapper_class._synchronizer._run_function_async({call_expr_prefix})"
-            sync_call_expr = f"wrapper_class._synchronizer._run_function_sync({call_expr_prefix})"
-
+            # For classmethods returning Awaitable[T] (from normalized async def)
+            # The _build_call_with_wrap will handle the synchronizer wrapping
             aio_body = _build_call_with_wrap(
-                aio_call_expr,
+                call_expr_prefix,
                 return_transformer,
                 synchronized_types,
                 synchronizer_name,
@@ -322,8 +329,9 @@ def compile_method_wrapper(
             )
             if unwrap_code:
                 aio_body = unwrap_code + "\n" + aio_body
+
             sync_method_body = _build_call_with_wrap(
-                sync_call_expr,
+                call_expr_prefix,
                 return_transformer,
                 synchronized_types,
                 synchronizer_name,
@@ -397,12 +405,10 @@ def compile_method_wrapper(
             else:
                 sync_method_body = f"    gen = {gen_call}\n    yield from {sync_wrap_expr}"
         else:
-            # Regular async staticmethod - use get_synchronizer directly
-            aio_call_expr = f"await get_synchronizer('{synchronizer_name}')._run_function_async({call_expr_prefix})"
-            sync_call_expr = f"get_synchronizer('{synchronizer_name}')._run_function_sync({call_expr_prefix})"
-
+            # For staticmethods returning Awaitable[T] (from normalized async def)
+            # The _build_call_with_wrap will handle the synchronizer wrapping
             aio_body = _build_call_with_wrap(
-                aio_call_expr,
+                call_expr_prefix,
                 return_transformer,
                 synchronized_types,
                 synchronizer_name,
@@ -412,8 +418,9 @@ def compile_method_wrapper(
             )
             if unwrap_code:
                 aio_body = unwrap_code + "\n" + aio_body
+
             sync_method_body = _build_call_with_wrap(
-                sync_call_expr,
+                call_expr_prefix,
                 return_transformer,
                 synchronized_types,
                 synchronizer_name,
