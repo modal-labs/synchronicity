@@ -14,11 +14,16 @@ class CustomAsyncIterable:
 
 @mod.wrap_class
 class CustomAsyncIterator:
-    # iterat*ors* are single use
+    num_iters: int
+
+    # iterat*ors* are typically "single use", and have their __iter__/__aiter__
+    # just return self
     def __init__(self, items: list[int]):
         self.items: list[int] = items
+        self.num_iters = 0
 
     def __aiter__(self) -> typing.Self:
+        self.num_iters += 1
         return self  # return self reference in case of `for ... in ...`
 
     async def __anext__(self) -> int:

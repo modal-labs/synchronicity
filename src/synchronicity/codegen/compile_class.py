@@ -890,37 +890,11 @@ def compile_class(
         return self._synchronizer._run_iterator_sync(async_iter)"""
             iterator_methods.append(iter_method)
 
-            # Generate __aiter__ (async variant)
-            if has_anext:
-                # Class is both iterable and iterator - __aiter__ returns self
-                aiter_method_code = f"""    def __aiter__(self){aiter_return_hint}:
-        return self"""
-            else:
-                # Class is only iterable - __aiter__ needs to call impl and wrap result
-                if aiter_return_annotation != inspect.Signature.empty:
-                    aiter_return_transformer = create_transformer(aiter_return_annotation, synchronized_types_with_self)
-                    if aiter_return_transformer.needs_translation():
-                        # Collect helper functions for wrapping the return value
-                        aiter_helpers = aiter_return_transformer.get_wrapper_helpers(
-                            synchronized_types_with_self, current_target_module, synchronizer_name, indent="    "
-                        )
-                        all_helpers_dict.update(aiter_helpers)
-
-                        wrap_expr = aiter_return_transformer.wrap_expr(
-                            synchronized_types_with_self, current_target_module, "async_iter", is_async=True
-                        )
-                        aiter_method_code = f"""    def __aiter__(self){aiter_return_hint}:
+            # Generate __aiter__ (async variant) - simple wrapper like __iter__
+            aiter_method_code = f"""    def __aiter__(self){aiter_return_hint}:
         impl_method = {origin_module}.{cls.__name__}.__aiter__
         async_iter = impl_method(self._impl_instance)
-        return {wrap_expr}"""
-                    else:
-                        aiter_method_code = f"""    def __aiter__(self){aiter_return_hint}:
-        impl_method = {origin_module}.{cls.__name__}.__aiter__
-        return impl_method(self._impl_instance)"""
-                else:
-                    aiter_method_code = f"""    def __aiter__(self){aiter_return_hint}:
-        impl_method = {origin_module}.{cls.__name__}.__aiter__
-        return impl_method(self._impl_instance)"""
+        return self._synchronizer._run_iterator_async(async_iter)"""
             iterator_methods.append(aiter_method_code)
 
         if has_anext:
