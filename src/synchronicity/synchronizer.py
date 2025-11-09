@@ -9,6 +9,8 @@ from typing import Optional
 # Global registry for synchronizer instances
 _synchronizer_registry = {}
 
+T = typing.TypeVar("T")
+
 
 def get_synchronizer(name: str) -> "Synchronizer":
     """Get or create a synchronizer instance by name from the global registry."""
@@ -293,7 +295,7 @@ class Synchronizer:
             # Ensure the underlying generator is properly closed
             await gen.aclose()
 
-    def _run_iterator_sync(self, async_iter):
+    def _run_iterator_sync(self, async_iter: typing.AsyncIterator[T]) -> typing.Iterator[T]:
         """Run an async iterator in sync mode.
 
         Unlike generators, iterators don't have asend()/aclose(), just __aiter__() and __anext__().

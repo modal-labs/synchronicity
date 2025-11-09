@@ -17,6 +17,36 @@ from .signature_utils import is_async_generator, returns_awaitable
 from .type_transformer import create_transformer
 
 
+def _convert_async_to_sync_type(type_str: str) -> str:
+    """
+    Convert async type hints to their sync equivalents for __iter__ signatures.
+
+    Examples:
+        typing.AsyncIterator[int] -> typing.Iterator[int]
+        typing.AsyncGenerator[int, None] -> typing.Generator[int, None, None]
+        synchronicity.types.SyncOrAsyncIterator[int] -> synchronicity.types.SyncOrAsyncIterator[int] (unchanged)
+        typing.Self -> typing.Self (unchanged)
+    """
+    # Simple string replacements for common async types
+    type_str = type_str.replace("typing.AsyncIterator[", "typing.Iterator[")
+    type_str = type_str.replace("typing.AsyncIterable[", "typing.Iterable[")
+    type_str = type_str.replace("collections.abc.AsyncIterator[", "collections.abc.Iterator[")
+    type_str = type_str.replace("collections.abc.AsyncIterable[", "collections.abc.Iterable[")
+
+    # AsyncGenerator[YieldType, SendType] -> Generator[YieldType, SendType, None]
+    # Note: This is a simple replacement; for complex nested types, a proper parser would be needed
+    type_str = type_str.replace("typing.AsyncGenerator[", "typing.Generator[")
+    type_str = type_str.replace("collections.abc.AsyncGenerator[", "collections.abc.Generator[")
+
+    # Fix Generator to include the return type (None) if it only has 2 args
+    # This is a simplification - real implementation would need proper parsing
+    if "Generator[" in type_str and type_str.count(",") == 1 and "]" in type_str:
+        # Generator[T, S] -> Generator[T, S, None]
+        type_str = type_str.replace("]", ", None]", 1)
+
+    return type_str
+
+
 def compile_method_wrapper(
     method: types.FunctionType,
     method_name: str,
@@ -819,74 +849,93 @@ def compile_class(
 
     # Generate iterator protocol methods if class implements async iterator protocol
     # Both sync (__iter__/__next__) and async (__aiter__/__anext__) protocols are on the same class
+    # The signatures are transformed just like any other method - no special casing needed
     iterator_methods_section = ""
     if has_aiter or has_anext:
         iterator_methods = []
 
-        # Determine item type - try __anext__ first, then __aiter__
-        item_type_str = "typing.Any"
-        if has_anext:
-            # Get item type from __anext__ return type
-            anext_annotations = _safe_get_annotations(anext_method, globals_dict)
-            anext_return_annotation = anext_annotations.get("return", inspect.signature(anext_method).return_annotation)
-            if anext_return_annotation != inspect.Signature.empty:
-                return_transformer = create_transformer(anext_return_annotation, synchronized_types_with_self)
-                item_type_str = return_transformer.wrapped_type(
+        if has_aiter:
+            # Get and transform __aiter__ return annotation
+            aiter_annotations = _safe_get_annotations(aiter_method, globals_dict)
+            aiter_return_annotation = aiter_annotations.get("return", inspect.signature(aiter_method).return_annotation)
+
+            # Handle return type annotation
+            if aiter_return_annotation == inspect.Signature.empty:
+                # No annotation - omit return type
+                iter_return_hint = ""
+                aiter_return_hint = ""
+            else:
+                aiter_return_transformer = create_transformer(aiter_return_annotation, synchronized_types_with_self)
+                aiter_return_type_str = aiter_return_transformer.wrapped_type(
                     synchronized_types_with_self, current_target_module, is_async=True
                 )
-        elif has_aiter:
-            # Get item type from __aiter__ return type (AsyncIterator[T])
-            aiter_annotations = _safe_get_annotations(aiter_method, globals_dict)
-            aiter_return_annotation = aiter_annotations.get("return", inspect.signature(aiter_method).return_annotation)
-            if aiter_return_annotation != inspect.Signature.empty:
-                # Get the args from AsyncIterator[T]
-                args = typing.get_args(aiter_return_annotation)
-                if args:
-                    # Create transformer to get the proper wrapped type
-                    item_transformer = create_transformer(args[0], synchronized_types_with_self)
-                    item_type_str = item_transformer.wrapped_type(
-                        synchronized_types_with_self, current_target_module, is_async=True
-                    )
 
-        if has_aiter:
-            # Generate __iter__ that returns a sync iterator wrapping the async iterator
-            # The impl's __aiter__ returns an async iterator, we wrap it for sync iteration
-            aiter_annotations = _safe_get_annotations(aiter_method, globals_dict)
-            aiter_return_annotation = aiter_annotations.get("return", inspect.signature(aiter_method).return_annotation)
+                # For __iter__ (sync), convert async types to sync equivalents
+                iter_return_type_str = _convert_async_to_sync_type(aiter_return_type_str)
 
-            iter_method = f"""    def __iter__(self) -> typing.Iterator[{item_type_str}]:
+                iter_return_hint = f" -> {iter_return_type_str}"
+                aiter_return_hint = f" -> {aiter_return_type_str}"
+
+            # Generate __iter__ (sync variant of __aiter__)
+            iter_method = f"""    def __iter__(self){iter_return_hint}:
         impl_method = {origin_module}.{cls.__name__}.__aiter__
         async_iter = impl_method(self._impl_instance)
         return self._synchronizer._run_iterator_sync(async_iter)"""
             iterator_methods.append(iter_method)
 
-            # Generate __aiter__ for async iteration
+            # Generate __aiter__ (async variant)
             if has_anext:
                 # Class is both iterable and iterator - __aiter__ returns self
-                aiter_method_code = f"""    def __aiter__(self) -> typing.AsyncIterator[{item_type_str}]:
+                aiter_method_code = f"""    def __aiter__(self){aiter_return_hint}:
         return self"""
             else:
                 # Class is only iterable - __aiter__ needs to call impl and wrap result
-                return_transformer = create_transformer(aiter_return_annotation, synchronized_types_with_self)
+                if aiter_return_annotation != inspect.Signature.empty:
+                    aiter_return_transformer = create_transformer(aiter_return_annotation, synchronized_types_with_self)
+                    if aiter_return_transformer.needs_translation():
+                        # Collect helper functions for wrapping the return value
+                        aiter_helpers = aiter_return_transformer.get_wrapper_helpers(
+                            synchronized_types_with_self, current_target_module, synchronizer_name, indent="    "
+                        )
+                        all_helpers_dict.update(aiter_helpers)
 
-                if return_transformer.needs_translation():
-                    wrap_expr = return_transformer.wrap_expr(
-                        synchronized_types_with_self, current_target_module, "async_iter", is_async=True
-                    )
-                    aiter_method_code = f"""    def __aiter__(self) -> typing.AsyncIterator[{item_type_str}]:
+                        wrap_expr = aiter_return_transformer.wrap_expr(
+                            synchronized_types_with_self, current_target_module, "async_iter", is_async=True
+                        )
+                        aiter_method_code = f"""    def __aiter__(self){aiter_return_hint}:
         impl_method = {origin_module}.{cls.__name__}.__aiter__
         async_iter = impl_method(self._impl_instance)
         return {wrap_expr}"""
+                    else:
+                        aiter_method_code = f"""    def __aiter__(self){aiter_return_hint}:
+        impl_method = {origin_module}.{cls.__name__}.__aiter__
+        return impl_method(self._impl_instance)"""
                 else:
-                    aiter_method_code = f"""    def __aiter__(self) -> typing.AsyncIterator[{item_type_str}]:
+                    aiter_method_code = f"""    def __aiter__(self){aiter_return_hint}:
         impl_method = {origin_module}.{cls.__name__}.__aiter__
         return impl_method(self._impl_instance)"""
             iterator_methods.append(aiter_method_code)
 
         if has_anext:
-            # Generate __next__ that wraps the async __anext__
-            # Use item_type_str which was already computed from __anext__ return type
-            next_method = f"""    def __next__(self) -> {item_type_str}:
+            # Get and transform __anext__ return annotation
+            anext_annotations = _safe_get_annotations(anext_method, globals_dict)
+            anext_return_annotation = anext_annotations.get("return", inspect.signature(anext_method).return_annotation)
+
+            # Handle return type annotation
+            if anext_return_annotation == inspect.Signature.empty:
+                # No annotation - omit return type
+                next_return_hint = ""
+                anext_return_hint = ""
+            else:
+                anext_return_transformer = create_transformer(anext_return_annotation, synchronized_types_with_self)
+                anext_return_type_str = anext_return_transformer.wrapped_type(
+                    synchronized_types_with_self, current_target_module, is_async=True
+                )
+                next_return_hint = f" -> {anext_return_type_str}"
+                anext_return_hint = f" -> {anext_return_type_str}"
+
+            # Generate __next__ (sync variant of __anext__)
+            next_method = f"""    def __next__(self){next_return_hint}:
         impl_method = {origin_module}.{cls.__name__}.__anext__
         try:
             return self._synchronizer._run_function_sync(impl_method(self._impl_instance))
@@ -894,13 +943,17 @@ def compile_class(
             raise StopIteration()"""
             iterator_methods.append(next_method)
 
-            # Generate __anext__ for async iteration
-            anext_method_code = f"""    async def __anext__(self) -> {item_type_str}:
+            # Generate __anext__ (async variant)
+            anext_method_code = f"""    async def __anext__(self){anext_return_hint}:
         impl_method = {origin_module}.{cls.__name__}.__anext__
         return await self._synchronizer._run_function_async(impl_method(self._impl_instance))"""
             iterator_methods.append(anext_method_code)
 
         iterator_methods_section = "\n\n".join(iterator_methods)
+
+    # Regenerate helpers section after processing iterator methods (may have added new helpers)
+    helpers_code = "\n".join(all_helpers_dict.values()) if all_helpers_dict else ""
+    helpers_section = f"\n{helpers_code}\n" if helpers_code else ""
 
     # Generate _from_impl classmethod (only for root classes without wrapped bases)
     if not wrapped_bases:

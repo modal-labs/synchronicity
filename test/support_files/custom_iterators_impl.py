@@ -41,3 +41,17 @@ def get_iterator() -> typing.AsyncIterator[int]:
 async def generator_as_iterator() -> typing.AsyncIterator[int]:
     yield 1
     yield 2
+
+
+@mod.wrap_class
+class IterableClassUsingGenerator:
+    async def __aiter__(self):
+        yield 1
+        yield 2
+
+
+@mod.wrap_class
+class IterableClassUsingGeneratorTyped:
+    async def __aiter__(self) -> typing.AsyncGenerator[int]:
+        yield 1
+        yield 2
