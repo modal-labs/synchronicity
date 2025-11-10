@@ -1,3 +1,4 @@
+import threading
 import typing
 
 import synchronicity
@@ -27,6 +28,7 @@ class CustomAsyncIterator:
         return self  # return self reference in case of `for ... in ...`
 
     async def __anext__(self) -> int:
+        assert threading.current_thread().ident != threading.main_thread().ident
         if len(self.items):
             return self.items.pop(0)
         raise StopAsyncIteration()
@@ -44,6 +46,7 @@ def get_iterator() -> typing.AsyncIterator[int]:
 
 @mod.wrap_function
 async def generator_as_iterator() -> typing.AsyncIterator[int]:
+    assert threading.current_thread().ident != threading.main_thread().ident
     yield 1
     yield 2
 
@@ -51,6 +54,7 @@ async def generator_as_iterator() -> typing.AsyncIterator[int]:
 @mod.wrap_class
 class IterableClassUsingGenerator:
     async def __aiter__(self):
+        assert threading.current_thread().ident != threading.main_thread().ident
         yield 1
         yield 2
 
@@ -58,5 +62,6 @@ class IterableClassUsingGenerator:
 @mod.wrap_class
 class IterableClassUsingGeneratorTyped:
     async def __aiter__(self) -> typing.AsyncGenerator[int]:
+        assert threading.current_thread().ident != threading.main_thread().ident
         yield 1
         yield 2

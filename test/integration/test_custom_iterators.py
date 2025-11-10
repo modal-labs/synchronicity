@@ -1,5 +1,5 @@
 import pytest
-import typing
+from pathlib import Path
 
 from .test_utils import check_pyright
 
@@ -14,12 +14,12 @@ def test_usage_sync():
     for i in custom_iterators.get_iterable():
         print(i)
 
-    iterable_instance = custom_iterators.CustomAsyncIterable()
-    for i in iterable_instance:
+    iterable_1 = custom_iterators.CustomAsyncIterable()
+    for i in iterable_1:
         print(i)
 
-    instance2 = custom_iterators.IterableClassUsingGenerator()
-    for i in instance2:
+    iterable_2 = custom_iterators.IterableClassUsingGenerator()
+    for i in iterable_2:
         print(i)
 
     iterable_3 = custom_iterators.IterableClassUsingGeneratorTyped()
@@ -70,8 +70,6 @@ async def test_usage_async():
 
 @pytest.mark.usefixtures("generated_wrappers")
 def test_pyright_type_safety(support_files):
-    # TODO: add Path(custom_iterators.__file__) to check
-    check_pyright([support_files / "custom_iterators_typecheck.py"])
+    import custom_iterators
 
-    async def foo() -> typing.AsyncIterable[int]:
-        yield 1
+    check_pyright([Path(custom_iterators.__file__), support_files / "custom_iterators_typecheck.py"])

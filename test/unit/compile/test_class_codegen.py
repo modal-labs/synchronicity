@@ -422,8 +422,8 @@ def test_compile_class_with_aiter_has_typed_iter():
 
     # __aiter__ returns AsyncIterator[str], which should be transformed to SyncOrAsyncIterator[str]
     # Both __iter__ and __aiter__ should return the same transformed type
-    assert "def __iter__(self) -> synchronicity.types.SyncOrAsyncIterator[str]:" in generated_code
-    assert "def __aiter__(self) -> synchronicity.types.SyncOrAsyncIterator[str]:" in generated_code
+    assert 'def __iter__(self) -> "synchronicity.types.SyncOrAsyncIterator[str]":' in generated_code
+    assert 'def __aiter__(self) -> "synchronicity.types.SyncOrAsyncIterator[str]":' in generated_code
 
 
 def test_compile_class_with_anext_has_typed_next():
@@ -442,10 +442,10 @@ def test_compile_class_with_anext_has_typed_next():
     # __anext__ returns int, both __next__ and __anext__ should return int
     assert "def __next__(self) -> int:" in generated_code
     assert "async def __anext__(self) -> int:" in generated_code
-    # __aiter__ returns Self, which is preserved in the wrapper
-    # Both __iter__ and __aiter__ should return typing.Self
-    assert "def __iter__(self) -> typing.Self:" in generated_code
-    assert "def __aiter__(self) -> typing.Self:" in generated_code
+    # __aiter__ returns Self, which is resolved to the wrapper class
+    # Both __iter__ and __aiter__ should return the wrapper class (quoted for forward ref)
+    assert 'def __iter__(self) -> "AsyncIteratorClass":' in generated_code
+    assert 'def __aiter__(self) -> "AsyncIteratorClass":' in generated_code
 
 
 def test_compile_class_aiter_signature_variations():
@@ -457,8 +457,8 @@ def test_compile_class_aiter_signature_variations():
         def __aiter__(self) -> typing.AsyncIterator[str]: ...
 
     code = compile_class(SyncWithAnnotation, "test_module", "test_synchronizer", {})
-    assert "def __iter__(self) -> synchronicity.types.SyncOrAsyncIterator[str]:" in code
-    assert "def __aiter__(self) -> synchronicity.types.SyncOrAsyncIterator[str]:" in code
+    assert 'def __iter__(self) -> "synchronicity.types.SyncOrAsyncIterator[str]":' in code
+    assert 'def __aiter__(self) -> "synchronicity.types.SyncOrAsyncIterator[str]":' in code
 
     # Case 2: Sync __aiter__ without annotation
     class SyncWithoutAnnotation:
@@ -475,17 +475,17 @@ def test_compile_class_aiter_signature_variations():
         async def __aiter__(self) -> collections.abc.AsyncIterator[int]: ...
 
     code = compile_class(AsyncWithAnnotation, "test_module", "test_synchronizer", {})
-    assert "def __iter__(self) -> synchronicity.types.SyncOrAsyncIterator[int]:" in code
-    assert "def __aiter__(self) -> synchronicity.types.SyncOrAsyncIterator[int]:" in code
+    assert 'def __iter__(self) -> "synchronicity.types.SyncOrAsyncIterator[int]":' in code
+    assert 'def __aiter__(self) -> "synchronicity.types.SyncOrAsyncIterator[int]":' in code
 
     # Case 4: Async __aiter__ without annotation
+    # Gets normalized to Awaitable[Any], so returns Any
     class AsyncWithoutAnnotation:
         async def __aiter__(self): ...
 
     code = compile_class(AsyncWithoutAnnotation, "test_module", "test_synchronizer", {})
-    assert "def __iter__(self):" in code
-    assert "def __aiter__(self):" in code
-    assert " -> :" not in code
+    assert "def __iter__(self) -> typing.Any:" in code
+    assert "def __aiter__(self) -> typing.Any:" in code
 
     # Case 5: Async __aiter__ with AsyncGenerator annotation
     # AsyncGenerator should be converted to Generator for sync __iter__, preserved for async __aiter__
@@ -494,9 +494,9 @@ def test_compile_class_aiter_signature_variations():
 
     code = compile_class(AsyncWithGenerator, "test_module", "test_synchronizer", {})
     # __iter__ (sync) should use Generator
-    assert "def __iter__(self) -> typing.Generator[float, None, None]:" in code
-    # __aiter__ (async) should preserve AsyncGenerator
-    assert "def __aiter__(self) -> typing.AsyncGenerator[float, None]:" in code
+    assert 'def __iter__(self) -> "typing.Generator[float, None, None]":' in code
+    # __aiter__ should preserve AsyncGenerator (as a regular method, not async def)
+    assert 'def __aiter__(self) -> "typing.AsyncGenerator[float, None]":' in code
 
     # Case 6: Verify AsyncIterator transforms to SyncOrAsyncIterator (dual-mode, no conversion needed)
     class AsyncIterType:
@@ -504,5 +504,5 @@ def test_compile_class_aiter_signature_variations():
 
     code = compile_class(AsyncIterType, "test_module", "test_synchronizer", {})
     # Both __iter__ and __aiter__ use SyncOrAsyncIterator (which works in both contexts)
-    assert "def __iter__(self) -> synchronicity.types.SyncOrAsyncIterator[bool]:" in code
-    assert "def __aiter__(self) -> synchronicity.types.SyncOrAsyncIterator[bool]:" in code
+    assert 'def __iter__(self) -> "synchronicity.types.SyncOrAsyncIterator[bool]":' in code
+    assert 'def __aiter__(self) -> "synchronicity.types.SyncOrAsyncIterator[bool]":' in code
