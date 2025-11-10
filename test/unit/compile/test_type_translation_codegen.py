@@ -55,7 +55,8 @@ def test_compile_with_translation():
     assert "_instance_cache: weakref.WeakValueDictionary" in class_code
     assert "def _from_impl(cls, impl_instance" in class_code
     assert "TestNode._from_impl(" in class_code
-    assert "wrapper._impl_instance = impl_instance" in class_code
+    # Check that _from_impl uses the helper function
+    assert "_wrapped_from_impl(cls, impl_instance, cls._instance_cache)" in class_code
 
     # Check function signatures have proper type annotations
     assert (
@@ -101,11 +102,8 @@ def test_wrapper_helpers_generated():
     # Check the _from_impl classmethod structure with class-level cache
     assert "_instance_cache: weakref.WeakValueDictionary = weakref.WeakValueDictionary()" in compiled_code
     assert "def _from_impl(cls, impl_instance:" in compiled_code
-    assert "cache_key = id(impl_instance)" in compiled_code
-    assert "if cache_key in cls._instance_cache:" in compiled_code
-    assert "wrapper = cls.__new__(cls)" in compiled_code
-    assert "wrapper._impl_instance = impl_instance" in compiled_code
-    assert "cls._instance_cache[cache_key] = wrapper" in compiled_code
+    # Check that _from_impl uses the helper function instead of implementing caching inline
+    assert "_wrapped_from_impl(cls, impl_instance, cls._instance_cache)" in compiled_code
 
     print("✓ _from_impl classmethod with class-level cache generated correctly")
 

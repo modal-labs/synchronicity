@@ -970,21 +970,7 @@ def compile_class(
         from_impl_method = f"""    @classmethod
     def _from_impl(cls, impl_instance: {origin_module}.{cls.__name__}) -> "{cls.__name__}":
         \"\"\"Create wrapper from implementation instance, preserving identity via cache.\"\"\"
-        # Use id() as cache key since impl instances are Python objects
-        cache_key = id(impl_instance)
-
-        # Check cache first
-        if cache_key in cls._instance_cache:
-            return cls._instance_cache[cache_key]
-
-        # Create new wrapper using __new__ to bypass __init__
-        wrapper = cls.__new__(cls)
-        wrapper._impl_instance = impl_instance
-
-        # Cache it
-        cls._instance_cache[cache_key] = wrapper
-
-        return wrapper"""
+        return _wrapped_from_impl(cls, impl_instance, cls._instance_cache)"""
     else:
         # Derived classes inherit _from_impl from base
         from_impl_method = ""

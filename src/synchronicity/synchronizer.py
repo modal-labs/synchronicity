@@ -12,11 +12,52 @@ _synchronizer_registry = {}
 T = typing.TypeVar("T")
 
 
+class WrapperClassProtocol(typing.Protocol):
+    _impl_instance: type
+
+
+WRAPPER_CLASS_T = typing.TypeVar("WRAPPER_CLASS_T", bound=WrapperClassProtocol)
+
+
 def get_synchronizer(name: str) -> "Synchronizer":
     """Get or create a synchronizer instance by name from the global registry."""
     if name not in _synchronizer_registry:
         _synchronizer_registry[name] = Synchronizer(name)
     return _synchronizer_registry[name]
+
+
+def _wrapped_from_impl(
+    wrapper_cls: type[WRAPPER_CLASS_T], impl_instance: typing.Any, cache: typing.Any
+) -> WRAPPER_CLASS_T:
+    """
+    Create or retrieve a wrapper instance from an implementation instance.
+
+    This helper is used by all generated _from_impl classmethods to handle
+    caching and wrapper creation uniformly.
+
+    Args:
+        wrapper_cls: The wrapper class to create an instance of
+        impl_instance: The implementation instance to wrap
+        cache: A WeakValueDictionary cache for storing wrapper instances
+
+    Returns:
+        A wrapper instance (either from cache or newly created)
+    """
+    # Use id() as cache key since impl instances are Python objects
+    cache_key = id(impl_instance)
+
+    # Check cache first
+    if cache_key in cache:
+        return cache[cache_key]
+
+    # Create new wrapper using __new__ to bypass __init__
+    wrapper = wrapper_cls.__new__(wrapper_cls)
+    wrapper._impl_instance = impl_instance
+
+    # Cache it
+    cache[cache_key] = wrapper
+
+    return wrapper
 
 
 class Synchronizer:

@@ -283,7 +283,7 @@ from synchronicity.descriptor import (
     wrapped_method,
     wrapped_staticmethod,
 )
-from synchronicity.synchronizer import get_synchronizer
+from synchronicity.synchronizer import get_synchronizer, _wrapped_from_impl
 """
 
     if cross_module_imports_str:
