@@ -554,14 +554,18 @@ class StubEmitter:
     def _register_imports(self, type_annotation):
         # recursively makes sure a type and any of its type arguments (for generics) are imported
         origin = getattr(type_annotation, "__origin__", None)
-        if origin is None:
-            # "scalar" base type
+        args = getattr(type_annotation, "__args__", ())
+
+        if origin is None and not args:
+            # "scalar" base type (not a generic, not a PEP 604 union)
             if hasattr(type_annotation, "__module__"):
                 self._ensure_import(type_annotation)
             return
 
+        # Handle both traditional generics (with __origin__) and PEP 604 unions (Type | None)
+        # PEP 604 unions (types.UnionType) have __args__ but no __origin__
         self._ensure_import(type_annotation)  # import the generic itself's module
-        for arg in getattr(type_annotation, "__args__", ()):
+        for arg in args:
             self._register_imports(arg)
 
     def _translate_global_annotation(self, annotation, source_class_or_function):
