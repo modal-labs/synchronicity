@@ -506,3 +506,22 @@ def test_compile_class_aiter_signature_variations():
     # Both __iter__ and __aiter__ use SyncOrAsyncIterator (which works in both contexts)
     assert 'def __iter__(self) -> "synchronicity.types.SyncOrAsyncIterator[bool]":' in code
     assert 'def __aiter__(self) -> "synchronicity.types.SyncOrAsyncIterator[bool]":' in code
+
+
+def test_compile_class_without_explicit_init():
+    """Test that classes without explicit __init__ generate wrapper with empty __init__ signature."""
+
+    class NoInit:
+        async def method(self) -> int:
+            return 42
+
+    synchronized_types = {}
+    generated_code = compile_class(NoInit, "test_module", "test_synchronizer", synchronized_types)
+    print(generated_code)
+
+    # Should have __init__ with empty signature (no *args, **kwargs)
+    assert "def __init__(self):" in generated_code
+    # Should NOT have *args, **kwargs
+    assert "def __init__(self, *args, **kwargs):" not in generated_code
+    # Should call impl with no arguments
+    assert "test.unit.compile.test_class_codegen.NoInit()" in generated_code

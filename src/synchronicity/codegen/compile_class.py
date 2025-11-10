@@ -824,8 +824,9 @@ def compile_class(
             unwrap_indent="        ",  # Indent for __init__ body
         )
     else:
-        init_signature = "*args, **kwargs"
-        init_call = "*args, **kwargs"
+        # No explicit __init__ - use empty signature (not *args, **kwargs)
+        init_signature = ""
+        init_call = ""
         init_unwrap_code = ""
 
     # Generate property definitions for attributes
@@ -1016,25 +1017,28 @@ def compile_class(
         )
 
     # Generate __init__ method (call super if there are wrapped bases)
+    # Format signature: "self" or "self, param1, param2, ..."
+    init_params = f"self, {init_signature}" if init_signature else "self"
+
     if wrapped_bases:
         if init_unwrap_code:
-            init_method = f"""    def __init__(self, {init_signature}):
+            init_method = f"""    def __init__({init_params}):
 {init_unwrap_code}
         super().__init__({init_call})
         # Update to more specific derived type
         self._impl_instance = {origin_module}.{cls.__name__}({init_call})"""
         else:
-            init_method = f"""    def __init__(self, {init_signature}):
+            init_method = f"""    def __init__({init_params}):
         super().__init__({init_call})
         # Update to more specific derived type
         self._impl_instance = {origin_module}.{cls.__name__}({init_call})"""
     else:
         if init_unwrap_code:
-            init_method = f"""    def __init__(self, {init_signature}):
+            init_method = f"""    def __init__({init_params}):
 {init_unwrap_code}
         self._impl_instance = {origin_module}.{cls.__name__}({init_call})"""
         else:
-            init_method = f"""    def __init__(self, {init_signature}):
+            init_method = f"""    def __init__({init_params}):
         self._impl_instance = {origin_module}.{cls.__name__}({init_call})"""
 
     # Build sections list, only including non-empty sections
