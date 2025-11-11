@@ -1053,43 +1053,6 @@ def compile_class(
     return "\n".join(all_code)
 
 
-def _get_cross_module_imports(
-    module_name: str,
-    module_items: dict,
-    synchronized_types: dict[type, tuple[str, str]],
-) -> dict[str, set[str]]:
-    """
-    Detect which wrapped classes from other modules are referenced in this module.
-
-    Args:
-        module_name: The current module being compiled
-        module_items: Items in the current module
-        synchronizer: The Synchronizer instance
-
-    Returns:
-        Dict mapping target module names to sets of wrapper class names
-    """
-    cross_module_refs = {}  # target_module -> set of class names
-
-    # Check each item in this module for references to wrapped classes from other modules
-    for obj in module_items.keys():
-        # Get signature if it's a function or class with methods
-        if isinstance(obj, types.FunctionType):
-            annotations = _safe_get_annotations(obj)
-            for annotation in annotations.values():
-                _check_annotation_for_cross_refs(annotation, module_name, synchronized_types, cross_module_refs)
-        elif isinstance(obj, type):
-            # Check methods of the class
-            for method_name, method in inspect.getmembers(obj, predicate=inspect.isfunction):
-                if method_name.startswith("_"):
-                    continue
-                annotations = _safe_get_annotations(method)
-                for annotation in annotations.values():
-                    _check_annotation_for_cross_refs(annotation, module_name, synchronized_types, cross_module_refs)
-
-    return cross_module_refs
-
-
 def _check_annotation_for_cross_refs(
     annotation,
     current_module: str,

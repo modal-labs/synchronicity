@@ -13,7 +13,7 @@ T = typing.TypeVar("T")
 
 
 class WrapperClassProtocol(typing.Protocol):
-    _impl_instance: type
+    _impl_instance: typing.Any
 
 
 WRAPPER_CLASS_T = typing.TypeVar("WRAPPER_CLASS_T", bound=WrapperClassProtocol)
