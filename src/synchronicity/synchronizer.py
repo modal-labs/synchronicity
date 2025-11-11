@@ -12,7 +12,7 @@ import threading
 import types
 import typing
 import warnings
-from typing import ForwardRef, Optional
+from typing import Callable, ForwardRef, Optional
 
 import typing_extensions
 
@@ -106,10 +106,12 @@ class Synchronizer:
         self,
         multiwrap_warning=False,
         async_leakage_warning=True,
+        blocking_in_async_callback: Optional[Callable[[types.FunctionType], None]] = None,
     ):
         self._future_poll_interval = 0.1
         self._multiwrap_warning = multiwrap_warning
         self._async_leakage_warning = async_leakage_warning
+        self._blocking_in_async_callback = blocking_in_async_callback
         self._loop = None
         self._loop_creation_lock = threading.Lock()
         self._thread = None
@@ -133,6 +135,7 @@ class Synchronizer:
     _PICKLE_ATTRS = [
         "_multiwrap_warning",
         "_async_leakage_warning",
+        "_blocking_in_async_callback",
     ]
 
     def __getstate__(self):
@@ -190,7 +193,13 @@ class Synchronizer:
         #  creates a global reference to this Synchronizer which makes it never get gced
         self._close_loop()
 
-    def _get_loop(self, start=False) -> asyncio.AbstractEventLoop:
+    @typing.overload
+    def _get_loop(self, start: typing.Literal[True]) -> asyncio.AbstractEventLoop: ...
+
+    @typing.overload
+    def _get_loop(self, start: bool) -> typing.Union[asyncio.AbstractEventLoop, None]: ...
+
+    def _get_loop(self, start=False) -> typing.Union[asyncio.AbstractEventLoop, None]:
         if self._thread and not self._thread.is_alive():
             if self._owner_pid == os.getpid():
                 # warn - thread died without us forking
@@ -310,7 +319,21 @@ class Synchronizer:
 
     def _run_function_sync(self, coro, original_func):
         if self._is_inside_loop():
+            # calling another async function of the same loop would deadlock here since
+            # we are in a non-yielding sync function, so error early instead!
             raise Exception("Deadlock detected: calling a sync function from the synchronizer loop")
+
+        if self._blocking_in_async_callback is not None:
+            try:
+                # Check if we're being called from within another event loop
+                foreign_loop = asyncio.get_running_loop()
+            except RuntimeError:
+                foreign_loop = None
+
+            if foreign_loop is not None:
+                # Fire warning callback - lets libraries warn about blocking usage
+                # where async equivalents exists
+                self._blocking_in_async_callback(original_func)
 
         coro = wrap_coro_exception(coro)
         coro = self._wrap_check_async_leakage(coro)

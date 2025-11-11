@@ -624,3 +624,54 @@ def test_async_inner_still_translates(synchronizer):
         assert isinstance(v, V)
 
     outer()
+
+
+def test_blocking_in_async_callback():
+    """Test that blocking_in_async_callback is called when sync wrapper is called from a foreign event loop."""
+    called_funcs = []
+
+    def callback(func):
+        called_funcs.append(func)
+
+    # Create synchronizer with callback
+    s = Synchronizer(blocking_in_async_callback=callback)
+    foreign_loop = None
+
+    try:
+
+        async def async_func():
+            await asyncio.sleep(0.01)
+            return 42
+
+        sync_func = s.wrap(async_func)
+
+        # Test 1: Call from within a foreign event loop - should trigger callback
+        async def call_sync_from_async():
+            # We're in an async context with a running loop - calling the sync function
+            # should trigger the callback
+            return sync_func()
+
+        # Manually create and manage a foreign event loop
+        foreign_loop = asyncio.new_event_loop()
+        try:
+            result = foreign_loop.run_until_complete(call_sync_from_async())
+            assert result == 42
+        finally:
+            foreign_loop.close()
+            foreign_loop = None
+
+        # Verify the callback was called with the original function
+        assert len(called_funcs) == 1
+        assert called_funcs[0] == async_func
+
+        # Test 2: Call from outside an event loop - should NOT trigger callback
+        called_funcs.clear()
+        result = sync_func()
+        assert result == 42
+
+        # Verify the callback was NOT called when called from outside an event loop
+        assert len(called_funcs) == 0
+    finally:
+        if foreign_loop is not None and not foreign_loop.is_closed():
+            foreign_loop.close()
+        s._close_loop()
