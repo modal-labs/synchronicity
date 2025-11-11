@@ -576,8 +576,6 @@ class StubEmitter:
                 self._ensure_import(type_annotation)
             return
 
-        # Handle both traditional generics (with __origin__) and PEP 604 unions (Type | None)
-        # PEP 604 unions (types.UnionType) have __args__ but no __origin__
         self._ensure_import(type_annotation)  # import the generic itself's module
         for arg in args:
             self._register_imports(arg)
