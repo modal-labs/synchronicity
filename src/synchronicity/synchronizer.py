@@ -324,14 +324,16 @@ class Synchronizer:
             raise Exception("Deadlock detected: calling a sync function from the synchronizer loop")
 
         if self._blocking_in_async_callback is not None:
-            # calling from a
-            with contextlib.suppress(RuntimeError):
+            try:
                 # Check if we're being called from within another event loop
                 foreign_loop = asyncio.get_running_loop()
-                if foreign_loop is not None:
-                    # Fire warning callback - lets libraries warn about blocking usage
-                    # where async equivalents exists
-                    self._blocking_in_async_callback(original_func)
+            except RuntimeError:
+                foreign_loop = None
+
+            if foreign_loop is not None:
+                # Fire warning callback - lets libraries warn about blocking usage
+                # where async equivalents exists
+                self._blocking_in_async_callback(original_func)
 
         coro = wrap_coro_exception(coro)
         coro = self._wrap_check_async_leakage(coro)

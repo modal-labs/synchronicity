@@ -212,7 +212,7 @@ def test_sync_lambda_returning_coroutine_sync_futures(synchronizer):
 
 
 @pytest.mark.asyncio
-async def testline_func_returning_coroutine_async(synchronizer):
+async def test_sync_inline_func_returning_coroutine_async(synchronizer):
     t0 = time.monotonic()
 
     # NOTE: we don't create the async variant unless we know the function returns a coroutine
@@ -643,7 +643,6 @@ def test_blocking_in_async_callback():
             await asyncio.sleep(0.01)
             return 42
 
-        # Wrap the async function
         sync_func = s.wrap(async_func)
 
         # Test 1: Call from within a foreign event loop - should trigger callback
