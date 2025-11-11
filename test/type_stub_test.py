@@ -755,3 +755,70 @@ def test_pathlib():
     src = _function_source(test_path)
     assert "import pathlib\n" in src
     assert "pathlib.Path" in src
+
+
+@pytest.mark.skipif(sys.version_info < (3, 10), reason="Union type syntax (|) requires Python 3.10+")
+def test_union_pipe_syntax_imports():
+    """Test that Type | None syntax properly registers imports for Type.
+
+    This is a regression test for a bug where Optional[Type] would correctly
+    register imports for Type, but Type | None would not, because the PEP 604
+    union syntax creates a types.UnionType which has __args__ but no __origin__.
+    """
+
+    # Create a mock external module type (simulating pandas.DataFrame)
+    class MockDataFrame:
+        pass
+
+    MockDataFrame.__module__ = "pandas.core.frame"
+    MockDataFrame.__name__ = "DataFrame"
+    MockDataFrame.__qualname__ = "DataFrame"
+
+    # Test 1: Optional syntax (baseline - this should work)
+    def with_optional() -> typing.Optional[MockDataFrame]:
+        pass
+
+    src_optional = _function_source(with_optional)
+    print("Optional syntax output:")
+    print(src_optional)
+    assert "import pandas.core.frame" in src_optional
+    assert "pandas.core.frame.DataFrame" in src_optional
+
+    # Test 2: Union | None syntax (the bug case)
+    def with_union_pipe() -> MockDataFrame | None:
+        pass
+
+    src_union = _function_source(with_union_pipe)
+    print("\nUnion | None syntax output:")
+    print(src_union)
+    assert "import pandas.core.frame" in src_union, "Type | None syntax should register imports for Type"
+    assert "pandas.core.frame.DataFrame" in src_union
+
+    # Test 3: More complex case - nested generics with union syntax
+    def with_nested_union() -> typing.List[MockDataFrame | None]:
+        pass
+
+    src_nested = _function_source(with_nested_union)
+    print("\nNested union syntax output:")
+    print(src_nested)
+    assert "import pandas.core.frame" in src_nested, "Nested Type | None should also register imports"
+    assert "pandas.core.frame.DataFrame" in src_nested
+
+    # Test 4: Union with multiple types from external modules
+    class MockSeries:
+        pass
+
+    MockSeries.__module__ = "pandas.core.series"
+    MockSeries.__name__ = "Series"
+    MockSeries.__qualname__ = "Series"
+
+    def with_multi_union() -> MockDataFrame | MockSeries | None:
+        pass
+
+    src_multi = _function_source(with_multi_union)
+    print("\nMulti-type union syntax output:")
+    print(src_multi)
+    assert "import pandas.core.frame" in src_multi
+    assert "import pandas.core.series" in src_multi
+    assert "pandas.core.frame.DataFrame" in src_multi
+    assert "pandas.core.series.Series" in src_multi
