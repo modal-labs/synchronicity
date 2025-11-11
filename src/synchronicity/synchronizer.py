@@ -12,7 +12,7 @@ import threading
 import types
 import typing
 import warnings
-from typing import ForwardRef, Optional
+from typing import Callable, ForwardRef, Optional
 
 import typing_extensions
 
@@ -106,12 +106,12 @@ class Synchronizer:
         self,
         multiwrap_warning=False,
         async_leakage_warning=True,
-        sync_in_async_warning_callback=None,
+        blocking_in_async_callback: Optional[Callable[[types.FunctionType], None]] = None,
     ):
         self._future_poll_interval = 0.1
         self._multiwrap_warning = multiwrap_warning
         self._async_leakage_warning = async_leakage_warning
-        self._sync_in_async_warning_callback = sync_in_async_warning_callback
+        self._blocking_in_async_callback = blocking_in_async_callback
         self._loop = None
         self._loop_creation_lock = threading.Lock()
         self._thread = None
@@ -135,7 +135,7 @@ class Synchronizer:
     _PICKLE_ATTRS = [
         "_multiwrap_warning",
         "_async_leakage_warning",
-        "_sync_in_async_warning_callback",
+        "_blocking_in_async_callback",
     ]
 
     def __getstate__(self):
@@ -313,37 +313,19 @@ class Synchronizer:
 
     def _run_function_sync(self, coro, original_func):
         if self._is_inside_loop():
+            # calling another async function of the same loop would deadlock here since
+            # we are in a non-yielding sync function, so error early instead!
             raise Exception("Deadlock detected: calling a sync function from the synchronizer loop")
 
-        # Check if we're being called from within a foreign event loop
-        if self._sync_in_async_warning_callback is not None:
-            try:
+        if self._blocking_in_async_callback is not None:
+            # calling from a
+            with contextlib.suppress(RuntimeError):
+                # Check if we're being called from within another event loop
                 foreign_loop = asyncio.get_running_loop()
-                # If we got here, we're in an event loop that's not the synchronizer's loop
                 if foreign_loop is not None:
-                    # Extract call site information from the stack
-                    import traceback
-
-                    stack = traceback.extract_stack()
-                    # Find the first frame outside of synchronicity, asyncio, and testing frameworks
-                    call_frame = None
-                    for frame in reversed(stack[:-1]):  # Exclude current frame
-                        filename = frame.filename
-                        if (
-                            "synchronicity" not in filename
-                            and "asyncio" not in filename
-                            and "_pytest" not in filename
-                            and "pytest" not in filename
-                            and "pluggy" not in filename
-                            and "/site-packages/" not in filename
-                        ):
-                            call_frame = frame
-                            break
-
-                    self._sync_in_async_warning_callback(original_func, call_frame)
-            except RuntimeError:
-                # No running loop, this is the expected case
-                pass
+                    # Fire warning callback - lets libraries warn about blocking usage
+                    # where async equivalents exists
+                    self._blocking_in_async_callback(original_func)
 
         coro = wrap_coro_exception(coro)
         coro = self._wrap_check_async_leakage(coro)
