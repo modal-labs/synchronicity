@@ -193,7 +193,13 @@ class Synchronizer:
         #  creates a global reference to this Synchronizer which makes it never get gced
         self._close_loop()
 
-    def _get_loop(self, start=False) -> asyncio.AbstractEventLoop:
+    @typing.overload
+    def _get_loop(self, start: typing.Literal[True]) -> asyncio.AbstractEventLoop: ...
+
+    @typing.overload
+    def _get_loop(self, start: bool) -> typing.Union[asyncio.AbstractEventLoop, None]: ...
+
+    def _get_loop(self, start=False) -> typing.Union[asyncio.AbstractEventLoop, None]:
         if self._thread and not self._thread.is_alive():
             if self._owner_pid == os.getpid():
                 # warn - thread died without us forking
