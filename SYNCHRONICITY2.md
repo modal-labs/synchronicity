@@ -2,11 +2,11 @@
 
 ## Overview
 
-**Synchronicity2** is a Python library code generation tool that automatically creates both synchronous and asynchronous APIs from a single async implementation. It solves the dual-API problem that Python library developers face when supporting both async and sync users.
+**Synchronicity** is a Python library code generation tool that automatically creates both synchronous and asynchronous APIs from a single async implementation. It solves the dual-API problem that Python library developers face when supporting both async and sync users.
 
 **Package Name:** `synchronicity` (published name)
 **Module Name:** `synchronicity` (internal/development name)
-**Python Version:** 3.9+
+**Python Version:** 3.10+ for the runtime library, possibly a higher requirement on the build/compile part
 **License:** Apache 2.0
 **Maintainer:** Modal Labs
 
@@ -28,21 +28,32 @@ Simply wrapping async functions with `asyncio.run()` fails for:
 - **Persistent connections** - need the same event loop across multiple calls (e.g., database clients)
 - **Stateful async objects** - require event loop persistence between method calls
 
+It also adds a lot of code duplication and manual maintenance work to manually have to wrap all async code with sync variants.
+
 ## Solution Architecture
 
-Synchronicity2 uses a **strict separation** between build-time and runtime:
+Synchronicity 2.0 uses a **strict separation** between build-time and runtime:
 
 ### 1. Build-Time Layer (`Module` class + code generation)
 - **Lightweight registration**: `Module` class provides decorators to mark async code for wrapper generation
-- **Zero runtime overhead**: Registration only tracks what to generate, no execution logic
+- **(Almost) Zero runtime overhead**: Registration only tracks what to generate, no execution logic
 - **Build-time code generation**: CLI tool generates wrapper modules during build/packaging step
-- **No coupling**: Implementation code has NO runtime dependency on Synchronizer
+- **Uses type annotations**: Instead of generating runtime type checks
 
 ### 2. Runtime Layer (`Synchronizer` class)
 - **Used ONLY by generated code**: Implementation code never imports or uses Synchronizer
 - **Dedicated event loop**: Manages background thread with its own event loop
 - **Thread-safe execution**: Executes async code from both sync and async contexts
 - **Global registry**: Maintains singleton synchronizers by name
+- **Almost no type checking**: In most cases runtime type checking/branching will not be necessary, since
+     type annotations provide enough information to generate code statically from the definitions.
+
+### 3. Decoupling:
+- Implementation async code typically has no runtime dependency on Synchronizer, unless the user wants to have a manual
+  sync/async wrapper implementation.
+- Generated code has no dependencies on the build-time layer, e.g. does no wrapping of types or functions - only pre-compiled
+  translation operations arguments and return values of functions.
+
 
 ## Core Design Philosophy
 
@@ -60,11 +71,11 @@ async def fetch_data():
 ```
 
 **Benefits:**
+- Implementation is only done in async Python, without having to have knowledge of the wrapping layer
 - Implementation code has no runtime Synchronizer dependency
-- Faster imports (no synchronizer initialization)
-- Clearer separation: registration vs execution
+- Fast imports of implementation (no synchronizer initialization)
 - Testable without wrapper infrastructure
-- Can delete wrapper generation code after build
+- Very thin library needed at runtime for generated wrappers (can exclude the code generation part)
 
 ## Core API
 
@@ -789,6 +800,74 @@ Only generated code uses Synchronizer.
 4. **Generated code imports implementation modules:**
    - Implementation modules must remain importable
    - Don't delete implementation code after generation
+
+### Design Principle: async syntax
+
+The async wrapper interface strives to the following guiding principle:
+* Async calls use the `await sync_wrapper.aio({args go here})` syntax when something is *await*able
+* If something is async *iterable* in the implementation, the wrapper is also directly async iterable (as well as sync), without using `.aio()`. I.e. `async for res in wrapper_iterable: ...`. See reasoning below.
+* If something is an async *context manager* in the implementation, the wrapper is also an async contextmanager, `async with wrapper_context_manager`. See reasoning below.
+
+**Reasoning for not using .aio on context managers/iterables**
+* Unlike functions, we don't *need* to distinguish objects - a normal function can't be both blocking and a coroutine function at the same time, but something can be both sync and async iterable/context-manageable.
+* *If* we made the wrapper *only* sync iterable/contextmanageable, and required `.aio()` to get the async iterable, it would in the general case require a synthetic `[async] def aio()` method or property on wrapped classes that implement the iterable/context manager protocol.
+E.g.
+```py
+@module.wrap_class
+class ImplIterable:
+    def __aiter__(self):
+        yield 1
+
+it = ImplIterable()
+async for res in it:
+    ...
+
+# Wrapper:
+class ImplIterable
+    def __iter__():
+        ...
+
+    # possibly a property?
+    def aio() -> AsyncIterable:
+        ...
+
+for res in it:
+    ...
+
+async for res in it.aio():
+    ...
+```
+
+This is a bit odd, since the sync wrapper doesn't require a "function call" to access the iterator. `aio` could possibly also be a property, but then it doesn't look like our other .aio() calls anymore.
+
+What's worse is - what *type* should the return value of `.aio()` have here? It could be an async generator that wraps the underlying iterator, but what if a class is both an iterable *and* a context manager? Or what if the class implements `__await__` or a `__call__` method that returns a coroutine?
+
+In the general case we'd have to make `aio` return a custom generated type that encapsulates all async aspects of the class, except its async methods, which feels pretty ugly and makes static typing hard to reason about.
+
+For these reasons, async iteration and async context managing of objects use the non-`.aio` syntax.
+
+For this to be syntactically consistent with wrapped *functions* that are declared to return AsyncIterable/AsyncContextManager, the wrapper around those functions should be superficially sync (although not do any blocking operation), but have a return values that also allows async iteration (even without using `.aio()` to call the function):
+
+```py
+@module.wrap_function
+async def foo() -> AsyncIterable[int]:
+    yield 1
+
+# Wrapper code:
+def foo() -> AsyncAndSyncIterable[int]:
+    yield 1
+
+for res in foo():
+    ...
+
+async for res in foo():
+    ...
+
+```
+
+This requires custom `AsyncAndSyncIterable` and `AsyncAndSyncContextManager` wrapper types, but at least these are limited in scope and don't require custom generation (they can be part of the Synchronicity static runtime library).
+
+It's quite likely that people will make the mistake of calling `async for res in foo.aio():` above though... We could add it as a sync proxy to `foo()` itself, but it may be confusing that we support both syntaxes too...
 
 ## Quick Reference
 
