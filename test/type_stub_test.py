@@ -828,8 +828,11 @@ def test_async_classmethod_gets_aio(synchronizer):
     @synchronizer.wrap
     class A:
         @classmethod
-        async def foo(self):
+        async def foo():
             pass
 
     src = _class_source(A, target_module=__name__)
-    print(src)
+    assert "__foo_spec" in src
+    assert "foo: __foo_spec" in src
+    assert "async def aio(self" in src
+    assert "def __call__(self" in src

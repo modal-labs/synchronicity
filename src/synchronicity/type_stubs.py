@@ -351,16 +351,9 @@ class StubEmitter:
                     )
                 )
             elif isinstance(entity, MethodWithAio):
-                if entity._is_classmethod:
-                    # Classmethods with type vars on the cls variable don't work with "dual interface functions"
-                    # at the moment, so we only output a stub for the blocking interface
-                    # TODO(elias): allow dual type stubs as long as no type vars are being used in the class var
-                    fn_source = self._get_function_source_with_overloads(entity._func, entity_name, body_indent_level)
-                    src = f"{body_indent}@classmethod\n{fn_source}"
-                else:
-                    src = self._get_dual_function_source(
-                        entity, entity_name, body_indent_level, parent_generic_type_vars=generic_type_vars
-                    )
+                src = self._get_dual_function_source(
+                    entity, entity_name, body_indent_level, parent_generic_type_vars=generic_type_vars
+                )
                 methods.append(src)
 
         padding = [] if var_annotations or methods else [f"{body_indent}..."]
@@ -387,10 +380,9 @@ class StubEmitter:
             transform_signature = add_prefix_arg(
                 "self"
             )  # signature is moved into a protocol class, so we need a self where there previously was none
-        elif entity._is_classmethod:
-            # TODO: dual protocol for classmethods having annotated cls attributes
-            raise Exception("Not supported")
         else:
+            # For methods (instance or class), the descriptor binds self/cls,
+            # so we remove it and add self for the Protocol
             transform_signature = add_prefix_arg("self", 1)
         # Emits type stub for a "dual" function that is both callable and has an .aio callable with an async version
         # Currently this is emitted as a typing.Protocol declaration + instance with a __call__ and aio method
