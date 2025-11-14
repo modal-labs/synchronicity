@@ -822,3 +822,14 @@ def test_union_pipe_syntax_imports():
     assert "import pandas.core.series" in src_multi
     assert "pandas.core.frame.DataFrame" in src_multi
     assert "pandas.core.series.Series" in src_multi
+
+
+def test_async_classmethod_gets_aio(synchronizer):
+    @synchronizer.wrap
+    class A:
+        @classmethod
+        async def foo(self):
+            pass
+
+    src = _class_source(A, target_module=__name__)
+    print(src)
