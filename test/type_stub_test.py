@@ -370,7 +370,7 @@ def test_synchronicity_wrapped_class():
     assert "class __clone_spec(typing_extensions.Protocol):" in src
     assert "    def __call__(self, /, foo: Foo) -> Foo" in src
     assert "    async def aio(self, /, foo: Foo) -> Foo" in src
-    assert "clone: __clone_spec" in src
+    assert "clone: typing.ClassVar[__clone_spec]" in src
 
 
 class _WithClassMethod:
@@ -822,3 +822,17 @@ def test_union_pipe_syntax_imports():
     assert "import pandas.core.series" in src_multi
     assert "pandas.core.frame.DataFrame" in src_multi
     assert "pandas.core.series.Series" in src_multi
+
+
+def test_async_classmethod_gets_aio(synchronizer):
+    @synchronizer.wrap
+    class A:
+        @classmethod
+        async def foo():
+            pass
+
+    src = _class_source(A, target_module=__name__)
+    assert "__foo_spec" in src
+    assert "foo: typing.ClassVar[__foo_spec" in src
+    assert "async def aio(self" in src
+    assert "def __call__(self" in src

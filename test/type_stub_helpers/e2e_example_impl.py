@@ -26,6 +26,10 @@ class _Foo:
     def clone(cls, foo: "_Foo") -> "_Foo":  # self ref
         return  # type: ignore
 
+    @classmethod
+    async def slow_clone(cls, foo: "_Foo") -> "_Foo":
+        return foo
+
 
 _T = TypeVar("_T", bound=_Foo)
 

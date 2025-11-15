@@ -347,20 +347,21 @@ class StubEmitter:
                 # Note: FunctionWithAio is used for staticmethods
                 methods.append(
                     self._get_dual_function_source(
-                        entity, entity_name, body_indent_level, parent_generic_type_vars=generic_type_vars
+                        entity,
+                        entity_name,
+                        body_indent_level,
+                        parent_generic_type_vars=generic_type_vars,
+                        is_class_member=True,
                     )
                 )
             elif isinstance(entity, MethodWithAio):
-                if entity._is_classmethod:
-                    # Classmethods with type vars on the cls variable don't work with "dual interface functions"
-                    # at the moment, so we only output a stub for the blocking interface
-                    # TODO(elias): allow dual type stubs as long as no type vars are being used in the class var
-                    fn_source = self._get_function_source_with_overloads(entity._func, entity_name, body_indent_level)
-                    src = f"{body_indent}@classmethod\n{fn_source}"
-                else:
-                    src = self._get_dual_function_source(
-                        entity, entity_name, body_indent_level, parent_generic_type_vars=generic_type_vars
-                    )
+                src = self._get_dual_function_source(
+                    entity,
+                    entity_name,
+                    body_indent_level,
+                    parent_generic_type_vars=generic_type_vars,
+                    is_class_member=True,
+                )
                 methods.append(src)
 
         padding = [] if var_annotations or methods else [f"{body_indent}..."]
@@ -382,15 +383,20 @@ class StubEmitter:
         entity_name,
         body_indent_level,
         parent_generic_type_vars: typing.Set[type] = set(),  # if a method of a Generic class - the set of type vars
+        is_class_member: bool = False,  # whether this is a member of a class (vs module-level)
     ) -> str:
+        # Determine if this is a class-level attribute (staticmethod or classmethod within a class)
+        is_class_level = is_class_member and (
+            isinstance(entity, FunctionWithAio) or (isinstance(entity, MethodWithAio) and entity._is_classmethod)
+        )
+
         if isinstance(entity, FunctionWithAio):
             transform_signature = add_prefix_arg(
                 "self"
             )  # signature is moved into a protocol class, so we need a self where there previously was none
-        elif entity._is_classmethod:
-            # TODO: dual protocol for classmethods having annotated cls attributes
-            raise Exception("Not supported")
         else:
+            # For methods (instance or class), the descriptor binds self/cls,
+            # so we remove it and add self for the Protocol
             transform_signature = add_prefix_arg("self", 1)
         # Emits type stub for a "dual" function that is both callable and has an .aio callable with an async version
         # Currently this is emitted as a typing.Protocol declaration + instance with a __call__ and aio method
@@ -421,11 +427,19 @@ class StubEmitter:
             transform_signature=final_transform_signature,
         )
 
+        # For class-level attributes (staticmethod/classmethod), wrap in ClassVar
+        attr_type = f"__{entity_name}_spec{parent_type_var_names_spec}"
+        if is_class_level:
+            self.imports.add("typing")
+            attr_annotation = f"typing.ClassVar[{attr_type}]"
+        else:
+            attr_annotation = attr_type
+
         protocol_attr = f"""\
 {body_indent}class __{entity_name}_spec(typing_extensions.Protocol{protocol_declaration_type_var_spec}):
 {blocking_func_source}
 {aio_func_source}
-{body_indent}{entity_name}: __{entity_name}_spec{parent_type_var_names_spec}
+{body_indent}{entity_name}: {attr_annotation}
 """
 
         return protocol_attr
