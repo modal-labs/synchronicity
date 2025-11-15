@@ -347,12 +347,20 @@ class StubEmitter:
                 # Note: FunctionWithAio is used for staticmethods
                 methods.append(
                     self._get_dual_function_source(
-                        entity, entity_name, body_indent_level, parent_generic_type_vars=generic_type_vars
+                        entity,
+                        entity_name,
+                        body_indent_level,
+                        parent_generic_type_vars=generic_type_vars,
+                        is_class_member=True,
                     )
                 )
             elif isinstance(entity, MethodWithAio):
                 src = self._get_dual_function_source(
-                    entity, entity_name, body_indent_level, parent_generic_type_vars=generic_type_vars
+                    entity,
+                    entity_name,
+                    body_indent_level,
+                    parent_generic_type_vars=generic_type_vars,
+                    is_class_member=True,
                 )
                 methods.append(src)
 
@@ -375,7 +383,13 @@ class StubEmitter:
         entity_name,
         body_indent_level,
         parent_generic_type_vars: typing.Set[type] = set(),  # if a method of a Generic class - the set of type vars
+        is_class_member: bool = False,  # whether this is a member of a class (vs module-level)
     ) -> str:
+        # Determine if this is a class-level attribute (staticmethod or classmethod within a class)
+        is_class_level = is_class_member and (
+            isinstance(entity, FunctionWithAio) or (isinstance(entity, MethodWithAio) and entity._is_classmethod)
+        )
+
         if isinstance(entity, FunctionWithAio):
             transform_signature = add_prefix_arg(
                 "self"
@@ -413,11 +427,19 @@ class StubEmitter:
             transform_signature=final_transform_signature,
         )
 
+        # For class-level attributes (staticmethod/classmethod), wrap in ClassVar
+        attr_type = f"__{entity_name}_spec{parent_type_var_names_spec}"
+        if is_class_level:
+            self.imports.add("typing")
+            attr_annotation = f"typing.ClassVar[{attr_type}]"
+        else:
+            attr_annotation = attr_type
+
         protocol_attr = f"""\
 {body_indent}class __{entity_name}_spec(typing_extensions.Protocol{protocol_declaration_type_var_spec}):
 {blocking_func_source}
 {aio_func_source}
-{body_indent}{entity_name}: __{entity_name}_spec{parent_type_var_names_spec}
+{body_indent}{entity_name}: {attr_annotation}
 """
 
         return protocol_attr
