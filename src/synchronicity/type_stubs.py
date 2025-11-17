@@ -495,12 +495,10 @@ class StubEmitter:
 
         if isinstance(entity, MethodWithAio):
             # support for typing.Self (which would otherwise reference the protocol class)
-            # For classmethods, only add SUPERSELF if the method actually uses Self in its signature
-            # For instance methods, always add SUPERSELF since the protocol needs to know the instance type
+            # Only add SUPERSELF if the method actually uses Self in its signature
             uses_self = _func_uses_self(entity._func) or _func_uses_self(entity._aio_func)
-            should_add_superself = not entity._is_classmethod or uses_self
 
-            if should_add_superself:
+            if uses_self:
                 superself_name = "SUPERSELF"
                 superself_var = typing.TypeVar(superself_name, covariant=True)  # type: ignore
                 superself_var.__module__ = self.target_module
