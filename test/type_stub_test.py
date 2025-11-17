@@ -370,7 +370,7 @@ def test_synchronicity_wrapped_class():
     assert "class __clone_spec(typing_extensions.Protocol):" in src
     assert "    def __call__(self, /, foo: Foo) -> Foo" in src
     assert "    async def aio(self, /, foo: Foo) -> Foo" in src
-    assert "clone: __clone_spec" in src
+    assert "clone: typing.ClassVar[__clone_spec]" in src
 
 
 class _WithClassMethod:
@@ -393,14 +393,14 @@ def test_synchronicity_class():
 
     assert (
         """
-    class __meth_spec(typing_extensions.Protocol[SUPERSELF]):
+    class __meth_spec(typing_extensions.Protocol):
         def __call__(self, /, arg: bool) -> int:
             ...
 
         async def aio(self, /, arg: bool) -> int:
             ...
 
-    meth: __meth_spec[typing_extensions.Self]
+    meth: __meth_spec
 """
         in src
     )
@@ -637,9 +637,9 @@ def test_returns_forward_wrapped_generic():
     # base class should be generic in the (potentially) translated type var (could have wrapped bounds spec)
     assert "class Container(typing.Generic[Translated_T]):" in src
     assert "Translated_T_INNER = typing.TypeVar" in src  # distinct "inner copy" of Translated_T needs to be declared
-    assert "typing_extensions.Protocol[Translated_T_INNER, SUPERSELF]" in src
+    assert "typing_extensions.Protocol[Translated_T_INNER]" in src
     assert "def __call__(self, /) -> ReturnVal[Translated_T_INNER]:" in src
-    assert "fun: __fun_spec[Translated_T, typing_extensions.Self]" in src
+    assert "fun: __fun_spec[Translated_T]" in src
 
 
 def custom_field():  # needs to be in global scope
@@ -822,3 +822,17 @@ def test_union_pipe_syntax_imports():
     assert "import pandas.core.series" in src_multi
     assert "pandas.core.frame.DataFrame" in src_multi
     assert "pandas.core.series.Series" in src_multi
+
+
+def test_async_classmethod_gets_aio(synchronizer):
+    @synchronizer.wrap
+    class A:
+        @classmethod
+        async def foo():
+            pass
+
+    src = _class_source(A, target_module=__name__)
+    assert "__foo_spec" in src
+    assert "foo: typing.ClassVar[__foo_spec" in src
+    assert "async def aio(self" in src
+    assert "def __call__(self" in src

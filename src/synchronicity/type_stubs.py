@@ -185,6 +185,25 @@ def _get_func_type_vars(func, synchronizer: synchronicity.Synchronizer) -> typin
     return ret
 
 
+def _func_uses_self(func) -> bool:
+    """Check if a function's annotations use typing_extensions.Self"""
+
+    def _contains_self(typ) -> bool:
+        if typ is typing_extensions.Self:
+            return True
+        origin = get_origin(typ)
+        if origin:
+            for arg in safe_get_args(typ):
+                if _contains_self(arg):
+                    return True
+        return False
+
+    for typ in getattr(func, "__annotations__", {}).values():
+        if _contains_self(typ):
+            return True
+    return False
+
+
 def safe_get_args(annotation):
     # "polyfill" of Python 3.10+ typing.get_args() behavior of
     # not putting ParamSpec and Ellipsis in a list when used as first argument to a Callable
@@ -347,20 +366,21 @@ class StubEmitter:
                 # Note: FunctionWithAio is used for staticmethods
                 methods.append(
                     self._get_dual_function_source(
-                        entity, entity_name, body_indent_level, parent_generic_type_vars=generic_type_vars
+                        entity,
+                        entity_name,
+                        body_indent_level,
+                        parent_generic_type_vars=generic_type_vars,
+                        is_class_member=True,
                     )
                 )
             elif isinstance(entity, MethodWithAio):
-                if entity._is_classmethod:
-                    # Classmethods with type vars on the cls variable don't work with "dual interface functions"
-                    # at the moment, so we only output a stub for the blocking interface
-                    # TODO(elias): allow dual type stubs as long as no type vars are being used in the class var
-                    fn_source = self._get_function_source_with_overloads(entity._func, entity_name, body_indent_level)
-                    src = f"{body_indent}@classmethod\n{fn_source}"
-                else:
-                    src = self._get_dual_function_source(
-                        entity, entity_name, body_indent_level, parent_generic_type_vars=generic_type_vars
-                    )
+                src = self._get_dual_function_source(
+                    entity,
+                    entity_name,
+                    body_indent_level,
+                    parent_generic_type_vars=generic_type_vars,
+                    is_class_member=True,
+                )
                 methods.append(src)
 
         padding = [] if var_annotations or methods else [f"{body_indent}..."]
@@ -382,15 +402,20 @@ class StubEmitter:
         entity_name,
         body_indent_level,
         parent_generic_type_vars: typing.Set[type] = set(),  # if a method of a Generic class - the set of type vars
+        is_class_member: bool = False,  # whether this is a member of a class (vs module-level)
     ) -> str:
+        # Determine if this is a class-level attribute (staticmethod or classmethod within a class)
+        is_class_level = is_class_member and (
+            isinstance(entity, FunctionWithAio) or (isinstance(entity, MethodWithAio) and entity._is_classmethod)
+        )
+
         if isinstance(entity, FunctionWithAio):
             transform_signature = add_prefix_arg(
                 "self"
             )  # signature is moved into a protocol class, so we need a self where there previously was none
-        elif entity._is_classmethod:
-            # TODO: dual protocol for classmethods having annotated cls attributes
-            raise Exception("Not supported")
         else:
+            # For methods (instance or class), the descriptor binds self/cls,
+            # so we remove it and add self for the Protocol
             transform_signature = add_prefix_arg("self", 1)
         # Emits type stub for a "dual" function that is both callable and has an .aio callable with an async version
         # Currently this is emitted as a typing.Protocol declaration + instance with a __call__ and aio method
@@ -421,11 +446,19 @@ class StubEmitter:
             transform_signature=final_transform_signature,
         )
 
+        # For class-level attributes (staticmethod/classmethod), wrap in ClassVar
+        attr_type = f"__{entity_name}_spec{parent_type_var_names_spec}"
+        if is_class_level:
+            self.imports.add("typing")
+            attr_annotation = f"typing.ClassVar[{attr_type}]"
+        else:
+            attr_annotation = attr_type
+
         protocol_attr = f"""\
 {body_indent}class __{entity_name}_spec(typing_extensions.Protocol{protocol_declaration_type_var_spec}):
 {blocking_func_source}
 {aio_func_source}
-{body_indent}{entity_name}: __{entity_name}_spec{parent_type_var_names_spec}
+{body_indent}{entity_name}: {attr_annotation}
 """
 
         return protocol_attr
@@ -462,14 +495,18 @@ class StubEmitter:
 
         if isinstance(entity, MethodWithAio):
             # support for typing.Self (which would otherwise reference the protocol class)
-            superself_name = "SUPERSELF"
-            superself_var = typing.TypeVar(superself_name, covariant=True)  # type: ignore
-            superself_var.__module__ = self.target_module
-            self.add_type_var(superself_var, superself_name)
-            self._typevar_inner_replacements[typing_extensions.Self] = superself_var
-            self.imports.add("typing_extensions")
-            extra_instance_args = ["typing_extensions.Self"]
-            extra_declaration_args = ["SUPERSELF"]
+            # Only add SUPERSELF if the method actually uses Self in its signature
+            uses_self = _func_uses_self(entity._func) or _func_uses_self(entity._aio_func)
+
+            if uses_self:
+                superself_name = "SUPERSELF"
+                superself_var = typing.TypeVar(superself_name, covariant=True)  # type: ignore
+                superself_var.__module__ = self.target_module
+                self.add_type_var(superself_var, superself_name)
+                self._typevar_inner_replacements[typing_extensions.Self] = superself_var
+                self.imports.add("typing_extensions")
+                extra_instance_args = ["typing_extensions.Self"]
+                extra_declaration_args = ["SUPERSELF"]
 
         protocol_generic_args = [
             self._typevar_inner_replacements[tvar].__name__ for tvar in typevar_overlap

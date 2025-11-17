@@ -26,6 +26,10 @@ class _Foo:
     def clone(cls, foo: "_Foo") -> "_Foo":  # self ref
         return  # type: ignore
 
+    @classmethod
+    async def slow_clone(cls, foo: "_Foo") -> "_Foo":
+        return foo
+
 
 _T = TypeVar("_T", bound=_Foo)
 
@@ -70,3 +74,12 @@ class CallableWrapper(typing.Generic[P, R]):
 
 def wrap_callable(c: typing.Callable[P, R]) -> CallableWrapper[P, R]:
     return  # type: ignore
+
+
+T2 = typing.TypeVar("T2")
+
+
+class SomeGeneric(typing.Generic[T2]):
+    @classmethod
+    async def custom_constructor(self) -> "SomeGeneric[str]":
+        return SomeGeneric()
