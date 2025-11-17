@@ -185,6 +185,25 @@ def _get_func_type_vars(func, synchronizer: synchronicity.Synchronizer) -> typin
     return ret
 
 
+def _func_uses_self(func) -> bool:
+    """Check if a function's annotations use typing_extensions.Self"""
+
+    def _contains_self(typ) -> bool:
+        if typ is typing_extensions.Self:
+            return True
+        origin = get_origin(typ)
+        if origin:
+            for arg in safe_get_args(typ):
+                if _contains_self(arg):
+                    return True
+        return False
+
+    for typ in getattr(func, "__annotations__", {}).values():
+        if _contains_self(typ):
+            return True
+    return False
+
+
 def safe_get_args(annotation):
     # "polyfill" of Python 3.10+ typing.get_args() behavior of
     # not putting ParamSpec and Ellipsis in a list when used as first argument to a Callable
@@ -476,14 +495,20 @@ class StubEmitter:
 
         if isinstance(entity, MethodWithAio):
             # support for typing.Self (which would otherwise reference the protocol class)
-            superself_name = "SUPERSELF"
-            superself_var = typing.TypeVar(superself_name, covariant=True)  # type: ignore
-            superself_var.__module__ = self.target_module
-            self.add_type_var(superself_var, superself_name)
-            self._typevar_inner_replacements[typing_extensions.Self] = superself_var
-            self.imports.add("typing_extensions")
-            extra_instance_args = ["typing_extensions.Self"]
-            extra_declaration_args = ["SUPERSELF"]
+            # For classmethods, only add SUPERSELF if the method actually uses Self in its signature
+            # For instance methods, always add SUPERSELF since the protocol needs to know the instance type
+            uses_self = _func_uses_self(entity._func) or _func_uses_self(entity._aio_func)
+            should_add_superself = not entity._is_classmethod or uses_self
+
+            if should_add_superself:
+                superself_name = "SUPERSELF"
+                superself_var = typing.TypeVar(superself_name, covariant=True)  # type: ignore
+                superself_var.__module__ = self.target_module
+                self.add_type_var(superself_var, superself_name)
+                self._typevar_inner_replacements[typing_extensions.Self] = superself_var
+                self.imports.add("typing_extensions")
+                extra_instance_args = ["typing_extensions.Self"]
+                extra_declaration_args = ["SUPERSELF"]
 
         protocol_generic_args = [
             self._typevar_inner_replacements[tvar].__name__ for tvar in typevar_overlap

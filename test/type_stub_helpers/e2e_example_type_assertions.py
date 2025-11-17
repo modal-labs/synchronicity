@@ -58,3 +58,8 @@ def f(a: str) -> float:
 
 res = e2e_example_export.wrap_callable(f).func(a="q")
 assert_type(res, float)
+
+
+custom = e2e_example_export.SomeGeneric.custom_constructor()
+
+assert_type(custom, e2e_example_export.SomeGeneric[str])

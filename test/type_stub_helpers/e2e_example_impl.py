@@ -74,3 +74,12 @@ class CallableWrapper(typing.Generic[P, R]):
 
 def wrap_callable(c: typing.Callable[P, R]) -> CallableWrapper[P, R]:
     return  # type: ignore
+
+
+T2 = typing.TypeVar("T2")
+
+
+class SomeGeneric(typing.Generic[T2]):
+    @classmethod
+    async def custom_constructor(self) -> "SomeGeneric[str]":
+        return SomeGeneric()
