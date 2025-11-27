@@ -1,5 +1,4 @@
 import asyncio
-import asyncio.futures
 import atexit
 import collections.abc
 import concurrent
@@ -7,8 +6,10 @@ import concurrent.futures
 import contextlib
 import functools
 import inspect
+import logging
 import os
 import threading
+import traceback
 import types
 import typing
 import warnings
@@ -53,6 +54,9 @@ ASYNC_GENERIC_ORIGINS = (
     collections.abc.AsyncGenerator,
     contextlib.AbstractAsyncContextManager,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 class classproperty:
@@ -112,11 +116,13 @@ class Synchronizer:
         self._multiwrap_warning = multiwrap_warning
         self._async_leakage_warning = async_leakage_warning
         self._blocking_in_async_callback = blocking_in_async_callback
-        self._loop = None
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._loop_creation_lock = threading.Lock()
         self._thread = None
+        self._thread_exception: Optional[BaseException] = None
+        self._thread_traceback: Optional[str] = None
         self._owner_pid = None
-        self._stopping = None
+        self._stopping: Optional[asyncio.Event] = None
 
         # Special attribute we use to go from wrapped <-> original
         self._wrapped_attr = "_sync_wrapped_%d" % id(self)
@@ -162,7 +168,12 @@ class Synchronizer:
                     await self._stopping.wait()  # wait until told to stop
 
                 try:
-                    asyncio.run(loop_inner())
+                    try:
+                        asyncio.run(loop_inner())
+                    except BaseException as exc_inner:
+                        self._thread_exception = exc_inner
+                        self._thread_traceback = traceback.format_exc()
+                        raise exc_inner
                 except RuntimeError as exc:
                     # Python 3.12 raises a RuntimeError when new threads are created at shutdown.
                     # Swallowing it here is innocuous, but ideally we will revisit this after
@@ -203,6 +214,11 @@ class Synchronizer:
         if self._thread and not self._thread.is_alive():
             if self._owner_pid == os.getpid():
                 # warn - thread died without us forking
+                logger.error(
+                    f"""Synchronizer thread unexpectedly died.
+Cause: {type(self._thread_exception)}
+Traceback:{self._thread_traceback}"""
+                )
                 raise RuntimeError("Synchronizer thread unexpectedly died")
 
             self._thread = None

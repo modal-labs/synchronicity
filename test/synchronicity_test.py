@@ -1,6 +1,7 @@
 import asyncio
 import concurrent.futures
 import inspect
+import logging
 import pytest
 import sys
 import threading
@@ -675,3 +676,39 @@ def test_blocking_in_async_callback():
         if foreign_loop is not None and not foreign_loop.is_closed():
             foreign_loop.close()
         s._close_loop()
+
+
+@pytest.mark.filterwarnings("ignore")
+def test_synchronizer_unexpected_thread_death(caplog):
+    s = Synchronizer()
+
+    @s.wrap
+    async def dummy():
+        return "works"
+
+    class CustomError(Exception):
+        pass
+
+    caplog.set_level(logging.ERROR)
+    assert dummy() == "works"
+    assert len(caplog.records) == 0
+
+    # terminate the thread
+    def make_event_raise():
+        # a bit ugly, but we use asyncio internals here to raise an "unexpected"
+        # error inside of the inner thread by having the asyncio.Event.wait
+        # seemingly raise an error (although that should never happen durin
+        # actual operation)
+        for waiter in s._stopping._waiters:
+            if not waiter.done():
+                waiter.set_exception(CustomError())
+
+    s._loop.call_soon_threadsafe(make_event_raise)
+    time.sleep(0.1)  # give the thread some time to die
+    with pytest.raises(RuntimeError, match="Synchronizer thread unexpectedly died"):
+        dummy()  # this should trigger an error
+
+    (error_log,) = caplog.records
+    assert "Traceback" in error_log.message
+    assert "CustomError" in error_log.message
+    s._close_loop()
