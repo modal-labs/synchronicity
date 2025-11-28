@@ -180,7 +180,8 @@ def _get_type_vars(typ, synchronizer, home_module):
 def _get_func_type_vars(func, synchronizer: synchronicity.Synchronizer) -> typing.Set[type]:
     ret = set()
     home_module = safe_get_module(func)
-    for typ in getattr(func, "__annotations__", {}).values():
+    annotations = inspect.get_annotations(func)
+    for typ in annotations.values():
         ret |= _get_type_vars(typ, synchronizer, home_module)
     return ret
 
@@ -198,7 +199,8 @@ def _func_uses_self(func) -> bool:
                     return True
         return False
 
-    for typ in getattr(func, "__annotations__", {}).values():
+    annotations = inspect.get_annotations(func)
+    for typ in annotations.values():
         if _contains_self(typ):
             return True
     return False
@@ -325,7 +327,7 @@ class StubEmitter:
         var_annotations = []
         methods = []
 
-        annotations = cls.__dict__.get("__annotations__", {})
+        annotations = inspect.get_annotations(cls)
         annotations = {k: self._translate_global_annotation(annotation, cls) for k, annotation in annotations.items()}
 
         for varname, annotation in annotations.items():
@@ -813,11 +815,12 @@ class StubEmitter:
         self._register_imports(annotation)
         return f"{name}: {self._formatannotation(annotation, None)}"
 
-    def _formatannotation(self, annotation, base_module=None) -> str:
+    def _formatannotation(self, annotation, base_module=None, quote_annotation_strings: bool = True) -> str:
         """modified version of `inspect.formatannotations`
         * Uses verbatim `None` instead of `NoneType` for None-arguments in generic types
         * Doesn't omit `typing.`-module from qualified imports in type names
         * ignores base_module (uses self.target_module instead)
+        * ignores quote_annotation_strings
         """
         origin = get_origin(annotation)
 

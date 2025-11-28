@@ -309,7 +309,10 @@ def test_optional():
     wrapped_f = synchronizer.create_blocking(f, "wrapped_f", __name__)
 
     src = _function_source(wrapped_f)
-    if sys.version_info[:2] >= (3, 10):
+    # TODO: 3.14 does not preserve the typing.Optional[str]
+    if sys.version_info[:2] == (3, 14):
+        assert "typing.Union[str, None]" in src
+    elif sys.version_info[:2] >= (3, 10):
         assert "typing.Optional[str]" in src
     else:
         assert "typing.Union[str, None]" in src
