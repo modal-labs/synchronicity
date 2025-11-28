@@ -3,6 +3,7 @@ import pytest
 from typing import Any, Dict
 
 from synchronicity import classproperty
+from synchronicity.annotations import get_annotations
 
 
 @pytest.mark.asyncio
@@ -18,7 +19,8 @@ async def test_getattr(synchronizer):
             return self._attrs[k]
 
         def __setattr__(self, k, v):
-            if k in self.__annotations__:
+            annotations = get_annotations(type(self))
+            if k in annotations:
                 # Only needed because the constructor sets _attrs
                 self.__dict__[k] = v
             else:

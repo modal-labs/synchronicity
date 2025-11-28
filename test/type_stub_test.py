@@ -211,6 +211,9 @@ def merged_signature(*sigs):
     return sig
 
 
+@pytest.mark.skipif(
+    sys.version_info[:2] == (3, 14), reason="Updating annotations through __annotations__ does not work in Python 3.14"
+)
 def test_wrapped_function_with_new_annotations():
     """A wrapped function (in general, using functools.wraps/partial) would
     have an inspect.signature from the wrapped function by default
@@ -309,7 +312,10 @@ def test_optional():
     wrapped_f = synchronizer.create_blocking(f, "wrapped_f", __name__)
 
     src = _function_source(wrapped_f)
-    if sys.version_info[:2] >= (3, 10):
+    # TODO: 3.14 does not preserve the typing.Optional[str]
+    if sys.version_info[:2] == (3, 14):
+        assert "typing.Union[str, None]" in src
+    elif sys.version_info[:2] >= (3, 10):
         assert "typing.Optional[str]" in src
     else:
         assert "typing.Union[str, None]" in src
@@ -579,6 +585,8 @@ def test_overloads_unwrapped_functions():
     assert "def overloaded(arg: int) -> int:" in src
 
 
+# Patching `asynccontextmanager` to use `__annotate__` surfaces an issue with sigtools for generating stubs
+@pytest.mark.skipif(sys.version_info[:2] == (3, 14), reason="asynccontextmanager does not work with Python 3.14")
 def test_wrapped_context_manager_is_both_blocking_and_async():
     @asynccontextmanager
     async def foo(arg: int) -> typing.AsyncGenerator[str, None]:
