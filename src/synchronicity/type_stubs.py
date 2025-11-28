@@ -29,7 +29,7 @@ from sigtools._signatures import EmptyAnnotation, UpgradedAnnotation, UpgradedPa
 
 import synchronicity
 from synchronicity import combined_types, overload_tracking
-from synchronicity.annotations import TYPE_CHECKING_OVERRIDES, evaluated_annotation
+from synchronicity.annotations import TYPE_CHECKING_OVERRIDES, evaluated_annotation, get_annotations
 from synchronicity.async_wrap import is_coroutine_function_follow_wrapped
 from synchronicity.interface import Interface
 from synchronicity.synchronizer import (
@@ -180,7 +180,7 @@ def _get_type_vars(typ, synchronizer, home_module):
 def _get_func_type_vars(func, synchronizer: synchronicity.Synchronizer) -> typing.Set[type]:
     ret = set()
     home_module = safe_get_module(func)
-    annotations = inspect.get_annotations(func)
+    annotations = get_annotations(func)
     for typ in annotations.values():
         ret |= _get_type_vars(typ, synchronizer, home_module)
     return ret
@@ -199,7 +199,7 @@ def _func_uses_self(func) -> bool:
                     return True
         return False
 
-    annotations = inspect.get_annotations(func)
+    annotations = get_annotations(func)
     for typ in annotations.values():
         if _contains_self(typ):
             return True
@@ -327,7 +327,7 @@ class StubEmitter:
         var_annotations = []
         methods = []
 
-        annotations = inspect.get_annotations(cls)
+        annotations = get_annotations(cls)
         annotations = {k: self._translate_global_annotation(annotation, cls) for k, annotation in annotations.items()}
 
         for varname, annotation in annotations.items():

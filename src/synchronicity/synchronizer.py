@@ -17,7 +17,7 @@ from typing import Callable, ForwardRef, Optional
 
 import typing_extensions
 
-from synchronicity.annotations import evaluated_annotation
+from synchronicity.annotations import evaluated_annotation, get_annotations
 from synchronicity.combined_types import FunctionWithAio, MethodWithAio
 
 from .async_wrap import is_async_gen_function_follow_wrapped, is_coroutine_function_follow_wrapped, wraps_by_interface
@@ -96,7 +96,7 @@ def should_have_aio_interface(func):
         return True
     # check annotations if they contain any async entities that would need an event loop to be translated:
     # This catches things like vanilla functions returning Coroutines
-    annos = inspect.get_annotations(func)
+    annos = get_annotations(func)
     for anno in annos.values():
         if _type_requires_aio_usage(anno, func.__module__):
             return True

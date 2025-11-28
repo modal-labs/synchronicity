@@ -1,5 +1,6 @@
 # compatibility utilities/polyfills for supporting older python versions
 import importlib
+import inspect
 import logging
 import sys
 import typing
@@ -40,3 +41,10 @@ def evaluated_annotation(annotation, *, globals_=None, declaration_module=None):
             exec(f"import {ref_module}", globals_)
             return eval(annotation, globals_)
         raise
+
+
+def get_annotations(obj) -> dict:
+    if sys.version_info[:2] < (3, 14):
+        return obj.__dict__.get("__annotations__", {})  # compatible with older pythons
+    else:
+        return inspect.get_annotations(obj)
