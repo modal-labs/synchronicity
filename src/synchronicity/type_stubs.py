@@ -770,6 +770,7 @@ class StubEmitter:
         if interface and synchronizer:
             root_func = synchronizer._translate_in(func)
 
+        # TODO: sigtools.specifiers.signature does not support Python 3.14 annotations
         sig = sigtools.specifiers.signature(root_func)
 
         if sig.upgraded_return_annotation is not EmptyAnnotation:
