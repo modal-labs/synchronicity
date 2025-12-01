@@ -45,7 +45,7 @@ def evaluated_annotation(annotation, *, globals_=None, declaration_module=None):
 
 def get_annotations(obj: typing.Any) -> dict:
     # inspect.get_annotations was added in Python 3.10. We only get annotations from
-    # functions and class types so we'
+    # functions and class types, so this only implements those.
     if sys.version_info[:2] <= (3, 9):
         if isinstance(obj, type):
             return obj.__dict__.get("__annotations__", {})
