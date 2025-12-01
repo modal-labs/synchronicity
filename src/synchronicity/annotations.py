@@ -44,7 +44,4 @@ def evaluated_annotation(annotation, *, globals_=None, declaration_module=None):
 
 
 def get_annotations(obj) -> dict:
-    if sys.version_info[:2] < (3, 14):
-        return obj.__dict__.get("__annotations__", {})  # compatible with older pythons
-    else:
-        return inspect.get_annotations(obj)
+    return inspect.get_annotations(obj)
