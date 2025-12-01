@@ -44,4 +44,10 @@ def evaluated_annotation(annotation, *, globals_=None, declaration_module=None):
 
 
 def get_annotations(obj) -> dict:
+    if sys.version_info[:2] <= (3, 9):
+        if inspect.isclass(obj):
+            return obj.__dict__.get("__annotations__", {})
+        else:
+            # function
+            return getattr(obj, "__annotations__", {})
     return inspect.get_annotations(obj)
