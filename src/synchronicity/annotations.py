@@ -43,11 +43,15 @@ def evaluated_annotation(annotation, *, globals_=None, declaration_module=None):
         raise
 
 
-def get_annotations(obj) -> dict:
+def get_annotations(obj: typing.Any) -> dict:
+    # inspect.get_annotations was added in Python 3.10. We only get annotations from
+    # functions and class types so we'
     if sys.version_info[:2] <= (3, 9):
-        if inspect.isclass(obj):
+        if isinstance(obj, type):
             return obj.__dict__.get("__annotations__", {})
-        else:
+        elif callable(obj):
             # function
             return getattr(obj, "__annotations__", {})
+        else:
+            raise TypeError(f"{obj!r} is not a class or callable.")
     return inspect.get_annotations(obj)
