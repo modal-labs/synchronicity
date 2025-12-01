@@ -26,10 +26,11 @@ from unittest import mock
 import sigtools.specifiers  # type: ignore
 import typing_extensions
 from sigtools._signatures import EmptyAnnotation, UpgradedAnnotation, UpgradedParameter  # type: ignore
+from typing_extensions import get_annotations
 
 import synchronicity
 from synchronicity import combined_types, overload_tracking
-from synchronicity.annotations import TYPE_CHECKING_OVERRIDES, evaluated_annotation, get_annotations
+from synchronicity.annotations import TYPE_CHECKING_OVERRIDES, evaluated_annotation
 from synchronicity.async_wrap import is_coroutine_function_follow_wrapped
 from synchronicity.interface import Interface
 from synchronicity.synchronizer import (

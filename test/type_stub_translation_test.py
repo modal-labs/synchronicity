@@ -1,8 +1,9 @@
 import pytest
 import typing
 
+from typing_extensions import get_annotations
+
 from synchronicity import Synchronizer, combined_types
-from synchronicity.annotations import get_annotations
 from synchronicity.interface import Interface
 from synchronicity.type_stubs import StubEmitter
 

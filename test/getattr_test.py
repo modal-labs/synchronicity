@@ -2,8 +2,9 @@ import asyncio
 import pytest
 from typing import Any, Dict
 
+from typing_extensions import get_annotations
+
 from synchronicity import classproperty
-from synchronicity.annotations import get_annotations
 
 
 @pytest.mark.asyncio

@@ -16,8 +16,9 @@ import warnings
 from typing import Callable, ForwardRef, Optional
 
 import typing_extensions
+from typing_extensions import get_annotations
 
-from synchronicity.annotations import evaluated_annotation, get_annotations
+from synchronicity.annotations import evaluated_annotation
 from synchronicity.combined_types import FunctionWithAio, MethodWithAio
 
 from .async_wrap import is_async_gen_function_follow_wrapped, is_coroutine_function_follow_wrapped, wraps_by_interface

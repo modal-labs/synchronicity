@@ -1,6 +1,5 @@
 # compatibility utilities/polyfills for supporting older python versions
 import importlib
-import inspect
 import logging
 import sys
 import typing
@@ -41,17 +40,3 @@ def evaluated_annotation(annotation, *, globals_=None, declaration_module=None):
             exec(f"import {ref_module}", globals_)
             return eval(annotation, globals_)
         raise
-
-
-def get_annotations(obj: typing.Any) -> dict:
-    # inspect.get_annotations was added in Python 3.10. We only get annotations from
-    # functions and class types, so this only implements those.
-    if sys.version_info[:2] <= (3, 9):
-        if isinstance(obj, type):
-            return obj.__dict__.get("__annotations__", {})
-        elif callable(obj):
-            # function
-            return getattr(obj, "__annotations__", {})
-        else:
-            raise TypeError(f"{obj!r} is not a class or callable.")
-    return inspect.get_annotations(obj)
