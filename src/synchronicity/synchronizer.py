@@ -16,6 +16,7 @@ import warnings
 from typing import Callable, ForwardRef, Optional
 
 import typing_extensions
+from typing_extensions import get_annotations
 
 from synchronicity.annotations import evaluated_annotation
 from synchronicity.combined_types import FunctionWithAio, MethodWithAio
@@ -96,7 +97,7 @@ def should_have_aio_interface(func):
         return True
     # check annotations if they contain any async entities that would need an event loop to be translated:
     # This catches things like vanilla functions returning Coroutines
-    annos = getattr(func, "__annotations__", {})
+    annos = get_annotations(func)
     for anno in annos.values():
         if _type_requires_aio_usage(anno, func.__module__):
             return True
@@ -792,6 +793,8 @@ Traceback:{self._thread_traceback}"""
         new_cls.__doc__ = cls.__doc__
         if "__annotations__" in cls.__dict__:
             new_cls.__annotations__ = cls.__annotations__  # transfer annotations
+        if "__annotate_func__" in cls.__dict__:
+            new_cls.__annotate_func__ = cls.__annotate_func__  # transfer annotate func
 
         setattr(new_cls, SYNCHRONIZER_ATTR, self)
         return new_cls

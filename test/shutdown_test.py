@@ -117,4 +117,10 @@ def test_shutdown_during_async_run(run_number):
         stdout, stderr = p.communicate(timeout=5)
         print(stderr)
         assert stdout == ("handled cancellation\nexit async\nkeyboard interrupt\n")
-        assert stderr == ""
+
+        # TODO: Remove message from stderr for Python 3.14+
+        # Behavior changed in https://github.com/python/cpython/commit/f695eca60cfc53cf3322323082652037d6d0cfef
+        if sys.version_info[:2] >= (3, 14):
+            assert stderr == "" or stderr.startswith("TimeoutError exception in shielded future")
+        else:
+            assert stderr == ""
