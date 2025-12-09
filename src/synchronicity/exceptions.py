@@ -2,6 +2,7 @@ import asyncio
 import concurrent.futures
 import os
 import sys
+from functools import wraps
 from pathlib import Path
 from types import TracebackType
 from typing import Literal, Optional
@@ -26,6 +27,7 @@ class UserCodeException(Exception):
 
 
 def wrap_coro_exception(coro):
+    @wraps(coro)
     async def coro_wrapped():
         try:
             return await coro
