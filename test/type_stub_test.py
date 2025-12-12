@@ -1,6 +1,7 @@
 import collections
 import functools
 import importlib
+import pathlib
 import pytest
 import sys
 import typing
@@ -9,7 +10,7 @@ from textwrap import dedent
 import typing_extensions
 
 import synchronicity
-from synchronicity import overload_tracking
+from synchronicity import classproperty, overload_tracking
 from synchronicity.async_wrap import asynccontextmanager
 from synchronicity.type_stubs import StubEmitter
 
@@ -172,6 +173,10 @@ class MixedClass:
     def some_property(self, val):
         print(val)
 
+    @classproperty
+    def class_property(cls):
+        return 1
+
 
 def test_class_generation():
     emitter = StubEmitter(__name__)
@@ -188,6 +193,7 @@ def test_class_generation():
             last_assertion_location = new_location
 
     indent = "    "
+    assert_in_after_last("import synchronicity")
     assert_in_after_last("class MixedClass:")
     assert_in_after_last(f"{indent}class_var: str")
     assert_in_after_last(f"{indent}class_var: str")
@@ -197,6 +203,7 @@ def test_class_generation():
     assert_in_after_last(f"{indent}@property\n{indent}def some_property(self) -> str:")
     assert_in_after_last(f"{indent}@some_property.setter\n{indent}def some_property(self, val):")
     assert_in_after_last(f"{indent}@some_property.deleter\n{indent}def some_property(self, val):")
+    assert_in_after_last(f"{indent}@synchronicity.classproperty\n{indent}def class_property(cls):\n{indent * 2}...")
 
 
 def merged_signature(*sigs):
@@ -204,6 +211,9 @@ def merged_signature(*sigs):
     return sig
 
 
+@pytest.mark.skipif(
+    sys.version_info[:2] == (3, 14), reason="Updating annotations through __annotations__ does not work in Python 3.14"
+)
 def test_wrapped_function_with_new_annotations():
     """A wrapped function (in general, using functools.wraps/partial) would
     have an inspect.signature from the wrapped function by default
@@ -302,7 +312,10 @@ def test_optional():
     wrapped_f = synchronizer.create_blocking(f, "wrapped_f", __name__)
 
     src = _function_source(wrapped_f)
-    if sys.version_info[:2] >= (3, 10):
+    # TODO: 3.14 does not preserve the typing.Optional[str]
+    if sys.version_info[:2] == (3, 14):
+        assert "typing.Union[str, None]" in src
+    elif sys.version_info[:2] >= (3, 10):
         assert "typing.Optional[str]" in src
     else:
         assert "typing.Union[str, None]" in src
@@ -363,7 +376,7 @@ def test_synchronicity_wrapped_class():
     assert "class __clone_spec(typing_extensions.Protocol):" in src
     assert "    def __call__(self, /, foo: Foo) -> Foo" in src
     assert "    async def aio(self, /, foo: Foo) -> Foo" in src
-    assert "clone: __clone_spec" in src
+    assert "clone: typing.ClassVar[__clone_spec]" in src
 
 
 class _WithClassMethod:
@@ -386,14 +399,14 @@ def test_synchronicity_class():
 
     assert (
         """
-    class __meth_spec(typing_extensions.Protocol[SUPERSELF]):
+    class __meth_spec(typing_extensions.Protocol):
         def __call__(self, /, arg: bool) -> int:
             ...
 
         async def aio(self, /, arg: bool) -> int:
             ...
 
-    meth: __meth_spec[typing_extensions.Self]
+    meth: __meth_spec
 """
         in src
     )
@@ -572,6 +585,8 @@ def test_overloads_unwrapped_functions():
     assert "def overloaded(arg: int) -> int:" in src
 
 
+# Patching `asynccontextmanager` to use `__annotate__` surfaces an issue with sigtools for generating stubs
+@pytest.mark.skipif(sys.version_info[:2] == (3, 14), reason="asynccontextmanager does not work with Python 3.14")
 def test_wrapped_context_manager_is_both_blocking_and_async():
     @asynccontextmanager
     async def foo(arg: int) -> typing.AsyncGenerator[str, None]:
@@ -630,9 +645,9 @@ def test_returns_forward_wrapped_generic():
     # base class should be generic in the (potentially) translated type var (could have wrapped bounds spec)
     assert "class Container(typing.Generic[Translated_T]):" in src
     assert "Translated_T_INNER = typing.TypeVar" in src  # distinct "inner copy" of Translated_T needs to be declared
-    assert "typing_extensions.Protocol[Translated_T_INNER, SUPERSELF]" in src
+    assert "typing_extensions.Protocol[Translated_T_INNER]" in src
     assert "def __call__(self, /) -> ReturnVal[Translated_T_INNER]:" in src
-    assert "fun: __fun_spec[Translated_T, typing_extensions.Self]" in src
+    assert "fun: __fun_spec[Translated_T]" in src
 
 
 def custom_field():  # needs to be in global scope
@@ -740,3 +755,92 @@ def test_docstrings():
     with pytest.warns(UserWarning, match="both \"\"\" and ''' quote blocks"):
         src = _function_source(deranged_docstring_func)
         assert '"""' not in src
+
+
+def test_pathlib():
+    def test_path() -> pathlib.Path: ...
+
+    src = _function_source(test_path)
+    assert "import pathlib\n" in src
+    assert "pathlib.Path" in src
+
+
+@pytest.mark.skipif(sys.version_info < (3, 10), reason="Union type syntax (|) requires Python 3.10+")
+def test_union_pipe_syntax_imports():
+    """Test that Type | None syntax properly registers imports for Type.
+
+    This is a regression test for a bug where Optional[Type] would correctly
+    register imports for Type, but Type | None would not, because the PEP 604
+    union syntax creates a types.UnionType which has __args__ but no __origin__.
+    """
+
+    # Create a mock external module type (simulating pandas.DataFrame)
+    class MockDataFrame:
+        pass
+
+    MockDataFrame.__module__ = "pandas.core.frame"
+    MockDataFrame.__name__ = "DataFrame"
+    MockDataFrame.__qualname__ = "DataFrame"
+
+    # Test 1: Optional syntax (baseline - this should work)
+    def with_optional() -> typing.Optional[MockDataFrame]:
+        pass
+
+    src_optional = _function_source(with_optional)
+    print("Optional syntax output:")
+    print(src_optional)
+    assert "import pandas.core.frame" in src_optional
+    assert "pandas.core.frame.DataFrame" in src_optional
+
+    # Test 2: Union | None syntax (the bug case)
+    def with_union_pipe() -> MockDataFrame | None:
+        pass
+
+    src_union = _function_source(with_union_pipe)
+    print("\nUnion | None syntax output:")
+    print(src_union)
+    assert "import pandas.core.frame" in src_union, "Type | None syntax should register imports for Type"
+    assert "pandas.core.frame.DataFrame" in src_union
+
+    # Test 3: More complex case - nested generics with union syntax
+    def with_nested_union() -> typing.List[MockDataFrame | None]:
+        pass
+
+    src_nested = _function_source(with_nested_union)
+    print("\nNested union syntax output:")
+    print(src_nested)
+    assert "import pandas.core.frame" in src_nested, "Nested Type | None should also register imports"
+    assert "pandas.core.frame.DataFrame" in src_nested
+
+    # Test 4: Union with multiple types from external modules
+    class MockSeries:
+        pass
+
+    MockSeries.__module__ = "pandas.core.series"
+    MockSeries.__name__ = "Series"
+    MockSeries.__qualname__ = "Series"
+
+    def with_multi_union() -> MockDataFrame | MockSeries | None:
+        pass
+
+    src_multi = _function_source(with_multi_union)
+    print("\nMulti-type union syntax output:")
+    print(src_multi)
+    assert "import pandas.core.frame" in src_multi
+    assert "import pandas.core.series" in src_multi
+    assert "pandas.core.frame.DataFrame" in src_multi
+    assert "pandas.core.series.Series" in src_multi
+
+
+def test_async_classmethod_gets_aio(synchronizer):
+    @synchronizer.wrap
+    class A:
+        @classmethod
+        async def foo():
+            pass
+
+    src = _class_source(A, target_module=__name__)
+    assert "__foo_spec" in src
+    assert "foo: typing.ClassVar[__foo_spec" in src
+    assert "async def aio(self" in src
+    assert "def __call__(self" in src

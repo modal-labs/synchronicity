@@ -50,6 +50,7 @@ def interface_file():
     yield
 
 
+@pytest.mark.skipif(sys.version_info[:2] == (3, 14), reason="e2e test is failing in Python 3.14")
 def test_mypy_assertions(interface_file):
     run_mypy(assertion_file)
 

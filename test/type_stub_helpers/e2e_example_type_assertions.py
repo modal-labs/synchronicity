@@ -18,6 +18,7 @@ assert_type(e2e_example_export.some_instance, typing.Optional[e2e_example_export
 assert_type(blocking_foo.some_static("foo"), float)
 
 assert_type(e2e_example_export.BlockingFoo.clone(blocking_foo), e2e_example_export.BlockingFoo)
+assert_type(e2e_example_export.BlockingFoo.slow_clone(blocking_foo), e2e_example_export.BlockingFoo)
 
 assert_type(blocking_foo.singleton, e2e_example_export.BlockingFoo)
 
@@ -48,6 +49,8 @@ async def async_block() -> None:
     async with e2e_example_export.wrapped_make_context.aio(10.0) as c:
         assert_type(c, str)
 
+    assert_type(e2e_example_export.BlockingFoo.slow_clone(blocking_foo), e2e_example_export.BlockingFoo)
+
 
 def f(a: str) -> float:
     return 0.1
@@ -55,3 +58,8 @@ def f(a: str) -> float:
 
 res = e2e_example_export.wrap_callable(f).func(a="q")
 assert_type(res, float)
+
+
+custom = e2e_example_export.SomeGeneric.custom_constructor()
+
+assert_type(custom, e2e_example_export.SomeGeneric[str])

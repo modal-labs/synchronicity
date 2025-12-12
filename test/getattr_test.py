@@ -2,6 +2,10 @@ import asyncio
 import pytest
 from typing import Any, Dict
 
+from typing_extensions import get_annotations
+
+from synchronicity import classproperty
+
 
 @pytest.mark.asyncio
 async def test_getattr(synchronizer):
@@ -16,7 +20,8 @@ async def test_getattr(synchronizer):
             return self._attrs[k]
 
         def __setattr__(self, k, v):
-            if k in self.__annotations__:
+            annotations = get_annotations(type(self))
+            if k in annotations:
                 # Only needed because the constructor sets _attrs
                 self.__dict__[k] = v
             else:
@@ -30,13 +35,23 @@ async def test_getattr(synchronizer):
         def make_foo():
             return Foo()
 
-    # original type tests:
+        @classproperty
+        def my_cls_prop(cls):
+            return "abc"
+
+        @classproperty
+        async def another_cls_prop(cls):
+            await asyncio.sleep(0.01)
+            return "another-cls-prop"
+
     foo = Foo()
     foo.x = 42
     assert await foo.x == 42
     with pytest.raises(KeyError):
         await foo.y
     assert foo.z == 42
+    assert Foo.my_cls_prop == "abc"
+    assert await Foo.another_cls_prop == "another-cls-prop"
 
     BlockingFoo = synchronizer.create_blocking(Foo)
 
@@ -46,6 +61,8 @@ async def test_getattr(synchronizer):
     with pytest.raises(KeyError):
         blocking_foo.y
     assert blocking_foo.z == 43
+    assert BlockingFoo.my_cls_prop == "abc"
+    assert BlockingFoo.another_cls_prop == "another-cls-prop"
 
     blocking_foo = BlockingFoo.make_foo()
     blocking_foo.x = 44

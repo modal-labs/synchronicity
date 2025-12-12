@@ -15,6 +15,7 @@ import importlib
 import inspect
 import sys
 import textwrap
+import types
 import typing
 import warnings
 from logging import getLogger
@@ -25,6 +26,7 @@ from unittest import mock
 import sigtools.specifiers  # type: ignore
 import typing_extensions
 from sigtools._signatures import EmptyAnnotation, UpgradedAnnotation, UpgradedParameter  # type: ignore
+from typing_extensions import get_annotations
 
 import synchronicity
 from synchronicity import combined_types, overload_tracking
@@ -36,6 +38,7 @@ from synchronicity.synchronizer import (
     TARGET_INTERFACE_ATTR,
     FunctionWithAio,
     MethodWithAio,
+    classproperty,
 )
 
 logger = getLogger(__name__)
@@ -57,6 +60,11 @@ def safe_get_module(obj: typing.Any) -> typing.Optional[str]:
     if obj.__module__ in ("_contextvars", "_asyncio"):
         return obj.__module__[1:]  # strip leading underscore
 
+    if obj.__module__ == "pathlib._local":
+        # in newer versions of Python (known: 3.13)
+        # some pathlib classes live in pathlib._local
+        return "pathlib"
+
     try:
         if (obj.__module__, obj.__name__) == ("typing", "Concatenate"):
             # typing_extensions.Concatenate forwards typing.Concatenate if
@@ -70,7 +78,7 @@ def safe_get_module(obj: typing.Any) -> typing.Optional[str]:
 
 
 def generic_copy_with_args(specific_type, new_args):
-    origin = typing_extensions.get_origin(specific_type)
+    origin = get_origin(specific_type)
     if hasattr(specific_type, "copy_with") and origin not in (typing.Callable, collections.abc.Callable):
         # not strictly necessary, but this makes the type stubs
         # preserve generic alias names when possible, e.g. using `typing.Iterator`
@@ -95,7 +103,7 @@ def add_prefix_arg(arg_name, remove_args=0):
 
 def replace_type_vars(replacement_dict: typing.Dict[type, type]):
     def _replace_type_vars_rec(tp: typing.Type[typing.Any]):
-        origin = getattr(tp, "__origin__", None)
+        origin = get_origin(tp)
         args = safe_get_args(tp)
 
         if isinstance(tp, (typing_extensions.ParamSpecArgs, typing_extensions.ParamSpecKwargs)):
@@ -125,8 +133,21 @@ def replace_type_vars(replacement_dict: typing.Dict[type, type]):
     return _replace_type_vars_in_sig
 
 
+def get_origin(annotation: type):
+    if sys.version_info < (3, 10):
+        # typing.get_origin returns None for ParamSpecArgs on <= Python3.9
+        return getattr(annotation, "__origin__", None)
+
+    origin = typing.get_origin(annotation)
+    if origin is types.UnionType:
+        # origin would be types.UnionType for unions, but it's more practical to use typing.Union
+        # since that can be used to create new types, e.g. typing.Union[...]
+        return typing.Union
+    return origin
+
+
 def _get_type_vars(typ, synchronizer, home_module):
-    origin = getattr(typ, "__origin__", None)  # typing.get_origin returns None for ParamSpecArgs on <=Python3.9
+    origin = get_origin(typ)
     ret = set()
     if isinstance(typ, typing.TypeVar):
         # check if it's translated (due to bounds= attributes etc.)
@@ -160,9 +181,30 @@ def _get_type_vars(typ, synchronizer, home_module):
 def _get_func_type_vars(func, synchronizer: synchronicity.Synchronizer) -> typing.Set[type]:
     ret = set()
     home_module = safe_get_module(func)
-    for typ in getattr(func, "__annotations__", {}).values():
+    annotations = get_annotations(func)
+    for typ in annotations.values():
         ret |= _get_type_vars(typ, synchronizer, home_module)
     return ret
+
+
+def _func_uses_self(func) -> bool:
+    """Check if a function's annotations use typing_extensions.Self"""
+
+    def _contains_self(typ) -> bool:
+        if typ is typing_extensions.Self:
+            return True
+        origin = get_origin(typ)
+        if origin:
+            for arg in safe_get_args(typ):
+                if _contains_self(arg):
+                    return True
+        return False
+
+    annotations = get_annotations(func)
+    for typ in annotations.values():
+        if _contains_self(typ):
+            return True
+    return False
 
 
 def safe_get_args(annotation):
@@ -276,7 +318,7 @@ class StubEmitter:
         for b in self._get_translated_class_bases(cls):
             if b is not object:
                 bases.append(self._formatannotation(b))
-            if getattr(b, "__origin__", None) == typing.Generic:
+            if get_origin(b) == typing.Generic:
                 generic_type_vars |= {a for a in b.__args__}
 
         bases_str = "" if not bases else "(" + ", ".join(bases) + ")"
@@ -286,7 +328,7 @@ class StubEmitter:
         var_annotations = []
         methods = []
 
-        annotations = cls.__dict__.get("__annotations__", {})
+        annotations = get_annotations(cls)
         annotations = {k: self._translate_global_annotation(annotation, cls) for k, annotation in annotations.items()}
 
         for varname, annotation in annotations.items():
@@ -318,24 +360,30 @@ class StubEmitter:
                     fn_source = self._get_function_source_with_overloads(entity.fdel, entity_name, body_indent_level)
                     methods.append(f"{body_indent}@{entity_name}.deleter\n{fn_source}")
 
+            elif isinstance(entity, classproperty):
+                fn_source = self._get_function_source_with_overloads(entity.fget, entity_name, body_indent_level)
+                methods.append(f"{body_indent}@synchronicity.classproperty\n{fn_source}")
+                self.imports.add("synchronicity")
+
             elif isinstance(entity, FunctionWithAio):
                 # Note: FunctionWithAio is used for staticmethods
                 methods.append(
                     self._get_dual_function_source(
-                        entity, entity_name, body_indent_level, parent_generic_type_vars=generic_type_vars
+                        entity,
+                        entity_name,
+                        body_indent_level,
+                        parent_generic_type_vars=generic_type_vars,
+                        is_class_member=True,
                     )
                 )
             elif isinstance(entity, MethodWithAio):
-                if entity._is_classmethod:
-                    # Classmethods with type vars on the cls variable don't work with "dual interface functions"
-                    # at the moment, so we only output a stub for the blocking interface
-                    # TODO(elias): allow dual type stubs as long as no type vars are being used in the class var
-                    fn_source = self._get_function_source_with_overloads(entity._func, entity_name, body_indent_level)
-                    src = f"{body_indent}@classmethod\n{fn_source}"
-                else:
-                    src = self._get_dual_function_source(
-                        entity, entity_name, body_indent_level, parent_generic_type_vars=generic_type_vars
-                    )
+                src = self._get_dual_function_source(
+                    entity,
+                    entity_name,
+                    body_indent_level,
+                    parent_generic_type_vars=generic_type_vars,
+                    is_class_member=True,
+                )
                 methods.append(src)
 
         padding = [] if var_annotations or methods else [f"{body_indent}..."]
@@ -357,15 +405,20 @@ class StubEmitter:
         entity_name,
         body_indent_level,
         parent_generic_type_vars: typing.Set[type] = set(),  # if a method of a Generic class - the set of type vars
+        is_class_member: bool = False,  # whether this is a member of a class (vs module-level)
     ) -> str:
+        # Determine if this is a class-level attribute (staticmethod or classmethod within a class)
+        is_class_level = is_class_member and (
+            isinstance(entity, FunctionWithAio) or (isinstance(entity, MethodWithAio) and entity._is_classmethod)
+        )
+
         if isinstance(entity, FunctionWithAio):
             transform_signature = add_prefix_arg(
                 "self"
             )  # signature is moved into a protocol class, so we need a self where there previously was none
-        elif entity._is_classmethod:
-            # TODO: dual protocol for classmethods having annotated cls attributes
-            raise Exception("Not supported")
         else:
+            # For methods (instance or class), the descriptor binds self/cls,
+            # so we remove it and add self for the Protocol
             transform_signature = add_prefix_arg("self", 1)
         # Emits type stub for a "dual" function that is both callable and has an .aio callable with an async version
         # Currently this is emitted as a typing.Protocol declaration + instance with a __call__ and aio method
@@ -396,11 +449,19 @@ class StubEmitter:
             transform_signature=final_transform_signature,
         )
 
+        # For class-level attributes (staticmethod/classmethod), wrap in ClassVar
+        attr_type = f"__{entity_name}_spec{parent_type_var_names_spec}"
+        if is_class_level:
+            self.imports.add("typing")
+            attr_annotation = f"typing.ClassVar[{attr_type}]"
+        else:
+            attr_annotation = attr_type
+
         protocol_attr = f"""\
 {body_indent}class __{entity_name}_spec(typing_extensions.Protocol{protocol_declaration_type_var_spec}):
 {blocking_func_source}
 {aio_func_source}
-{body_indent}{entity_name}: __{entity_name}_spec{parent_type_var_names_spec}
+{body_indent}{entity_name}: {attr_annotation}
 """
 
         return protocol_attr
@@ -437,14 +498,18 @@ class StubEmitter:
 
         if isinstance(entity, MethodWithAio):
             # support for typing.Self (which would otherwise reference the protocol class)
-            superself_name = "SUPERSELF"
-            superself_var = typing.TypeVar(superself_name, covariant=True)  # type: ignore
-            superself_var.__module__ = self.target_module
-            self.add_type_var(superself_var, superself_name)
-            self._typevar_inner_replacements[typing_extensions.Self] = superself_var
-            self.imports.add("typing_extensions")
-            extra_instance_args = ["typing_extensions.Self"]
-            extra_declaration_args = ["SUPERSELF"]
+            # Only add SUPERSELF if the method actually uses Self in its signature
+            uses_self = _func_uses_self(entity._func) or _func_uses_self(entity._aio_func)
+
+            if uses_self:
+                superself_name = "SUPERSELF"
+                superself_var = typing.TypeVar(superself_name, covariant=True)  # type: ignore
+                superself_var.__module__ = self.target_module
+                self.add_type_var(superself_var, superself_name)
+                self._typevar_inner_replacements[typing_extensions.Self] = superself_var
+                self.imports.add("typing_extensions")
+                extra_instance_args = ["typing_extensions.Self"]
+                extra_declaration_args = ["SUPERSELF"]
 
         protocol_generic_args = [
             self._typevar_inner_replacements[tvar].__name__ for tvar in typevar_overlap
@@ -542,15 +607,17 @@ class StubEmitter:
 
     def _register_imports(self, type_annotation):
         # recursively makes sure a type and any of its type arguments (for generics) are imported
-        origin = getattr(type_annotation, "__origin__", None)
+        origin = get_origin(type_annotation)
+        args = getattr(type_annotation, "__args__", ())
+
         if origin is None:
-            # "scalar" base type
+            # "scalar" base type (not a generic, not a PEP 604 union)
             if hasattr(type_annotation, "__module__"):
                 self._ensure_import(type_annotation)
             return
 
         self._ensure_import(type_annotation)  # import the generic itself's module
-        for arg in getattr(type_annotation, "__args__", ()):
+        for arg in args:
             self._register_imports(arg)
 
     def _translate_global_annotation(self, annotation, source_class_or_function):
@@ -614,7 +681,7 @@ class StubEmitter:
         home_module: typing.Optional[str] = None,
     ):
         # recursively map a nested type annotation to match the output interface
-        origin = getattr(type_annotation, "__origin__", None)
+        origin = get_origin(type_annotation)
         args = safe_get_args(type_annotation)
 
         if isinstance(type_annotation, (typing_extensions.ParamSpecArgs, typing_extensions.ParamSpecKwargs)):
@@ -704,6 +771,7 @@ class StubEmitter:
         if interface and synchronizer:
             root_func = synchronizer._translate_in(func)
 
+        # TODO: sigtools.specifiers.signature does not support Python 3.14 annotations
         sig = sigtools.specifiers.signature(root_func)
 
         if sig.upgraded_return_annotation is not EmptyAnnotation:
@@ -749,13 +817,14 @@ class StubEmitter:
         self._register_imports(annotation)
         return f"{name}: {self._formatannotation(annotation, None)}"
 
-    def _formatannotation(self, annotation, base_module=None) -> str:
+    def _formatannotation(self, annotation, base_module=None, quote_annotation_strings: bool = True) -> str:
         """modified version of `inspect.formatannotations`
         * Uses verbatim `None` instead of `NoneType` for None-arguments in generic types
         * Doesn't omit `typing.`-module from qualified imports in type names
         * ignores base_module (uses self.target_module instead)
+        * ignores quote_annotation_strings
         """
-        origin = getattr(annotation, "__origin__", None)
+        origin = get_origin(annotation)
 
         # For forward refs from modules that cannot be evaluated at runtime
         # but can be used freely in stub files, import the module and return the

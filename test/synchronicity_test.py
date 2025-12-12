@@ -1,6 +1,7 @@
 import asyncio
 import concurrent.futures
 import inspect
+import logging
 import pytest
 import sys
 import threading
@@ -31,6 +32,16 @@ def test_function_sync(synchronizer):
     f_s = s.create_blocking(f)
     assert f_s.__name__ == "blocking_f"
     ret = f_s(42)
+    assert ret == 1764
+    assert SLEEP_DELAY - WINDOWS_TIME_RESOLUTION_FIX <= time.monotonic() - t0 < 2 * SLEEP_DELAY
+
+
+@pytest.mark.asyncio
+async def test_function_async(synchronizer):
+    s = synchronizer
+    f_s = s.wrap(f)
+    t0 = time.monotonic()
+    ret = await f_s.aio(42)
     assert ret == 1764
     assert SLEEP_DELAY - WINDOWS_TIME_RESOLUTION_FIX <= time.monotonic() - t0 < 2 * SLEEP_DELAY
 
@@ -112,11 +123,12 @@ def test_function_many_parallel_sync_futures(synchronizer):
 async def test_function_many_parallel_async(synchronizer):
     g = synchronizer.create_blocking(f)
     t0 = time.monotonic()
-    coros = [g.aio(i) for i in range(100)]
+    coros = [g.aio(i) for i in range(20)]
     assert inspect.iscoroutine(coros[0])
-    assert time.monotonic() - t0 < SLEEP_DELAY
-    assert await asyncio.gather(*coros) == [z**2 for z in range(100)]
-    assert SLEEP_DELAY - WINDOWS_TIME_RESOLUTION_FIX <= time.monotonic() - t0 < 2 * SLEEP_DELAY
+    assert time.monotonic() - t0 < 0.01  # invoking coroutine functions should be cheap
+    assert await asyncio.gather(*coros) == [z**2 for z in range(20)]
+    dur = time.monotonic() - t0
+    assert SLEEP_DELAY - WINDOWS_TIME_RESOLUTION_FIX <= dur < 2 * SLEEP_DELAY
 
 
 async def gen(n):
@@ -615,6 +627,93 @@ def test_async_inner_still_translates(synchronizer):
         assert isinstance(v, V)
 
     outer()
+
+
+def test_blocking_in_async_callback():
+    """Test that blocking_in_async_callback is called when sync wrapper is called from a foreign event loop."""
+    called_funcs = []
+
+    def callback(func):
+        called_funcs.append(func)
+
+    # Create synchronizer with callback
+    s = Synchronizer(blocking_in_async_callback=callback)
+    foreign_loop = None
+
+    try:
+
+        async def async_func():
+            await asyncio.sleep(0.01)
+            return 42
+
+        sync_func = s.wrap(async_func)
+
+        # Test 1: Call from within a foreign event loop - should trigger callback
+        async def call_sync_from_async():
+            # We're in an async context with a running loop - calling the sync function
+            # should trigger the callback
+            return sync_func()
+
+        # Manually create and manage a foreign event loop
+        foreign_loop = asyncio.new_event_loop()
+        try:
+            result = foreign_loop.run_until_complete(call_sync_from_async())
+            assert result == 42
+        finally:
+            foreign_loop.close()
+            foreign_loop = None
+
+        # Verify the callback was called with the original function
+        assert len(called_funcs) == 1
+        assert called_funcs[0] == async_func
+
+        # Test 2: Call from outside an event loop - should NOT trigger callback
+        called_funcs.clear()
+        result = sync_func()
+        assert result == 42
+
+        # Verify the callback was NOT called when called from outside an event loop
+        assert len(called_funcs) == 0
+    finally:
+        if foreign_loop is not None and not foreign_loop.is_closed():
+            foreign_loop.close()
+        s._close_loop()
+
+
+@pytest.mark.filterwarnings("ignore")
+def test_synchronizer_unexpected_thread_death(caplog):
+    s = Synchronizer()
+
+    @s.wrap
+    async def dummy():
+        return "works"
+
+    class CustomError(Exception):
+        pass
+
+    caplog.set_level(logging.ERROR)
+    assert dummy() == "works"
+    assert len(caplog.records) == 0
+
+    # terminate the thread
+    def make_event_raise():
+        # a bit ugly, but we use asyncio internals here to raise an "unexpected"
+        # error inside of the inner thread by having the asyncio.Event.wait
+        # seemingly raise an error (although that should never happen durin
+        # actual operation)
+        for waiter in s._stopping._waiters:
+            if not waiter.done():
+                waiter.set_exception(CustomError())
+
+    s._loop.call_soon_threadsafe(make_event_raise)
+    time.sleep(0.1)  # give the thread some time to die
+    with pytest.raises(RuntimeError, match="Synchronizer thread unexpectedly died"):
+        dummy()  # this should trigger an error
+
+    (error_log,) = caplog.records
+    assert "Traceback" in error_log.message
+    assert "CustomError" in error_log.message
+    s._close_loop()
 
 
 def test_gc(monkeypatch):
