@@ -8,6 +8,7 @@ import functools
 import inspect
 import logging
 import os
+import sys
 import threading
 import traceback
 import types
@@ -419,30 +420,41 @@ Traceback:{self._thread_traceback}"""
             c_fut = asyncio.run_coroutine_threadsafe(wrapper_coro(), loop)
             a_fut = asyncio.wrap_future(c_fut)
 
+            if sys.platform == "win32":
+
+                async def get_value():
+                    while 1:
+                        # the loop + wait_for timeout is for windows ctrl-C compatibility since
+                        # windows doesn't truly interrupt the event loop on sigint
+                        try:
+                            # We create a task here to prevent an anonymous task inside asyncio.wait_for that could
+                            # get an unresolved timeout during cancellation handling below, resulting in a warning
+                            # traceback.
+                            shielded_task = asyncio.create_task(
+                                asyncio.wait_for(
+                                    # inner shield prevents wait_for from cancelling a_fut on timeout
+                                    asyncio.shield(a_fut),
+                                    timeout=self._future_poll_interval,
+                                )
+                            )
+                            # The outer shield prevents a cancelled caller from cancelling a_fut directly
+                            # so that we can instead cancel the underlying coro_task and wait for it
+                            # to bubble back up as a CancelledError gracefully between threads
+                            # in order to run any cancellation logic in the coroutine
+                            return await asyncio.shield(shielded_task)
+                        except asyncio.TimeoutError:
+                            continue
+            else:
+
+                async def get_value():
+                    # The shield here prevents a cancelled caller from cancelling c_fut directly
+                    # so that we can instead cancel the underlying coro_task and wait for it
+                    # to be handled
+                    return await asyncio.shield(a_fut)
+
             shielded_task = None
             try:
-                while 1:
-                    # the loop + wait_for timeout is for windows ctrl-C compatibility since
-                    # windows doesn't truly interrupt the event loop on sigint
-                    try:
-                        # We create a task here to prevent an anonymous task inside asyncio.wait_for that could
-                        # get an unresolved timeout during cancellation handling below, resulting in a warning
-                        # traceback.
-                        shielded_task = asyncio.create_task(
-                            asyncio.wait_for(
-                                # inner shield prevents wait_for from cancelling a_fut on timeout
-                                asyncio.shield(a_fut),
-                                timeout=self._future_poll_interval,
-                            )
-                        )
-                        # The outer shield prevents a cancelled caller from cancelling a_fut directly
-                        # so that we can instead cancel the underlying coro_task and wait for it
-                        # to bubble back up as a CancelledError gracefully between threads
-                        # in order to run any cancellation logic in the coroutine
-                        value = await asyncio.shield(shielded_task)
-                        break
-                    except asyncio.TimeoutError:
-                        continue
+                value = await get_value()
 
             except asyncio.CancelledError:
                 try:
