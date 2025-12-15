@@ -422,7 +422,7 @@ Traceback:{self._thread_traceback}"""
 
             if sys.platform == "win32":
 
-                async def get_value():
+                async def get_value(fut):
                     while 1:
                         # the loop + wait_for timeout is for windows ctrl-C compatibility since
                         # windows doesn't truly interrupt the event loop on sigint
@@ -433,7 +433,7 @@ Traceback:{self._thread_traceback}"""
                             shielded_task = asyncio.create_task(
                                 asyncio.wait_for(
                                     # inner shield prevents wait_for from cancelling a_fut on timeout
-                                    asyncio.shield(a_fut),
+                                    asyncio.shield(fut),
                                     timeout=self._future_poll_interval,
                                 )
                             )
@@ -446,15 +446,15 @@ Traceback:{self._thread_traceback}"""
                             continue
             else:
 
-                async def get_value():
+                async def get_value(fut):
                     # The shield here prevents a cancelled caller from cancelling c_fut directly
                     # so that we can instead cancel the underlying inner_task and wait for it
                     # to be handled
-                    return await asyncio.shield(a_fut), None
+                    return await asyncio.shield(fut), None
 
             shielded_task = None
             try:
-                value, shielded_task = await get_value()
+                value, shielded_task = await get_value(a_fut)
 
             except asyncio.CancelledError:
                 try:
