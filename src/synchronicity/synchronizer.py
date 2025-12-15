@@ -438,7 +438,7 @@ Traceback:{self._thread_traceback}"""
                                 )
                             )
                             # The outer shield prevents a cancelled caller from cancelling a_fut directly
-                            # so that we can instead cancel the underlying coro_task and wait for it
+                            # so that we can instead cancel the underlying inner_task and wait for it
                             # to bubble back up as a CancelledError gracefully between threads
                             # in order to run any cancellation logic in the coroutine
                             return await asyncio.shield(shielded_task)
@@ -448,7 +448,7 @@ Traceback:{self._thread_traceback}"""
 
                 async def get_value():
                     # The shield here prevents a cancelled caller from cancelling c_fut directly
-                    # so that we can instead cancel the underlying coro_task and wait for it
+                    # so that we can instead cancel the underlying inner_task and wait for it
                     # to be handled
                     return await asyncio.shield(a_fut)
 
