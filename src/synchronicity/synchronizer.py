@@ -441,7 +441,7 @@ Traceback:{self._thread_traceback}"""
                             # so that we can instead cancel the underlying inner_task and wait for it
                             # to bubble back up as a CancelledError gracefully between threads
                             # in order to run any cancellation logic in the coroutine
-                            return await asyncio.shield(shielded_task)
+                            return await asyncio.shield(shielded_task), shielded_task
                         except asyncio.TimeoutError:
                             continue
             else:
@@ -450,11 +450,11 @@ Traceback:{self._thread_traceback}"""
                     # The shield here prevents a cancelled caller from cancelling c_fut directly
                     # so that we can instead cancel the underlying inner_task and wait for it
                     # to be handled
-                    return await asyncio.shield(a_fut)
+                    return await asyncio.shield(a_fut), None
 
             shielded_task = None
             try:
-                value = await get_value()
+                value, shielded_task = await get_value()
 
             except asyncio.CancelledError:
                 try:
