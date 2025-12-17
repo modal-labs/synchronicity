@@ -1,7 +1,6 @@
 import pytest
 import typing
-
-from typing_extensions import get_annotations
+from inspect import get_annotations
 
 from synchronicity import Synchronizer, combined_types
 from synchronicity.interface import Interface

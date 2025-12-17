@@ -14,10 +14,10 @@ import traceback
 import types
 import typing
 import warnings
+from inspect import get_annotations
 from typing import Callable, ForwardRef, Optional
 
 import typing_extensions
-from typing_extensions import get_annotations
 
 from synchronicity.annotations import evaluated_annotation
 from synchronicity.combined_types import FunctionWithAio, MethodWithAio
