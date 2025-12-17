@@ -367,13 +367,16 @@ Traceback:{self._thread_traceback}"""
 
         fut = asyncio.run_coroutine_threadsafe(wrapper_coro(), loop)
         try:
-            while 1:
-                try:
-                    # repeated poll to give Windows a chance to abort on Ctrl-C
-                    value = fut.result(timeout=self._future_poll_interval)
-                    break
-                except concurrent.futures.TimeoutError:
-                    pass
+            if sys.platform == "win32":
+                while 1:
+                    try:
+                        # repeated poll to give Windows a chance to abort on Ctrl-C
+                        value = fut.result(timeout=self._future_poll_interval)
+                        break
+                    except concurrent.futures.TimeoutError:
+                        pass
+            else:
+                value = fut.result()
         except KeyboardInterrupt as exc:
             # in case there is a keyboard interrupt while we are waiting
             # we cancel the *underlying* coro_task (unlike what fut.cancel() would do)
