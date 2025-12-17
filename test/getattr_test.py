@@ -1,8 +1,7 @@
 import asyncio
 import pytest
+from inspect import get_annotations
 from typing import Any, Dict
-
-from typing_extensions import get_annotations
 
 from synchronicity import classproperty
 

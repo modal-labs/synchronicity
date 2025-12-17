@@ -18,6 +18,7 @@ import textwrap
 import types
 import typing
 import warnings
+from inspect import get_annotations
 from logging import getLogger
 from pathlib import Path
 from typing import TypeVar
@@ -26,7 +27,6 @@ from unittest import mock
 import sigtools.specifiers  # type: ignore
 import typing_extensions
 from sigtools._signatures import EmptyAnnotation, UpgradedAnnotation, UpgradedParameter  # type: ignore
-from typing_extensions import get_annotations
 
 import synchronicity
 from synchronicity import combined_types, overload_tracking
