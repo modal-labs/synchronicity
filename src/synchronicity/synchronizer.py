@@ -505,15 +505,13 @@ Traceback:{self._thread_traceback}"""
                         is_exc = True
         finally:
             # During interpreter shutdown, blocking here can deadlock.
-            if getattr(sys, "is_finalizing", lambda: False)():
-                return
-            try:
-                # Best-effort close. If you have a non-blocking scheduling primitive,
-                # use it here; blocking _run_function_sync is risky if the loop is stopping.
-                self._run_function_sync(gen.aclose(), original_func)
-            except Exception:
-                pass
-
+            if not getattr(sys, "is_finalizing", lambda: False)():
+                try:
+                    # Best-effort close. If you have a non-blocking scheduling primitive,
+                    # use it here; blocking _run_function_sync is risky if the loop is stopping.
+                    self._run_function_sync(gen.aclose(), original_func)
+                except Exception:
+                    pass
 
     async def _run_generator_async(self, gen, original_func):
         value, is_exc = None, False
