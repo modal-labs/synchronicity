@@ -125,7 +125,7 @@ class Synchronizer:
         self._thread_traceback: Optional[str] = None
         self._owner_pid = None
         self._stopping: Optional[asyncio.Event] = None
-        self._asyncgen_finalizer_timeout_seconds = 30.0  # pretty high default to allow async finalization in most cases
+        self._asyncgen_finalizer_timeout_seconds = 10.0  # pretty high default to allow async finalization in most cases
 
         # Special attribute we use to go from wrapped <-> original
         self._wrapped_attr = "_sync_wrapped_%d" % id(self)
