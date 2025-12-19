@@ -40,6 +40,9 @@ IGNORED_ATTRIBUTES = (
     # Ignoring __provides__ fixes an incompatibility with `channels[daphne]`,
     # where Synchronizer creation fails when wrapping contextlib._AsyncGeneratorContextManager
     "__provides__",
+    # we don't want to proxy the destructor - it should get called by the gc mechanism as soon as the wrapper is gc:ed
+    # otherwise we may trigger it twice
+    "__del__",
 )
 
 _RETURN_FUTURE_KWARG = "_future"
