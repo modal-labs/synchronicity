@@ -1,5 +1,6 @@
 import asyncio
 import concurrent.futures
+import gc
 import inspect
 import logging
 import pytest
@@ -832,3 +833,29 @@ async def test_run_async_gen_runs_aclose_async(synchronizer):
     await asyncio.sleep(1)
     # finalization logic still runs
     assert states == ["init", "yield 0", "start finalization", "done"]
+
+
+def test_del_is_not_wrapped(synchronizer):
+    events = []
+
+    class A:
+        def __init__(self):
+            # mostly for sanity
+            events.append(f"init {type(self).__name__}")
+
+        def __del__(self):
+            events.append(f"del {type(self).__name__}")
+
+    WrappedA = synchronizer.wrap(A, name="WrappedA")
+    a = WrappedA()
+
+    del a
+    gc.collect()  # this should collect both the wrapper and the wrapped instance
+    assert events == [
+        # we don't want to trigger the destructor of the implementation object
+        # before it's actually getting deleted, otherwise we'll double delete
+        # it, and what is worse - it may still get used post-__del__ from
+        # some other context, so there should not be *two* "del A" here
+        "init A",
+        "del A",
+    ]
