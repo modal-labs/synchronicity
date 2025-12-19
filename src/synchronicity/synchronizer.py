@@ -125,6 +125,7 @@ class Synchronizer:
         self._thread_traceback: Optional[str] = None
         self._owner_pid = None
         self._stopping: Optional[asyncio.Event] = None
+        self._asyncgen_finalizer_timeout_seconds = 10.0  # pretty high default to allow async finalization in most cases
 
         # Special attribute we use to go from wrapped <-> original
         self._wrapped_attr = "_sync_wrapped_%d" % id(self)
@@ -479,47 +480,78 @@ Traceback:{self._thread_traceback}"""
 
     def _run_generator_sync(self, gen, original_func):
         value, is_exc = None, False
-        with suppress_synchronicity_tb_frames():
-            while True:
-                try:
-                    if is_exc:
-                        value = self._run_function_sync(gen.athrow(value), original_func)
-                    else:
-                        value = self._run_function_sync(gen.asend(value), original_func)
-                except UserCodeException as uc_exc:
-                    uc_exc.exc.__suppress_context__ = True
-                    raise uc_exc.exc
-                except StopAsyncIteration:
-                    break
+        try:
+            with suppress_synchronicity_tb_frames():
+                while True:
+                    try:
+                        if is_exc:
+                            value = self._run_function_sync(gen.athrow(value), original_func)
+                        else:
+                            value = self._run_function_sync(gen.asend(value), original_func)
+                    except UserCodeException as uc_exc:
+                        uc_exc.exc.__suppress_context__ = True
+                        raise uc_exc.exc
+                    except StopAsyncIteration:
+                        return
 
+                    try:
+                        value = yield value
+                        is_exc = False
+                    except GeneratorExit:
+                        # Don't athrow(GeneratorExit) into the async generator.
+                        # Just stop yielding and let cleanup run.
+                        raise
+                    except BaseException as exc:
+                        value = exc
+                        is_exc = True
+        finally:
+            # During interpreter shutdown, blocking here can deadlock.
+            if not sys.is_finalizing():
                 try:
-                    value = yield value
-                    is_exc = False
-                except BaseException as exc:
-                    value = exc
-                    is_exc = True
+                    # Best-effort close. We use a future so we don't block indefinitely in case
+                    # the event loop closing races with this code and the aclose never returns
+                    aclose = gen.aclose()
+                    finalization_fut: concurrent.futures.Future = self._run_function_sync_future(aclose, original_func)
+                    finalization_fut.result(timeout=self._asyncgen_finalizer_timeout_seconds)
+                except Exception:
+                    pass
 
     async def _run_generator_async(self, gen, original_func):
         value, is_exc = None, False
-        with suppress_synchronicity_tb_frames():
-            while True:
-                try:
-                    if is_exc:
-                        value = await self._run_function_async(gen.athrow(value), original_func)
-                    else:
-                        value = await self._run_function_async(gen.asend(value), original_func)
-                except UserCodeException as uc_exc:
-                    uc_exc.exc.__suppress_context__ = True
-                    raise uc_exc.exc
-                except StopAsyncIteration:
-                    break
+        try:
+            with suppress_synchronicity_tb_frames():
+                while True:
+                    try:
+                        if is_exc:
+                            value = await self._run_function_async(gen.athrow(value), original_func)
+                        else:
+                            value = await self._run_function_async(gen.asend(value), original_func)
+                    except UserCodeException as uc_exc:
+                        uc_exc.exc.__suppress_context__ = True
+                        raise uc_exc.exc
+                    except StopAsyncIteration:
+                        break
 
+                    try:
+                        value = yield value
+                        is_exc = False
+                    except GeneratorExit:
+                        # Don't athrow(GeneratorExit) into the async generator.
+                        # Just stop yielding and let cleanup run.
+                        raise
+                    except BaseException as exc:
+                        value = exc
+                        is_exc = True
+        finally:
+            # During interpreter shutdown, blocking here can deadlock.
+            if not sys.is_finalizing():
                 try:
-                    value = yield value
-                    is_exc = False
-                except BaseException as exc:
-                    value = exc
-                    is_exc = True
+                    # Best-effort close. We use a future so we don't block indefinitely in case
+                    # the event loop closing races with this code and the aclose never returns
+                    close_task = asyncio.create_task(self._run_function_async(gen.aclose(), original_func))
+                    await asyncio.wait_for(asyncio.shield(close_task), timeout=self._asyncgen_finalizer_timeout_seconds)
+                except Exception:
+                    pass
 
     def create_callback(self, f):
         return Callback(self, f)
