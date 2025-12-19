@@ -544,7 +544,7 @@ Traceback:{self._thread_traceback}"""
                         is_exc = True
         finally:
             # During interpreter shutdown, blocking here can deadlock.
-            if not getattr(sys, "is_finalizing", lambda: False)():
+            if sys.is_finalizing():
                 try:
                     # Best-effort close. We use a future so we don't block indefinitely in case
                     # the event loop closing races with this code and the aclose never returns
