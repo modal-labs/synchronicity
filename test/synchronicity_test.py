@@ -9,6 +9,7 @@ import threading
 import time
 import typing
 from typing import Coroutine
+from unittest import mock
 from unittest.mock import MagicMock
 
 from synchronicity import Synchronizer
@@ -173,11 +174,12 @@ async def test_generator_async(synchronizer):
     assert lst == [0, 1, 2]
 
     # Make sure cross-loop calls work
-    s2 = synchronizer
+    s2 = Synchronizer()
     gen2_s2 = s2.create_blocking(gen2).aio
     asyncgen = gen2_s2(gen_s, 3)
     lst = [z async for z in asyncgen]
     assert lst == [0, 1, 2]
+    s2._close_loop()
 
 
 @pytest.mark.asyncio
@@ -859,3 +861,25 @@ def test_del_is_not_wrapped(synchronizer):
         "init A",
         "del A",
     ]
+
+
+def test_gc(monkeypatch):
+    import gc
+
+    mock_close_loop = mock.MagicMock()
+    monkeypatch.setattr(Synchronizer, "_close_loop", mock_close_loop)
+
+    def foo():
+        s = Synchronizer()
+
+        @s.wrap
+        class A:
+            def __init__(self):
+                pass
+
+            async def f(self):
+                pass
+
+    foo()
+    gc.collect()
+    assert mock_close_loop.call_count == 1

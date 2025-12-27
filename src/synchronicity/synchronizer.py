@@ -14,6 +14,7 @@ import traceback
 import types
 import typing
 import warnings
+import weakref
 from inspect import get_annotations
 from typing import Callable, ForwardRef, Optional
 
@@ -141,7 +142,7 @@ class Synchronizer:
 
         # Prep a synchronized context manager in case one is returned and needs translation
         self._ctx_mgr_cls = contextlib._AsyncGeneratorContextManager
-        self.create_blocking(self._ctx_mgr_cls)
+        self._blocking_ctx_mgr_cls = self.create_blocking(self._ctx_mgr_cls)  # keep a reference to prevent gc
         atexit.register(self._close_loop)
 
     _PICKLE_ATTRS = [
@@ -206,8 +207,6 @@ class Synchronizer:
             self._owner_pid = None
 
     def __del__(self):
-        # TODO: this isn't reliably called, because self.create_blocking(self._ctx_mgr_cls)
-        #  creates a global reference to this Synchronizer which makes it never get gced
         self._close_loop()
 
     @typing.overload
@@ -271,11 +270,19 @@ Traceback:{self._thread_traceback}"""
 
         return coro_wrapped()
 
-    def _wrap_instance(self, obj):
+    def _wrap_instance(
+        self,
+        obj,
+    ):
         # Takes an object and creates a new proxy object for it
         cls = obj.__class__
         cls_dct = cls.__dict__
-        wrapper_cls = cls_dct[self._wrapped_attr][Interface.BLOCKING]
+        wrapper_cls = cls_dct[self._wrapped_attr][Interface.BLOCKING]()
+        if wrapper_cls is None:
+            # weakref of the class expired - this is bad since we don't know the
+            # name and target module that the wrappers should have
+            raise Exception("Can't wrap instance")
+
         new_obj = wrapper_cls.__new__(wrapper_cls)
         # Store a reference to the original object
         new_obj.__dict__[self._original_attr] = obj
@@ -297,12 +304,12 @@ Traceback:{self._thread_traceback}"""
         if inspect.isclass(obj):  # TODO: functions?
             cls_dct = obj.__dict__
             if self._wrapped_attr in cls_dct:
-                return cls_dct[self._wrapped_attr][Interface.BLOCKING]
+                return cls_dct[self._wrapped_attr][Interface.BLOCKING]()
             else:
                 return obj
         elif isinstance(obj, (typing.TypeVar, typing_extensions.ParamSpec)):
             if hasattr(obj, self._wrapped_attr):
-                return getattr(obj, self._wrapped_attr)[Interface.BLOCKING]
+                return getattr(obj, self._wrapped_attr)[Interface.BLOCKING]()
             else:
                 return obj
         else:
@@ -764,11 +771,9 @@ Traceback:{self._thread_traceback}"""
             args = synchronizer_self._translate_in(args)
             kwargs = synchronizer_self._translate_in(kwargs)
             instance = cls(*args, **kwargs)
-
             # Register self as the wrapped one
-            interface_instances = {interface: self}
+            interface_instances = {interface: weakref.ref(self)}
             instance.__dict__[synchronizer_self._wrapped_attr] = interface_instances
-
             # Store a reference to the original object
             self.__dict__[synchronizer_self._original_attr] = instance
 
@@ -873,9 +878,11 @@ Traceback:{self._thread_traceback}"""
 
         # If this is already wrapped, return the existing interface
         if interface in interfaces:
-            if self._multiwrap_warning:
-                warnings.warn(f"Object {obj} is already wrapped, but getting wrapped again")
-            return interfaces[interface]
+            existing_wrap = interfaces[interface]()  # weakref could have expired
+            if existing_wrap:
+                if self._multiwrap_warning:
+                    warnings.warn(f"Object {obj} is already wrapped, but getting wrapped again")
+                return existing_wrap
 
         if require_already_wrapped:
             # This happens if a class has a custom name but its base class doesn't
@@ -901,7 +908,7 @@ Traceback:{self._thread_traceback}"""
             raise Exception("Argument %s is not a class or a callable" % obj)
 
         # Store the interface on the obj and return
-        interfaces[interface] = new_obj
+        interfaces[interface] = weakref.ref(new_obj)
         return new_obj
 
     def _wrap_type_var(self, obj, interface, name, target_module):
@@ -920,7 +927,7 @@ Traceback:{self._thread_traceback}"""
         new_obj.__module__ = target_module
         if not hasattr(obj, self._wrapped_attr):
             setattr(obj, self._wrapped_attr, {})
-        getattr(obj, self._wrapped_attr)[interface] = new_obj
+        getattr(obj, self._wrapped_attr)[interface] = weakref.ref(new_obj)
         return new_obj
 
     def _wrap_param_spec(self, obj, interface, name, target_module):
@@ -932,7 +939,7 @@ Traceback:{self._thread_traceback}"""
         new_obj.__module__ = target_module
         if not hasattr(obj, self._wrapped_attr):
             setattr(obj, self._wrapped_attr, {})
-        getattr(obj, self._wrapped_attr)[interface] = new_obj
+        getattr(obj, self._wrapped_attr)[interface] = weakref.ref(new_obj)
         return new_obj
 
     def nowrap(self, obj):
