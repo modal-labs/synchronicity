@@ -8,16 +8,17 @@ import functools
 import inspect
 import logging
 import os
+import sys
 import threading
 import traceback
 import types
 import typing
 import warnings
 import weakref
+from inspect import get_annotations
 from typing import Callable, ForwardRef, Optional
 
 import typing_extensions
-from typing_extensions import get_annotations
 
 from synchronicity.annotations import evaluated_annotation
 from synchronicity.combined_types import FunctionWithAio, MethodWithAio
@@ -40,6 +41,9 @@ IGNORED_ATTRIBUTES = (
     # Ignoring __provides__ fixes an incompatibility with `channels[daphne]`,
     # where Synchronizer creation fails when wrapping contextlib._AsyncGeneratorContextManager
     "__provides__",
+    # we don't want to proxy the destructor - it should get called by the gc mechanism as soon as the wrapper is gc:ed
+    # otherwise we may trigger it twice
+    "__del__",
 )
 
 _RETURN_FUTURE_KWARG = "_future"
@@ -125,6 +129,7 @@ class Synchronizer:
         self._thread_traceback: Optional[str] = None
         self._owner_pid = None
         self._stopping: Optional[asyncio.Event] = None
+        self._asyncgen_finalizer_timeout_seconds = 10.0  # pretty high default to allow async finalization in most cases
 
         # Special attribute we use to go from wrapped <-> original
         self._wrapped_attr = "_sync_wrapped_%d" % id(self)
@@ -373,13 +378,16 @@ Traceback:{self._thread_traceback}"""
 
         fut = asyncio.run_coroutine_threadsafe(wrapper_coro(), loop)
         try:
-            while 1:
-                try:
-                    # repeated poll to give Windows a chance to abort on Ctrl-C
-                    value = fut.result(timeout=self._future_poll_interval)
-                    break
-                except concurrent.futures.TimeoutError:
-                    pass
+            if sys.platform == "win32":
+                while 1:
+                    try:
+                        # repeated poll to give Windows a chance to abort on Ctrl-C
+                        value = fut.result(timeout=self._future_poll_interval)
+                        break
+                    except concurrent.futures.TimeoutError:
+                        pass
+            else:
+                value = fut.result()
         except KeyboardInterrupt as exc:
             # in case there is a keyboard interrupt while we are waiting
             # we cancel the *underlying* coro_task (unlike what fut.cancel() would do)
@@ -428,28 +436,34 @@ Traceback:{self._thread_traceback}"""
 
             shielded_task = None
             try:
-                while 1:
-                    # the loop + wait_for timeout is for windows ctrl-C compatibility since
-                    # windows doesn't truly interrupt the event loop on sigint
-                    try:
-                        # We create a task here to prevent an anonymous task inside asyncio.wait_for that could
-                        # get an unresolved timeout during cancellation handling below, resulting in a warning
-                        # traceback.
-                        shielded_task = asyncio.create_task(
-                            asyncio.wait_for(
-                                # inner shield prevents wait_for from cancelling a_fut on timeout
-                                asyncio.shield(a_fut),
-                                timeout=self._future_poll_interval,
+                if sys.platform == "win32":
+                    while 1:
+                        # the loop + wait_for timeout is for windows ctrl-C compatibility since
+                        # windows doesn't truly interrupt the event loop on sigint
+                        try:
+                            # We create a task here to prevent an anonymous task inside asyncio.wait_for that could
+                            # get an unresolved timeout during cancellation handling below, resulting in a warning
+                            # traceback.
+                            shielded_task = asyncio.create_task(
+                                asyncio.wait_for(
+                                    # inner shield prevents wait_for from cancelling a_fut on timeout
+                                    asyncio.shield(a_fut),
+                                    timeout=self._future_poll_interval,
+                                )
                             )
-                        )
-                        # The outer shield prevents a cancelled caller from cancelling a_fut directly
-                        # so that we can instead cancel the underlying coro_task and wait for it
-                        # to bubble back up as a CancelledError gracefully between threads
-                        # in order to run any cancellation logic in the coroutine
-                        value = await asyncio.shield(shielded_task)
-                        break
-                    except asyncio.TimeoutError:
-                        continue
+                            # The outer shield prevents a cancelled caller from cancelling a_fut directly
+                            # so that we can instead cancel the underlying inner_task and wait for it
+                            # to bubble back up as a CancelledError gracefully between threads
+                            # in order to run any cancellation logic in the coroutine
+                            value = await asyncio.shield(shielded_task)
+                            break
+                        except asyncio.TimeoutError:
+                            continue
+                else:
+                    # The shield here prevents a cancelled caller from cancelling c_fut directly
+                    # so that we can instead cancel the underlying inner_task and wait for it
+                    # to be handled
+                    value = await asyncio.shield(a_fut)
 
             except asyncio.CancelledError:
                 try:
@@ -476,47 +490,78 @@ Traceback:{self._thread_traceback}"""
 
     def _run_generator_sync(self, gen, original_func):
         value, is_exc = None, False
-        with suppress_synchronicity_tb_frames():
-            while True:
-                try:
-                    if is_exc:
-                        value = self._run_function_sync(gen.athrow(value), original_func)
-                    else:
-                        value = self._run_function_sync(gen.asend(value), original_func)
-                except UserCodeException as uc_exc:
-                    uc_exc.exc.__suppress_context__ = True
-                    raise uc_exc.exc
-                except StopAsyncIteration:
-                    break
+        try:
+            with suppress_synchronicity_tb_frames():
+                while True:
+                    try:
+                        if is_exc:
+                            value = self._run_function_sync(gen.athrow(value), original_func)
+                        else:
+                            value = self._run_function_sync(gen.asend(value), original_func)
+                    except UserCodeException as uc_exc:
+                        uc_exc.exc.__suppress_context__ = True
+                        raise uc_exc.exc
+                    except StopAsyncIteration:
+                        return
 
+                    try:
+                        value = yield value
+                        is_exc = False
+                    except GeneratorExit:
+                        # Don't athrow(GeneratorExit) into the async generator.
+                        # Just stop yielding and let cleanup run.
+                        raise
+                    except BaseException as exc:
+                        value = exc
+                        is_exc = True
+        finally:
+            # During interpreter shutdown, blocking here can deadlock.
+            if not sys.is_finalizing():
                 try:
-                    value = yield value
-                    is_exc = False
-                except BaseException as exc:
-                    value = exc
-                    is_exc = True
+                    # Best-effort close. We use a future so we don't block indefinitely in case
+                    # the event loop closing races with this code and the aclose never returns
+                    aclose = gen.aclose()
+                    finalization_fut: concurrent.futures.Future = self._run_function_sync_future(aclose, original_func)
+                    finalization_fut.result(timeout=self._asyncgen_finalizer_timeout_seconds)
+                except Exception:
+                    pass
 
     async def _run_generator_async(self, gen, original_func):
         value, is_exc = None, False
-        with suppress_synchronicity_tb_frames():
-            while True:
-                try:
-                    if is_exc:
-                        value = await self._run_function_async(gen.athrow(value), original_func)
-                    else:
-                        value = await self._run_function_async(gen.asend(value), original_func)
-                except UserCodeException as uc_exc:
-                    uc_exc.exc.__suppress_context__ = True
-                    raise uc_exc.exc
-                except StopAsyncIteration:
-                    break
+        try:
+            with suppress_synchronicity_tb_frames():
+                while True:
+                    try:
+                        if is_exc:
+                            value = await self._run_function_async(gen.athrow(value), original_func)
+                        else:
+                            value = await self._run_function_async(gen.asend(value), original_func)
+                    except UserCodeException as uc_exc:
+                        uc_exc.exc.__suppress_context__ = True
+                        raise uc_exc.exc
+                    except StopAsyncIteration:
+                        break
 
+                    try:
+                        value = yield value
+                        is_exc = False
+                    except GeneratorExit:
+                        # Don't athrow(GeneratorExit) into the async generator.
+                        # Just stop yielding and let cleanup run.
+                        raise
+                    except BaseException as exc:
+                        value = exc
+                        is_exc = True
+        finally:
+            # During interpreter shutdown, blocking here can deadlock.
+            if not sys.is_finalizing():
                 try:
-                    value = yield value
-                    is_exc = False
-                except BaseException as exc:
-                    value = exc
-                    is_exc = True
+                    # Best-effort close. We use a future so we don't block indefinitely in case
+                    # the event loop closing races with this code and the aclose never returns
+                    close_task = asyncio.create_task(self._run_function_async(gen.aclose(), original_func))
+                    await asyncio.wait_for(asyncio.shield(close_task), timeout=self._asyncgen_finalizer_timeout_seconds)
+                except Exception:
+                    pass
 
     def create_callback(self, f):
         return Callback(self, f)

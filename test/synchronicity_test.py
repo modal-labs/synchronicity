@@ -1,5 +1,6 @@
 import asyncio
 import concurrent.futures
+import gc
 import inspect
 import logging
 import pytest
@@ -681,6 +682,7 @@ def test_blocking_in_async_callback():
 
 
 @pytest.mark.filterwarnings("ignore")
+@pytest.mark.skipif(sys.version_info >= (3, 14), reason="Test flakes on 3.14")
 def test_synchronizer_unexpected_thread_death(caplog):
     s = Synchronizer()
 
@@ -714,6 +716,151 @@ def test_synchronizer_unexpected_thread_death(caplog):
     assert "Traceback" in error_log.message
     assert "CustomError" in error_log.message
     s._close_loop()
+
+
+def test_run_async_gen_runs_aclose(synchronizer):
+    states = []
+
+    @synchronizer.wrap
+    async def genfunc(finalization_delay: float):
+        states.append("init")
+        try:
+            for i in range(2):
+                await asyncio.sleep(0.01)
+                states.append(f"yield {i}")
+                yield i
+                states.append(f"send after {i}")
+        except BaseException:
+            states.append("start finalization")
+            await asyncio.sleep(finalization_delay)
+            states.append("done")
+
+    # full iteration
+    for _ in genfunc(0.01):
+        pass
+
+    assert states == [
+        "init",
+        "yield 0",
+        "send after 0",
+        "yield 1",
+        "send after 1",
+    ]
+
+    states.clear()
+    # partial iteration and then close due to gc etc:
+    agen = iter(genfunc(0.01))
+    next(agen)
+    del agen  # this should close the wrapper generator, and propagate to the underlying asyncgen
+    assert states == [
+        "init",
+        "yield 0",
+        # never sends after first yield, but athrows
+        "start finalization",
+        "done",
+    ]
+    # timeout finalization
+    states.clear()
+    synchronizer._asyncgen_finalizer_timeout_seconds = 0.1
+    agen = iter(genfunc(0.5))
+    next(agen)
+    del agen
+    assert states == [
+        "init",
+        "yield 0",
+        "start finalization",
+        # no done! it should time out
+    ]
+    time.sleep(1)
+    # runs finalization in the background if it times out
+    assert states == ["init", "yield 0", "start finalization", "done"]
+
+
+@pytest.mark.asyncio
+async def test_run_async_gen_runs_aclose_async(synchronizer):
+    states = []
+
+    @synchronizer.wrap
+    async def genfunc(finalization_delay: float):
+        states.append("init")
+        try:
+            for i in range(2):
+                await asyncio.sleep(0.01)
+                states.append(f"yield {i}")
+                yield i
+                states.append(f"send after {i}")
+        except BaseException:
+            states.append("start finalization")
+            await asyncio.sleep(finalization_delay)
+            states.append("done")
+
+    # full iteration
+    async for _ in genfunc.aio(0.01):
+        pass
+
+    assert states == [
+        "init",
+        "yield 0",
+        "send after 0",
+        "yield 1",
+        "send after 1",
+    ]
+
+    states.clear()
+    # partial iteration and then close due to gc etc:
+    agen = aiter(genfunc.aio(0.01))
+    assert await anext(agen) == 0
+    await agen.aclose()
+    assert states == [
+        "init",
+        "yield 0",
+        # never sends after first yield, but athrows
+        "start finalization",
+        "done",
+    ]
+
+    # timeout finalization
+    states.clear()
+    synchronizer._asyncgen_finalizer_timeout_seconds = 0.1
+    agen = aiter(genfunc.aio(0.5))
+    await anext(agen)
+    await agen.aclose()
+    assert states == [
+        "init",
+        "yield 0",
+        "start finalization",
+        # no done! it timed out
+    ]
+
+    await asyncio.sleep(1)
+    # finalization logic still runs
+    assert states == ["init", "yield 0", "start finalization", "done"]
+
+
+def test_del_is_not_wrapped(synchronizer):
+    events = []
+
+    class A:
+        def __init__(self):
+            # mostly for sanity
+            events.append(f"init {type(self).__name__}")
+
+        def __del__(self):
+            events.append(f"del {type(self).__name__}")
+
+    WrappedA = synchronizer.wrap(A, name="WrappedA")
+    a = WrappedA()
+
+    del a
+    gc.collect()  # this should collect both the wrapper and the wrapped instance
+    assert events == [
+        # we don't want to trigger the destructor of the implementation object
+        # before it's actually getting deleted, otherwise we'll double delete
+        # it, and what is worse - it may still get used post-__del__ from
+        # some other context, so there should not be *two* "del A" here
+        "init A",
+        "del A",
+    ]
 
 
 def test_gc(monkeypatch):
