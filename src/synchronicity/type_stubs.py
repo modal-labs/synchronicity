@@ -359,7 +359,8 @@ class StubEmitter:
                     methods.append(f"{body_indent}@{entity_name}.deleter\n{fn_source}")
 
             elif isinstance(entity, classproperty):
-                return_annotation = self._get_function_return_annotation(entity.fget)
+                sig = sigtools.specifiers.signature(entity.fget)
+                return_annotation = self._get_function_return_annotation(entity.fget, sig)
                 if return_annotation is inspect._empty:
                     return_annotation = typing.Any
                 self.imports.add("typing")
@@ -815,7 +816,7 @@ class StubEmitter:
         with mock.patch("inspect.formatannotation", self._formatannotation):
             return str(sig)
 
-    def _get_function_return_annotation(self, func, sig=None):
+    def _get_function_return_annotation(self, func, sig):
         interface = getattr(func, TARGET_INTERFACE_ATTR, None)
         synchronizer = getattr(func, SYNCHRONIZER_ATTR, None)
 
@@ -823,13 +824,6 @@ class StubEmitter:
             home_module = safe_get_module(getattr(func, synchronizer._original_attr))
         else:
             home_module = safe_get_module(func)
-
-        root_func = func
-        if interface and synchronizer:
-            root_func = synchronizer._translate_in(func)
-
-        if sig is None:
-            sig = sigtools.specifiers.signature(root_func)
 
         if sig.upgraded_return_annotation is not EmptyAnnotation:
             raw_return_annotation = sig.upgraded_return_annotation.source_value()
