@@ -74,6 +74,7 @@ class classproperty(typing.Generic[T, R]):
     Usage:
     class SomeClass:
         @classproperty
+        @classmethod
         def my_prop(cls) -> str:
             return "hello"
 
@@ -83,7 +84,7 @@ class classproperty(typing.Generic[T, R]):
     def __init__(self, fget: Callable[[T], R]):
         self.fget = fget
 
-    def __get__(self, obj, owner: type[T]) -> R:
+    def __get__(self, obj, owner: T) -> R:
         return self.fget(owner)
 
 
@@ -766,7 +767,7 @@ Traceback:{self._thread_traceback}"""
         return property(**kwargs)
 
     def _wrap_proxy_classproperty(self, prop, interface):
-        wrapped_func = self._wrap_proxy_method(prop.fget, interface, allow_futures=False, include_aio_interface=False)
+        wrapped_func = self._wrap_proxy_classmethod(prop.fget, interface)
         return classproperty(fget=wrapped_func)
 
     def _wrap_proxy_constructor(synchronizer_self, cls, interface):
