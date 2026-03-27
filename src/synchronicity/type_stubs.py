@@ -359,6 +359,7 @@ class StubEmitter:
                     methods.append(f"{body_indent}@{entity_name}.deleter\n{fn_source}")
 
             elif isinstance(entity, classproperty):
+                # emit classproperties as ClassVar
                 sig = sigtools.specifiers.signature(entity.fget)
                 return_annotation = self._get_function_return_annotation(entity.fget, sig)
                 if return_annotation is inspect._empty:
