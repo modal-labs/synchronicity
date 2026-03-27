@@ -64,13 +64,26 @@ ASYNC_GENERIC_ORIGINS = (
 logger = logging.getLogger(__name__)
 
 
-class classproperty:
-    """Read-only class property recognized by Synchronizer's wrap method."""
+T = typing.TypeVar("T")
+R = typing.TypeVar("R")
 
-    def __init__(self, fget):
+
+class classproperty(typing.Generic[T, R]):
+    """Read-only class property recognized by Synchronizer's wrap method.
+
+    Usage:
+    class SomeClass:
+        @classproperty
+        def my_prop(cls) -> str:
+            return "hello"
+
+    >>> assert SomeClass.my_prop == "hello"
+    """
+
+    def __init__(self, fget: Callable[[T], R]):
         self.fget = fget
 
-    def __get__(self, obj, owner):
+    def __get__(self, obj, owner: type[T]) -> R:
         return self.fget(owner)
 
 
