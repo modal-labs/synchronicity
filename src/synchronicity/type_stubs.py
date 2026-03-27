@@ -361,8 +361,12 @@ class StubEmitter:
                     methods.append(f"{body_indent}@{entity_name}.deleter\n{fn_source}")
 
             elif isinstance(entity, classproperty):
-                fn_source = self._get_function_source_with_overloads(entity.fget, entity_name, body_indent_level)
-                methods.append(f"{body_indent}@synchronicity.classproperty\n{fn_source}")
+                fn_source = self._get_function_source_with_overloads(
+                    entity.fget.__func__,  # type: ignore[attr-defined]
+                    entity_name,
+                    body_indent_level,
+                )
+                methods.append(f"{body_indent}@synchronicity.classproperty\n{body_indent}@classmethod\n{fn_source}")
                 self.imports.add("synchronicity")
 
             elif isinstance(entity, FunctionWithAio):

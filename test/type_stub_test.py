@@ -174,7 +174,8 @@ class MixedClass:
         print(val)
 
     @classproperty
-    def class_property(cls):
+    @classmethod
+    def class_property(cls) -> int:
         return 1
 
 
@@ -203,7 +204,12 @@ def test_class_generation():
     assert_in_after_last(f"{indent}@property\n{indent}def some_property(self) -> str:")
     assert_in_after_last(f"{indent}@some_property.setter\n{indent}def some_property(self, val):")
     assert_in_after_last(f"{indent}@some_property.deleter\n{indent}def some_property(self, val):")
-    assert_in_after_last(f"{indent}@synchronicity.classproperty\n{indent}def class_property(cls):\n{indent * 2}...")
+    assert_in_after_last(
+        f"{indent}@synchronicity.classproperty\n"
+        f"{indent}@classmethod\n"
+        f"{indent}def class_property(cls) -> int:\n"
+        f"{indent * 2}..."
+    )
 
 
 def merged_signature(*sigs):

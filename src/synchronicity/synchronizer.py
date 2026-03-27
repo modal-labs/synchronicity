@@ -64,14 +64,36 @@ ASYNC_GENERIC_ORIGINS = (
 logger = logging.getLogger(__name__)
 
 
-class classproperty:
-    """Read-only class property recognized by Synchronizer's wrap method."""
+T = typing.TypeVar("T")
+R = typing.TypeVar("R")
 
-    def __init__(self, fget):
+
+class classproperty(typing.Generic[T, R]):
+    """Read-only class property recognized by Synchronizer's wrap method.
+
+    Usage:
+    class SomeClass:
+        @classproperty
+        @classmethod
+        def my_prop(cls) -> str:
+            return "hello"
+
+    >>> assert SomeClass.my_prop == "hello"
+    """
+
+    fget: classmethod
+
+    def __init__(self, fget: Callable[[type[T]], R]):
+        # typing wise this is a bit weird:
+        # if we decorate a classmethod, a static typer will treat fget as a Callable with an
+        # argument that is a type. But at runtime, what will actually be passed in here
+        # is a classmethod descriptor that isn't directly callable...
+        if not isinstance(fget, classmethod):  # type: ignore[has-type]
+            raise TypeError("classproperty expects a classmethod")
         self.fget = fget
 
-    def __get__(self, obj, owner):
-        return self.fget(owner)
+    def __get__(self, obj, owner: type[T]) -> R:
+        return self.fget.__get__(None, owner)()
 
 
 def _type_requires_aio_usage(annotation, declaration_module):
@@ -753,8 +775,10 @@ Traceback:{self._thread_traceback}"""
         return property(**kwargs)
 
     def _wrap_proxy_classproperty(self, prop, interface):
-        wrapped_func = self._wrap_proxy_method(prop.fget, interface, allow_futures=False, include_aio_interface=False)
-        return classproperty(fget=wrapped_func)
+        wrapped_getter = self._wrap_callable(
+            prop.fget.__func__, interface, include_aio_interface=False, allow_futures=False
+        )
+        return classproperty(classmethod(wrapped_getter))
 
     def _wrap_proxy_constructor(synchronizer_self, cls, interface):
         """Returns a custom __init__ for the subclass."""
