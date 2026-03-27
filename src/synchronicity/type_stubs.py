@@ -333,8 +333,6 @@ class StubEmitter:
 
         for varname, annotation in annotations.items():
             var_annotations.append(f"{body_indent}{self._get_var_annotation(varname, annotation)}")
-        if var_annotations:
-            var_annotations.append("")  # formatting ocd - add an extra newline after var annotations
 
         for entity_name, entity in cls.__dict__.items():
             if inspect.isfunction(entity):
@@ -361,9 +359,12 @@ class StubEmitter:
                     methods.append(f"{body_indent}@{entity_name}.deleter\n{fn_source}")
 
             elif isinstance(entity, classproperty):
-                fn_source = self._get_function_source_with_overloads(entity.fget, entity_name, body_indent_level)
-                methods.append(f"{body_indent}@synchronicity.classproperty\n{fn_source}")
-                self.imports.add("synchronicity")
+                return_annotation = self._get_function_return_annotation(entity.fget)
+                if return_annotation is inspect._empty:
+                    return_annotation = typing.Any
+                self.imports.add("typing")
+                classvar_annotation = typing.ClassVar[return_annotation]
+                var_annotations.append(f"{body_indent}{self._get_var_annotation(entity_name, classvar_annotation)}")
 
             elif isinstance(entity, FunctionWithAio):
                 # Note: FunctionWithAio is used for staticmethods
@@ -385,6 +386,9 @@ class StubEmitter:
                     is_class_member=True,
                 )
                 methods.append(src)
+
+        if var_annotations:
+            var_annotations.append("")  # formatting ocd - add an extra newline after var annotations
 
         padding = [] if var_annotations or methods else [f"{body_indent}..."]
         self.parts.append(
@@ -774,9 +778,8 @@ class StubEmitter:
         # TODO: sigtools.specifiers.signature does not support Python 3.14 annotations
         sig = sigtools.specifiers.signature(root_func)
 
-        if sig.upgraded_return_annotation is not EmptyAnnotation:
-            raw_return_annotation = sig.upgraded_return_annotation.source_value()
-            return_annotation = self._translate_annotation(raw_return_annotation, synchronizer, interface, home_module)
+        return_annotation = self._get_function_return_annotation(func, sig=sig)
+        if return_annotation is not inspect._empty:
             sig = sig.replace(
                 return_annotation=return_annotation,
                 upgraded_return_annotation=UpgradedAnnotation.upgrade(
@@ -811,6 +814,31 @@ class StubEmitter:
         # kind of ugly, but this ensures valid formatting of Generics etc, see docstring above and _formatannotation
         with mock.patch("inspect.formatannotation", self._formatannotation):
             return str(sig)
+
+    def _get_function_return_annotation(self, func, sig=None):
+        interface = getattr(func, TARGET_INTERFACE_ATTR, None)
+        synchronizer = getattr(func, SYNCHRONIZER_ATTR, None)
+
+        if synchronizer:
+            home_module = safe_get_module(getattr(func, synchronizer._original_attr))
+        else:
+            home_module = safe_get_module(func)
+
+        root_func = func
+        if interface and synchronizer:
+            root_func = synchronizer._translate_in(func)
+
+        if sig is None:
+            sig = sigtools.specifiers.signature(root_func)
+
+        if sig.upgraded_return_annotation is not EmptyAnnotation:
+            raw_return_annotation = sig.upgraded_return_annotation.source_value()
+        elif sig.return_annotation is not inspect._empty:
+            raw_return_annotation = sig.return_annotation
+        else:
+            return inspect._empty
+
+        return self._translate_annotation(raw_return_annotation, synchronizer, interface, home_module)
 
     def _get_var_annotation(self, name, annotation):
         # TODO: how to translate annotation here - we don't know the home module
