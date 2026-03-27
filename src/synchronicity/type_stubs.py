@@ -361,11 +361,8 @@ class StubEmitter:
                     methods.append(f"{body_indent}@{entity_name}.deleter\n{fn_source}")
 
             elif isinstance(entity, classproperty):
-                if not isinstance(entity.fget, classmethod):
-                    raise RuntimeError(f"@classproperty needs to wrap a @classmethod ({type(entity)})")
-
                 fn_source = self._get_function_source_with_overloads(
-                    entity.fget.__wrapped__, entity_name, body_indent_level
+                    entity.fget.__func__, entity_name, body_indent_level
                 )
                 methods.append(f"{body_indent}@synchronicity.classproperty\n{body_indent}@classmethod\n{fn_source}")
                 self.imports.add("synchronicity")

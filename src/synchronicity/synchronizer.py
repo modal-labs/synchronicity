@@ -82,10 +82,12 @@ class classproperty(typing.Generic[T, R]):
     """
 
     def __init__(self, fget: Callable[[T], R]):
+        if not isinstance(fget, classmethod):
+            raise TypeError("classproperty expects a classmethod")
         self.fget = fget
 
     def __get__(self, obj, owner: T) -> R:
-        return self.fget(owner)
+        return self.fget.__get__(None, owner)()
 
 
 def _type_requires_aio_usage(annotation, declaration_module):
@@ -767,8 +769,10 @@ Traceback:{self._thread_traceback}"""
         return property(**kwargs)
 
     def _wrap_proxy_classproperty(self, prop, interface):
-        wrapped_func = self._wrap_proxy_classmethod(prop.fget, interface)
-        return classproperty(fget=wrapped_func)
+        wrapped_getter = self._wrap_callable(
+            prop.fget.__func__, interface, include_aio_interface=False, allow_futures=False
+        )
+        return classproperty(classmethod(wrapped_getter))
 
     def _wrap_proxy_constructor(synchronizer_self, cls, interface):
         """Returns a custom __init__ for the subclass."""
