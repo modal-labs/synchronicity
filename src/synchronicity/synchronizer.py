@@ -81,12 +81,18 @@ class classproperty(typing.Generic[T, R]):
     >>> assert SomeClass.my_prop == "hello"
     """
 
-    def __init__(self, fget: Callable[[T], R]):
-        if not isinstance(fget, classmethod):
+    fget: classmethod
+
+    def __init__(self, fget: Callable[[type[T]], R]):
+        # typing wise this is a bit weird:
+        # if we decorate a classmethod, a static typer will treat fget as a Callable with an
+        # argument that is a type. But at runtime, what will actually be passed in here
+        # is a classmethod descriptor that isn't directly callable...
+        if not isinstance(fget, classmethod):  # type: ignore[has-type]
             raise TypeError("classproperty expects a classmethod")
         self.fget = fget
 
-    def __get__(self, obj, owner: T) -> R:
+    def __get__(self, obj, owner: type[T]) -> R:
         return self.fget.__get__(None, owner)()
 
 
