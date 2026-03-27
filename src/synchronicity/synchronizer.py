@@ -101,7 +101,7 @@ class classproperty(typing.Generic[T, R]):
     @typing.overload
     def __get__(self, obj: T, owner: type[T]) -> None: ...
 
-    def __get__(self, obj: typing.Optional[T], owner: type[T]) -> R:
+    def __get__(self, obj: typing.Optional[T], owner: type[T]) -> typing.Optional[R]:
         return self.fget.__get__(None, owner)()
 
 
