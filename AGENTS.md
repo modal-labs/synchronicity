@@ -47,4 +47,4 @@
 
 - Supported areas are driven by the current code and tests, including wrapped functions, classes, iterables, inheritance, generics, and `classmethod`/`staticmethod`.
 - Public wrapper properties currently come from annotated public attributes on wrapped classes.
-- Some ideas in `SYNCHRONICITY2.md` are still aspirational; do not assume every TODO item is already implemented.
+- Some design ideas are still aspirational; do not assume every TODO item is already implemented.

@@ -62,6 +62,8 @@ source .venv/bin/activate
 
 The recommended way to use Synchronicity is code generation.
 
+`Module` registration is build-time metadata only: the decorators return the original function or class unchanged, without starting a synchronizer or changing how your implementation code runs.
+
 You write a private async implementation module:
 
 ```python
@@ -143,7 +145,7 @@ async def main() -> None:
         print(item)
 ```
 
-This also applies to wrapped classes that implement async iteration.
+This also applies to wrapped classes that implement async iteration. Use `.aio(...)` for awaitable functions and methods; for iterable results, use `for` and `async for` directly on the wrapper object.
 
 ## Quick start
 
@@ -250,17 +252,17 @@ In the current architecture:
 
 The current codebase and tests cover:
 
-- async functions
-- functions returning typed `Awaitable[...]`
+- async functions and functions returning typed `Awaitable[...]`, exposed with `.aio(...)`
+- wrapper-side translation of wrapped classes in annotated arguments and return values, including nested structures
+- wrapped sync functions when translation is needed; these still execute in the caller's context
 - async generators
+- sync and async iteration over wrapped async iterables and iterators
 - wrapped classes with public instance methods
 - wrapped `classmethod` and `staticmethod`
 - sync methods on wrapped classes
 - cross-module wrapper generation
-- wrapped class inheritance
+- wrapped class inheritance, including mirrored generic bases and wrapped base classes
 - generic classes and functions with type variables
-- wrapper-side translation of wrapped classes in arguments and return values
-- sync and async iteration over wrapped async iterables and iterators
 - generated properties from annotated public attributes
 
 ## Important rules when authoring implementation code
@@ -272,15 +274,22 @@ The current codebase and tests cover:
 - Public wrapper methods come from public methods on the implementation class.
 - Public wrapper properties are derived from annotated public attributes.
 
+## Practical gotchas
+
+- Wrapped class instances are proxies around implementation instances, so ordinary implementation attributes are not part of the public wrapper unless exposed intentionally.
+- Sync calls cross a thread boundary into the synchronizer loop, so there is some dispatch overhead compared with calling the raw implementation directly.
+- Generated modules import the implementation modules at runtime, so generation does not make the implementation code disposable.
+
 ## Current limitations
 
-Some design ideas in `SYNCHRONICITY2.md` are still future work. In particular, the current implementation does not yet aim to cover every async protocol automatically.
+Some design ideas are still future work. In particular, the current implementation does not yet aim to cover every async protocol automatically.
 
 Known gaps worth keeping in mind:
 
 - async context manager wrappers are not implemented as a general generated feature yet
 - explicit `@property` wrapping is not the primary mechanism; annotated attributes are the current simple path
 - auto-inferring the output module (`Module.auto(...)`) is not implemented
+- unwrapped base classes are not reflected in generated wrapper inheritance
 
 ## Runtime architecture
 
