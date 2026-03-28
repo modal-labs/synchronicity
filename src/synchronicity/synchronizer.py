@@ -81,18 +81,6 @@ class Synchronizer:
 
         atexit.register(self._close_loop)
 
-    _PICKLE_ATTRS = [
-        "_multiwrap_warning",
-        "_async_leakage_warning",
-    ]
-
-    def __getstate__(self):
-        return dict([(attr, getattr(self, attr)) for attr in self._PICKLE_ATTRS])
-
-    def __setstate__(self, d):
-        for attr in self._PICKLE_ATTRS:
-            setattr(self, attr, d[attr])
-
     def _start_loop(self) -> asyncio.AbstractEventLoop:
         with self._loop_creation_lock:
             if self._loop and self._loop.is_running():

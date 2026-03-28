@@ -1,9 +1,7 @@
 __pycache__
-venv*
 .venv
 *.egg-info
 build
 dist
-*.iml
 uv.lock
 /generated/
