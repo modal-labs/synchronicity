@@ -92,7 +92,16 @@ class classproperty(typing.Generic[T, R]):
             raise TypeError("classproperty expects a classmethod")
         self.fget = fget
 
-    def __get__(self, obj, owner: type[T]) -> R:
+    @typing.overload
+    def __get__(self, obj: None, owner: type[T]) -> R: ...
+
+    # Opinionated decision to make usage of the classproperty on an instance
+    # into a type error to prevent namespace confusion. Note that it still
+    # "works" at runtime (for now).
+    @typing.overload
+    def __get__(self, obj: T, owner: type[T]) -> None: ...
+
+    def __get__(self, obj: typing.Optional[T], owner: type[T]) -> typing.Optional[R]:
         return self.fget.__get__(None, owner)()
 
 
