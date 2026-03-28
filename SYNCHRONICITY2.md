@@ -1,15 +1,5 @@
 # Synchronicity2 Project Description
 
-## Overview
-
-**Synchronicity** is a Python library code generation tool that automatically creates both synchronous and asynchronous APIs from a single async implementation. It solves the dual-API problem that Python library developers face when supporting both async and sync users.
-
-**Package Name:** `synchronicity` (published name)
-**Module Name:** `synchronicity` (internal/development name)
-**Python Version:** 3.10+ for the runtime library, possibly a higher requirement on the build/compile part
-**License:** Apache 2.0
-**Maintainer:** Modal Labs
-
 ## Problem Statement
 
 Python library developers face a significant challenge:
@@ -45,14 +35,12 @@ Synchronicity 2.0 uses a **strict separation** between build-time and runtime:
 - **Dedicated event loop**: Manages background thread with its own event loop
 - **Thread-safe execution**: Executes async code from both sync and async contexts
 - **Global registry**: Maintains singleton synchronizers by name
-- **Almost no type checking**: In most cases runtime type checking/branching will not be necessary, since
+- **Almost no runtime type checking**: In most cases runtime type checking/branching will not be necessary, since
      type annotations provide enough information to generate code statically from the definitions.
 
 ### 3. Decoupling:
-- Implementation async code typically has no runtime dependency on Synchronizer, unless the user wants to have a manual
-  sync/async wrapper implementation.
-- Generated code has no dependencies on the build-time layer, e.g. does no wrapping of types or functions - only pre-compiled
-  translation operations arguments and return values of functions.
+- Implementation async code typically has no runtime dependency on Synchronizer, unless the user wants to have a manual sync/async wrapper implementation.
+- Generated code has no dependencies on the build-time layer, e.g. does no wrapping of types or functions - only pre-compiled translation operations arguments and return values of functions.
 
 
 ## Core Design Philosophy
@@ -438,84 +426,6 @@ transformer.wrap_expr(synchronized_types, "my_module", "result")
 - Async generators: `AsyncGenerator[Foo, None]`
 - Forward references and string annotations
 
-## Design Patterns
-
-### 1. Build-Time Registration Pattern
-
-```python
-# Module class is pure data - no execution logic
-class Module:
-    def __init__(self, target_module: str):
-        self._target_module = target_module
-        self._registered_functions = {}
-        self._registered_classes = {}
-
-    def wrap_function(self, f):
-        # Just register - no runtime overhead
-        self._registered_functions[f] = (self._target_module, f.__name__)
-        return f  # Return unchanged
-```
-
-**Benefits:**
-- Zero runtime overhead for implementation code
-- Implementation can be imported without Synchronizer
-- Clear separation: registration vs execution
-- Testable without wrapper infrastructure
-
-### 2. Proxy Pattern (Generated Wrappers)
-
-- Wrapper classes delegate to `_impl_instance`
-- Transparent method and property forwarding
-- Interface transformation (async → sync + async)
-
-### 3. Descriptor Pattern
-
-- Custom `__get__` behavior for method access
-- Returns wrapper objects with dual interface
-- Clean separation of sync/async calling conventions
-
-### 4. Factory Pattern with Caching
-
-```python
-_cache_MyClass: weakref.WeakValueDictionary = weakref.WeakValueDictionary()
-
-@classmethod
-def _from_impl(cls, impl_instance):
-    cache_key = id(impl_instance)
-    if cache_key in _cache_MyClass:
-        return _cache_MyClass[cache_key]
-    wrapper = object.__new__(cls)
-    wrapper._impl_instance = impl_instance
-    _cache_MyClass[cache_key] = wrapper
-    return wrapper
-```
-
-- Preserves object identity: same impl → same wrapper
-- Automatic cleanup via weak references
-- Critical for: `assert some_function(obj) is obj`
-
-### 5. Thread Isolation Pattern
-
-- All async code runs on dedicated background thread
-- Sync calls block on `concurrent.futures.Future`
-- Async calls use `asyncio.run_coroutine_threadsafe()`
-- Prevents event loop blocking in both library and user code
-
-### 6. Composable Type Transformers
-
-```python
-# Build complex transformers from simple ones
-list_of_optional_nodes = ListTransformer(
-    OptionalTransformer(
-        WrappedClassTransformer(Node)
-    )
-)
-
-# Unwrapping is composable
-list_of_optional_nodes.unwrap_expr(synchronized_types, "items")
-# → "[None if x is None else x._impl_instance for x in items]"
-```
-
 ## Usage Examples
 
 ### Example 1: Simple Async Function
@@ -626,7 +536,8 @@ write_modules(Path("./package/"), modules)
 
 ### Running Tests
 
-**IMPORTANT:** Always activate the virtualenv before running tests:
+**IMPORTANT:** Always activate the virtualenv before running tests. Otherwise, binaries
+such as pyright that are used by the tests won't be on the PATH and tests will error.
 
 ```bash
 # Activate virtualenv (required for pytest to be on PATH)
@@ -640,147 +551,39 @@ pytest test/unit/
 
 # Run integration tests only
 pytest test/integration/
-
-# Run specific test file
-pytest test/unit/compile/test_function_codegen.py
-
-# Run tests with verbose output
-pytest test/ -v
-
-# Run tests with coverage
-pytest test/ --cov=synchronicity
 ```
 
-
-### Test Organization
-
-Tests are organized by abstraction layers for clear separation of concerns:
-
-```
-test/
-├── unit/                          # Pure unit tests
-│   ├── compile/                   # Code generation tests
-│   │   ├── test_function_codegen.py
-│   │   ├── test_class_codegen.py
-│   │   └── test_type_translation_codegen.py
-│   │
-│   └── transformers/              # Type transformation tests
-│       └── test_type_transformers.py
-│
-├── integration/                   # Integration tests (execution, I/O)
-│   ├── test_simple_function.py         # Function execution tests
-│   ├── test_simple_class.py            # Class execution tests
-│   ├── test_class_with_translation.py  # Type translation runtime
-│   ├── test_multifile.py               # Multi-module scenarios
-│   ├── test_nested_generators.py       # Generator nesting tests
-│   ├── test_event_loop_check.py        # Event loop validation
-│   ├── test_two_way_generator.py       # Bidirectional generator tests
-│   └── test_utils.py                   # Test utilities
-│
-└── support_files/                 # Test fixtures using Module API
-    ├── _simple_function.py             # Basic functions
-    ├── _simple_class.py                # Async class examples
-    ├── _class_with_translation.py      # Wrapped type examples
-    ├── _test_impl.py                   # Translation test fixtures
-    ├── _event_loop_check.py            # Event loop validation
-    └── multifile/                      # Cross-module tests
-        ├── _a.py
-        └── _b.py
-```
-
-### Adding New Tests
-
-**Where to add new tests:**
-
-- **Function compilation** → `test/unit/compile/test_function_codegen.py`
-- **Class compilation** → `test/unit/compile/test_class_codegen.py`
-- **Type transformers** → `test/unit/transformers/test_type_transformers.py`
-- **Type translation** → `test/unit/compile/test_type_translation_codegen.py`
-- **Function execution** → `test/integration/test_simple_function.py`
-- **Class execution** → `test/integration/test_simple_class.py`
-- **Type translation runtime** → `test/integration/test_class_with_translation.py`
-- **Multi-module** → `test/integration/test_multifile.py`
-- **Generators** → `test/integration/test_nested_generators.py` or `test/integration/test_two_way_generator.py`
-
-### Test Fixtures (All Use Module API)
-
-**Support Files:** [test/support_files/](test/support_files/)
-- `_simple_function.py` - Module("test_support") with basic functions
-- `_simple_class.py` - Module("simple_class_lib") with async class
-- `_class_with_translation.py` - Module("translation_lib") with wrapped types
-- `_test_impl.py` - Module("test_lib") for translation tests
-- `_event_loop_check.py` - Module("event_loop_test") for runtime tests
-- `multifile/_a.py` and `multifile/_b.py` - Cross-module dependency tests
-
-## When to Use Synchronicity2
-
-### Good Use Cases
-
-1. **Library Development**
-   - Building async-first Python library
-   - Want to support both sync and async users
-   - Want to avoid code duplication
-
-2. **Database Clients / Connection Pools**
-   - Persistent connections across calls
-   - Need same event loop for connection lifecycle
-   - Users might use sync or async patterns
-
-3. **API Clients**
-   - HTTP clients with session management
-   - WebSocket clients with persistent connections
-   - Any client requiring stateful async connections
-
-4. **Event Loop Isolation**
-   - Protect library code from user's event loop blocking
-   - Protect user code from library's event loop blocking
-   - Need separate thread for library execution
-
-### When NOT to Use
-
-1. **Pure sync code** - no need for async/sync bridging
-2. **Simple stateless functions** - `asyncio.run()` might suffice
-3. **Performance-critical hot paths** - thread overhead may matter
-4. **UI frameworks** - might need to run on main thread
-
-## Important Design Decisions
+## Design Decisions
 
 ### Why Module-Based Registration?
 
-**The Goal:** Pure async implementation code with zero runtime dependencies
+**The Goal:** Pure async implementation code with zero runtime dependencies / overhead for running the original implementation
 
 ```python
 from synchronicity import Module
 wrapper_module = Module("my_lib")  # Just metadata!
 
-@wrapper_module.wrap_function  # Just registration
+@wrapper_module.wrap_function  # Just registration - doesn't change the function
 async def foo():
     ...
 ```
-
-**Benefits:**
-1. ✅ Zero runtime dependency on Synchronizer
-2. ✅ Lightweight - just data structure
-3. ✅ Clear separation: registration vs execution
-4. ✅ Testable pure async code
-5. ✅ Can delete after code generation
 
 ### Design Principle: Build-Time vs Runtime
 
 **Build Time:**
 - Module registration
 - Code generation
-- Type transformation
+- Type transformation determination
 - Static analysis
 
 **Runtime:**
 - Synchronizer event loop
 - Thread management
 - Async execution
-- Only in generated wrappers
+- Actual translations of types when the build step has decided so
 
 **Clear Boundary:**
-Implementation code should NEVER touch runtime (Synchronizer).
+Implementation code should typically never touch the "runtime" (Synchronizer).
 Only generated code uses Synchronizer.
 
 ## Common Gotchas
@@ -869,6 +672,7 @@ This requires custom `AsyncAndSyncIterable` and `AsyncAndSyncContextManager` wra
 
 It's quite likely that people will make the mistake of calling `async for res in foo.aio():` above though... We could add it as a sync proxy to `foo()` itself, but it may be confusing that we support both syntaxes too...
 
+
 ## Quick Reference
 
 ### Key Files
@@ -877,81 +681,9 @@ It's quite likely that people will make the mistake of calling `async for res in
 3. [src/synchronicity/codegen/compile.py](src/synchronicity/codegen/compile.py) - Code generation
 4. [src/synchronicity/codegen/type_transformer.py](src/synchronicity/codegen/type_transformer.py) - Type handling
 5. [src/synchronicity/codegen/cli.py](src/synchronicity/codegen/cli.py) - CLI tool
-6. [README.md](README.md) - User documentation
 
 ### Key Concepts
 - **Module:** Build-time registration (use in implementation)
 - **Synchronizer:** Runtime execution (use in generated code only)
 - **Dual interface:** `func()` for sync, `func.aio()` for async
-- **Background thread:** All async code runs on dedicated event loop
-- **Identity preservation:** WeakValueDictionary ensures wrapper uniqueness
-- **Type transformation:** Composable transformers handle complex types
-
-### Main Entry Points
-- **Implementation:** `from synchronicity import Module`
-- **Generated code:** `from synchronicity import get_synchronizer`
-- **Build script:** `from synchronicity.codegen.compile import compile_modules`
-- **CLI:** `python -m synchronicity.codegen`
-- **Tests:** `source .venv/bin/activate && pytest test/`
-
----
-
-## TODO
-
-### High Priority
-
-- [ ] **Add support for async context managers**
-  - Implement `__aenter__` and `__aexit__` wrapper generation
-  - Support both `with` (sync) and `async with` (async) usage
-  - Test with real-world use cases (database connections, file handles)
-
-- [ ] **Add tests that generated code is valid across Python 3.10+ versions**
-  - The code generation process could require a newer Python version
-  - Output types needs to still be backwards compatible with Python 3.10+ for now
-  - Test generated code across Python versions
-
-- [ ] Add support for classmethod and staticmethod
-- [ ] Add support for explicit @property
-
-### Medium Priority
-- [ ] Transfer docstrings to generated wrappers
-- [ ] Backport some of the traceback stripping (if needed?)
-- [ ] **Improve error messages in code generation**
-  - Better diagnostics when type annotations are missing
-  - Clear error messages for unsupported type constructs
-  - Helpful suggestions for common mistakes
-- [ ] **Investigate translation of TypeVar bounds that reference wrapped classes**
-  - Example: `T = typing.TypeVar("T", bound="SomeClass")` where `SomeClass` is a wrapped class
-  - Current behavior uses forward reference that resolves to wrapper class
-  - Consider whether bounds should be translated to wrapper classes explicitly
-  - Evaluate edge cases and type checking compatibility
-- [ ] Add inclusion/exclusion overrides for both properties and methods (default excludes _-prefixed)
-- [ ] Add option for renaming the output entity itself, not just the module (function name or class name)
-- [ ] Add Module.auto(__name__) for auto-inferring output modules as sibling of current (_-prefix or _impl suffix)
-
-- [ ] **Clean up generated code**
-  - Share common code between similar wrappers
-  - Consider template-based generation
-
-- [ ] **Add Python 3.14+ improvements**
-  - Test with free-threaded Python
-
-- [ ] **IDE support**
-  - Verify PyCharm/VSCode jump-to-definition
-  - Check compatibility with MyPy and ty
-
-### Low Priority
-
-- [ ] **Better CLI ergonomics**
-  - Add `--watch` mode for development
-  - Support glob patterns for module discovery
-
-- [ ] **Performance profiling**
-  - Benchmark thread overhead
-  - Optimize hot paths in Synchronizer
-  - Consider alternative execution strategies for high-performance use cases
-
----
-
-**Last Updated:** 2025-10-30
-**Codebase Branch:** `freider/synchronicity2-vibes`
+- **Type annotations:** Composable transformers handle complex types
