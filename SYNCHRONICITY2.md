@@ -905,8 +905,8 @@ It's quite likely that people will make the mistake of calling `async for res in
   - Support both `with` (sync) and `async with` (async) usage
   - Test with real-world use cases (database connections, file handles)
 
-- [ ] **Add tests that generated code is valid across Python 3.9+ versions**
-  - Code generation could require a newer Python version
+- [ ] **Add tests that generated code is valid across Python 3.10+ versions**
+  - The code generation process could require a newer Python version
   - Output types needs to still be backwards compatible with Python 3.10+ for now
   - Test generated code across Python versions
 

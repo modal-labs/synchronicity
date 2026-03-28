@@ -1,303 +1,381 @@
 ![CI/CD badge](https://github.com/erikbern/synchronicity/actions/workflows/ci.yml/badge.svg)
 [![pypi badge](https://img.shields.io/pypi/v/synchronicity.svg?style=flat)](https://pypi.python.org/pypi/synchronicity)
 
-Python 3 has some amazing support for async programming but it's arguably made it a bit harder to develop libraries. Are you tired of implementing synchronous _and_ asynchronous methods doing basically the same thing? This might be a simple solution for you.
+# Synchronicity
 
-Installing
-==========
+Synchronicity generates a synchronous and asynchronous public API from a single async implementation.
 
-```
+At a high level, you use it like this:
+
+- Write implementation code as normal async Python.
+- Register the public surface with `Module`.
+- Generate wrapper modules as part of your build or packaging step.
+- Import the generated module as your user-facing API.
+- Let the generated code use `Synchronizer` under the hood to run async work on a dedicated event loop thread.
+
+This keeps implementation code simple while still giving library users both:
+
+- a blocking sync interface like `client.query(...)`
+- an async interface like `await client.query.aio(...)`
+
+## Why this exists
+
+Library authors often want to maintain a single implementation of their API, and async code is usually the most flexible place to do that. It composes well with network and I/O heavy code, works naturally for streaming results, and handles long-lived resources like connections or sessions cleanly.
+
+The problem is that many consumers of a library still want a synchronous interface. They may be writing scripts, working in mostly blocking codebases, or just not want to structure their application around `asyncio` to call one library.
+
+So the real goal is usually not "make async code sync", but "ship one implementation while serving both sync and async users".
+
+You can build that layer manually, but it is inconvenient:
+
+- you have to write and maintain two public interfaces
+- wrappers tend to drift from the implementation over time
+- classes, methods, and translated argument and return types add a lot of boilerplate
+- generators, iterators, and long-lived async state make the wrapping logic much more subtle
+
+Simple `asyncio.run()` wrappers are fine for one-off calls, but they are not powerful enough when you need:
+
+- persistent async state across calls
+- async generators and iterators
+- classes whose methods need to share one event loop
+- one implementation that supports both sync and async consumers
+
+Synchronicity solves that by separating the problem into two layers:
+
+- Build time: inspect annotated functions and classes and generate wrappers.
+- Runtime: run async code on a dedicated background event loop via `Synchronizer`.
+
+## Install
+
+```bash
 pip install synchronicity
 ```
 
+For local development in this repo:
 
-Background: why is anything like this needed
-============================================
-
-Let's say you have an asynchronous function
-
-```python fixture:quicksleep
-async def f(x):
-    await asyncio.sleep(1.0)
-    return x**2
+```bash
+uv sync --dev
+source .venv/bin/activate
 ```
 
-And let's say (for whatever reason) you want to offer a synchronous API to users. For instance maybe you want to make it easy to run your code in a basic script, or a user is building something that's mostly CPU-bound, so they don't want to bother with asyncio.
+## Recommended model
 
-A "simple" way to create a synchronous equivalent would be to implement a set of synchronous functions where all they do is call [asyncio.run](https://docs.python.org/3/library/asyncio-task.html#asyncio.run) on an asynchronous function. But this isn't a great solution for more complex code:
+The recommended way to use Synchronicity is code generation.
 
-* It's kind of tedious grunt work to have to do this for every method/function
-* [asyncio.run](https://docs.python.org/3/library/asyncio-task.html#asyncio.run) doesn't work with generators
-* In many cases, you need to preserve an event loop running between calls
-
-The last case is particularly challenging. For instance, let's say you are implementing a client to a database that needs to have a persistent connection, and you want to build it in asyncio:
+You write a private async implementation module:
 
 ```python
-class DBConnection:
-    def __init__(self, url):
-        self._url = url
+# _weather_impl.py
+from synchronicity import Module
 
-    async def connect(self):
-        self._connection = await connect_to_database(self._url)
+wrapper_module = Module("weather")
 
-    async def query(self, q):
-        return await self._connection.run_query(q)
+
+@wrapper_module.wrap_function
+async def get_temperature(city: str) -> float:
+    ...
+
+
+@wrapper_module.wrap_class
+class WeatherClient:
+    default_city: str
+
+    def __init__(self, default_city: str):
+        self.default_city = default_city
+
+    async def current(self) -> float:
+        ...
 ```
 
-How do you expose a synchronous interface to this code? The problem is that wrapping `connect` and `query` in [asyncio.run](https://docs.python.org/3/library/asyncio-task.html#asyncio.run) won't work since you need to _preserve the event loop across calls_. It's clear we need something slightly more advanced.
+Then generate a public wrapper module:
 
-How to use this library
-=======================
-
-This library offers a simple `Synchronizer` class that creates an event loop on a separate thread, and wraps functions/generators/classes so that execution happens on that thread.
-
-Wrapped functions expose two interfaces:
-* For synchronous (non-async) use, the wrapper function itself will simply block until the result of the wrapped function is available (note that you can make it return a future as well, [see below](#returning-futures))
-* For async use, you use a special `.aio` member *on the wrapper function itself* which works just like the usual business of calling asynchronous code (`await`, `async for` etc.) - except that async code is executed on the `Synchronizer`'s own event loop ([more on why this matters below](#using-synchronicity-with-other-asynchronous-code)).
-
-```python fixture:quicksleep
-import asyncio
-from synchronicity import Synchronizer
-
-synchronizer = Synchronizer()
-
-@synchronizer.wrap
-async def f(x):
-    await asyncio.sleep(1.0)
-    return x**2
-
-
-# Running f in a synchronous context blocks until the result is available
-ret = f(42)  # Blocks
-assert isinstance(ret, int)
-print('f(42) =', ret)
+```bash
+synchronicity -m _weather_impl weather_sync -o .
 ```
 
-Async usage of the `f` wrapper, using the `f.aio` special coroutine function. This will execute `f` on `synchronizer`'s event loop - not the main event loop used by `asyncio.run()` here:
-```python continuation fixture:quicksleep
-async def g():
-    # Running f in an asynchronous context works the normal way
-    ret = await f.aio(42)  # f.aio is roughly equivalent to the original `f`
-    print('f(42) =', ret)
+That creates `weather.py`, which your users import.
 
-asyncio.run(g())
-```
+## How generated wrappers behave
 
-More advanced examples
-======================
+Generated wrappers expose a dual interface:
 
-Generators
-----------
+- Regular calls are synchronous and block until the async implementation finishes.
+- `.aio(...)` exposes the async variant for awaitable functions and methods.
+- Async iterables stay directly iterable in both sync and async code.
 
-The decorator also works on async generators, wrapping them as a regular (non-async) generator:
-
-```python fixture:quicksleep
-@synchronizer.wrap
-async def f(n):
-    for i in range(n):
-        await asyncio.sleep(1.0)
-    yield i
-
-# Note that the following runs in a synchronous context
-# Each number will take 1s to print
-for ret in f(3):
-    print(ret)
-```
-
-The wrapped generators can also be called safely in an async context using the `.aio` property:
-
-```py continuation fixture:quicksleep
-async def async_iteration():
-    async for ret in f.aio(3):
-        pass
-    
-asyncio.run(async_iteration())
-```
-
-Synchronizing whole classes
----------------------------
-
-The `Synchronizer` wrapper operates on classes by creating a new class that wraps every method on the class:
-
+### Functions
 
 ```python
-@synchronizer.wrap
-class DBConnection:
-    def __init__(self, url):
-        self._url = url
+from weather import get_temperature
 
-    async def connect(self):
-        self._connection = await connect_to_database(self._url)
-
-    async def query(self, q):
-        return await self._connection.run_query(q)
+value = get_temperature("Stockholm")
 
 
-# Now we can call it synchronously, if we want to
-db_conn = DBConnection('tcp://localhost:1234')
-db_conn.connect()
-data = db_conn.query('select * from foo')
-```
-*Or*, we could opt to use the wrapped class in an async context if we want to:
-```python continuation
-async def async_main():
-    db_conn = DBConnection('tcp://localhost:1234')
-    await db_conn.connect.aio()
-    await db_conn.query.aio('select * from foo')  # .aio works on methods too
-
-asyncio.run(async_main())
+async def main() -> None:
+    value = await get_temperature.aio("Stockholm")
 ```
 
-Context managers
-----------------
-
-You can synchronize context manager classes just like any other class and the special methods will be handled properly.
-
-```python fixture:quicksleep
-@synchronizer.wrap
-class CtxMgr:
-    def __init__(self, exit_delay: float):
-        self.exit_delay = exit_delay
-
-    async def __aenter__(self):
-        pass
-    
-    async def __aexit__(self, exc, exc_type, tb):
-        await asyncio.sleep(self.exit_delay)
-
-with CtxMgr(exit_delay=1):
-    print("sleeping 1 second")
-print("done")
-```
-
-
-Returning futures
------------------
-
-You can also make functions return a `concurrent.futures.Future` object by adding `_future=True` to any call. This can be useful if you want to dispatch many calls from a blocking context, but you want to resolve them roughly in parallel:
-
-```python fixture:quicksleep
-@synchronizer.wrap
-async def f(x):
-    await asyncio.sleep(1.0)
-    return x**2
-
-futures = [f(i, _future=True) for i in range(10)]  # This returns immediately, but starts running all calls in the background
-rets = [fut.result() for fut in futures]  # This should take ~1s to run, resolving all futures in parallel
-print('first ten squares:', rets)
-```
-
-
-Using synchronicity with other asynchronous code
-------------------------------------------------
-
-Why does synchronicity expose a separate async interface (`.aio`) when you could just use the original unwrapped function that is already async? It solves two issues:
-* Intercompatibility with the non-async interface - you can pass wrapped class instances to the wrapper and those will be "unwrapped" so that the implementation code only needs to deal with unwrapped objects.
-* Separate event loops of the library and the user of the library adds safeguards from event loop blockers for both
-
-A common pitfall in asynchronous programming is to accidentally lock up an event loop by making non-async long-running calls within the event loop. If your async library shares an event loop with a user's own async code, a synchronous call (typically a bug) in either the library or the user code would prevent the other from running concurrent tasks. Using synchronicity wrappers on your library functions, you avoid this pitfall by isolating the library execution to its own event loop and thread automatically.
-
+### Classes and methods
 
 ```python
-import time
+from weather import WeatherClient
 
-@synchronizer.wrap
-async def buggy_library():
-    time.sleep(0.1)  #non-async sleep, this locks the library's event loop for the duration
-    
-async def async_user_code():
-    await buggy_library.aio()  # this will not lock the "user's" event loop
+client = WeatherClient("Stockholm")
+value = client.current()
+
+
+async def main() -> None:
+    client = WeatherClient("Stockholm")
+    value = await client.current.aio()
 ```
 
-This library can also be useful in purely asynchronous settings, if you have multiple event loops, if you have some section that is CPU-bound, or some critical code that you want to run on a separate thread for safety. All calls to synchronized functions/generators are thread-safe by design. This makes it a useful alternative to [loop.run_in_executor](https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.run_in_executor) for simple things. Note however that each synchronizer only runs one thread.
+### Iterables and iterators
+
+For wrapped async iterables, the wrapper object itself supports both `for` and `async for`:
+
+```python
+for item in stream_values():
+    print(item)
 
 
-Static type support for wrappers
-----------------------------------
+async def main() -> None:
+    async for item in stream_values():
+        print(item)
+```
 
-One issue with the wrapper functions and classes is that they will have different argument and return value types than the wrapped originals (e.g. an AsyncGenerator becomes a Generator after being wrapped). This type transformation can't easily be expressed statically in Python's typing system.
+This also applies to wrapped classes that implement async iteration.
 
-For this reason, synchronicity includes a basic type stub (.pyi) compilation tool. This cli tool has some additional dependencies that you can install via `pip install synchronicity[compile]` (the `compile` extra is only needed for *generating* the type stubs, not using them - so you don't have to include it in distributed libraries using synchroncity).
+## Quick start
 
-The cli tool `python -m synchronicity.type_stubs` takes Python modules names as inputs and emits `.pyi` files for each module. The type stubs have static types translating any synchronicity-wrapped classes or functions.
+### 1. Write async implementation code
 
-Since the `.pyi` file will sometimes "shadow" the original file, which you still might want to type check for issues in the implementation code, a good practice is to separate wrappers and wrapped implementation code into separate modules and only emit type stubs for the "wrapper modules".  
-
-A recommended structure would be something like this:
-
-#### _my_library.py (private library implementation)
-```py
+```python
+# simple_function_impl.py
 import typing
 
-async def foo() -> typing.AsyncGenerator[int, None]:
-    yield 1
+from synchronicity import Module
+
+wrapper_module = Module("simple_function")
+
+
+@wrapper_module.wrap_function
+async def simple_add(a: int, b: int) -> int:
+    return a + b
+
+
+@wrapper_module.wrap_function
+async def simple_generator() -> typing.AsyncGenerator[int, None]:
+    for i in range(3):
+        yield i
 ```
 
-#### my_library.py (public library interface)
-```py notest
-import _my_library
-from synchronicity import Synchronizer
+### 2. Generate wrappers
 
-synchronizer = Synchronizer()
-
-foo = synchronizer.wrap(_my_library.foo, name="MyClass", target_module=__name__)
+```bash
+synchronicity -m simple_function_impl s -o generated
 ```
 
-You can then emit type stubs for the public module, as part of your build process:
-```shell
-python -m synchronicity.type_stubs my_module
+The positional argument `s` above is the synchronizer name embedded into the generated code. It identifies the shared runtime synchronizer instance used by that generated module set.
+
+### 3. Import the generated API
+
+```python
+from simple_function import simple_add, simple_generator
+
+assert simple_add(1, 2) == 3
+
+
+async def main() -> None:
+    assert await simple_add.aio(1, 2) == 3
+
+for item in simple_generator():
+    print(item)
+
+
+async def consume() -> None:
+    async for item in simple_generator():
+        print(item)
 ```
-The automatically generated type stub `my_library.pyi` would then look something like:
-```py
-import typing
-import typing_extensions
 
-class __foo_spec(typing_extensions.Protocol):
-    def __call__(self) -> typing.Generator[int, None, None]:
-        ...
+## CLI usage
 
-    def aio(self) -> typing.AsyncGenerator[int, None]:
-        ...
+The package installs a `synchronicity` CLI:
 
-foo: __foo_spec
+```bash
+synchronicity -m my_package._impl my_sync
 ```
 
-The special `*_spec` protocol types here make sure that both calling the wrapped `for x in foo()` method and `async for x in foo.aio()` will be statically valid operations, and their respective return values are typed correctly.
+Common options:
 
+- `-m/--module`: import module containing one or more `Module` objects; repeatable
+- `-o/--output-dir`: directory where generated files should be written
+- `--stdout`: print generated modules to stdout instead of writing files
+- `--ruff`: run `ruff check --fix` and `ruff format` on generated output
 
-Gotchas
-=======
+Examples:
 
-* If you have a non-async function that *returns* an awaitable or other async entity, but isn't itself defined with the `async` keyword, you have to *type annotate* that function with the correct async return type - otherwise it will not get wrapped correctly by `synchronizer.wrap`:
+```bash
+synchronicity -m my_package._impl my_sync -o .
+synchronicity -m package._a -m package._b package_sync -o generated
+synchronicity -m my_package._impl my_sync --stdout
+synchronicity -m my_package._impl my_sync -o generated --ruff
+```
 
-    ```py
-    @synchronizer.wrap
-    def foo() -> typing.AsyncContextManager[str]:
-        return make_context_manager() 
-    ```
-* If a class is "synchronized", any instance of that class will be a proxy for an instance of the original class. Methods on the class will delegate to methods of the underlying class, but *attributes* of the original class aren't directly reachable and would need getter methods or @properties to be reachable on the wrapper.
-* Note that all synchronized code will run on a different thread, and a different event loop, so calling the code might have some minor extra overhead.
-* Since all arguments and return values of wrapped functions are recursively run-time inspected to "translate" them, large data structures that are passed in and out can incur extra overhead. This can be disabled using a `@synchronizer.no_io_translation` decorator on the original function.
+## Python API
 
+If you want to integrate generation into your own build step, use the compile API directly:
 
-Future ideas
-=====
-* Use type annotations instead of runtime type inspection to determine the wrapping logic. This would prevent overly zealous argument/return value inspection when it isn't needed.
-* Use (optional?) code generation (using type annotations) instead of runtime wrappers + type stub generation. This could make it easier to navigate exception tracebacks, and lead to simpler/better static types for wrappers. 
-* Support the opposite case, i.e. you have a blocking function/generator/class/object, and you want to call it asynchronously (this is relatively simple to do for plain functions using [loop.run_in_executor](https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.run_in_executor), but Python has no built-in support for generators, and it would be nice to transform a whole class.
-* More/better documentation
-* A cleaner way to return futures from sync code (instead of the `_future=True` argument)
+```python
+from pathlib import Path
 
+from _weather_impl import wrapper_module
+from synchronicity.codegen.compile import compile_modules
+from synchronicity.codegen.writer import write_modules
 
-Release process
-===============
-TODO: We should automate this in CI/CD
+modules = compile_modules([wrapper_module], "weather_sync")
+write_modules(Path("."), modules)
+```
 
-* Make a new branch `release-X.Y.Z` from main
-* Bump version in pyproject.toml to `X.Y.Z`
-* Commit that change and create a PR
-* Merge the PR once green
-* Checkout main
-* `git tag -a vX.Y.Z -m "* release bullets"`
-* git push --tags
-* `UV_PUBLISH_TOKEN="$PYPI_TOKEN_SYNCHRONICITY" make publish`
+## Low-level runtime API
+
+`Synchronizer` is still part of the public package API, but it is now the lower-level runtime primitive rather than the main authoring model.
+
+In the current architecture:
+
+- library implementation code should usually use `Module`
+- generated wrapper code uses `Synchronizer`
+- direct `Synchronizer` usage is mainly for advanced/manual cases and internal runtime behavior
+
+## What is supported today
+
+The current codebase and tests cover:
+
+- async functions
+- functions returning typed `Awaitable[...]`
+- async generators
+- wrapped classes with public instance methods
+- wrapped `classmethod` and `staticmethod`
+- sync methods on wrapped classes
+- cross-module wrapper generation
+- wrapped class inheritance
+- generic classes and functions with type variables
+- wrapper-side translation of wrapped classes in arguments and return values
+- sync and async iteration over wrapped async iterables and iterators
+- generated properties from annotated public attributes
+
+## Important rules when authoring implementation code
+
+- Prefer pure async implementation modules.
+- Use `Module`, not `Synchronizer`, in implementation code.
+- Add type annotations. Generation relies on them.
+- Keep implementation modules importable after generation; generated wrappers import them.
+- Public wrapper methods come from public methods on the implementation class.
+- Public wrapper properties are derived from annotated public attributes.
+
+## Current limitations
+
+Some design ideas in `SYNCHRONICITY2.md` are still future work. In particular, the current implementation does not yet aim to cover every async protocol automatically.
+
+Known gaps worth keeping in mind:
+
+- async context manager wrappers are not implemented as a general generated feature yet
+- explicit `@property` wrapping is not the primary mechanism; annotated attributes are the current simple path
+- auto-inferring the output module (`Module.auto(...)`) is not implemented
+
+## Runtime architecture
+
+Generated code uses `get_synchronizer(name)` to obtain a shared `Synchronizer`.
+
+That runtime component:
+
+- owns a dedicated event loop in a background thread
+- runs async work for sync callers
+- also provides the async `.aio(...)` path on the same isolated loop
+- preserves wrapper identity for wrapped classes via `_from_impl(...)`
+
+Implementation modules should usually not need to import `Synchronizer` directly.
+
+## Repository layout
+
+```text
+src/synchronicity/
+  __init__.py
+  module.py
+  synchronizer.py
+  descriptor.py
+  types.py
+  codegen/
+
+test/
+  unit/
+  integration/
+  support_files/
+```
+
+Highlights:
+
+- `src/synchronicity/module.py`: build-time registration API
+- `src/synchronicity/synchronizer.py`: runtime execution engine
+- `src/synchronicity/descriptor.py`: sync/async descriptor plumbing for methods
+- `src/synchronicity/types.py`: shared sync-or-async iterable/iterator runtime helpers
+- `src/synchronicity/codegen/`: wrapper generation logic and CLI
+- `test/support_files/`: example impl modules used by integration tests
+- `generated/`: temporary output directory used in tests and local inspection
+
+## Migrating from 0.x
+
+The main architectural difference from Synchronicity `0.x` is that `1.x` is generation-first rather than runtime-wrapper-first.
+
+In `0.x`, the typical model was:
+
+- create a `Synchronizer` in library code
+- wrap functions and classes directly at runtime
+- expose those runtime wrapper objects as the public API
+
+In `1.x`, the typical model is:
+
+- keep implementation modules as normal async Python
+- register functions and classes with `Module`
+- generate wrapper source files ahead of time
+- publish or import those generated modules as the public API
+
+Migration considerations:
+
+- Move public runtime wrapping out of implementation modules and into generated output.
+- Replace `@synchronizer.wrap` authoring patterns with `@wrapper_module.wrap_function` and `@wrapper_module.wrap_class`.
+- Keep implementation modules importable after generation, since generated wrappers import them.
+- Add or tighten type annotations if older code relied on runtime inspection; the new compiler uses annotations heavily.
+- If you previously documented direct `Synchronizer` usage as the primary user-facing pattern, update examples to show generated modules instead.
+- Treat `Synchronizer` as a lower-level primitive that still exists, but is no longer the main recommended entry point for library authors.
+
+The sync and async user experience is still conceptually similar, but the source of truth has changed: the async implementation module is primary, and the public sync/async API is generated from it.
+
+## Development
+
+Run tests from the project root. Always activate the virtualenv first:
+
+```bash
+source .venv/bin/activate
+pytest test/
+```
+
+Useful commands:
+
+```bash
+pytest test/unit/
+pytest test/integration/
+pytest test/unit/compile/test_function_codegen.py
+ruff check .
+ruff format .
+```
+
+Integration tests generate wrapper modules into `generated/` and keep them around for inspection.
+
+## Release process
+New versions are published to pypi on tag pushes. To publish a new version, first make sure that pyproject.toml is updated with the new version spec on the main branch. Then tag the commit on main and push it to github:
+```bash
+git checkout -b release-X.Y.Z
+# bump version in pyproject.toml
+git tag -a vX.Y.Z -m "* release bullets"
+git push --tags
+```
