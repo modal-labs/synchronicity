@@ -1,5 +1,6 @@
 import pytest
 import typing
+from inspect import get_annotations
 
 from synchronicity import Synchronizer, combined_types
 from synchronicity.interface import Interface
@@ -23,7 +24,7 @@ BlockingType = synchronizer.create_blocking(ImplType, "BlockingType", __name__)
 
 
 def test_wrapped_class_keeps_class_annotations():
-    assert BlockingType.__annotations__ == ImplType.__annotations__
+    assert get_annotations(BlockingType) == get_annotations(ImplType)
 
 
 @pytest.mark.parametrize(

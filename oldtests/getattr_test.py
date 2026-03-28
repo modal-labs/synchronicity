@@ -1,5 +1,6 @@
 import asyncio
 import pytest
+from inspect import get_annotations
 from typing import Any, Dict
 
 from synchronicity import classproperty
@@ -18,7 +19,8 @@ async def test_getattr(synchronizer):
             return self._attrs[k]
 
         def __setattr__(self, k, v):
-            if k in self.__annotations__:
+            annotations = get_annotations(type(self))
+            if k in annotations:
                 # Only needed because the constructor sets _attrs
                 self.__dict__[k] = v
             else:
@@ -33,10 +35,12 @@ async def test_getattr(synchronizer):
             return Foo()
 
         @classproperty
+        @classmethod
         def my_cls_prop(cls):
             return "abc"
 
         @classproperty
+        @classmethod
         async def another_cls_prop(cls):
             await asyncio.sleep(0.01)
             return "another-cls-prop"
@@ -67,3 +71,12 @@ async def test_getattr(synchronizer):
 
     # TODO: there is no longer a way to make async properties, but there is this w/ async __getattr__:
     assert await blocking_foo.__getattr__.aio("x") == 44
+
+
+def test_classproperty_requires_classmethod():
+    with pytest.raises(TypeError, match="classproperty expects a classmethod"):
+
+        class Foo:
+            @classproperty
+            def my_cls_prop(cls):
+                return "abc"

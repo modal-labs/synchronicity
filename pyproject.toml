@@ -6,7 +6,7 @@ readme = "README.md"
 authors = [
     { name = "Modal Labs" }
 ]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = []
 classifiers = [
   "Operating System :: OS Independent",
@@ -16,7 +16,6 @@ classifiers = [
 
 [project.scripts]
 synchronicity = "synchronicity.codegen.cli:main"
-
 
 [build-system]
 requires = ["hatchling"]

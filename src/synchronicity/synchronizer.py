@@ -4,12 +4,13 @@ import concurrent.futures
 import os
 import threading
 import typing
-from typing import Optional
+from typing import Callable, Optional
 
 # Global registry for synchronizer instances
 _synchronizer_registry = {}
 
 T = typing.TypeVar("T")
+R = typing.TypeVar("R")
 
 
 class WrapperClassProtocol(typing.Protocol):
@@ -17,6 +18,26 @@ class WrapperClassProtocol(typing.Protocol):
 
 
 WRAPPER_CLASS_T = typing.TypeVar("WRAPPER_CLASS_T", bound=WrapperClassProtocol)
+
+
+class classproperty(typing.Generic[T, R]):
+    """Read-only class property descriptor."""
+
+    fget: classmethod
+
+    def __init__(self, fget: Callable[[type[T]], R]):
+        if not isinstance(fget, classmethod):  # type: ignore[has-type]
+            raise TypeError("classproperty expects a classmethod")
+        self.fget = fget
+
+    @typing.overload
+    def __get__(self, obj: None, owner: type[T]) -> R: ...
+
+    @typing.overload
+    def __get__(self, obj: T, owner: type[T]) -> None: ...
+
+    def __get__(self, obj: typing.Optional[T], owner: type[T]) -> typing.Optional[R]:
+        return self.fget.__get__(None, owner)()
 
 
 def get_synchronizer(name: str) -> "Synchronizer":
