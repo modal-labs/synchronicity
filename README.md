@@ -291,6 +291,8 @@ The current codebase and tests cover:
 - generated properties from annotated public attributes
 - type checking of generated wrappers and support files with pyright as part of the integration test suite
 
+When a wrapped class inherits from another wrapped class, the generated wrapper preserves that public inheritance structure. In other words, if your implementation has `WrappedSub(WrappedBase)`, the generated public API also has `WrappedSub(WrappedBase)`, inherited wrapped methods stay available on the subclass, and `isinstance(sub, WrappedBase)` works on the public wrapper side.
+
 ## Important rules when authoring implementation code
 
 - Prefer pure async implementation modules.
@@ -317,7 +319,26 @@ Some design ideas are still future work. In particular, the current implementati
 
 Known gaps worth keeping in mind:
 
+- functions using `Callable[...]` parameters and return values that mention wrapped classes are not translated yet
 - unwrapped base classes are not reflected in generated wrapper inheritance
+
+For example, if your implementation looks roughly like:
+
+```python
+class UnwrappedBase:
+    def unwrapped_method(self) -> bool:
+        return True
+
+
+@mod.wrap_class
+class WrappedBase(UnwrappedBase):
+    async def wrapped_method(self) -> list[int]:
+        return []
+```
+
+then the generated wrapper exposes `wrapped_method`, but it does not expose `unwrapped_method` on the public wrapper class by default.
+
+This is intentional. Wrapper instances are proxies around implementation instances rather than actual subclasses of the implementation classes, so an unwrapped base method would run with a different `self` object than the implementation class expects. In practice, that means inherited unwrapped code could observe or mutate different attributes than it would on the real implementation instance. Wrapped bases are safe to mirror because their public methods are re-generated against the wrapper model; unwrapped bases are not mirrored automatically for that reason.
 
 ## Typing caveats
 
@@ -325,9 +346,9 @@ The generated APIs are tested with pyright, including consumer-side usage exampl
 
 Known caveats include:
 
-- some `ParamSpec`-heavy method signatures are valid at runtime but still awkward for static checkers
-- some callback-heavy `TypeVar` flows still have known type-checking limitations
-- support for generics is real and tested, but the static typing experience is stronger for ordinary `TypeVar`-based APIs than for the sharpest callable-signature patterns
+- A `TypeVar` bound to a wrapped class is not typed cleanly today in all generated contexts. For example, `T = TypeVar("T", bound="SomeClass")` combined with a method like `async def tuple_to_list(self, items: tuple[T, ...]) -> list[T]` currently produces pyright errors in the generated wrapper, with mismatches like `"SomeClass*" is not assignable to "SomeClass"`.
+- Plain callback translation is also not typed correctly yet. For example, shapes like `Callable[[Node], Node]` and `Callable[[Node], int]` are not rewritten to the public wrapper type consistently, so user-facing callback signatures do not type check cleanly.
+
 
 ## Runtime architecture
 

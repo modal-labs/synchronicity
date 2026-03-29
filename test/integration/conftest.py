@@ -52,6 +52,7 @@ def generated_wrappers():
         module_specs = [
             "simple_function_impl",
             "simple_class_impl",
+            "callback_translation_impl",
             "class_with_translation_impl",
             "class_with_inheritance_impl",
             "generic_class_impl",

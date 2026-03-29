@@ -24,9 +24,17 @@
   - Helpful suggestions for common mistakes
 - [ ] **Investigate translation of TypeVar bounds that reference wrapped classes**
   - Example: `T = typing.TypeVar("T", bound="SomeClass")` where `SomeClass` is a wrapped class
-  - Current behavior uses forward reference that resolves to wrapper class
-  - Consider whether bounds should be translated to wrapper classes explicitly
+  - Current behavior partially supports this at TypeVar definition/codegen time: generated code recreates `TypeVar(..., bound="WrapperType")`
+  - The missing piece is bound-aware translation in the annotation transformer: when a signature contains `T`, the compiler currently treats `T` as opaque rather than "translate according to the bound"
+  - This means generic declaration and some ordinary generic container code paths work, but translation-sensitive paths still fail
+  - Confirmed failing typed paths include `tuple[T, ...] -> list[T]` where `T` is bound to a wrapped class
+  - Confirmed failing typed paths also include callback/callable forms like `Callable[P, T] -> Callable[P, list[T]]` when `T` is bound to a wrapped class
+  - Evaluate whether TypeVar bounds should be lowered to wrapper-aware transformers, not just wrapper-aware emitted definitions
   - Evaluate edge cases and type checking compatibility
+- [ ] **Add callback/callable translation for wrapped classes**
+  - Plain callback forms like `Callable[[Node], Node]` and `Callable[[Node], int]` are not translated to public wrapper types today
+  - This is a separate limitation from TypeVar-bound translation, though the two interact in callback-heavy generic APIs
+  - Runtime and pyright coverage currently live in xfailed integration tests; use those as the target behavior
 - [ ] Add inclusion/exclusion overrides for both properties and methods (default excludes _-prefixed)
 - [ ] Add option for renaming the output entity itself, not just the module (function name or class name)
 - [ ] Add Module.auto(__name__) for auto-inferring output modules as sibling of current (_-prefix or _impl suffix)
