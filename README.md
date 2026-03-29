@@ -145,7 +145,30 @@ async def main() -> None:
         print(item)
 ```
 
-This also applies to wrapped classes that implement async iteration. Use `.aio(...)` for awaitable functions and methods; for iterable results, use `for` and `async for` directly on the wrapper object.
+This also applies to wrapped classes that implement async iteration. Use `.aio(...)` for awaitable functions and methods; for iterable results, use `for` and `async for` directly on the wrapper object. Iterator-like wrappers preserve exhaustion and state in the same way the underlying async iterator does.
+
+### Async generators
+
+Wrapped async generators support both simple iteration and full generator interaction.
+
+For one-way generators, use them as normal in sync and async code:
+
+```python
+for item in stream_values():
+    print(item)
+
+
+async def main() -> None:
+    async for item in stream_values.aio():
+        print(item)
+```
+
+For two-way generators annotated as `AsyncGenerator[YieldType, SendType]`, the generated wrappers preserve `send` and close behavior:
+
+- the sync wrapper behaves like a normal generator and supports `.send(...)` and `.close()`
+- the async wrapper returned by `.aio(...)` supports `.asend(...)` and `.aclose()`
+
+Cleanup is forwarded correctly, so closing the wrapper waits for async generator finalization to finish.
 
 ## Quick start
 
@@ -235,7 +258,9 @@ from synchronicity.codegen.compile import compile_modules
 from synchronicity.codegen.writer import write_modules
 
 modules = compile_modules([wrapper_module], "weather_sync")
-write_modules(Path("."), modules)
+
+for path in write_modules(Path("."), modules):
+    print(f"Wrote {path}")
 ```
 
 ## Low-level runtime API
@@ -253,17 +278,18 @@ In the current architecture:
 The current codebase and tests cover:
 
 - async functions and functions returning typed `Awaitable[...]`, exposed with `.aio(...)`
-- wrapper-side translation of wrapped classes in annotated arguments and return values, including nested structures
-- wrapped sync functions when translation is needed; these still execute in the caller's context
-- async generators
+- wrapper-side translation of wrapped classes in annotated arguments and return values, including common container shapes like `list[...]`, `tuple[...]`, and `Optional[...]`
+- async generators, including two-way generators with `send`/`asend` and cleanup via `close`/`aclose`
 - sync and async iteration over wrapped async iterables and iterators
 - wrapped classes with public instance methods
 - wrapped `classmethod` and `staticmethod`
 - sync methods on wrapped classes
+- constructor argument translation for wrapped types
 - cross-module wrapper generation
 - wrapped class inheritance, including mirrored generic bases and wrapped base classes
 - generic classes and functions with type variables
 - generated properties from annotated public attributes
+- type checking of generated wrappers and support files with pyright as part of the integration test suite
 
 ## Important rules when authoring implementation code
 
@@ -276,9 +302,14 @@ The current codebase and tests cover:
 
 ## Practical gotchas
 
+- `.aio(...)` runs implementation code on the generated module's shared synchronizer loop in a background thread, not on the caller's current event loop.
+- Wrapped objects are translated back to implementation objects when passed into wrapped functions, methods, and constructors.
+- Wrapper identity is preserved across that boundary: if the same implementation object comes back out, you get the same wrapper instance back.
+- Async iterables and async iterators preserve their usual semantics. Iterator-like wrappers can be single-use or stateful, while iterable-like wrappers can be iterated repeatedly.
 - Wrapped class instances are proxies around implementation instances, so ordinary implementation attributes are not part of the public wrapper unless exposed intentionally.
 - Sync calls cross a thread boundary into the synchronizer loop, so there is some dispatch overhead compared with calling the raw implementation directly.
 - Generated modules import the implementation modules at runtime, so generation does not make the implementation code disposable.
+- Generated wrapper modules import runtime pieces like `synchronicity.synchronizer`, but they do not need `synchronicity.codegen` at runtime.
 
 ## Current limitations
 
@@ -286,10 +317,17 @@ Some design ideas are still future work. In particular, the current implementati
 
 Known gaps worth keeping in mind:
 
-- async context manager wrappers are not implemented as a general generated feature yet
-- explicit `@property` wrapping is not the primary mechanism; annotated attributes are the current simple path
-- auto-inferring the output module (`Module.auto(...)`) is not implemented
 - unwrapped base classes are not reflected in generated wrapper inheritance
+
+## Typing caveats
+
+The generated APIs are tested with pyright, including consumer-side usage examples, but some advanced typing forms still have rough edges.
+
+Known caveats include:
+
+- some `ParamSpec`-heavy method signatures are valid at runtime but still awkward for static checkers
+- some callback-heavy `TypeVar` flows still have known type-checking limitations
+- support for generics is real and tested, but the static typing experience is stronger for ordinary `TypeVar`-based APIs than for the sharpest callable-signature patterns
 
 ## Runtime architecture
 
