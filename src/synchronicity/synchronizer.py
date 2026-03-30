@@ -149,6 +149,7 @@ class Synchronizer:
         blocking_in_async_callback: Optional[Callable[[types.FunctionType], None]] = None,
     ):
         self._future_poll_interval = 0.1
+        self._cancellation_future_transfer_seconds = 1
         self._multiwrap_warning = multiwrap_warning
         self._async_leakage_warning = async_leakage_warning
         self._blocking_in_async_callback = blocking_in_async_callback
@@ -503,6 +504,19 @@ Traceback:{self._thread_traceback}"""
                         # the cancellation in a_fut would be cancelled
 
                         await a_fut  # wait for cancellation logic to complete - this *normally* raises CancelledError
+                    else:
+                        # it's possible that the cancellation has raced with scheduling the task on the other thread,
+                        # so give it a grace period to complete
+                        try:
+                            inner_task = await asyncio.wait_for(
+                                asyncio.shield(asyncio.wrap_future(inner_task_fut)),
+                                timeout=self._cancellation_future_transfer_seconds,
+                            )
+                        except asyncio.TimeoutError:
+                            pass
+                        else:
+                            loop.call_soon_threadsafe(inner_task.cancel)
+                            await a_fut
                     raise  # re-raise the CancelledError regardless - preventing unintended cancellation aborts
                 finally:
                     if shielded_task:
