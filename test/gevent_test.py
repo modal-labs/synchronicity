@@ -5,6 +5,7 @@ from pathlib import Path
 
 pytest.importorskip("gevent")
 
+
 @pytest.mark.skipif(sys.version_info >= (3, 13), reason="gevent seems broken on Python 3.13")
 @pytest.mark.skipif(
     sys.platform == "win32", reason="gevent support broken on Windows, probably due to event loop patching"
