@@ -179,7 +179,8 @@ class Synchronizer:
         # Reinitialize fork-unsafe state in child processes. threading.Lock is
         # backed by pthread_mutex_t, which becomes permanently locked if the
         # owning thread no longer exists after fork.
-        os.register_at_fork(after_in_child=self._reinitialize_after_fork)
+        if hasattr(os, "register_at_fork"):  # not available on Windows
+            os.register_at_fork(after_in_child=self._reinitialize_after_fork)
 
     def _reinitialize_after_fork(self):
         """Called in child process after os.fork().
