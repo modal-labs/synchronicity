@@ -13,5 +13,6 @@ async def dummy():
 if __name__ == "__main__":
     dummy()  # this starts a synchronizer loop/thread
     if not os.fork():
-        assert not synchronizer._thread.is_alive()  # threads don't come along in forks
+        # After fork, _reinitialize_after_fork resets _thread to None
+        assert synchronizer._thread is None  # reset by register_at_fork handler
         dummy()  # this should still work
