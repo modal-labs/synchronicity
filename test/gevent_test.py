@@ -3,8 +3,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-pytest.importorskip("gevent")
-
 
 @pytest.mark.skipif(sys.version_info >= (3, 13), reason="gevent seems broken on Python 3.13")
 @pytest.mark.skipif(
