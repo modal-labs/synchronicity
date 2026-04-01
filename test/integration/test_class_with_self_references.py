@@ -10,7 +10,7 @@ from test.integration.test_utils import check_pyright, check_pyright_with_xfail
 
 
 @pytest.mark.xfail(reason="known bug: quoted named references aren't emitted with quotes")
-def test_runtime(generated_wrappers):
+def test_runtime():
     # check that actual invokations of the wrappers work correctly
     import class_with_self_references
 
@@ -19,13 +19,13 @@ def test_runtime(generated_wrappers):
     assert a.accept_self_by_name(a) is a
 
 
-def test_pyright_implementation(generated_wrappers):
+def test_pyright_implementation():
     # check that the implementation type checks correctly
     import class_with_translation_impl
 
     check_pyright([Path(class_with_translation_impl.__file__)])
 
 
-def test_pyright_wrapper(generated_wrappers, support_files):
+def test_pyright_wrapper():
     # check that usage of the generated wrapper type checks correctly
     check_pyright_with_xfail("class_with_self_references_typecheck")

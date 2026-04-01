@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="session", autouse=True)
 def generated_wrappers():
     """Generate all wrapper modules once using the CLI and make them available to all tests.
 

@@ -86,14 +86,22 @@ def check_pyright_with_xfail(script_module: str):
 
         xfail_searches.append((offending_line_i, failure_string))
 
+    if not xfail_searches:
+        raise Exception("The supplied type assertion file has no xfail assertions")
+
     result = subprocess.run(
         ["pyright", script_path],
         capture_output=True,
         text=True,
         env={**os.environ, "PYTHONPATH": os.environ.get("PYTHONPATH", "")},
     )
+    assert result.returncode != 0
     output = result.stdout
-    assert f"{len(xfail_searches)} error," in output
+    expected_num_errors = len(xfail_searches)
+    if f"{expected_num_errors} error," not in output:
+        # TODO: be helpful and show the only the errors we didn't expect here:
+        pytest.fail(f"expected {expected_num_errors}, got:\n{output}", pytrace=False)
+
     for line_i, error_string in xfail_searches:
         line_no = line_i + 1
         mo = re.search(f"{script_path}:{line_no}:\\d+ - error: ([^\\n]*)", output)
