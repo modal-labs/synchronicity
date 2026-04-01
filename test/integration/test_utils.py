@@ -46,6 +46,11 @@ def check_pyright(module_paths: list[Path], extra_pythonpath: str | None = None)
 
 
 def check_pyright_with_xfail(script_module: str):
+    """Pyright checks a file with expected failures
+    The expected failures should be documented using comments of the form
+    # xfail: <error pattern>
+    Where <error pattern> should match the subsequent line's pyright error loosely
+    """
     from importlib.util import find_spec
 
     spec = find_spec(script_module)
