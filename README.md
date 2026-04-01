@@ -1,5 +1,5 @@
-![CI/CD badge](https://github.com/erikbern/synchronicity/actions/workflows/ci.yml/badge.svg)
-[![pypi badge](https://img.shields.io/pypi/v/synchronicity.svg?style=flat)](https://pypi.python.org/pypi/synchronicity)
+CI/CD badge
+[pypi badge](https://pypi.python.org/pypi/synchronicity)
 
 # Synchronicity
 
@@ -59,8 +59,6 @@ source .venv/bin/activate
 ```
 
 ## Recommended model
-
-The recommended way to use Synchronicity is code generation.
 
 `Module` registration is build-time metadata only: the decorators return the original function or class unchanged, without starting a synchronizer or changing how your implementation code runs.
 
@@ -349,7 +347,6 @@ Known caveats include:
 - A `TypeVar` bound to a wrapped class is not typed cleanly today in all generated contexts. For example, `T = TypeVar("T", bound="SomeClass")` combined with a method like `async def tuple_to_list(self, items: tuple[T, ...]) -> list[T]` currently produces pyright errors in the generated wrapper, with mismatches like `"SomeClass*" is not assignable to "SomeClass"`.
 - Plain callback translation is also not typed correctly yet. For example, shapes like `Callable[[Node], Node]` and `Callable[[Node], int]` are not rewritten to the public wrapper type consistently, so user-facing callback signatures do not type check cleanly.
 
-
 ## Runtime architecture
 
 Generated code uses `get_synchronizer(name)` to obtain a shared `Synchronizer`.
@@ -440,10 +437,13 @@ ruff format .
 Integration tests generate wrapper modules into `generated/` and keep them around for inspection.
 
 ## Release process
+
 New versions are published to pypi on tag pushes. To publish a new version, first make sure that pyproject.toml is updated with the new version spec on the main branch. Then tag the commit on main and push it to github:
+
 ```bash
 git checkout -b release-X.Y.Z
 # bump version in pyproject.toml
 git tag -a vX.Y.Z -m "* release bullets"
 git push --tags
 ```
+

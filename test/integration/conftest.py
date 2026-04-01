@@ -55,6 +55,7 @@ def generated_wrappers():
             "callback_translation_impl",
             "class_with_translation_impl",
             "class_with_inheritance_impl",
+            "class_with_self_references_impl",
             "generic_class_impl",
             "event_loop_check_impl",
             "nested_generators_impl",

@@ -1,19 +1,32 @@
 ## TODO
+### Known bugs
+- [ ] Generated properties for attributes don't type translate at the moment (important for wrapped classes being passed in and out)
+- Self references in arguments to methods via stringified class names aren't preserved in emitted code, resulting in errors
 
 ### High Priority
-
 - [ ] **Add support for async context managers**
   - Implement `__aenter__` and `__aexit__` wrapper generation
   - Support both `with` (sync) and `async with` (async) usage
-  - Test with real-world use cases (database connections, file handles)
 
 - [ ] **Add tests that generated code is valid across Python 3.10+ versions**
   - The code generation process could require a newer Python version
   - Output types needs to still be backwards compatible with Python 3.10+ for now
   - Test generated code across Python versions
 
-- [ ] Add support for classmethod and staticmethod
-- [ ] Add support for explicit @property
+- [ ] Add support for explicit @property - break synchronicity 1 backwards compatibility by raising if the underlying function is async
+- [ ] Add support for synchronicity-specific @classproperty decorator. Similarly, only allow sync non-blocking methods to be used
+
+- [ ] **Support dependency-free generated code**
+  - [ ] Instead of module level inline Module definitions (requiring `from synchronicity import Module` etc) we would want a different way of specifying what to generate. Possibly a manifest file. This would have the additional advantage of adding a natural place to define the entire generation flow, instead of having to point ot modules on the command line.
+  - [ ] Any synchronicity runtime dependencies would have to be imported via the generated package name - this should in most cases be limited to imports within the generated code base itself so this isn't an issue for users. In very special cases, like using special utilities included, like FunctionWithAio, @classproperty etc., we would have to come up with a different solution.
+
+- [ ] **First class support for opt-in manual wrapper implementations**
+  This is useful when the function needs to do stuff that should not be part of the synchronizer event loop, like consuming data from iterators passed by users that may not be thread safe, or risk being blocking.
+  We could export the MethodWithAio
+  
+
+
+
 
 ### Medium Priority
 - [ ] Transfer docstrings to generated wrappers
