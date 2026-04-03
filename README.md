@@ -6,7 +6,9 @@ CI/CD badge
 Synchronicity generates a synchronous and asynchronous public API from a single async implementation.
 
 ## Short example
+
 In short, an async API implementation like:
+
 ```py
 async def foo_impl() -> str:
     return await external_resource()
@@ -30,8 +32,8 @@ At a high level, you use it like this:
 - Specify `Module` objects as a manifest of output Python modules you want to create from your implementation.
 - Generate the public API using the `synchronicity` cli as part of your build or packaging step.
 - Export the generated module as your user-facing API - complete with both sync and async implementations that delegate to your implementation code. Every function or method gets two call paths:
-    - a blocking sync interface like `client.query(...)`
-    - an async interface like `await client.query.aio(...)`
+  - a blocking sync interface like `client.query(...)`
+  - an async interface like `await client.query.aio(...)`
 
 ## Install
 
@@ -149,7 +151,6 @@ For two-way generators annotated as `AsyncGenerator[YieldType, SendType]`, the g
 
 Cleanup is forwarded correctly, so closing the wrapper waits for async generator finalization to finish.
 
-
 The positional argument `s` above is the synchronizer name embedded into the generated code. It identifies the shared runtime synchronizer instance used by that generated module set.
 
 ### 3. Import the generated API
@@ -187,7 +188,6 @@ Common options:
 - `--stdout`: print generated modules to stdout instead of writing files
 - `--ruff`: run `ruff check --fix` and `ruff format` on generated output
 
-
 ## Low-level runtime API
 
 `Synchronizer` is still part of the public package API, but it is now the lower-level runtime primitive rather than the main authoring model.
@@ -197,7 +197,6 @@ In the current architecture:
 - library implementation code should usually use `Module`
 - generated wrapper code uses `Synchronizer`
 - direct `Synchronizer` usage is mainly for advanced/manual cases and internal runtime behavior
-
 
 ## Why this exists
 
@@ -248,6 +247,32 @@ When a wrapped class inherits from another wrapped class, the generated wrapper 
 - Keep implementation modules importable after generation; generated wrappers import them.
 - Public wrapper methods come from public methods on the implementation class.
 - Public wrapper properties are derived from annotated public attributes.
+
+## Design decisions
+
+### Combined functions for sync/async usage
+
+- The decision to use `.aio()` "dual" functions was made largely to avoid having to have two different types for every wrapped class (one with async method and one with sync methods). The notable downside to using "dual" functions instead of distinc types is that during async usage it becomes very easy to accidentally use blocking wrappers in async code - causing event loop blockage.
+Two other variant were explored a long time ago:
+- Auto infer at runtime if functions run inside of event loops and use that info to either run the underlying function blockingly or return an awaitable. This is bad for several reasons - it can't be statically typed, and sync functions that run inside event loops wouldn't be able to await the async awaitable returned anyways ("event loop already running")
+- Distinct async and blocking types. The main disadvantages of this is:
+  - Usage of both sync and async SDKs in the same application becomes clunky
+  - Serialization of wrapped objects somewhat enforces that receiver also use sync or async interface (i.e. "mixed usage in distributed applications")
+  - Namespace bloat of the top level namespace (could be mitigated if we make a different top level package for aio)
+
+  Arguably these aren't very strong disadvantages and they can be mitigated by having conversion utilities, so I think we might want to consider distinct types as an alternative wrapper syntax going forward.
+
+### Using the synchronizer event loop for async usage
+For async usage, we still use the synchronizer event loop instead of just running it directly on the caller's event loop. This has a couple of advantages:
+* Event loop blockage in the user's code won't break library code since the library code runs on its own thread/event loop
+* Mixed usage of sync and async APIs in the same applications interoperate well since the library code runs on the same event loop so underlying eventloop specific code can be reused (e.g. network connections)
+
+The big disadvantage is that it introduces additional call stack height and thread synchronization primitives which gives worse performance and traceback readability.
+
+### Iterator syntax
+Syntax for async iteration is currently `async for x in async_generator_func(): ...` rather than `async for x in async_generator_func.aio(): ...` which might feel more consistent with the function calling syntax.
+The reason for choosing this path is:
+* Generalized iterator objects implementing `__aiter__` can exist without being accessed through a callable.
 
 ## Practical gotchas
 
@@ -311,35 +336,17 @@ Implementation modules should usually not need to import `Synchronizer` directly
 
 ## Repository layout
 
-```text
-src/synchronicity/
-  __init__.py
-  module.py
-  synchronizer.py
-  descriptor.py
-  types.py
-  codegen/
-
-test/
-  unit/
-  integration/
-  support_files/
-```
-
-Highlights:
-
 - `src/synchronicity/module.py`: build-time registration API
 - `src/synchronicity/synchronizer.py`: runtime execution engine
-- `src/synchronicity/descriptor.py`: sync/async descriptor plumbing for methods
+- `src/synchronicity/descriptor.py`: wrapper code for "dual" functions/methods (.aio enabled callables)
 - `src/synchronicity/types.py`: shared sync-or-async iterable/iterator runtime helpers
-- `src/synchronicity/codegen/`: wrapper generation logic and CLI
-- `test/support_files/`: example impl modules used by integration tests
+- `src/synchronicity/codegen/`: wrapper (build time) generation logic and CLI
+- `test/support_files/`: example impl modules and type check files used by integration tests
 - `generated/`: temporary output directory used in tests and local inspection
 
 ## Migrating from 0.x
 
 The main architectural difference from Synchronicity `0.x` is that `2.x` is code-generation-based whereas `0.x` used runtime determination of how to proxy each call. The interface from a user of a library is still 99% backwards compatible, but the authoring process is slightly changed.
-
 
 In `0.x`, the typical model was:
 
@@ -362,7 +369,6 @@ Migration considerations:
 - Add or tighten type annotations if older code relied on runtime inspection; the new compiler uses annotations heavily.
 - If you previously documented direct `Synchronizer` usage as the primary user-facing pattern, update examples to show generated modules instead.
 - Treat `Synchronizer` as a lower-level primitive that still exists, but is no longer the main recommended entry point for library authors.
-
 
 ## Development / Contribution
 
