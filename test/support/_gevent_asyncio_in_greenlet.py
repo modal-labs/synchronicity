@@ -5,6 +5,7 @@ Demonstrates the bug: when gevent is active and an asyncio event loop is running
 in one greenlet, calling synchronicity blocking functions from another greenlet
 fails because gevent makes asyncio._get_running_loop() visible globally.
 """
+
 import sys
 
 import gevent.monkey
@@ -17,6 +18,7 @@ import gevent  # noqa: E402
 
 import synchronicity  # noqa: E402
 
+synchronicity.patch_asyncio_for_gevent()
 syn = synchronicity.Synchronizer()
 
 

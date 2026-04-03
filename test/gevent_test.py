@@ -17,10 +17,6 @@ def test_gevent():
     assert ret.returncode == 0
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="gevent makes asyncio._get_running_loop() global, causing RuntimeError when a loop is running in another greenlet",
-)
 @pytest.mark.skipif(sys.version_info >= (3, 13), reason="gevent seems broken on Python 3.13")
 @pytest.mark.skipif(
     sys.platform == "win32", reason="gevent support broken on Windows, probably due to event loop patching"
