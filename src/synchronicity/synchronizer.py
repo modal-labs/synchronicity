@@ -421,6 +421,15 @@ Traceback:{self._thread_traceback}"""
             if inner_task_fut.done():
                 inner_task: asyncio.Task = inner_task_fut.result()
                 loop.call_soon_threadsafe(inner_task.cancel)
+            else:
+                # it's possible that the interrupt has raced with scheduling the task on the other
+                # thread, so give it a grace period to complete
+                try:
+                    inner_task = inner_task_fut.result(timeout=self._cancellation_future_transfer_seconds)
+                except concurrent.futures.TimeoutError:
+                    pass
+                else:
+                    loop.call_soon_threadsafe(inner_task.cancel)
             try:
                 value = fut.result()
             except concurrent.futures.CancelledError as expected_cancellation:
