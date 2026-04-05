@@ -1,3 +1,3 @@
-from .synchronizer import Synchronizer, classproperty
+from .synchronizer import Synchronizer, classproperty, patch_asyncio_for_gevent
 
-__all__ = ["Synchronizer", "classproperty"]
+__all__ = ["Synchronizer", "classproperty", "patch_asyncio_for_gevent"]

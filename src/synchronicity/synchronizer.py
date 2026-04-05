@@ -14,6 +14,7 @@ import traceback
 import types
 import typing
 import warnings
+import weakref
 from inspect import get_annotations
 from typing import Callable, ForwardRef, Optional
 
@@ -66,6 +67,59 @@ logger = logging.getLogger(__name__)
 
 T = typing.TypeVar("T")
 R = typing.TypeVar("R")
+
+
+def patch_asyncio_for_gevent():
+    """Patch asyncio's running-loop bookkeeping for gevent-monkey-patched apps.
+
+    gevent replaces threading locals with greenlet-local storage. That makes
+    asyncio's running loop registry visible outside the native thread that owns
+    the loop, which breaks asyncio.run() and loop.run_until_complete() when
+    another asyncio loop is active in a different greenlet.
+
+    This compatibility patch restores loop tracking keyed by the current thread
+    object. It is process-global and should only be enabled explicitly by users
+    that need gevent/asyncio interoperability.
+    """
+    original_get_running_loop = asyncio._get_running_loop
+    loop_by_thread = weakref.WeakKeyDictionary()
+
+    def _thread_key():
+        # gevent replaces threading.local with greenlet-local storage, which makes
+        # asyncio's running loop bookkeeping visible outside the loop thread. Track
+        # the running loop by the current thread object instead.
+        return threading.current_thread()
+
+    def _get_running_loop():
+        entry = loop_by_thread.get(_thread_key())
+        if entry is None:
+            return None
+
+        loop, pid = entry
+        if pid != os.getpid():
+            return None
+        return loop
+
+    def get_running_loop():
+        loop = _get_running_loop()
+        if loop is None:
+            raise RuntimeError("no running event loop")
+        return loop
+
+    def _set_running_loop(loop):
+        loop_by_thread[_thread_key()] = (loop, os.getpid())
+
+    current_loop = original_get_running_loop()
+    if current_loop is not None:
+        loop_by_thread[_thread_key()] = (current_loop, os.getpid())
+
+    asyncio._get_running_loop = _get_running_loop
+    asyncio.get_running_loop = get_running_loop
+    asyncio._set_running_loop = _set_running_loop
+    asyncio.events._get_running_loop = _get_running_loop
+    asyncio.events.get_running_loop = get_running_loop
+    asyncio.events._set_running_loop = _set_running_loop
+    asyncio._synchronicity_running_loop_tracking_patched = True
 
 
 class classproperty(typing.Generic[T, R]):
