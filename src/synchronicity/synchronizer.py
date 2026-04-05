@@ -176,6 +176,25 @@ class Synchronizer:
         self.create_blocking(self._ctx_mgr_cls)
         atexit.register(self._close_loop)
 
+        # Reinitialize fork-unsafe state in child processes. threading.Lock is
+        # backed by pthread_mutex_t, which becomes permanently locked if the
+        # owning thread no longer exists after fork.
+        if hasattr(os, "register_at_fork"):  # not available on Windows
+            os.register_at_fork(after_in_child=self._reinitialize_after_fork)
+
+    def _reinitialize_after_fork(self):
+        """Called in child process after os.fork().
+
+        _loop_creation_lock is a threading.Lock (pthread_mutex_t). If the
+        parent held it at fork time, the child inherits it permanently locked
+        — the owning thread no longer exists to unlock it. Reinitializing it
+        here prevents a deadlock in _start_loop().
+        """
+        self._loop_creation_lock = threading.Lock()
+        self._thread = None
+        self._loop = None
+        self._owner_pid = None
+
     _PICKLE_ATTRS = [
         "_multiwrap_warning",
         "_async_leakage_warning",
