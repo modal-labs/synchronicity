@@ -278,7 +278,7 @@ Gotchas
 * If a class is "synchronized", any instance of that class will be a proxy for an instance of the original class. Methods on the class will delegate to methods of the underlying class, but *attributes* of the original class aren't directly reachable and would need getter methods or @properties to be reachable on the wrapper.
 * Note that all synchronized code will run on a different thread, and a different event loop, so calling the code might have some minor extra overhead.
 * Since all arguments and return values of wrapped functions are recursively run-time inspected to "translate" them, large data structures that are passed in and out can incur extra overhead. This can be disabled using a `@synchronizer.no_io_translation` decorator on the original function.
-
+* Synchronized *classes* need to have a reference to the wrapper class present somewhere. Typically an owner module of a class would keep such a reference. Otherwise the wrapper class could get garbage collected, which would break return values of the original type since those can't get translated to the non-existent wrapper type anymore.
 
 Future ideas
 =====
