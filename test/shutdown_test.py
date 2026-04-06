@@ -61,6 +61,7 @@ def test_keyboard_interrupt_reraised_as_is(synchronizer):
         a()
 
 
+@pytest.mark.disable_asyncio_debug_on_windows
 def test_shutdown_during_ctx_mgr_setup():
     # We run it in a separate process so we can simulate interrupting it
     fn = Path(__file__).parent / "support" / "_shutdown_ctx_mgr.py"
