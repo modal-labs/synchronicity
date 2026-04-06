@@ -1,11 +1,15 @@
 import pytest
+import sys
 
 from synchronicity import Synchronizer
 
 
 @pytest.fixture(autouse=True)
-def use_asyncio_debug(monkeypatch):
-    monkeypatch.setenv("PYTHONASYNCIODEBUG", "1")
+def use_asyncio_debug(monkeypatch, request):
+    if sys.platform == "win32" and request.node.get_closest_marker("disable_asyncio_debug_on_windows"):
+        monkeypatch.delenv("PYTHONASYNCIODEBUG", raising=False)
+    else:
+        monkeypatch.setenv("PYTHONASYNCIODEBUG", "1")
 
 
 @pytest.fixture()

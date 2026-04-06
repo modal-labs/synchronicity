@@ -71,3 +71,6 @@ filterwarnings = [
     "ignore::DeprecationWarning",
     "ignore::PendingDeprecationWarning",
 ]
+markers = [
+    "disable_asyncio_debug_on_windows: disable PYTHONASYNCIODEBUG for this test on Windows only",
+]
