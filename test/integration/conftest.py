@@ -15,10 +15,10 @@ def generated_wrappers():
     """Generate all wrapper modules once using the CLI and make them available to all tests.
 
     This fixture:
-    1. Uses the synchronicity CLI to generate wrapper code for all support modules
-    2. Writes them to generated/ directory in project root
-    3. Adds the generated/ directory to sys.path
-    4. Returns a namespace with all generated modules
+    1. Vendors ``mylib.synchronicity`` under ``generated/`` and copies ``mylib/_weather_impl.py`` there
+    2. Uses the synchronicity CLI to generate wrapper code for all support modules
+    3. Runs a second CLI pass for ``mylib.weather`` (synchronizer ``weather_synchronizer``)
+    4. Adds ``generated/`` and ``support_files`` to ``sys.path``
     5. Keeps files after tests complete for manual inspection
 
     Returns:
@@ -36,6 +36,15 @@ def generated_wrappers():
     # Create fresh generated directory
     generated_dir.mkdir(exist_ok=True)
 
+    from synchronicity.codegen.runtime_vendor import vendor_runtime
+
+    vendor_runtime(target_package="mylib.synchronicity", output_base=generated_dir)
+
+    shutil.copy2(
+        support_files_path / "mylib" / "_weather_impl.py",
+        generated_dir / "mylib" / "_weather_impl.py",
+    )
+
     # Set up environment with support_files on PYTHONPATH
     import os
 
@@ -43,7 +52,7 @@ def generated_wrappers():
     pythonpath_parts = [str(support_files_path), str(project_root)]
     if "PYTHONPATH" in env:
         pythonpath_parts.append(env["PYTHONPATH"])
-    env["PYTHONPATH"] = ":".join(pythonpath_parts)
+    env["PYTHONPATH"] = os.pathsep.join(pythonpath_parts)
 
     try:
         # Use CLI to generate all wrapper modules
@@ -90,6 +99,39 @@ def generated_wrappers():
             print(f"CLI failed: {result.stderr}")
             print(f"CLI stdout: {result.stdout}")
             raise RuntimeError(f"Failed to generate wrapper code: {result.stderr}")
+
+        # README-style mylib package (vendored runtime + mylib.weather wrappers)
+        env_weather = os.environ.copy()
+        weather_path = [
+            str(generated_dir),
+            str(support_files_path),
+            str(project_root),
+        ]
+        if "PYTHONPATH" in env_weather:
+            weather_path.append(env_weather["PYTHONPATH"])
+        env_weather["PYTHONPATH"] = os.pathsep.join(weather_path)
+        weather_result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "synchronicity.codegen",
+                "-m",
+                "mylib._weather_impl",
+                "weather_synchronizer",
+                "--runtime-package",
+                "mylib.synchronicity",
+                "-o",
+                str(generated_dir),
+            ],
+            capture_output=True,
+            text=True,
+            env=env_weather,
+            cwd=str(project_root),
+        )
+        if weather_result.returncode != 0:
+            print(f"Weather CLI failed: {weather_result.stderr}")
+            print(f"Weather CLI stdout: {weather_result.stdout}")
+            raise RuntimeError(f"Failed to generate mylib.weather: {weather_result.stderr}")
 
         # Add paths to sys.path:
         # - support_files_path: so generated code can import impl modules (e.g., multifile_impl._a)

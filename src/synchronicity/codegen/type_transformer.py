@@ -646,15 +646,16 @@ class AsyncIteratorTransformer(TypeTransformer):
     not asend()/aclose(). This transformer handles iterators that aren't generators.
     """
 
-    def __init__(self, item_transformer: TypeTransformer):
+    def __init__(self, item_transformer: TypeTransformer, runtime_package: str = "synchronicity"):
         self.item_transformer = item_transformer
+        self._runtime_package = runtime_package
 
     def wrapped_type(
         self, synchronized_types: dict[type, tuple[str, str]], target_module: str, is_async: bool = True
     ) -> str:
         """Return SyncOrAsyncIterator[T] - works in both sync and async contexts."""
         item_type_str = self.item_transformer.wrapped_type(synchronized_types, target_module, is_async)
-        return f"synchronicity.types.SyncOrAsyncIterator[{item_type_str}]"
+        return f"{self._runtime_package}.types.SyncOrAsyncIterator[{item_type_str}]"
 
     def unwrap_expr(self, synchronized_types: dict[type, tuple[str, str]], var_name: str) -> str:
         """Iterators don't unwrap at the parameter level."""
@@ -672,7 +673,10 @@ class AsyncIteratorTransformer(TypeTransformer):
 
         if not self.item_transformer.needs_translation():
             # Items don't need wrapping
-            return f"synchronicity.types.SyncOrAsyncIterator({var_name}, " f"get_synchronizer('{synchronizer_name}'))"
+            return (
+                f"{self._runtime_package}.types.SyncOrAsyncIterator({var_name}, "
+                f"get_synchronizer('{synchronizer_name}'))"
+            )
 
         # Items need wrapping - create a wrapper function
         item_wrap_expr = self.item_transformer.wrap_expr(synchronized_types, target_module, "_item", is_async=True)
@@ -681,7 +685,7 @@ class AsyncIteratorTransformer(TypeTransformer):
 
         helper_name = self._get_helper_name(synchronized_types, target_module)
         return (
-            f"synchronicity.types.SyncOrAsyncIterator({var_name}, "
+            f"{self._runtime_package}.types.SyncOrAsyncIterator({var_name}, "
             f"get_synchronizer('{synchronizer_name}'), item_wrapper={helper_name})"
         )
 
@@ -734,16 +738,17 @@ class AsyncIterableTransformer(TypeTransformer):
     For async wrappers, we keep AsyncIterable[T].
     """
 
-    def __init__(self, item_transformer: TypeTransformer):
+    def __init__(self, item_transformer: TypeTransformer, runtime_package: str = "synchronicity"):
         """Initialize with the transformer for the item type."""
         self.item_transformer = item_transformer
+        self._runtime_package = runtime_package
 
     def wrapped_type(
         self, synchronized_types: dict[type, tuple[str, str]], target_module: str, is_async: bool = True
     ) -> str:
         """Return SyncOrAsyncIterable[T] - works in both sync and async contexts."""
         item_type_str = self.item_transformer.wrapped_type(synchronized_types, target_module, is_async)
-        return f"synchronicity.types.SyncOrAsyncIterable[{item_type_str}]"
+        return f"{self._runtime_package}.types.SyncOrAsyncIterable[{item_type_str}]"
 
     def unwrap_expr(self, synchronized_types: dict[type, tuple[str, str]], var_name: str) -> str:
         """No unwrapping needed for async iterables."""
@@ -757,7 +762,10 @@ class AsyncIterableTransformer(TypeTransformer):
 
         if not self.item_transformer.needs_translation():
             # Items don't need wrapping
-            return f"synchronicity.types.SyncOrAsyncIterable({var_name}, " f"get_synchronizer('{synchronizer_name}'))"
+            return (
+                f"{self._runtime_package}.types.SyncOrAsyncIterable({var_name}, "
+                f"get_synchronizer('{synchronizer_name}'))"
+            )
 
         # Items need wrapping - create a wrapper function
         helper_suffix = (
@@ -770,7 +778,7 @@ class AsyncIterableTransformer(TypeTransformer):
         )
         helper_name = f"_wrap_async_iterable_item_{helper_suffix}"
         return (
-            f"synchronicity.types.SyncOrAsyncIterable({var_name}, "
+            f"{self._runtime_package}.types.SyncOrAsyncIterable({var_name}, "
             f"get_synchronizer('{synchronizer_name}'), item_wrapper={helper_name})"
         )
 
@@ -890,12 +898,18 @@ class AwaitableTransformer(TypeTransformer):
         return True
 
 
-def create_transformer(annotation, synchronized_types: dict[type, tuple[str, str]]) -> TypeTransformer:
+def create_transformer(
+    annotation,
+    synchronized_types: dict[type, tuple[str, str]],
+    runtime_package: str = "synchronicity",
+) -> TypeTransformer:
     """Create a transformer from a type annotation.
 
     Args:
         annotation: Type annotation (resolved with eval_str=True)
         synchronized_types: Dict mapping implementation types to (target_module, wrapper_name)
+        runtime_package: Dotted import path for generated references to synchronicity runtime
+            (``types``, ``descriptor``, ``synchronizer`` submodules).
 
     Returns:
         TypeTransformer instance (possibly nested for complex types)
@@ -927,7 +941,7 @@ def create_transformer(annotation, synchronized_types: dict[type, tuple[str, str
     # List[T]
     if origin is list:
         if args:
-            item_transformer = create_transformer(args[0], synchronized_types)
+            item_transformer = create_transformer(args[0], synchronized_types, runtime_package)
             return ListTransformer(item_transformer)
         else:
             return IdentityTransformer(annotation)
@@ -935,8 +949,8 @@ def create_transformer(annotation, synchronized_types: dict[type, tuple[str, str
     # Dict[K, V]
     if origin is dict:
         if len(args) >= 2:
-            key_transformer = create_transformer(args[0], synchronized_types)
-            value_transformer = create_transformer(args[1], synchronized_types)
+            key_transformer = create_transformer(args[0], synchronized_types, runtime_package)
+            value_transformer = create_transformer(args[1], synchronized_types, runtime_package)
             return DictTransformer(key_transformer, value_transformer)
         else:
             return IdentityTransformer(annotation)
@@ -949,12 +963,12 @@ def create_transformer(annotation, synchronized_types: dict[type, tuple[str, str
             if Ellipsis in args:
                 # Variable-length tuple: tuple[T, ...]
                 # The type T is before the Ellipsis
-                item_transformer = create_transformer(args[0], synchronized_types)
+                item_transformer = create_transformer(args[0], synchronized_types, runtime_package)
                 return TupleTransformer([item_transformer])
             else:
                 # Fixed-size tuple: tuple[T1, T2, ...]
                 # Create transformer for each element
-                item_transformers = [create_transformer(arg, synchronized_types) for arg in args]
+                item_transformers = [create_transformer(arg, synchronized_types, runtime_package) for arg in args]
                 return TupleTransformer(item_transformers)
         else:
             return IdentityTransformer(annotation)
@@ -965,7 +979,7 @@ def create_transformer(annotation, synchronized_types: dict[type, tuple[str, str
 
         # Optional[T] case: Union[T, None]
         if len(non_none_args) == 1 and type(None) in args:
-            inner_transformer = create_transformer(non_none_args[0], synchronized_types)
+            inner_transformer = create_transformer(non_none_args[0], synchronized_types, runtime_package)
             return OptionalTransformer(inner_transformer)
 
         # General Union - for now, treat as identity if no wrapped types
@@ -977,7 +991,7 @@ def create_transformer(annotation, synchronized_types: dict[type, tuple[str, str
 
     if origin is collections.abc.Generator or origin is collections.abc.Iterator:
         if args:
-            yield_transformer = create_transformer(args[0], synchronized_types)
+            yield_transformer = create_transformer(args[0], synchronized_types, runtime_package)
             return SyncGeneratorTransformer(yield_transformer)
         else:
             return IdentityTransformer(annotation)
@@ -986,25 +1000,25 @@ def create_transformer(annotation, synchronized_types: dict[type, tuple[str, str
     # Note: AsyncIterator is NOT the same as AsyncGenerator - iterators don't have asend()/aclose()
     if origin is collections.abc.AsyncIterator:
         if args:
-            item_transformer = create_transformer(args[0], synchronized_types)
-            return AsyncIteratorTransformer(item_transformer)
+            item_transformer = create_transformer(args[0], synchronized_types, runtime_package)
+            return AsyncIteratorTransformer(item_transformer, runtime_package)
         else:
             # Bare AsyncIterator with no type args
-            return AsyncIteratorTransformer(IdentityTransformer(typing.Any))
+            return AsyncIteratorTransformer(IdentityTransformer(typing.Any), runtime_package)
 
     # AsyncIterable[T] - has __aiter__() that returns AsyncIterator[T]
     if origin is collections.abc.AsyncIterable:
         if args:
-            item_transformer = create_transformer(args[0], synchronized_types)
-            return AsyncIterableTransformer(item_transformer)
+            item_transformer = create_transformer(args[0], synchronized_types, runtime_package)
+            return AsyncIterableTransformer(item_transformer, runtime_package)
         else:
             # Bare AsyncIterable with no type args
-            return AsyncIterableTransformer(IdentityTransformer(typing.Any))
+            return AsyncIterableTransformer(IdentityTransformer(typing.Any), runtime_package)
 
     # AsyncGenerator[T, Send] - two type args
     if origin is collections.abc.AsyncGenerator:
         if args:
-            yield_transformer = create_transformer(args[0], synchronized_types)
+            yield_transformer = create_transformer(args[0], synchronized_types, runtime_package)
             # Extract send type if provided (usually None for AsyncGenerator[T, SendType])
             send_type_str = "None"
             if len(args) > 1:
@@ -1016,7 +1030,7 @@ def create_transformer(annotation, synchronized_types: dict[type, tuple[str, str
     # Coroutine[YieldType, SendType, ReturnType] - three type args, we want ReturnType
     if origin is collections.abc.Coroutine:
         if args and len(args) >= 3:
-            return_transformer = create_transformer(args[2], synchronized_types)
+            return_transformer = create_transformer(args[2], synchronized_types, runtime_package)
             return CoroutineTransformer(return_transformer)
         else:
             # No type args or incomplete, use identity transformer for return type
@@ -1025,7 +1039,7 @@ def create_transformer(annotation, synchronized_types: dict[type, tuple[str, str
     # Awaitable[T] - one type arg
     if origin is collections.abc.Awaitable:
         if args:
-            return_transformer = create_transformer(args[0], synchronized_types)
+            return_transformer = create_transformer(args[0], synchronized_types, runtime_package)
             return AwaitableTransformer(return_transformer)
         else:
             # No type args, use identity transformer for return type

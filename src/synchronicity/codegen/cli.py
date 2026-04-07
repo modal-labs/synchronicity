@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """
-Command line interface for synchronicity compilation.
+Command line interface for synchronicity compilation and runtime vendoring.
 
 Usage:
     python -m synchronicity.codegen -m <module> [<module> ...] <synchronizer_name>
     # Or use the CLI entrypoint:
     synchronicity -m <module> [<module> ...] <synchronizer_name>
 
-The CLI imports the specified modules, which causes them to register wrapped items
+    synchronicity vendor <dotted.package.path> -o <output_dir>
+
+The codegen command imports the specified modules, which causes them to register wrapped items
 with the named synchronizer, then generates wrapper code for all wrapped items.
 
 Examples:
@@ -104,6 +106,16 @@ def import_modules_two_pass(module_names: list[str]) -> list:
 
 def main() -> None:
     """Main CLI entry point."""
+    if len(sys.argv) >= 2 and sys.argv[1] == "vendor":
+        from .runtime_vendor import run_vendor_cli
+
+        run_vendor_cli(sys.argv[2:])
+        return
+
+    _run_codegen()
+
+
+def _run_codegen() -> None:
     parser = argparse.ArgumentParser(
         description="Compile synchronicity wrappers for modules using a specific synchronizer",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -128,6 +140,10 @@ Examples:
   # Generate wrappers for multiple modules
   python -m synchronicity.codegen -m package._a -m package._b my_sync
   synchronicity -m package._a -m package._b my_sync
+
+  # Vendor runtime, then generate against the copy
+  synchronicity vendor mylib.synchronicity -o src/
+  synchronicity -m mylib._impl my_sync --runtime-package mylib.synchronicity -o src/
         """,
     )
     parser.add_argument(
@@ -158,8 +174,24 @@ Examples:
         action="store_true",
         help="Run ruff to autofix and format the generated files (works with both file output and --stdout)",
     )
+    parser.add_argument(
+        "--runtime-package",
+        default="synchronicity",
+        metavar="DOTTED.PATH",
+        help=(
+            "Dotted import path for synchronicity runtime in generated code (default: synchronicity). "
+            "Set to your vendored package (see `synchronicity vendor`) for self-contained wheels."
+        ),
+    )
 
     args = parser.parse_args()
+
+    from .runtime_vendor import validate_runtime_package
+
+    try:
+        validate_runtime_package(args.runtime_package)
+    except ValueError as e:
+        parser.error(str(e))
 
     synchronizer_name = args.synchronizer_name
 
@@ -204,7 +236,11 @@ Examples:
     print("Compiling wrappers...", file=sys.stderr)
 
     # Compile using the Module-based API
-    modules = compile_modules(module_objects, synchronizer_name)
+    modules = compile_modules(
+        module_objects,
+        synchronizer_name,
+        runtime_package=args.runtime_package,
+    )
 
     if not modules:
         print("No modules generated", file=sys.stderr)

@@ -28,6 +28,7 @@ def compile_function(
     synchronized_types: dict[type, tuple[str, str]],
     *,
     globals_dict: dict[str, typing.Any] | None = None,
+    runtime_package: str = "synchronicity",
 ) -> str:
     """
     Compile a function into a wrapper that provides both sync and async versions.
@@ -57,7 +58,7 @@ def compile_function(
     return_annotation = _normalize_async_annotation(f, return_annotation)
 
     # Create transformer for return type
-    return_transformer = create_transformer(return_annotation, synchronized_types)
+    return_transformer = create_transformer(return_annotation, synchronized_types, runtime_package)
 
     # Parse parameters using transformers
     param_str, call_args_str, unwrap_code = _parse_parameters_with_transformers(
@@ -66,6 +67,7 @@ def compile_function(
         synchronized_types,
         synchronizer_name,
         current_target_module,
+        runtime_package,
         skip_first_param=False,
         unwrap_indent="    ",
     )

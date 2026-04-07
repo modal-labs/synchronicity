@@ -167,6 +167,7 @@ def _parse_parameters_with_transformers(
     synchronized_types: dict[type, tuple[str, str]],
     synchronizer_name: str,
     current_target_module: str,
+    runtime_package: str = "synchronicity",
     skip_first_param: bool = False,
     unwrap_indent: str = "    ",
 ) -> tuple[str, str, str]:
@@ -204,7 +205,7 @@ def _parse_parameters_with_transformers(
         param_annotation = annotations.get(name, param.annotation)
 
         # Create transformer for this parameter
-        transformer = create_transformer(param_annotation, synchronized_types)
+        transformer = create_transformer(param_annotation, synchronized_types, runtime_package)
 
         # Track positional-only parameters
         if param.kind == inspect.Parameter.POSITIONAL_ONLY:

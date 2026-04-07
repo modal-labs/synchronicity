@@ -345,7 +345,7 @@ class Synchronizer:
             # Ensure the underlying generator is properly closed
             await gen.aclose()
 
-    def _run_iterator_sync(self, async_iter: typing.AsyncIterator[T]) -> typing.Generator[T, None]:
+    def _run_iterator_sync(self, async_iter: typing.AsyncIterator[T]) -> typing.Generator[T, None, None]:
         """Run an async iterator in sync mode.
 
         Unlike generators, iterators don't have asend()/aclose(), just __aiter__() and __anext__().

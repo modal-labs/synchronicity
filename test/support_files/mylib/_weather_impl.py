@@ -1,0 +1,38 @@
+"""Weather implementation module for README-style integration and markdown tests.
+
+The CLI matches ``Module`` with ``isinstance(..., synchronicity.module.Module)``, so this
+file imports from the main package. In your library, use
+``from mylib.synchronicity import Module`` against your vendored copy instead.
+"""
+
+from __future__ import annotations
+
+import collections.abc
+
+from synchronicity import Module
+
+wrapper_module = Module("mylib.weather")
+
+
+@wrapper_module.wrap_function
+async def get_temperature(city: str) -> float:
+    return 20.0 if city == "Stockholm" else 0.0
+
+
+@wrapper_module.wrap_class
+class WeatherClient:
+    default_city: str
+
+    def __init__(self, default_city: str):
+        self.default_city = default_city
+
+    async def current(self) -> float:
+        return 21.0
+
+
+@wrapper_module.wrap_function
+async def stream_temperature_readings() -> collections.abc.AsyncGenerator[float, None]:
+    """Async generator of sample readings (°C)."""
+    yield 17.5
+    yield 18.0
+    yield 18.5

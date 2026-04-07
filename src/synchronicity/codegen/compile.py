@@ -26,6 +26,19 @@ from .compile_function import compile_function
 from .compile_utils import _extract_typevars_from_function, _safe_get_annotations
 
 
+def _runtime_import_header(runtime_package: str) -> str:
+    """Imports of synchronicity runtime modules used by generated wrapper code."""
+    return f"""import {runtime_package}.types
+from {runtime_package}.descriptor import (
+    wrapped_classmethod,
+    wrapped_function,
+    wrapped_method,
+    wrapped_staticmethod,
+)
+from {runtime_package}.synchronizer import get_synchronizer, _wrapped_from_impl
+"""
+
+
 def _check_annotation_for_cross_refs(
     annotation,
     current_module: str,
@@ -238,6 +251,8 @@ def compile_module(
     module: Module,
     synchronized_types: dict[type, tuple[str, str]],
     synchronizer_name: str,
+    *,
+    runtime_package: str = "synchronicity",
 ) -> str:
     """
     Compile wrapped items for a single target module.
@@ -246,6 +261,7 @@ def compile_module(
         module: The Module instance with registered items
         synchronized_types: Dict mapping all implementation types to (target_module, wrapper_name)
         synchronizer_name: Name of the synchronizer
+        runtime_package: Dotted import path for runtime submodules in generated imports
 
     Returns:
         String containing compiled wrapper code for this module
@@ -276,15 +292,7 @@ def compile_module(
 
 {imports}
 
-import synchronicity.types
-from synchronicity.descriptor import (
-    wrapped_classmethod,
-    wrapped_function,
-    wrapped_method,
-    wrapped_staticmethod,
-)
-from synchronicity.synchronizer import get_synchronizer, _wrapped_from_impl
-"""
+{_runtime_import_header(runtime_package)}"""
 
     if cross_module_imports_str:
         header += f"\n{cross_module_imports_str}\n"
@@ -343,7 +351,13 @@ from synchronicity.synchronizer import get_synchronizer, _wrapped_from_impl
 
     # Compile all classes first
     for i, cls in enumerate(classes):
-        code = compile_class(cls, module.target_module, synchronizer_name, synchronized_types)
+        code = compile_class(
+            cls,
+            module.target_module,
+            synchronizer_name,
+            synchronized_types,
+            runtime_package=runtime_package,
+        )
         if i > 0:  # Add blank line before each class except the first
             compiled_code.append("")  # Add blank line (2 newlines when joined)
         compiled_code.append(code)
@@ -353,7 +367,12 @@ from synchronicity.synchronizer import get_synchronizer, _wrapped_from_impl
         # Use the current module's globals (from sys.modules) to get reloaded class objects
         module_globals = sys.modules[func.__module__].__dict__ if func.__module__ in sys.modules else func.__globals__
         code = compile_function(
-            func, module.target_module, synchronizer_name, synchronized_types, globals_dict=module_globals
+            func,
+            module.target_module,
+            synchronizer_name,
+            synchronized_types,
+            globals_dict=module_globals,
+            runtime_package=runtime_package,
         )
         compiled_code.append(code)
         compiled_code.append("")  # Add blank line
@@ -361,13 +380,21 @@ from synchronicity.synchronizer import get_synchronizer, _wrapped_from_impl
     return "\n".join(compiled_code)
 
 
-def compile_modules(modules: list[Module], synchronizer_name: str) -> dict[str, str]:
+def compile_modules(
+    modules: list[Module],
+    synchronizer_name: str,
+    *,
+    runtime_package: str = "synchronicity",
+) -> dict[str, str]:
     """
     Compile wrapped items into separate module files.
 
     Args:
         modules: List of Module instances to compile
         synchronizer_name: Name of the synchronizer
+        runtime_package: Dotted import path for runtime modules (``types``, ``descriptor``,
+            ``synchronizer``) referenced in generated code. Use a vendored package for
+            wheels that should not depend on the PyPI ``synchronicity`` distribution.
 
     Returns:
         Dict mapping module names to their generated code
@@ -379,7 +406,12 @@ def compile_modules(modules: list[Module], synchronizer_name: str) -> dict[str, 
     # Compile each module
     result = {}
     for module in modules:
-        code = compile_module(module, synchronized_classes, synchronizer_name)
+        code = compile_module(
+            module,
+            synchronized_classes,
+            synchronizer_name,
+            runtime_package=runtime_package,
+        )
         if code:
             result[module.target_module] = code
 

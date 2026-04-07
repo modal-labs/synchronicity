@@ -60,6 +60,7 @@ def compile_method_wrapper(
     method_type: str = "instance",
     globals_dict: dict[str, typing.Any] | None = None,
     generic_typevars: dict[str, typing.TypeVar | typing.ParamSpec] | None = None,
+    runtime_package: str = "synchronicity",
 ) -> tuple[str, str]:
     """
     Compile a method wrapper class that provides both sync and async versions.
@@ -98,7 +99,7 @@ def compile_method_wrapper(
     )
 
     # Create transformer for return type (keep Self as-is, don't replace with impl class)
-    return_transformer = create_transformer(return_annotation, synchronized_types)
+    return_transformer = create_transformer(return_annotation, synchronized_types, runtime_package)
 
     # Parse parameters using transformers
     # Skip first parameter for instance methods and classmethods (self/cls),
@@ -111,6 +112,7 @@ def compile_method_wrapper(
         synchronized_types,
         synchronizer_name,
         current_target_module,
+        runtime_package,
         skip_first_param=skip_first_param,
         unwrap_indent="    ",
     )
@@ -657,6 +659,7 @@ def compile_class(
     synchronized_types: dict[type, tuple[str, str]],
     *,
     globals_dict: dict[str, typing.Any] | None = None,
+    runtime_package: str = "synchronicity",
 ) -> str:
     """
     Compile a class into a wrapper class where all methods are wrapped.
@@ -741,7 +744,7 @@ def compile_class(
             # Resolve forward references using inspect (with fallback for TYPE_CHECKING imports)
             annotations_resolved = _safe_get_annotations(cls, globals_dict)
             resolved_annotation = annotations_resolved.get(name, annotation)
-            transformer = create_transformer(resolved_annotation, synchronized_types)
+            transformer = create_transformer(resolved_annotation, synchronized_types, runtime_package)
             attr_type = transformer.wrapped_type(synchronized_types, current_target_module)
             attributes.append((name, attr_type))
 
@@ -777,7 +780,7 @@ def compile_class(
         if uses_self_type and impl_class is not None:
             if return_annotation is typing.Self:
                 transformer_annotation = impl_class
-        return_transformer = create_transformer(transformer_annotation, synchronized_types)
+        return_transformer = create_transformer(transformer_annotation, synchronized_types, runtime_package)
         method_helpers = return_transformer.get_wrapper_helpers(
             synchronized_types_with_self, current_target_module, synchronizer_name, indent="    "
         )
@@ -795,6 +798,7 @@ def compile_class(
             method_type=method_type,
             globals_dict=globals_dict,
             generic_typevars=generic_typevars if generic_typevars else None,
+            runtime_package=runtime_package,
         )
         # Combine async wrapper (if any) with sync method, placing async above sync
         if wrapper_functions_code:
@@ -820,6 +824,7 @@ def compile_class(
             synchronized_types,
             synchronizer_name,
             current_target_module,
+            runtime_package,
             skip_first_param=True,  # Skip 'self'
             unwrap_indent="        ",  # Indent for __init__ body
         )
@@ -897,7 +902,9 @@ def compile_class(
                         break
 
             # Create transformer and collect helpers
-            method_return_transformer = create_transformer(transformer_annotation, synchronized_types_with_self)
+            method_return_transformer = create_transformer(
+                transformer_annotation, synchronized_types_with_self, runtime_package
+            )
             method_helpers = method_return_transformer.get_wrapper_helpers(
                 synchronized_types_with_self, current_target_module, synchronizer_name, indent="    "
             )

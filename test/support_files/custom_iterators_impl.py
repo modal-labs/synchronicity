@@ -61,7 +61,7 @@ class IterableClassUsingGenerator:
 
 @mod.wrap_class
 class IterableClassUsingGeneratorTyped:
-    async def __aiter__(self) -> typing.AsyncGenerator[int]:
+    async def __aiter__(self) -> typing.AsyncGenerator[int, None]:
         assert threading.current_thread().ident != threading.main_thread().ident
         yield 1
         yield 2

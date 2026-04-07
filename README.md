@@ -9,12 +9,12 @@ Synchronicity generates a synchronous and asynchronous public API from a single 
 
 In short, an async API implementation like:
 
-```py
+```py notest
 async def foo_impl() -> str:
     return await external_resource()
 ```
 
-```py
+```py notest
 from public_api import foo
 
 foo()  # calls foo_impl above without async syntax
@@ -30,7 +30,8 @@ At a high level, you use it like this:
 
 - Write implementation code as normal async Python with no special instrumentation.
 - Specify `Module` objects as a manifest of output Python modules you want to create from your implementation.
-- Generate the public API using the `synchronicity` cli as part of your build or packaging step.
+- **Recommended for libraries you ship:** vendor synchronicity into a package such as `mylib.synchronicity` (see below) and pass `--runtime-package mylib.synchronicity` to codegen so generated wrappers do not import top-level `synchronicity`. Implementation modules can use `from mylib.synchronicity import Module`; your wheel can stay free of a runtime dependency on the PyPI package.
+- Generate the public API using the `synchronicity` CLI as part of your build or packaging step (the CLI / codegen still come from the PyPI install).
 - Export the generated module as your user-facing API - complete with both sync and async implementations that delegate to your implementation code. Every function or method gets two call paths:
   - a blocking sync interface like `client.query(...)`
   - an async interface like `await client.query.aio(...)`
@@ -45,13 +46,21 @@ pip install synchronicity
 
 `Module` registration is build-time metadata only: the decorators return the original function or class unchanged, without starting a synchronizer or changing how your implementation code runs.
 
-You write a private async implementation module:
+Before you import `Module` from `mylib.synchronicity`, create that package tree once (re-run this when you upgrade synchronicity and want to refresh the copy). It writes `src/mylib/synchronicity/` with `module.py`, `types.py`, `descriptor.py`, `synchronizer.py`, and `__init__.py`—check it into source control next to the rest of `mylib`:
+
+```bash
+synchronicity vendor mylib.synchronicity -o src/
+```
+
+Then write a private async implementation module:
 
 ```python
-# _weather_impl.py
-from synchronicity import Module
+# mylib/_weather_impl.py
+import collections.abc
 
-wrapper_module = Module("weather")
+from mylib.synchronicity import Module
+
+wrapper_module = Module("mylib.weather")
 
 
 @wrapper_module.wrap_function
@@ -68,15 +77,45 @@ class WeatherClient:
 
     async def current(self) -> float:
         ...
+
+
+@wrapper_module.wrap_function
+async def stream_temperature_readings() -> collections.abc.AsyncGenerator[float, None]:
+    """Async generator of sample readings (°C)."""
+    yield 17.5
+    yield 18.0
+    yield 18.5
 ```
 
 Then generate a public wrapper module:
 
 ```bash
-synchronicity weather_synchronizer -m _weather_impl -o .
+synchronicity weather_synchronizer -m mylib._weather_impl my_sync --runtime-package mylib.synchronicity -o src
 ```
 
-That creates `weather.py`, which your users import.
+That creates `src/mylib/weather.py`. Your users import the public API with `from mylib.weather import get_temperature, WeatherClient, stream_temperature_readings` (with `src` on your `PYTHONPATH` or installed as a package). The `weather_synchronizer` argument is the synchronizer name embedded into the generated code.
+
+## Vendoring (recommended for published libraries)
+
+Libraries published to PyPI usually should avoid a **runtime** dependency on the `synchronicity` package. Instead, check in a copy of the library pieces your code and generated wrappers need under a package you own (for example `mylib.synchronicity`), and tell codegen to import that path.
+
+1. **Create or refresh the vendored tree** (paths are created under the output directory):
+
+   ```bash
+   synchronicity vendor mylib.synchronicity -o src/
+   ```
+
+   This writes `src/mylib/synchronicity/` with `module.py`, `types.py`, `descriptor.py`, `synchronizer.py`, and `__init__.py`.
+
+2. **Generate wrappers** using the same dotted path (use `-o src` when each `Module(...)` target is a full name like `mylib.weather`):
+
+   ```bash
+   synchronicity -m mylib._weather_impl my_sync --runtime-package mylib.synchronicity -o src
+   ```
+
+The vendored `__init__.py` re-exports `Module`, `FunctionWithAio`, `get_synchronizer`, `Synchronizer`, and `classproperty`, so implementation code and stubs can use `from mylib.synchronicity import Module` and names like `mylib.synchronicity.FunctionWithAio` without depending on PyPI `synchronicity` at runtime.
+
+When working on synchronicity itself, tests use the default `--runtime-package synchronicity` so you do not need a vendor step for every edit.
 
 ## How generated wrappers behave
 
@@ -84,109 +123,74 @@ Generated wrappers expose a dual interface:
 
 - Regular calls are synchronous and block until the async implementation finishes.
 - `.aio(...)` exposes the async variant for awaitable functions and methods.
-- Async iterables stay directly iterable in both sync and async code.
+- Async streams (see below) support both sync `for` and `async for` on the right entry point, depending on how you call the wrapper.
 
 ### Functions
 
 ```python
-from weather import get_temperature
+from mylib.weather import get_temperature
 
-value = get_temperature("Stockholm")
+assert get_temperature("Stockholm") == 20.0
 
 
 async def main() -> None:
-    value = await get_temperature.aio("Stockholm")
+    assert await get_temperature.aio("Stockholm") == 20.0
 ```
 
 ### Classes and methods
 
 ```python
-from weather import WeatherClient
+from mylib.weather import WeatherClient
 
 client = WeatherClient("Stockholm")
-value = client.current()
+assert client.current() == 21.0
 
 
 async def main() -> None:
     client = WeatherClient("Stockholm")
-    value = await client.current.aio()
+    assert await client.current.aio() == 21.0
 ```
 
-### Iterables and iterators
+### Async streams (generators, iterators, and iterables)
 
-For wrapped async iterables, the wrapper object itself supports both `for` and `async for`:
+The compiler uses your **return annotations** to tell async **generators**, **iterators**, and **iterables** apart (`AsyncGenerator[...]`, `AsyncIterator[...]`, `AsyncIterable[...]`, and class methods that implement `__aiter__` / `__anext__`). Use the right shapes in implementation code and generation will produce matching dual sync/async usage.
+
+Here is a **one-way async generator** function from the weather example—sync callers use an ordinary `for` loop; async callers use `.aio()` with `async for` (here driven by `asyncio.run`):
 
 ```python
-for item in stream_values():
+import asyncio
+
+from mylib.weather import stream_temperature_readings
+
+for item in stream_temperature_readings():
     print(item)
 
 
 async def main() -> None:
-    async for item in stream_values():
+    async for item in stream_temperature_readings.aio():
         print(item)
+
+
+asyncio.run(main())
 ```
 
-This also applies to wrapped classes that implement async iteration. Use `.aio(...)` for awaitable functions and methods; for iterable results, use `for` and `async for` directly on the wrapper object. Iterator-like wrappers preserve exhaustion and state in the same way the underlying async iterator does.
-
-### Async generators
-
-Wrapped async generators support both simple iteration and full generator interaction.
-
-For one-way generators, use them as normal in sync and async code:
-
-```python
-for item in stream_values():
-    print(item)
-
-
-async def main() -> None:
-    async for item in stream_values.aio():
-        print(item)
-```
-
-For two-way generators annotated as `AsyncGenerator[YieldType, SendType]`, the generated wrappers preserve `send` and close behavior:
-
-- the sync wrapper behaves like a normal generator and supports `.send(...)` and `.close()`
-- the async wrapper returned by `.aio(...)` supports `.asend(...)` and `.aclose()`
-
-Cleanup is forwarded correctly, so closing the wrapper waits for async generator finalization to finish.
-
-The positional argument `s` above is the synchronizer name embedded into the generated code. It identifies the shared runtime synchronizer instance used by that generated module set.
-
-### 3. Import the generated API
-
-```python
-from simple_function import simple_add, simple_generator
-
-assert simple_add(1, 2) == 3
-
-
-async def main() -> None:
-    assert await simple_add.aio(1, 2) == 3
-
-for item in simple_generator():
-    print(item)
-
-
-async def consume() -> None:
-    async for item in simple_generator():
-        print(item)
-```
+**Two-way** async generators annotated as `AsyncGenerator[YieldType, SendType]` also get first-class wrappers: the sync side supports `.send(...)` and `.close()`, the async side from `.aio(...)` supports `.asend(...)` and `.aclose()`, and cleanup is forwarded so closing the wrapper waits for async generator finalization.
 
 ## CLI usage
 
 The package installs a `synchronicity` CLI:
 
 ```bash
-synchronicity -m my_package._impl my_sync
+synchronicity -m mylib._impl my_sync --runtime-package mylib.synchronicity -o src
 ```
 
 Common options:
 
 - `-m/--module`: import module containing one or more `Module` objects; repeatable
-- `-o/--output-dir`: directory where generated files should be written
+- `-o/--output-dir`: root directory for generated files; paths mirror the `Module` target (e.g. `Module("mylib.weather")` with `-o src` writes `src/mylib/weather.py`)
 - `--stdout`: print generated modules to stdout instead of writing files
 - `--ruff`: run `ruff check --fix` and `ruff format` on generated output
+- `--runtime-package`: dotted import path for generated imports of `types` / `descriptor` / `synchronizer` (default: `synchronicity`; use your vendored package when shipping a self-contained wheel)
 
 ## Low-level runtime API
 
@@ -242,7 +246,7 @@ When a wrapped class inherits from another wrapped class, the generated wrapper 
 ## Important rules when authoring implementation code
 
 - Prefer pure async implementation modules.
-- Use `Module`, not `Synchronizer`, in implementation code.
+- Use `Module` (typically `from mylib.synchronicity import Module` when vendored), not `Synchronizer`, in implementation code.
 - Add type annotations. Generation relies on them.
 - Keep implementation modules importable after generation; generated wrappers import them.
 - Public wrapper methods come from public methods on the implementation class.
@@ -283,7 +287,7 @@ The reason for choosing this path is:
 - Wrapped class instances are proxies around implementation instances, so ordinary implementation attributes are not part of the public wrapper unless exposed intentionally.
 - Sync calls cross a thread boundary into the synchronizer loop, so there is some dispatch overhead compared with calling the raw implementation directly.
 - Generated modules import the implementation modules at runtime, so generation does not make the implementation code disposable.
-- Generated wrapper modules import runtime pieces like `synchronicity.synchronizer`, but they do not need `synchronicity.codegen` at runtime.
+- Generated wrapper modules import runtime pieces like `synchronicity.synchronizer` by default, or your vendored path (e.g. `mylib.synchronicity.synchronizer`) when using `--runtime-package`. They do not need `synchronicity.codegen` at runtime.
 
 ## Current limitations
 
@@ -296,7 +300,7 @@ Known gaps worth keeping in mind:
 
 For example, if your implementation looks roughly like:
 
-```python
+```python notest
 class UnwrappedBase:
     def unwrapped_method(self) -> bool:
         return True
