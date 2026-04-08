@@ -7,6 +7,7 @@ import typing
 
 from .emitters.sync_async_wrappers import emit_module_level_function
 from .parse import parse_module_level_function_ir
+from .sync_registry import SyncRegistry
 
 
 def compile_function(
@@ -36,4 +37,5 @@ def compile_function(
         globals_dict=globals_dict,
         runtime_package=runtime_package,
     )
-    return emit_module_level_function(ir, synchronized_types, target_module)
+    sync = SyncRegistry.from_type_map(synchronized_types)
+    return emit_module_level_function(ir, sync, target_module, runtime_package=runtime_package)

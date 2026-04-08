@@ -14,18 +14,19 @@ import inspect
 import typing
 from abc import ABC, abstractmethod
 
+from .sync_registry import SyncRegistry
+from .transformer_ir import ImplQualifiedRef
+
 
 class TypeTransformer(ABC):
     """Base class for type transformers that handle type signatures and translation."""
 
     @abstractmethod
-    def wrapped_type(
-        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, is_async: bool = True
-    ) -> str:
+    def wrapped_type(self, sync: SyncRegistry, target_module: str, is_async: bool = True) -> str:
         """Return the type signature string for generated wrapper code.
 
         Args:
-            synchronized_types: Dict mapping implementation types to (target_module, wrapper_name)
+            sync: Dict mapping implementation types to (target_module, wrapper_name)
             target_module: Current target module (for local vs cross-module refs)
             is_async: Whether we're in an async context (affects async generator return types)
 
@@ -35,11 +36,11 @@ class TypeTransformer(ABC):
         pass
 
     @abstractmethod
-    def unwrap_expr(self, synchronized_types: dict[type, tuple[str, str]], var_name: str) -> str:
+    def unwrap_expr(self, sync: SyncRegistry, var_name: str) -> str:
         """Generate Python expression to unwrap from wrapper → impl.
 
         Args:
-            synchronized_types: Dict mapping implementation types to (target_module, wrapper_name)
+            sync: Dict mapping implementation types to (target_module, wrapper_name)
             var_name: Variable name to unwrap
 
         Returns:
@@ -48,13 +49,11 @@ class TypeTransformer(ABC):
         pass
 
     @abstractmethod
-    def wrap_expr(
-        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, var_name: str, is_async: bool = True
-    ) -> str:
+    def wrap_expr(self, sync: SyncRegistry, target_module: str, var_name: str, is_async: bool = True) -> str:
         """Generate Python expression to wrap from impl → wrapper.
 
         Args:
-            synchronized_types: Dict mapping implementation types to (target_module, wrapper_name)
+            sync: Dict mapping implementation types to (target_module, wrapper_name)
             target_module: Current target module (for local vs cross-module refs)
             var_name: Variable name to wrap
             is_async: Whether we're in an async context (affects generator wrapping)
@@ -74,7 +73,7 @@ class TypeTransformer(ABC):
 
     def get_wrapper_helpers(
         self,
-        synchronized_types: dict[type, tuple[str, str]],
+        sync: SyncRegistry,
         target_module: str,
         indent: str = "    ",
     ) -> dict[str, str]:
@@ -88,7 +87,7 @@ class TypeTransformer(ABC):
         it will only appear once in the final output.
 
         Args:
-            synchronized_types: Dict mapping implementation types to (target_module, wrapper_name)
+            sync: Dict mapping implementation types to (target_module, wrapper_name)
             target_module: Current target module
             indent: Indentation string for the helper functions
 
@@ -105,17 +104,13 @@ class IdentityStrTransformer(TypeTransformer):
     def __init__(self, signature_text: str):
         self._signature_text = signature_text
 
-    def wrapped_type(
-        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, is_async: bool = True
-    ) -> str:
+    def wrapped_type(self, sync: SyncRegistry, target_module: str, is_async: bool = True) -> str:
         return self._signature_text
 
-    def unwrap_expr(self, synchronized_types: dict[type, tuple[str, str]], var_name: str) -> str:
+    def unwrap_expr(self, sync: SyncRegistry, var_name: str) -> str:
         return var_name
 
-    def wrap_expr(
-        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, var_name: str, is_async: bool = True
-    ) -> str:
+    def wrap_expr(self, sync: SyncRegistry, target_module: str, var_name: str, is_async: bool = True) -> str:
         return var_name
 
     def needs_translation(self) -> bool:
@@ -128,19 +123,15 @@ class IdentityTransformer(TypeTransformer):
     def __init__(self, annotation):
         self.annotation = annotation
 
-    def wrapped_type(
-        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, is_async: bool = True
-    ) -> str:
+    def wrapped_type(self, sync: SyncRegistry, target_module: str, is_async: bool = True) -> str:
         """Format the type annotation as-is."""
         return _format_annotation_str(self.annotation)
 
-    def unwrap_expr(self, synchronized_types: dict[type, tuple[str, str]], var_name: str) -> str:
+    def unwrap_expr(self, sync: SyncRegistry, var_name: str) -> str:
         """No unwrapping needed - return variable as-is."""
         return var_name
 
-    def wrap_expr(
-        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, var_name: str, is_async: bool = True
-    ) -> str:
+    def wrap_expr(self, sync: SyncRegistry, target_module: str, var_name: str, is_async: bool = True) -> str:
         """No wrapping needed - return variable as-is."""
         return var_name
 
@@ -151,18 +142,19 @@ class IdentityTransformer(TypeTransformer):
 class WrappedClassTransformer(TypeTransformer):
     """Transformer for wrapped class types."""
 
-    def __init__(self, impl_type: type):
-        self.impl_type = impl_type
+    def __init__(self, impl: type | ImplQualifiedRef):
+        if isinstance(impl, ImplQualifiedRef):
+            self.impl_ref = impl
+        else:
+            self.impl_ref = ImplQualifiedRef(impl.__module__, impl.__qualname__)
 
-    def wrapped_type(
-        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, is_async: bool = True
-    ) -> str:
+    def wrapped_type(self, sync: SyncRegistry, target_module: str, is_async: bool = True) -> str:
         """Return the wrapper class name (local or fully qualified)."""
-        if self.impl_type not in synchronized_types:
+        if self.impl_ref not in sync:
             # Should not happen if create_transformer is used correctly
-            return _format_annotation_str(self.impl_type)
+            return f"{self.impl_ref.module}.{self.impl_ref.qualname.split('.')[-1]}"
 
-        wrapper_target_module, wrapper_name = synchronized_types[self.impl_type]
+        wrapper_target_module, wrapper_name = sync[self.impl_ref]
 
         if wrapper_target_module == target_module:
             # Local reference
@@ -171,18 +163,16 @@ class WrappedClassTransformer(TypeTransformer):
             # Cross-module reference
             return f"{wrapper_target_module}.{wrapper_name}"
 
-    def unwrap_expr(self, synchronized_types: dict[type, tuple[str, str]], var_name: str) -> str:
+    def unwrap_expr(self, sync: SyncRegistry, var_name: str) -> str:
         """Unwrap by accessing _impl_instance."""
         return f"{var_name}._impl_instance"
 
-    def wrap_expr(
-        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, var_name: str, is_async: bool = True
-    ) -> str:
+    def wrap_expr(self, sync: SyncRegistry, target_module: str, var_name: str, is_async: bool = True) -> str:
         """Wrap by calling WrapperClass._from_impl()."""
-        if self.impl_type not in synchronized_types:
+        if self.impl_ref not in sync:
             return var_name
 
-        wrapper_target_module, wrapper_name = synchronized_types[self.impl_type]
+        wrapper_target_module, wrapper_name = sync[self.impl_ref]
 
         if wrapper_target_module == target_module:
             # Local reference
@@ -202,25 +192,21 @@ class SelfTransformer(TypeTransformer):
     Emitting the concrete wrapper name would break ``Self`` binding on subclasses and on generic classes.
     """
 
-    def __init__(self, impl_type: type):
-        self._impl = WrappedClassTransformer(impl_type)
+    def __init__(self, impl: type | ImplQualifiedRef):
+        self._impl = WrappedClassTransformer(impl)
 
-    def wrapped_type(
-        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, is_async: bool = True
-    ) -> str:
+    def wrapped_type(self, sync: SyncRegistry, target_module: str, is_async: bool = True) -> str:
         return "typing.Self"
 
-    def unwrap_expr(self, synchronized_types: dict[type, tuple[str, str]], var_name: str) -> str:
-        return self._impl.unwrap_expr(synchronized_types, var_name)
+    def unwrap_expr(self, sync: SyncRegistry, var_name: str) -> str:
+        return self._impl.unwrap_expr(sync, var_name)
 
-    def wrap_expr(
-        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, var_name: str, is_async: bool = True
-    ) -> str:
-        return self._impl.wrap_expr(synchronized_types, target_module, var_name, is_async)
+    def wrap_expr(self, sync: SyncRegistry, target_module: str, var_name: str, is_async: bool = True) -> str:
+        return self._impl.wrap_expr(sync, target_module, var_name, is_async)
 
     def wrap_expr_for_method(
         self,
-        synchronized_types: dict[type, tuple[str, str]],
+        sync: SyncRegistry,
         target_module: str,
         var_name: str,
         *,
@@ -231,7 +217,7 @@ class SelfTransformer(TypeTransformer):
         if method_type == "classmethod":
             binding = "cls"
         elif method_type == "staticmethod":
-            return self._impl.wrap_expr(synchronized_types, target_module, var_name, is_async)
+            return self._impl.wrap_expr(sync, target_module, var_name, is_async)
         else:
             binding = "self"
         return f"typing.cast(typing.Self, {binding}._from_impl({var_name}))"
@@ -241,11 +227,11 @@ class SelfTransformer(TypeTransformer):
 
     def get_wrapper_helpers(
         self,
-        synchronized_types: dict[type, tuple[str, str]],
+        sync: SyncRegistry,
         target_module: str,
         indent: str = "    ",
     ) -> dict[str, str]:
-        return self._impl.get_wrapper_helpers(synchronized_types, target_module, indent)
+        return self._impl.get_wrapper_helpers(sync, target_module, indent)
 
 
 class ListTransformer(TypeTransformer):
@@ -254,29 +240,25 @@ class ListTransformer(TypeTransformer):
     def __init__(self, item_transformer: TypeTransformer):
         self.item_transformer = item_transformer
 
-    def wrapped_type(
-        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, is_async: bool = True
-    ) -> str:
+    def wrapped_type(self, sync: SyncRegistry, target_module: str, is_async: bool = True) -> str:
         """Return list[WrappedItemType]."""
-        item_type_str = self.item_transformer.wrapped_type(synchronized_types, target_module, is_async)
+        item_type_str = self.item_transformer.wrapped_type(sync, target_module, is_async)
         return f"list[{item_type_str}]"
 
-    def unwrap_expr(self, synchronized_types: dict[type, tuple[str, str]], var_name: str) -> str:
+    def unwrap_expr(self, sync: SyncRegistry, var_name: str) -> str:
         """Generate list comprehension to unwrap items."""
         if not self.item_transformer.needs_translation():
             return var_name
 
-        item_unwrap = self.item_transformer.unwrap_expr(synchronized_types, "x")
+        item_unwrap = self.item_transformer.unwrap_expr(sync, "x")
         return f"[{item_unwrap} for x in {var_name}]"
 
-    def wrap_expr(
-        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, var_name: str, is_async: bool = True
-    ) -> str:
+    def wrap_expr(self, sync: SyncRegistry, target_module: str, var_name: str, is_async: bool = True) -> str:
         """Generate list comprehension to wrap items."""
         if not self.item_transformer.needs_translation():
             return var_name
 
-        item_wrap = self.item_transformer.wrap_expr(synchronized_types, target_module, "x", is_async)
+        item_wrap = self.item_transformer.wrap_expr(sync, target_module, "x", is_async)
         return f"[{item_wrap} for x in {var_name}]"
 
     def needs_translation(self) -> bool:
@@ -284,12 +266,12 @@ class ListTransformer(TypeTransformer):
 
     def get_wrapper_helpers(
         self,
-        synchronized_types: dict[type, tuple[str, str]],
+        sync: SyncRegistry,
         target_module: str,
         indent: str = "    ",
     ) -> dict[str, str]:
         """Recursively collect helpers from item transformer."""
-        return self.item_transformer.get_wrapper_helpers(synchronized_types, target_module, indent)
+        return self.item_transformer.get_wrapper_helpers(sync, target_module, indent)
 
 
 class DictTransformer(TypeTransformer):
@@ -299,30 +281,26 @@ class DictTransformer(TypeTransformer):
         self.key_transformer = key_transformer
         self.value_transformer = value_transformer
 
-    def wrapped_type(
-        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, is_async: bool = True
-    ) -> str:
+    def wrapped_type(self, sync: SyncRegistry, target_module: str, is_async: bool = True) -> str:
         """Return dict[WrappedKeyType, WrappedValueType]."""
-        key_type_str = self.key_transformer.wrapped_type(synchronized_types, target_module, is_async)
-        value_type_str = self.value_transformer.wrapped_type(synchronized_types, target_module, is_async)
+        key_type_str = self.key_transformer.wrapped_type(sync, target_module, is_async)
+        value_type_str = self.value_transformer.wrapped_type(sync, target_module, is_async)
         return f"dict[{key_type_str}, {value_type_str}]"
 
-    def unwrap_expr(self, synchronized_types: dict[type, tuple[str, str]], var_name: str) -> str:
+    def unwrap_expr(self, sync: SyncRegistry, var_name: str) -> str:
         """Generate dict comprehension to unwrap values."""
         if not self.value_transformer.needs_translation():
             return var_name
 
-        value_unwrap = self.value_transformer.unwrap_expr(synchronized_types, "v")
+        value_unwrap = self.value_transformer.unwrap_expr(sync, "v")
         return f"{{k: {value_unwrap} for k, v in {var_name}.items()}}"
 
-    def wrap_expr(
-        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, var_name: str, is_async: bool = True
-    ) -> str:
+    def wrap_expr(self, sync: SyncRegistry, target_module: str, var_name: str, is_async: bool = True) -> str:
         """Generate dict comprehension to wrap values."""
         if not self.value_transformer.needs_translation():
             return var_name
 
-        value_wrap = self.value_transformer.wrap_expr(synchronized_types, target_module, "v", is_async)
+        value_wrap = self.value_transformer.wrap_expr(sync, target_module, "v", is_async)
         return f"{{k: {value_wrap} for k, v in {var_name}.items()}}"
 
     def needs_translation(self) -> bool:
@@ -330,14 +308,14 @@ class DictTransformer(TypeTransformer):
 
     def get_wrapper_helpers(
         self,
-        synchronized_types: dict[type, tuple[str, str]],
+        sync: SyncRegistry,
         target_module: str,
         indent: str = "    ",
     ) -> dict[str, str]:
         """Recursively collect helpers from key and value transformers."""
         helpers = {}
-        helpers.update(self.key_transformer.get_wrapper_helpers(synchronized_types, target_module, indent))
-        helpers.update(self.value_transformer.get_wrapper_helpers(synchronized_types, target_module, indent))
+        helpers.update(self.key_transformer.get_wrapper_helpers(sync, target_module, indent))
+        helpers.update(self.value_transformer.get_wrapper_helpers(sync, target_module, indent))
         return helpers
 
 
@@ -352,52 +330,44 @@ class TupleTransformer(TypeTransformer):
         """
         self.item_transformers = item_transformers
 
-    def wrapped_type(
-        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, is_async: bool = True
-    ) -> str:
+    def wrapped_type(self, sync: SyncRegistry, target_module: str, is_async: bool = True) -> str:
         """Return tuple[WrappedType1, WrappedType2, ...] or tuple[WrappedType, ...]."""
         if len(self.item_transformers) == 1:
             # Variable-length tuple: tuple[T, ...]
-            item_type_str = self.item_transformers[0].wrapped_type(synchronized_types, target_module, is_async)
+            item_type_str = self.item_transformers[0].wrapped_type(sync, target_module, is_async)
             return f"tuple[{item_type_str}, ...]"
         else:
             # Fixed-size tuple: tuple[T1, T2, ...]
-            item_type_strs = [
-                t.wrapped_type(synchronized_types, target_module, is_async) for t in self.item_transformers
-            ]
+            item_type_strs = [t.wrapped_type(sync, target_module, is_async) for t in self.item_transformers]
             return f"tuple[{', '.join(item_type_strs)}]"
 
-    def unwrap_expr(self, synchronized_types: dict[type, tuple[str, str]], var_name: str) -> str:
+    def unwrap_expr(self, sync: SyncRegistry, var_name: str) -> str:
         """Generate tuple comprehension/constructor to unwrap items."""
         if not self.needs_translation():
             return var_name
 
         if len(self.item_transformers) == 1:
             # Variable-length tuple
-            item_unwrap = self.item_transformers[0].unwrap_expr(synchronized_types, "x")
+            item_unwrap = self.item_transformers[0].unwrap_expr(sync, "x")
             return f"tuple({item_unwrap} for x in {var_name})"
         else:
             # Fixed-size tuple - unwrap each element by index
-            unwrap_exprs = [
-                t.unwrap_expr(synchronized_types, f"{var_name}[{i}]") for i, t in enumerate(self.item_transformers)
-            ]
+            unwrap_exprs = [t.unwrap_expr(sync, f"{var_name}[{i}]") for i, t in enumerate(self.item_transformers)]
             return f"({', '.join(unwrap_exprs)})"
 
-    def wrap_expr(
-        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, var_name: str, is_async: bool = True
-    ) -> str:
+    def wrap_expr(self, sync: SyncRegistry, target_module: str, var_name: str, is_async: bool = True) -> str:
         """Generate tuple comprehension/constructor to wrap items."""
         if not self.needs_translation():
             return var_name
 
         if len(self.item_transformers) == 1:
             # Variable-length tuple
-            item_wrap = self.item_transformers[0].wrap_expr(synchronized_types, target_module, "x", is_async)
+            item_wrap = self.item_transformers[0].wrap_expr(sync, target_module, "x", is_async)
             return f"tuple({item_wrap} for x in {var_name})"
         else:
             # Fixed-size tuple - wrap each element by index
             wrap_exprs = [
-                t.wrap_expr(synchronized_types, target_module, f"{var_name}[{i}]", is_async)
+                t.wrap_expr(sync, target_module, f"{var_name}[{i}]", is_async)
                 for i, t in enumerate(self.item_transformers)
             ]
             return f"({', '.join(wrap_exprs)})"
@@ -407,14 +377,14 @@ class TupleTransformer(TypeTransformer):
 
     def get_wrapper_helpers(
         self,
-        synchronized_types: dict[type, tuple[str, str]],
+        sync: SyncRegistry,
         target_module: str,
         indent: str = "    ",
     ) -> dict[str, str]:
         """Recursively collect helpers from all item transformers."""
         helpers = {}
         for transformer in self.item_transformers:
-            helpers.update(transformer.get_wrapper_helpers(synchronized_types, target_module, indent))
+            helpers.update(transformer.get_wrapper_helpers(sync, target_module, indent))
         return helpers
 
 
@@ -424,29 +394,25 @@ class OptionalTransformer(TypeTransformer):
     def __init__(self, inner_transformer: TypeTransformer):
         self.inner_transformer = inner_transformer
 
-    def wrapped_type(
-        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, is_async: bool = True
-    ) -> str:
+    def wrapped_type(self, sync: SyncRegistry, target_module: str, is_async: bool = True) -> str:
         """Return typing.Union[WrappedInnerType, None]."""
-        inner_type_str = self.inner_transformer.wrapped_type(synchronized_types, target_module, is_async)
+        inner_type_str = self.inner_transformer.wrapped_type(sync, target_module, is_async)
         return f"typing.Union[{inner_type_str}, None]"
 
-    def unwrap_expr(self, synchronized_types: dict[type, tuple[str, str]], var_name: str) -> str:
+    def unwrap_expr(self, sync: SyncRegistry, var_name: str) -> str:
         """Generate conditional expression to unwrap if not None."""
         if not self.inner_transformer.needs_translation():
             return var_name
 
-        inner_unwrap = self.inner_transformer.unwrap_expr(synchronized_types, var_name)
+        inner_unwrap = self.inner_transformer.unwrap_expr(sync, var_name)
         return f"{inner_unwrap} if {var_name} is not None else None"
 
-    def wrap_expr(
-        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, var_name: str, is_async: bool = True
-    ) -> str:
+    def wrap_expr(self, sync: SyncRegistry, target_module: str, var_name: str, is_async: bool = True) -> str:
         """Generate conditional expression to wrap if not None."""
         if not self.inner_transformer.needs_translation():
             return var_name
 
-        inner_wrap = self.inner_transformer.wrap_expr(synchronized_types, target_module, var_name, is_async)
+        inner_wrap = self.inner_transformer.wrap_expr(sync, target_module, var_name, is_async)
         return f"{inner_wrap} if {var_name} is not None else None"
 
     def needs_translation(self) -> bool:
@@ -454,12 +420,12 @@ class OptionalTransformer(TypeTransformer):
 
     def get_wrapper_helpers(
         self,
-        synchronized_types: dict[type, tuple[str, str]],
+        sync: SyncRegistry,
         target_module: str,
         indent: str = "    ",
     ) -> dict[str, str]:
         """Recursively collect helpers from inner transformer."""
-        return self.inner_transformer.get_wrapper_helpers(synchronized_types, target_module, indent)
+        return self.inner_transformer.get_wrapper_helpers(sync, target_module, indent)
 
 
 class AsyncGeneratorTransformer(TypeTransformer):
@@ -469,14 +435,12 @@ class AsyncGeneratorTransformer(TypeTransformer):
         self.yield_transformer = yield_transformer
         self.send_type_str = send_type_str
 
-    def wrapped_type(
-        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, is_async: bool = True
-    ) -> str:
+    def wrapped_type(self, sync: SyncRegistry, target_module: str, is_async: bool = True) -> str:
         """Return AsyncGenerator[T, S] for async context, Generator[T, S, None] for sync context.
 
         Note: Both async and sync generators preserve the send type to support two-way generators.
         """
-        yield_type_str = self.yield_transformer.wrapped_type(synchronized_types, target_module, is_async)
+        yield_type_str = self.yield_transformer.wrapped_type(sync, target_module, is_async)
 
         if is_async:
             # Async context: return AsyncGenerator[YieldType, SendType]
@@ -490,13 +454,13 @@ class AsyncGeneratorTransformer(TypeTransformer):
             send_type_for_sync = self.send_type_str if self.send_type_str is not None else "None"
             return f"typing.Generator[{yield_type_str}, {send_type_for_sync}, None]"
 
-    def unwrap_expr(self, synchronized_types: dict[type, tuple[str, str]], var_name: str) -> str:
+    def unwrap_expr(self, sync: SyncRegistry, var_name: str) -> str:
         """Generators don't unwrap at the parameter level."""
         return var_name
 
     def wrap_expr(
         self,
-        synchronized_types: dict[type, tuple[str, str]],
+        sync: SyncRegistry,
         target_module: str,
         var_name: str,
         is_async: bool = True,
@@ -504,7 +468,7 @@ class AsyncGeneratorTransformer(TypeTransformer):
         """Return expression that wraps an async generator by calling a helper function.
 
         Args:
-            synchronized_types: Dict mapping implementation types to (target_module, wrapper_name)
+            sync: Dict mapping implementation types to (target_module, wrapper_name)
             target_module: Current target module
             var_name: Variable name to wrap
             is_async: Whether we're in an async context (determines which helper to call)
@@ -512,7 +476,7 @@ class AsyncGeneratorTransformer(TypeTransformer):
         if not self.needs_translation():
             return var_name
 
-        helper_name = self._get_helper_name(synchronized_types, target_module)
+        helper_name = self._get_helper_name(sync, target_module)
 
         # Use sync or async helper based on context
         if is_async:
@@ -524,15 +488,15 @@ class AsyncGeneratorTransformer(TypeTransformer):
         """Async generators ALWAYS need translation for synchronizer integration."""
         return True
 
-    def _get_helper_name(self, synchronized_types: dict[type, tuple[str, str]], target_module: str) -> str:
+    def _get_helper_name(self, sync: SyncRegistry, target_module: str) -> str:
         """Generate a unique helper function name for this async generator wrapper."""
-        yield_type_str = self.yield_transformer.wrapped_type(synchronized_types, target_module)
+        yield_type_str = self.yield_transformer.wrapped_type(sync, target_module)
         sanitized = yield_type_str.replace("[", "_").replace("]", "").replace(".", "_").replace(", ", "_")
         return f"_wrap_async_gen_{sanitized}"
 
     def get_wrapper_helpers(
         self,
-        synchronized_types: dict[type, tuple[str, str]],
+        sync: SyncRegistry,
         target_module: str,
         indent: str = "    ",
     ) -> dict[str, str]:
@@ -540,13 +504,13 @@ class AsyncGeneratorTransformer(TypeTransformer):
         helpers = {}
 
         # First, collect helpers from yield transformer (for nested cases)
-        helpers.update(self.yield_transformer.get_wrapper_helpers(synchronized_types, target_module, indent))
+        helpers.update(self.yield_transformer.get_wrapper_helpers(sync, target_module, indent))
 
-        helper_name = self._get_helper_name(synchronized_types, target_module)
+        helper_name = self._get_helper_name(sync, target_module)
 
         # Check if yield items need wrapping
         if self.yield_transformer.needs_translation():
-            wrap_expr = self.yield_transformer.wrap_expr(synchronized_types, target_module, "_item")
+            wrap_expr = self.yield_transformer.wrap_expr(sync, target_module, "_item")
         else:
             wrap_expr = "_item"
 
@@ -602,20 +566,18 @@ class SyncGeneratorTransformer(TypeTransformer):
     def __init__(self, yield_transformer: TypeTransformer):
         self.yield_transformer = yield_transformer
 
-    def wrapped_type(
-        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, is_async: bool = True
-    ) -> str:
+    def wrapped_type(self, sync: SyncRegistry, target_module: str, is_async: bool = True) -> str:
         """Always returns Generator[T, None, None] (ignores is_async)."""
-        yield_type_str = self.yield_transformer.wrapped_type(synchronized_types, target_module, is_async)
+        yield_type_str = self.yield_transformer.wrapped_type(sync, target_module, is_async)
         return f"typing.Generator[{yield_type_str}, None, None]"
 
-    def unwrap_expr(self, synchronized_types: dict[type, tuple[str, str]], var_name: str) -> str:
+    def unwrap_expr(self, sync: SyncRegistry, var_name: str) -> str:
         """Generators don't unwrap at the parameter level."""
         return var_name
 
     def wrap_expr(
         self,
-        synchronized_types: dict[type, tuple[str, str]],
+        sync: SyncRegistry,
         target_module: str,
         var_name: str,
         is_async: bool = True,
@@ -623,7 +585,7 @@ class SyncGeneratorTransformer(TypeTransformer):
         """Return expression that wraps a sync generator.
 
         Args:
-            synchronized_types: Dict mapping implementation types to (target_module, wrapper_name)
+            sync: Dict mapping implementation types to (target_module, wrapper_name)
             target_module: Current target module
             var_name: Variable name to wrap
             is_async: Ignored for sync generators (always use same helper)
@@ -631,22 +593,22 @@ class SyncGeneratorTransformer(TypeTransformer):
         if not self.needs_translation():
             return var_name
 
-        helper_name = self._get_helper_name(synchronized_types, target_module)
+        helper_name = self._get_helper_name(sync, target_module)
         return f"self.{helper_name}({var_name})"
 
     def needs_translation(self) -> bool:
         """Sync generators only need translation if yields need wrapping."""
         return self.yield_transformer.needs_translation()
 
-    def _get_helper_name(self, synchronized_types: dict[type, tuple[str, str]], target_module: str) -> str:
+    def _get_helper_name(self, sync: SyncRegistry, target_module: str) -> str:
         """Generate a unique helper function name for this sync generator wrapper."""
-        yield_type_str = self.yield_transformer.wrapped_type(synchronized_types, target_module)
+        yield_type_str = self.yield_transformer.wrapped_type(sync, target_module)
         sanitized = yield_type_str.replace("[", "_").replace("]", "").replace(".", "_").replace(", ", "_")
         return f"_wrap_gen_{sanitized}"
 
     def get_wrapper_helpers(
         self,
-        synchronized_types: dict[type, tuple[str, str]],
+        sync: SyncRegistry,
         target_module: str,
         indent: str = "    ",
     ) -> dict[str, str]:
@@ -654,16 +616,16 @@ class SyncGeneratorTransformer(TypeTransformer):
         helpers = {}
 
         # First, collect helpers from yield transformer (for nested cases)
-        helpers.update(self.yield_transformer.get_wrapper_helpers(synchronized_types, target_module, indent))
+        helpers.update(self.yield_transformer.get_wrapper_helpers(sync, target_module, indent))
 
         if not self.needs_translation():
             return helpers
 
-        helper_name = self._get_helper_name(synchronized_types, target_module)
+        helper_name = self._get_helper_name(sync, target_module)
 
         # Check if yield items need wrapping
         if self.yield_transformer.needs_translation():
-            wrap_expr = self.yield_transformer.wrap_expr(synchronized_types, target_module, "_item")
+            wrap_expr = self.yield_transformer.wrap_expr(sync, target_module, "_item")
         else:
             wrap_expr = "_item"
 
@@ -708,20 +670,18 @@ class AsyncIteratorTransformer(TypeTransformer):
         self.item_transformer = item_transformer
         self._runtime_package = runtime_package
 
-    def wrapped_type(
-        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, is_async: bool = True
-    ) -> str:
+    def wrapped_type(self, sync: SyncRegistry, target_module: str, is_async: bool = True) -> str:
         """Return SyncOrAsyncIterator[T] - works in both sync and async contexts."""
-        item_type_str = self.item_transformer.wrapped_type(synchronized_types, target_module, is_async)
+        item_type_str = self.item_transformer.wrapped_type(sync, target_module, is_async)
         return f"{self._runtime_package}.types.SyncOrAsyncIterator[{item_type_str}]"
 
-    def unwrap_expr(self, synchronized_types: dict[type, tuple[str, str]], var_name: str) -> str:
+    def unwrap_expr(self, sync: SyncRegistry, var_name: str) -> str:
         """Iterators don't unwrap at the parameter level."""
         return var_name
 
     def wrap_expr(
         self,
-        synchronized_types: dict[type, tuple[str, str]],
+        sync: SyncRegistry,
         target_module: str,
         var_name: str,
         is_async: bool = True,
@@ -732,11 +692,11 @@ class AsyncIteratorTransformer(TypeTransformer):
             return f"{self._runtime_package}.types.SyncOrAsyncIterator({var_name}, " f"_synchronizer)"
 
         # Items need wrapping - create a wrapper function
-        item_wrap_expr = self.item_transformer.wrap_expr(synchronized_types, target_module, "_item", is_async=True)
+        item_wrap_expr = self.item_transformer.wrap_expr(sync, target_module, "_item", is_async=True)
         # Remove "self." prefix if present (for module-level functions)
         item_wrap_expr = item_wrap_expr.replace("self.", "")
 
-        helper_name = self._get_helper_name(synchronized_types, target_module)
+        helper_name = self._get_helper_name(sync, target_module)
         return (
             f"{self._runtime_package}.types.SyncOrAsyncIterator({var_name}, "
             f"_synchronizer, item_wrapper={helper_name})"
@@ -746,15 +706,15 @@ class AsyncIteratorTransformer(TypeTransformer):
         """AsyncIterators ALWAYS need translation to convert from async to sync."""
         return True
 
-    def _get_helper_name(self, synchronized_types: dict[type, tuple[str, str]], target_module: str) -> str:
+    def _get_helper_name(self, sync: SyncRegistry, target_module: str) -> str:
         """Generate a unique helper function name for this async iterator wrapper."""
-        item_type_str = self.item_transformer.wrapped_type(synchronized_types, target_module)
+        item_type_str = self.item_transformer.wrapped_type(sync, target_module)
         sanitized = item_type_str.replace("[", "_").replace("]", "").replace(".", "_").replace(", ", "_")
         return f"_wrap_async_iter_{sanitized}"
 
     def get_wrapper_helpers(
         self,
-        synchronized_types: dict[type, tuple[str, str]],
+        sync: SyncRegistry,
         target_module: str,
         indent: str = "    ",
     ) -> dict[str, str]:
@@ -762,12 +722,12 @@ class AsyncIteratorTransformer(TypeTransformer):
         helpers = {}
 
         # First, collect helpers from item transformer (for nested cases)
-        helpers.update(self.item_transformer.get_wrapper_helpers(synchronized_types, target_module, indent))
+        helpers.update(self.item_transformer.get_wrapper_helpers(sync, target_module, indent))
 
         if self.item_transformer.needs_translation():
             # Generate a simple wrapper function for items
-            helper_name = self._get_helper_name(synchronized_types, target_module)
-            wrap_expr = self.item_transformer.wrap_expr(synchronized_types, target_module, "_item", is_async=True)
+            helper_name = self._get_helper_name(sync, target_module)
+            wrap_expr = self.item_transformer.wrap_expr(sync, target_module, "_item", is_async=True)
             # Remove "self." prefix for module-level functions
             wrap_expr = wrap_expr.replace("self.", "")
 
@@ -793,20 +753,16 @@ class AsyncIterableTransformer(TypeTransformer):
         self.item_transformer = item_transformer
         self._runtime_package = runtime_package
 
-    def wrapped_type(
-        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, is_async: bool = True
-    ) -> str:
+    def wrapped_type(self, sync: SyncRegistry, target_module: str, is_async: bool = True) -> str:
         """Return SyncOrAsyncIterable[T] - works in both sync and async contexts."""
-        item_type_str = self.item_transformer.wrapped_type(synchronized_types, target_module, is_async)
+        item_type_str = self.item_transformer.wrapped_type(sync, target_module, is_async)
         return f"{self._runtime_package}.types.SyncOrAsyncIterable[{item_type_str}]"
 
-    def unwrap_expr(self, synchronized_types: dict[type, tuple[str, str]], var_name: str) -> str:
+    def unwrap_expr(self, sync: SyncRegistry, var_name: str) -> str:
         """No unwrapping needed for async iterables."""
         return var_name
 
-    def wrap_expr(
-        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, var_name: str, is_async: bool = True
-    ) -> str:
+    def wrap_expr(self, sync: SyncRegistry, target_module: str, var_name: str, is_async: bool = True) -> str:
         """Return expression that creates a SyncOrAsyncIterable wrapping an async iterable."""
         if not self.item_transformer.needs_translation():
             # Items don't need wrapping
@@ -814,7 +770,7 @@ class AsyncIterableTransformer(TypeTransformer):
 
         # Items need wrapping - create a wrapper function
         helper_suffix = (
-            self.item_transformer.wrapped_type(synchronized_types, target_module, is_async)
+            self.item_transformer.wrapped_type(sync, target_module, is_async)
             .replace(".", "_")
             .replace("[", "_")
             .replace("]", "")
@@ -833,7 +789,7 @@ class AsyncIterableTransformer(TypeTransformer):
 
     def get_wrapper_helpers(
         self,
-        synchronized_types: dict[type, tuple[str, str]],
+        sync: SyncRegistry,
         target_module: str,
         indent: str = "    ",
     ) -> dict[str, str]:
@@ -841,17 +797,17 @@ class AsyncIterableTransformer(TypeTransformer):
         helpers = {}
 
         # First, collect helpers from item transformer (for nested cases)
-        helpers.update(self.item_transformer.get_wrapper_helpers(synchronized_types, target_module, indent))
+        helpers.update(self.item_transformer.get_wrapper_helpers(sync, target_module, indent))
 
         if self.item_transformer.needs_translation():
             # Generate a simple wrapper function for items
-            wrapped_type = self.item_transformer.wrapped_type(synchronized_types, target_module, is_async=True)
+            wrapped_type = self.item_transformer.wrapped_type(sync, target_module, is_async=True)
             helper_suffix = (
                 wrapped_type.replace(".", "_").replace("[", "_").replace("]", "").replace(", ", "_").replace(" ", "")
             )
             helper_name = f"_wrap_async_iterable_item_{helper_suffix}"
 
-            item_wrap_expr = self.item_transformer.wrap_expr(synchronized_types, target_module, "_item", is_async=True)
+            item_wrap_expr = self.item_transformer.wrap_expr(sync, target_module, "_item", is_async=True)
             # Remove "self." prefix for module-level functions
             item_wrap_expr = item_wrap_expr.replace("self.", "")
 
@@ -877,19 +833,15 @@ class CoroutineTransformer(TypeTransformer):
         """Initialize with the transformer for the return type (third type arg)."""
         self.return_transformer = return_transformer
 
-    def wrapped_type(
-        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, is_async: bool = True
-    ) -> str:
+    def wrapped_type(self, sync: SyncRegistry, target_module: str, is_async: bool = True) -> str:
         """Return the unwrapped return type."""
-        return self.return_transformer.wrapped_type(synchronized_types, target_module, is_async)
+        return self.return_transformer.wrapped_type(sync, target_module, is_async)
 
-    def unwrap_expr(self, synchronized_types: dict[type, tuple[str, str]], var_name: str) -> str:
+    def unwrap_expr(self, sync: SyncRegistry, var_name: str) -> str:
         """No unwrapping needed - the coroutine itself is passed through."""
         return var_name
 
-    def wrap_expr(
-        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, var_name: str, is_async: bool = True
-    ) -> str:
+    def wrap_expr(self, sync: SyncRegistry, target_module: str, var_name: str, is_async: bool = True) -> str:
         """No wrapping needed - the coroutine itself is passed through."""
         return var_name
 
@@ -915,19 +867,15 @@ class AwaitableTransformer(TypeTransformer):
         """Initialize with the transformer for the return type."""
         self.return_transformer = return_transformer
 
-    def wrapped_type(
-        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, is_async: bool = True
-    ) -> str:
+    def wrapped_type(self, sync: SyncRegistry, target_module: str, is_async: bool = True) -> str:
         """Return the unwrapped return type."""
-        return self.return_transformer.wrapped_type(synchronized_types, target_module, is_async)
+        return self.return_transformer.wrapped_type(sync, target_module, is_async)
 
-    def unwrap_expr(self, synchronized_types: dict[type, tuple[str, str]], var_name: str) -> str:
+    def unwrap_expr(self, sync: SyncRegistry, var_name: str) -> str:
         """No unwrapping needed - the awaitable itself is passed through."""
         return var_name
 
-    def wrap_expr(
-        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, var_name: str, is_async: bool = True
-    ) -> str:
+    def wrap_expr(self, sync: SyncRegistry, target_module: str, var_name: str, is_async: bool = True) -> str:
         """No wrapping needed - the awaitable itself is passed through."""
         return var_name
 
@@ -954,7 +902,7 @@ def _is_self_annotation(annotation: object) -> bool:
 
 def create_transformer(
     annotation,
-    synchronized_types: dict[type, tuple[str, str]],
+    sync: SyncRegistry,
     runtime_package: str = "synchronicity",
     *,
     owner_impl_type: type | None = None,
@@ -964,7 +912,7 @@ def create_transformer(
 
     Args:
         annotation: Type annotation (resolved with eval_str=True)
-        synchronized_types: Dict mapping implementation types to (target_module, wrapper_name)
+        sync: Dict mapping implementation types to (target_module, wrapper_name)
         runtime_package: Dotted import path for generated references to synchronicity runtime
             (``types``, ``descriptor``, ``synchronizer`` submodules).
         owner_impl_type: Implementation class that owns the signature (for resolving ``typing.Self``).
@@ -986,7 +934,7 @@ def create_transformer(
         )
 
     # Direct wrapped class type
-    if isinstance(annotation, type) and annotation in synchronized_types:
+    if isinstance(annotation, type) and sync.has_wrapped_class(annotation):
         return WrappedClassTransformer(annotation)
 
     # Check for generic types
@@ -994,7 +942,7 @@ def create_transformer(
     args = typing.get_args(annotation)
 
     if origin is None:
-        if _is_self_annotation(annotation) and owner_impl_type is not None and owner_impl_type in synchronized_types:
+        if _is_self_annotation(annotation) and owner_impl_type is not None and sync.has_wrapped_class(owner_impl_type):
             return SelfTransformer(owner_impl_type)
         # Non-generic type (primitive or non-wrapped class)
         return IdentityTransformer(annotation)
@@ -1004,7 +952,7 @@ def create_transformer(
         if args:
             item_transformer = create_transformer(
                 args[0],
-                synchronized_types,
+                sync,
                 runtime_package,
                 owner_impl_type=owner_impl_type,
                 owner_has_type_parameters=owner_has_type_parameters,
@@ -1018,14 +966,14 @@ def create_transformer(
         if len(args) >= 2:
             key_transformer = create_transformer(
                 args[0],
-                synchronized_types,
+                sync,
                 runtime_package,
                 owner_impl_type=owner_impl_type,
                 owner_has_type_parameters=owner_has_type_parameters,
             )
             value_transformer = create_transformer(
                 args[1],
-                synchronized_types,
+                sync,
                 runtime_package,
                 owner_impl_type=owner_impl_type,
                 owner_has_type_parameters=owner_has_type_parameters,
@@ -1042,9 +990,7 @@ def create_transformer(
             if Ellipsis in args:
                 # Variable-length tuple: tuple[T, ...]
                 # The type T is before the Ellipsis
-                item_transformer = create_transformer(
-                    args[0], synchronized_types, runtime_package, owner_impl_type=owner_impl_type
-                )
+                item_transformer = create_transformer(args[0], sync, runtime_package, owner_impl_type=owner_impl_type)
                 return TupleTransformer([item_transformer])
             else:
                 # Fixed-size tuple: tuple[T1, T2, ...]
@@ -1052,7 +998,7 @@ def create_transformer(
                 item_transformers = [
                     create_transformer(
                         arg,
-                        synchronized_types,
+                        sync,
                         runtime_package,
                         owner_impl_type=owner_impl_type,
                         owner_has_type_parameters=owner_has_type_parameters,
@@ -1071,7 +1017,7 @@ def create_transformer(
         if len(non_none_args) == 1 and type(None) in args:
             inner_transformer = create_transformer(
                 non_none_args[0],
-                synchronized_types,
+                sync,
                 runtime_package,
                 owner_impl_type=owner_impl_type,
                 owner_has_type_parameters=owner_has_type_parameters,
@@ -1089,7 +1035,7 @@ def create_transformer(
         if args:
             yield_transformer = create_transformer(
                 args[0],
-                synchronized_types,
+                sync,
                 runtime_package,
                 owner_impl_type=owner_impl_type,
                 owner_has_type_parameters=owner_has_type_parameters,
@@ -1104,7 +1050,7 @@ def create_transformer(
         if args:
             item_transformer = create_transformer(
                 args[0],
-                synchronized_types,
+                sync,
                 runtime_package,
                 owner_impl_type=owner_impl_type,
                 owner_has_type_parameters=owner_has_type_parameters,
@@ -1119,7 +1065,7 @@ def create_transformer(
         if args:
             item_transformer = create_transformer(
                 args[0],
-                synchronized_types,
+                sync,
                 runtime_package,
                 owner_impl_type=owner_impl_type,
                 owner_has_type_parameters=owner_has_type_parameters,
@@ -1134,7 +1080,7 @@ def create_transformer(
         if args:
             yield_transformer = create_transformer(
                 args[0],
-                synchronized_types,
+                sync,
                 runtime_package,
                 owner_impl_type=owner_impl_type,
                 owner_has_type_parameters=owner_has_type_parameters,
@@ -1152,7 +1098,7 @@ def create_transformer(
         if args and len(args) >= 3:
             return_transformer = create_transformer(
                 args[2],
-                synchronized_types,
+                sync,
                 runtime_package,
                 owner_impl_type=owner_impl_type,
                 owner_has_type_parameters=owner_has_type_parameters,
@@ -1167,7 +1113,7 @@ def create_transformer(
         if args:
             return_transformer = create_transformer(
                 args[0],
-                synchronized_types,
+                sync,
                 runtime_package,
                 owner_impl_type=owner_impl_type,
                 owner_has_type_parameters=owner_has_type_parameters,

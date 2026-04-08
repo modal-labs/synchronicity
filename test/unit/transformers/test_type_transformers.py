@@ -9,6 +9,7 @@ Tests each transformer type for:
 
 import pytest
 
+from synchronicity.codegen.sync_registry import SyncRegistry
 from synchronicity.codegen.type_transformer import (
     DictTransformer,
     IdentityTransformer,
@@ -21,23 +22,22 @@ from synchronicity.codegen.type_transformer import (
 
 
 @pytest.fixture
-def sync():
-    """Create synchronized_types dict for testing (replaces old Synchronizer._wrapped)."""
-
-    # Create a test class
+def sync_and_wrapped_class():
     class TestClass:
         def __init__(self, value: int):
             self.value = value
 
-    # Return a dict with the class registered (simulates Module.module_items())
-    return {TestClass: ("test_module", "TestClass")}
+    return SyncRegistry.from_type_map({TestClass: ("test_module", "TestClass")}), TestClass
 
 
 @pytest.fixture
-def wrapped_class(sync):
-    """Get the wrapped class from the sync fixture."""
-    # Extract the class from the synchronized_types dict
-    return list(sync.keys())[0]
+def sync(sync_and_wrapped_class):
+    return sync_and_wrapped_class[0]
+
+
+@pytest.fixture
+def wrapped_class(sync_and_wrapped_class):
+    return sync_and_wrapped_class[1]
 
 
 class TestIdentityTransformer:

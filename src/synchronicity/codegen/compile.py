@@ -19,6 +19,7 @@ from .emitters.protocol import CodegenEmitter
 from .emitters.sync_async_wrappers import SyncAsyncWrapperEmitter
 from .parse import build_module_compilation_ir
 from .registry import collect_synchronized_types
+from .sync_registry import SyncRegistry
 
 __all__ = [
     "compile_class",
@@ -50,7 +51,8 @@ def compile_module(
     """
     ir = build_module_compilation_ir(module, synchronized_types)
     gen = emitter or SyncAsyncWrapperEmitter(runtime_package=runtime_package)
-    return gen.emit_module(ir, synchronized_types, registration_module=module)
+    sync = SyncRegistry.from_type_map(synchronized_types)
+    return gen.emit_module(ir, sync)
 
 
 def compile_modules(
