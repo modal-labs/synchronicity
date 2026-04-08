@@ -77,7 +77,7 @@ class TestAsyncFunctions:
     def test_compile_function_basic_types(self, test_synchronizer, simple_function):
         """Test compile_function with basic type annotations"""
         # Generate code directly (no wrapping needed)
-        generated_code = compile_function(simple_function, "test_module", "default_synchronizer", test_synchronizer)
+        generated_code = compile_function(simple_function, "test_module", test_synchronizer)
         print(generated_code)
         # Verify the generated code compiles
         compile(generated_code, "<string>", "exec")
@@ -100,7 +100,7 @@ class TestAsyncFunctions:
     def test_compile_function_complex_types(self, test_synchronizer, complex_function):
         """Test compile_function with complex type annotations"""
         # Generate code directly (no wrapping needed)
-        generated_code = compile_function(complex_function, "test_module", "default_synchronizer", test_synchronizer)
+        generated_code = compile_function(complex_function, "test_module", test_synchronizer)
 
         # Verify the generated code compiles
         compile(generated_code, "<string>", "exec")
@@ -120,9 +120,7 @@ class TestAsyncFunctions:
     def test_compile_function_no_annotations(self, test_synchronizer, no_annotation_function):
         """Test compile_function with no type annotations"""
         # Generate code directly (no wrapping needed)
-        generated_code = compile_function(
-            no_annotation_function, "test_module", "default_synchronizer", test_synchronizer
-        )
+        generated_code = compile_function(no_annotation_function, "test_module", test_synchronizer)
 
         # Verify the generated code compiles
         compile(generated_code, "<string>", "exec")
@@ -135,7 +133,7 @@ class TestAsyncFunctions:
     def test_compile_function_template_pattern(self, test_synchronizer, simple_function):
         """Test that the generated code follows the template pattern exactly"""
         # Generate code directly (no wrapping needed)
-        generated_code = compile_function(simple_function, "test_module", "default_synchronizer", test_synchronizer)
+        generated_code = compile_function(simple_function, "test_module", test_synchronizer)
 
         # Check that the generated code contains all expected template elements
         template_elements = [
@@ -163,7 +161,7 @@ class TestAsyncFunctions:
         """Test compile_function with multiple wrapped functions"""
         # Both functions should generate valid code independently
         for func in [simple_function, complex_function]:
-            generated_code = compile_function(func, "test_module", "default_synchronizer", test_synchronizer)
+            generated_code = compile_function(func, "test_module", test_synchronizer)
 
             # Should compile without errors
             compile(generated_code, "<string>", "exec")
@@ -177,9 +175,7 @@ class TestAsyncFunctions:
     def test_compile_function_generic_types(self, test_synchronizer, generic_types_function, simple_function):
         """Test compile_function with generic type arguments like list[str], dict[str, int]"""
         # Generate code directly (no wrapping needed)
-        generated_code = compile_function(
-            generic_types_function, "test_module", "default_synchronizer", test_synchronizer
-        )
+        generated_code = compile_function(generic_types_function, "test_module", test_synchronizer)
 
         # Verify the generated code compiles
         compile(generated_code, "<string>", "exec")
@@ -220,9 +216,7 @@ class TestAsyncGenerators:
     def test_compile_function_async_generator(self, test_synchronizer, async_generator_function):
         """Test compile_function with async generator function"""
         # Generate code directly (no wrapping needed)
-        generated_code = compile_function(
-            async_generator_function, "test_module", "default_synchronizer", test_synchronizer
-        )
+        generated_code = compile_function(async_generator_function, "test_module", test_synchronizer)
 
         # Verify the generated code compiles
         compile(generated_code, "<string>", "exec")
@@ -237,7 +231,7 @@ class TestAsyncGenerators:
         assert "def _wrap_async_gen" in generated_code  # Sync helper (note: both contain this string)
         assert "_wrapped.asend(_sent)" in generated_code  # Async helper uses asend() for two-way generators
         # Sync helper uses yield from when no wrapping needed (more efficient, still forwards send())
-        assert "yield from get_synchronizer" in generated_code or "_wrapped.send(_sent)" in generated_code
+        assert "yield from _synchronizer" in generated_code or "_wrapped.send(_sent)" in generated_code
         assert "_run_generator_async(_gen)" in generated_code
         assert "_run_generator_sync(_gen)" in generated_code
         assert "_sent = yield _item" in generated_code  # Async helper captures sent values
@@ -256,9 +250,7 @@ class TestAsyncGenerators:
     def test_compile_function_async_generator_template_pattern(self, test_synchronizer, async_generator_function):
         """Test that async generator functions follow the template pattern"""
         # Generate code directly (no wrapping needed)
-        generated_code = compile_function(
-            async_generator_function, "test_module", "default_synchronizer", test_synchronizer
-        )
+        generated_code = compile_function(async_generator_function, "test_module", test_synchronizer)
 
         # Check that the generated code contains all expected template elements
         func_name = async_generator_function.__name__
@@ -303,7 +295,7 @@ class TestAsyncGenerators:
                 yield Person(f"Person {i}")
 
         # Generate code
-        generated_code = compile_function(stream_people, "test_module", "default_synchronizer", test_synchronizer)
+        generated_code = compile_function(stream_people, "test_module", test_synchronizer)
 
         # Verify the generated code compiles
         compile(generated_code, "<string>", "exec")
@@ -349,9 +341,7 @@ class TestAsyncGenerators:
                 yield batch
 
         # Generate code
-        generated_code = compile_function(
-            stream_person_batches, "test_module", "default_synchronizer", test_synchronizer
-        )
+        generated_code = compile_function(stream_person_batches, "test_module", test_synchronizer)
 
         # Verify the generated code compiles
         compile(generated_code, "<string>", "exec")
@@ -371,7 +361,7 @@ class TestAsyncGenerators:
             yield 5
             yield 2
 
-        src = compile_function(gen, "test_module", "default_synchronizer", {})
+        src = compile_function(gen, "test_module", {})
         print(src)
         # Since this is actually a generator (has yield), it should be treated as AsyncGenerator
         assert 'async def __gen_aio() -> "typing.AsyncGenerator[typing.Any]"' in src
@@ -388,7 +378,7 @@ class TestSyncFunctions:
         def simple_add(a: int, b: int) -> int:
             return a + b
 
-        code = compile_function(simple_add, "test_module", "default_synchronizer", test_synchronizer)
+        code = compile_function(simple_add, "test_module", test_synchronizer)
 
         # Verify generated code compiles
         compile(code, "<string>", "exec")
@@ -419,7 +409,7 @@ class TestSyncFunctions:
         def greet(person: Person) -> str:
             return f"Hello, {person.name}"
 
-        code = compile_function(greet, "test_module", "default_synchronizer", test_synchronizer)
+        code = compile_function(greet, "test_module", test_synchronizer)
 
         # Verify generated code compiles
         compile(code, "<string>", "exec")
@@ -448,7 +438,7 @@ class TestSyncFunctions:
         def create_person(name: str) -> Person:
             return Person(name)
 
-        code = compile_function(create_person, "test_module", "default_synchronizer", test_synchronizer)
+        code = compile_function(create_person, "test_module", test_synchronizer)
 
         # Verify generated code compiles
         compile(code, "<string>", "exec")
@@ -477,7 +467,7 @@ class TestSyncFunctions:
         def create_people(names: list[str]) -> list[Person]:
             return [Person(name) for name in names]
 
-        code = compile_function(create_people, "test_module", "default_synchronizer", test_synchronizer)
+        code = compile_function(create_people, "test_module", test_synchronizer)
 
         # Verify generated code compiles
         compile(code, "<string>", "exec")
@@ -499,7 +489,7 @@ class TestSyncFunctions:
         def no_types(x, y):
             return x + y
 
-        code = compile_function(no_types, "test_module", "default_synchronizer", test_synchronizer)
+        code = compile_function(no_types, "test_module", test_synchronizer)
 
         # Verify generated code compiles
         compile(code, "<string>", "exec")
@@ -514,7 +504,7 @@ class TestSyncFunctions:
         def with_defaults(a: int, b: int = 10, c: str = "hello") -> str:
             return f"{a}, {b}, {c}"
 
-        code = compile_function(with_defaults, "test_module", "default_synchronizer", test_synchronizer)
+        code = compile_function(with_defaults, "test_module", test_synchronizer)
         # Verify generated code compiles
         compile(code, "<string>", "exec")
 
@@ -530,7 +520,7 @@ class TestSyncFunctions:
 
         def with_varargs(posonly, a: int, b: int = 10, *extra: int, c, **extrakwargs) -> str: ...
 
-        code = compile_function(with_varargs, "test_module", "default_synchronizer", {})
+        code = compile_function(with_varargs, "test_module", {})
 
         # Check that varargs markers are preserved
         assert "def with_varargs(posonly, a: int, b: int = 10, *extra: int, c, **extrakwargs)" in code
@@ -543,7 +533,7 @@ class TestSyncFunctions:
 
         def with_posonly(a, b, /, c, d=10) -> int: ...
 
-        code = compile_function(with_posonly, "test_module", "default_synchronizer", {})
+        code = compile_function(with_posonly, "test_module", {})
 
         # Check that positional-only marker is preserved
         assert "def with_posonly(a, b, /, c, d = 10)" in code
@@ -561,7 +551,7 @@ class TestSyncFunctions:
         # A sync function (no async def) that returns a Coroutine type
         def create_coroutine(x: int) -> Coroutine[typing.Any, typing.Any, str]: ...
 
-        code = compile_function(create_coroutine, "test_module", "default_synchronizer", test_synchronizer)
+        code = compile_function(create_coroutine, "test_module", test_synchronizer)
         print(code)
 
         assert "@wrapped_function" in code
@@ -577,7 +567,7 @@ class TestSyncFunctions:
         # A sync function (no async def) that returns an Awaitable type
         def create_awaitable(x: int) -> Awaitable[str]: ...
 
-        code = compile_function(create_awaitable, "test_module", "default_synchronizer", test_synchronizer)
+        code = compile_function(create_awaitable, "test_module", test_synchronizer)
         print(code)
 
         assert "@wrapped_function" in code
@@ -593,7 +583,7 @@ class TestSyncFunctions:
         # A sync function (no async def) that returns an Awaitable type
         def create_awaitable(x: int) -> Awaitable: ...
 
-        code = compile_function(create_awaitable, "test_module", "default_synchronizer", test_synchronizer)
+        code = compile_function(create_awaitable, "test_module", test_synchronizer)
         print(code)
 
         assert "@wrapped_function" in code

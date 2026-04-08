@@ -24,7 +24,6 @@ from .type_transformer import (
 def compile_function(
     f: types.FunctionType,
     target_module: str,
-    synchronizer_name: str,
     synchronized_types: dict[type, tuple[str, str]],
     *,
     globals_dict: dict[str, typing.Any] | None = None,
@@ -36,7 +35,6 @@ def compile_function(
     Args:
         f: The function to compile
         target_module: Target module where this function will be generated
-        synchronizer_name: Name of the synchronizer for async operations
         synchronized_types: Dict mapping impl types to (target_module, wrapper_name)
         globals_dict: Optional globals dict for resolving forward references
 
@@ -65,7 +63,6 @@ def compile_function(
         sig,
         annotations,
         synchronized_types,
-        synchronizer_name,
         current_target_module,
         runtime_package,
         skip_first_param=False,
@@ -95,13 +92,11 @@ def compile_function(
     # For non-async functions, generate simple wrapper without @wrapped_function decorator
     if not needs_async_wrapper:
         # Format return type annotation (only need sync version)
-        sync_return_str, _ = _format_return_annotation(
-            return_transformer, synchronized_types, synchronizer_name, current_target_module
-        )
+        sync_return_str, _ = _format_return_annotation(return_transformer, synchronized_types, current_target_module)
 
         # Collect inline helper functions if return type needs translation (e.g., AsyncIterator)
         inline_helpers_dict = return_transformer.get_wrapper_helpers(
-            synchronized_types, current_target_module, synchronizer_name, indent=""
+            synchronized_types, current_target_module, indent=""
         )
         # For module-level functions, we don't need @staticmethod decorators and use no indentation
         if inline_helpers_dict:
@@ -124,7 +119,6 @@ def compile_function(
             f"impl_function({call_args_str})",
             return_transformer,
             synchronized_types,
-            synchronizer_name,
             current_target_module,
             indent="    ",
             is_async=False,
@@ -149,13 +143,13 @@ def compile_function(
 
     # Format return types with translation
     sync_return_str, async_return_str = _format_return_annotation(
-        return_transformer, synchronized_types, synchronizer_name, current_target_module
+        return_transformer, synchronized_types, current_target_module
     )
 
     # Collect inline helper functions needed by return type
     # For functions (not methods), we need to strip @staticmethod decorators
     inline_helpers_dict = return_transformer.get_wrapper_helpers(
-        synchronized_types, current_target_module, synchronizer_name, indent="    "
+        synchronized_types, current_target_module, indent="    "
     )
 
     # For AwaitableTransformer/CoroutineTransformer, also collect helpers from the inner return type
@@ -163,7 +157,7 @@ def compile_function(
 
     if isinstance(return_transformer, (AwaitableTransformer, CoroutineTransformer)):
         inner_helpers = return_transformer.return_transformer.get_wrapper_helpers(
-            synchronized_types, current_target_module, synchronizer_name, indent="    "
+            synchronized_types, current_target_module, indent="    "
         )
         inline_helpers_dict.update(inner_helpers)
     # Strip @staticmethod decorators from helpers for module-level functions
@@ -223,7 +217,6 @@ def compile_function(
             f"impl_function({call_args_str})",
             return_transformer,
             synchronized_types,
-            synchronizer_name,
             current_target_module,
             indent="    ",
             is_async=True,
@@ -257,7 +250,6 @@ def compile_function(
             f"impl_function({call_args_str})",
             return_transformer,
             synchronized_types,
-            synchronizer_name,
             current_target_module,
             indent="    ",
             is_async=False,

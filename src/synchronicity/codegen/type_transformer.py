@@ -14,8 +14,6 @@ import inspect
 import typing
 from abc import ABC, abstractmethod
 
-from synchronicity.module import DEFAULT_SYNCHRONIZER_NAME
-
 
 class TypeTransformer(ABC):
     """Base class for type transformers that handle type signatures and translation."""
@@ -78,7 +76,6 @@ class TypeTransformer(ABC):
         self,
         synchronized_types: dict[type, tuple[str, str]],
         target_module: str,
-        synchronizer_name: str,
         indent: str = "    ",
     ) -> dict[str, str]:
         """Generate inline helper functions needed for wrapping this type.
@@ -93,7 +90,6 @@ class TypeTransformer(ABC):
         Args:
             synchronized_types: Dict mapping implementation types to (target_module, wrapper_name)
             target_module: Current target module
-            synchronizer_name: Name of the synchronizer instance
             indent: Indentation string for the helper functions
 
         Returns:
@@ -214,11 +210,10 @@ class ListTransformer(TypeTransformer):
         self,
         synchronized_types: dict[type, tuple[str, str]],
         target_module: str,
-        synchronizer_name: str,
         indent: str = "    ",
     ) -> dict[str, str]:
         """Recursively collect helpers from item transformer."""
-        return self.item_transformer.get_wrapper_helpers(synchronized_types, target_module, synchronizer_name, indent)
+        return self.item_transformer.get_wrapper_helpers(synchronized_types, target_module, indent)
 
 
 class DictTransformer(TypeTransformer):
@@ -261,17 +256,12 @@ class DictTransformer(TypeTransformer):
         self,
         synchronized_types: dict[type, tuple[str, str]],
         target_module: str,
-        synchronizer_name: str,
         indent: str = "    ",
     ) -> dict[str, str]:
         """Recursively collect helpers from key and value transformers."""
         helpers = {}
-        helpers.update(
-            self.key_transformer.get_wrapper_helpers(synchronized_types, target_module, synchronizer_name, indent)
-        )
-        helpers.update(
-            self.value_transformer.get_wrapper_helpers(synchronized_types, target_module, synchronizer_name, indent)
-        )
+        helpers.update(self.key_transformer.get_wrapper_helpers(synchronized_types, target_module, indent))
+        helpers.update(self.value_transformer.get_wrapper_helpers(synchronized_types, target_module, indent))
         return helpers
 
 
@@ -343,15 +333,12 @@ class TupleTransformer(TypeTransformer):
         self,
         synchronized_types: dict[type, tuple[str, str]],
         target_module: str,
-        synchronizer_name: str,
         indent: str = "    ",
     ) -> dict[str, str]:
         """Recursively collect helpers from all item transformers."""
         helpers = {}
         for transformer in self.item_transformers:
-            helpers.update(
-                transformer.get_wrapper_helpers(synchronized_types, target_module, synchronizer_name, indent)
-            )
+            helpers.update(transformer.get_wrapper_helpers(synchronized_types, target_module, indent))
         return helpers
 
 
@@ -393,11 +380,10 @@ class OptionalTransformer(TypeTransformer):
         self,
         synchronized_types: dict[type, tuple[str, str]],
         target_module: str,
-        synchronizer_name: str,
         indent: str = "    ",
     ) -> dict[str, str]:
         """Recursively collect helpers from inner transformer."""
-        return self.inner_transformer.get_wrapper_helpers(synchronized_types, target_module, synchronizer_name, indent)
+        return self.inner_transformer.get_wrapper_helpers(synchronized_types, target_module, indent)
 
 
 class AsyncGeneratorTransformer(TypeTransformer):
@@ -472,16 +458,13 @@ class AsyncGeneratorTransformer(TypeTransformer):
         self,
         synchronized_types: dict[type, tuple[str, str]],
         target_module: str,
-        synchronizer_name: str,
         indent: str = "    ",
     ) -> dict[str, str]:
         """Generate both async and sync helper functions for wrapping async generators."""
         helpers = {}
 
         # First, collect helpers from yield transformer (for nested cases)
-        helpers.update(
-            self.yield_transformer.get_wrapper_helpers(synchronized_types, target_module, synchronizer_name, indent)
-        )
+        helpers.update(self.yield_transformer.get_wrapper_helpers(synchronized_types, target_module, indent))
 
         helper_name = self._get_helper_name(synchronized_types, target_module)
 
@@ -497,7 +480,7 @@ class AsyncGeneratorTransformer(TypeTransformer):
         # Wrap in try/finally to ensure aclose() is forwarded properly
         async_helper = f"""{indent}@staticmethod
 {indent}async def {helper_name}(_gen):
-{indent}    _wrapped = get_synchronizer('{synchronizer_name}')._run_generator_async(_gen)
+{indent}    _wrapped = _synchronizer._run_generator_async(_gen)
 {indent}    _sent = None
 {indent}    try:
 {indent}        while True:
@@ -514,12 +497,12 @@ class AsyncGeneratorTransformer(TypeTransformer):
         if wrap_expr == "_item":
             sync_helper = f"""{indent}@staticmethod
 {indent}def {helper_name}_sync(_gen):
-{indent}    yield from get_synchronizer('{synchronizer_name}')._run_generator_sync(_gen)"""
+{indent}    yield from _synchronizer._run_generator_sync(_gen)"""
         else:
             # When wrapping is needed, use try/finally to ensure close() is forwarded
             sync_helper = f"""{indent}@staticmethod
 {indent}def {helper_name}_sync(_gen):
-{indent}    _wrapped = get_synchronizer('{synchronizer_name}')._run_generator_sync(_gen)
+{indent}    _wrapped = _synchronizer._run_generator_sync(_gen)
 {indent}    _sent = None
 {indent}    try:
 {indent}        while True:
@@ -589,16 +572,13 @@ class SyncGeneratorTransformer(TypeTransformer):
         self,
         synchronized_types: dict[type, tuple[str, str]],
         target_module: str,
-        synchronizer_name: str,
         indent: str = "    ",
     ) -> dict[str, str]:
         """Generate helper function for wrapping sync generators."""
         helpers = {}
 
         # First, collect helpers from yield transformer (for nested cases)
-        helpers.update(
-            self.yield_transformer.get_wrapper_helpers(synchronized_types, target_module, synchronizer_name, indent)
-        )
+        helpers.update(self.yield_transformer.get_wrapper_helpers(synchronized_types, target_module, indent))
 
         if not self.needs_translation():
             return helpers
@@ -671,14 +651,9 @@ class AsyncIteratorTransformer(TypeTransformer):
         is_async: bool = True,
     ) -> str:
         """Return expression that creates a SyncOrAsyncIterator wrapping an async iterator."""
-        synchronizer_name = DEFAULT_SYNCHRONIZER_NAME
-
         if not self.item_transformer.needs_translation():
             # Items don't need wrapping
-            return (
-                f"{self._runtime_package}.types.SyncOrAsyncIterator({var_name}, "
-                f"get_synchronizer('{synchronizer_name}'))"
-            )
+            return f"{self._runtime_package}.types.SyncOrAsyncIterator({var_name}, " f"_synchronizer)"
 
         # Items need wrapping - create a wrapper function
         item_wrap_expr = self.item_transformer.wrap_expr(synchronized_types, target_module, "_item", is_async=True)
@@ -688,7 +663,7 @@ class AsyncIteratorTransformer(TypeTransformer):
         helper_name = self._get_helper_name(synchronized_types, target_module)
         return (
             f"{self._runtime_package}.types.SyncOrAsyncIterator({var_name}, "
-            f"get_synchronizer('{synchronizer_name}'), item_wrapper={helper_name})"
+            f"_synchronizer, item_wrapper={helper_name})"
         )
 
     def needs_translation(self) -> bool:
@@ -705,16 +680,13 @@ class AsyncIteratorTransformer(TypeTransformer):
         self,
         synchronized_types: dict[type, tuple[str, str]],
         target_module: str,
-        synchronizer_name: str,
         indent: str = "    ",
     ) -> dict[str, str]:
         """Generate helper functions for wrapping iterator items if needed."""
         helpers = {}
 
         # First, collect helpers from item transformer (for nested cases)
-        helpers.update(
-            self.item_transformer.get_wrapper_helpers(synchronized_types, target_module, synchronizer_name, indent)
-        )
+        helpers.update(self.item_transformer.get_wrapper_helpers(synchronized_types, target_module, indent))
 
         if self.item_transformer.needs_translation():
             # Generate a simple wrapper function for items
@@ -760,14 +732,9 @@ class AsyncIterableTransformer(TypeTransformer):
         self, synchronized_types: dict[type, tuple[str, str]], target_module: str, var_name: str, is_async: bool = True
     ) -> str:
         """Return expression that creates a SyncOrAsyncIterable wrapping an async iterable."""
-        synchronizer_name = DEFAULT_SYNCHRONIZER_NAME
-
         if not self.item_transformer.needs_translation():
             # Items don't need wrapping
-            return (
-                f"{self._runtime_package}.types.SyncOrAsyncIterable({var_name}, "
-                f"get_synchronizer('{synchronizer_name}'))"
-            )
+            return f"{self._runtime_package}.types.SyncOrAsyncIterable({var_name}, " f"_synchronizer)"
 
         # Items need wrapping - create a wrapper function
         helper_suffix = (
@@ -781,7 +748,7 @@ class AsyncIterableTransformer(TypeTransformer):
         helper_name = f"_wrap_async_iterable_item_{helper_suffix}"
         return (
             f"{self._runtime_package}.types.SyncOrAsyncIterable({var_name}, "
-            f"get_synchronizer('{synchronizer_name}'), item_wrapper={helper_name})"
+            f"_synchronizer, item_wrapper={helper_name})"
         )
 
     def needs_translation(self) -> bool:
@@ -792,16 +759,13 @@ class AsyncIterableTransformer(TypeTransformer):
         self,
         synchronized_types: dict[type, tuple[str, str]],
         target_module: str,
-        synchronizer_name: str,
         indent: str = "    ",
     ) -> dict[str, str]:
         """Generate helper functions for wrapping iterable items if needed."""
         helpers = {}
 
         # First, collect helpers from item transformer (for nested cases)
-        helpers.update(
-            self.item_transformer.get_wrapper_helpers(synchronized_types, target_module, synchronizer_name, indent)
-        )
+        helpers.update(self.item_transformer.get_wrapper_helpers(synchronized_types, target_module, indent))
 
         if self.item_transformer.needs_translation():
             # Generate a simple wrapper function for items

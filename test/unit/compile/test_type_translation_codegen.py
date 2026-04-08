@@ -41,23 +41,15 @@ def test_compile_with_translation():
     # Compile functions with local namespace for forward reference resolution
     local_ns = {"TestNode": TestNode}
 
-    create_node_code = compile_function(
-        create_node, "test_module", "default_synchronizer", synchronized_types, globals_dict=local_ns
-    )
-    connect_nodes_code = compile_function(
-        connect_nodes, "test_module", "default_synchronizer", synchronized_types, globals_dict=local_ns
-    )
-    get_node_list_code = compile_function(
-        get_node_list, "test_module", "default_synchronizer", synchronized_types, globals_dict=local_ns
-    )
+    create_node_code = compile_function(create_node, "test_module", synchronized_types, globals_dict=local_ns)
+    connect_nodes_code = compile_function(connect_nodes, "test_module", synchronized_types, globals_dict=local_ns)
+    get_node_list_code = compile_function(get_node_list, "test_module", synchronized_types, globals_dict=local_ns)
     get_optional_node_code = compile_function(
-        get_optional_node, "test_module", "default_synchronizer", synchronized_types, globals_dict=local_ns
+        get_optional_node, "test_module", synchronized_types, globals_dict=local_ns
     )
 
     # Compile class
-    class_code = compile_class(
-        TestNode, "test_module", "default_synchronizer", synchronized_types, globals_dict=local_ns
-    )
+    class_code = compile_class(TestNode, "test_module", synchronized_types, globals_dict=local_ns)
 
     # Check that the class code contains the expected translation elements
     assert "_instance_cache: weakref.WeakValueDictionary" in class_code
@@ -105,7 +97,7 @@ def test_wrapper_helpers_generated():
 
     synchronized_types = {HelperTestClass: ("test_module", "HelperTestClass")}
 
-    compiled_code = compile_class(HelperTestClass, "test_module", "default_synchronizer", synchronized_types)
+    compiled_code = compile_class(HelperTestClass, "test_module", synchronized_types)
 
     # Check the _from_impl classmethod structure with class-level cache
     assert "_instance_cache: weakref.WeakValueDictionary = weakref.WeakValueDictionary()" in compiled_code
@@ -131,9 +123,7 @@ def test_unwrap_expressions_in_functions():
     synchronized_types = {UnwrapTestNode: ("test_module", "UnwrapTestNode")}
     local_ns = {"UnwrapTestNode": UnwrapTestNode}
 
-    compiled_code = compile_function(
-        process_node, "test_module", "default_synchronizer", synchronized_types, globals_dict=local_ns
-    )
+    compiled_code = compile_function(process_node, "test_module", synchronized_types, globals_dict=local_ns)
 
     # Check for unwrap in sync wrapper
     assert "node_impl = node._impl_instance" in compiled_code
@@ -159,9 +149,7 @@ def test_translation_with_collections():
     synchronized_types = {CollectionTestNode: ("test_module", "CollectionTestNode")}
     local_ns = {"CollectionTestNode": CollectionTestNode}
 
-    compiled_code = compile_function(
-        process_list, "test_module", "default_synchronizer", synchronized_types, globals_dict=local_ns
-    )
+    compiled_code = compile_function(process_list, "test_module", synchronized_types, globals_dict=local_ns)
 
     # Check for list comprehension unwrap
     assert "[x._impl_instance for x in nodes]" in compiled_code
@@ -178,7 +166,7 @@ def test_no_translation_for_primitives():
     async def returns_string() -> str:
         return "hello"
 
-    compiled_code = compile_function(returns_string, "test_module", "test_primitives", {})
+    compiled_code = compile_function(returns_string, "test_module", {})
 
     # Should not generate unwrap/wrap for strings
     assert "_impl" not in compiled_code or "str_impl" not in compiled_code
@@ -194,7 +182,7 @@ def test_async_generator_wrapping():
         for i in range(3):
             yield f"item_{i}"
 
-    compiled_code = compile_function(simple_generator, "test_module", "default_synchronizer", {})
+    compiled_code = compile_function(simple_generator, "test_module", {})
 
     # Check that helper functions are generated for both sync and async contexts
     assert "_wrap_async_gen_str" in compiled_code
@@ -207,7 +195,7 @@ def test_async_generator_wrapping():
 
     # Check sync helper uses regular for (yield from)
     assert "def _wrap_async_gen_str_sync(_gen):" in compiled_code
-    assert "yield from get_synchronizer('default_synchronizer')._run_generator_sync(_gen)" in compiled_code
+    assert "yield from _synchronizer._run_generator_sync(_gen)" in compiled_code
 
     # Check that async wrapper function exists
     assert "async def __simple_generator_aio" in compiled_code or "async def __" in compiled_code
@@ -231,7 +219,7 @@ def test_tuple_of_generators():
 
         return (gen_str(), gen_int())
 
-    compiled_code = compile_function(tuple_generators, "test_module", "default_synchronizer", {})
+    compiled_code = compile_function(tuple_generators, "test_module", {})
 
     # Check that both generator types have wrappers
     assert "_wrap_async_gen_str" in compiled_code
@@ -280,9 +268,7 @@ def test_generator_with_wrapped_types():
     synchronized_types = {GenNode: ("test_module", "GenNode")}
     local_ns = {"GenNode": GenNode}
 
-    compiled_code = compile_function(
-        node_generator, "test_module", "default_synchronizer", synchronized_types, globals_dict=local_ns
-    )
+    compiled_code = compile_function(node_generator, "test_module", synchronized_types, globals_dict=local_ns)
 
     # Check that generator wrapper is created
     assert "_wrap_async_gen" in compiled_code

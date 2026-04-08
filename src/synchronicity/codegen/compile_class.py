@@ -51,7 +51,6 @@ def _convert_async_to_sync_type(type_str: str) -> str:
 def compile_method_wrapper(
     method: types.FunctionType,
     method_name: str,
-    synchronizer_name: str,
     synchronized_types: dict[type, tuple[str, str]],
     origin_module: str,
     class_name: str,
@@ -68,7 +67,6 @@ def compile_method_wrapper(
     Args:
         method: The method to wrap
         method_name: The name of the method
-        synchronizer_name: Name of the synchronizer for async operations
         synchronized_types: Dict mapping impl types to (target_module, wrapper_name)
         origin_module: The module where the original class is defined
         class_name: The name of the class containing the method
@@ -110,7 +108,6 @@ def compile_method_wrapper(
         sig,
         annotations,
         synchronized_types,
-        synchronizer_name,
         current_target_module,
         runtime_package,
         skip_first_param=skip_first_param,
@@ -153,7 +150,7 @@ def compile_method_wrapper(
 
     # Format return types
     sync_return_str, async_return_str = _format_return_annotation(
-        return_transformer, synchronized_types, synchronizer_name, current_target_module
+        return_transformer, synchronized_types, current_target_module
     )
 
     # Build the call expression based on method type
@@ -190,7 +187,6 @@ def compile_method_wrapper(
                 sync_call_expr,
                 return_transformer,
                 synchronized_types,
-                synchronizer_name,
                 current_target_module,
                 indent="    ",
                 is_async=False,
@@ -247,7 +243,6 @@ def compile_method_wrapper(
                 call_expr_prefix,
                 return_transformer,
                 synchronized_types,
-                synchronizer_name,
                 current_target_module,
                 indent="    ",
                 is_async=True,
@@ -261,7 +256,6 @@ def compile_method_wrapper(
                 call_expr_prefix,
                 return_transformer,
                 synchronized_types,
-                synchronizer_name,
                 current_target_module,
                 indent="    ",
                 is_async=False,
@@ -279,7 +273,6 @@ def compile_method_wrapper(
                 sync_call_expr,
                 return_transformer,
                 synchronized_types,
-                synchronizer_name,
                 current_target_module,
                 indent="    ",
                 is_async=False,
@@ -324,7 +317,6 @@ def compile_method_wrapper(
                 call_expr_prefix,
                 return_transformer,
                 synchronized_types,
-                synchronizer_name,
                 current_target_module,
                 indent="    ",
                 is_async=True,
@@ -336,7 +328,6 @@ def compile_method_wrapper(
                 call_expr_prefix,
                 return_transformer,
                 synchronized_types,
-                synchronizer_name,
                 current_target_module,
                 indent="    ",
                 is_async=False,
@@ -352,7 +343,6 @@ def compile_method_wrapper(
                 sync_call_expr,
                 return_transformer,
                 synchronized_types,
-                synchronizer_name,
                 current_target_module,
                 indent="    ",
                 is_async=False,
@@ -413,7 +403,6 @@ def compile_method_wrapper(
                 call_expr_prefix,
                 return_transformer,
                 synchronized_types,
-                synchronizer_name,
                 current_target_module,
                 indent="    ",
                 is_async=True,
@@ -425,7 +414,6 @@ def compile_method_wrapper(
                 call_expr_prefix,
                 return_transformer,
                 synchronized_types,
-                synchronizer_name,
                 current_target_module,
                 indent="    ",
                 is_async=False,
@@ -655,7 +643,6 @@ def compile_method_wrapper(
 def compile_class(
     cls: type,
     target_module: str,
-    synchronizer_name: str,
     synchronized_types: dict[type, tuple[str, str]],
     *,
     globals_dict: dict[str, typing.Any] | None = None,
@@ -667,7 +654,6 @@ def compile_class(
     Args:
         cls: The class to compile
         target_module: Target module where this class will be generated
-        synchronizer_name: Name of the synchronizer for async operations
         synchronized_types: Dict mapping impl types to (target_module, wrapper_name)
         globals_dict: Optional globals dict for resolving forward references
 
@@ -782,7 +768,7 @@ def compile_class(
                 transformer_annotation = impl_class
         return_transformer = create_transformer(transformer_annotation, synchronized_types, runtime_package)
         method_helpers = return_transformer.get_wrapper_helpers(
-            synchronized_types_with_self, current_target_module, synchronizer_name, indent="    "
+            synchronized_types_with_self, current_target_module, indent="    "
         )
         # Merge into all_helpers_dict (deduplicates by key)
         all_helpers_dict.update(method_helpers)
@@ -790,7 +776,6 @@ def compile_class(
         wrapper_functions_code, sync_method_code = compile_method_wrapper(
             method,
             method_name,
-            synchronizer_name,
             synchronized_types_with_self,  # Use the version with self registered
             origin_module,
             cls.__name__,
@@ -822,7 +807,6 @@ def compile_class(
             sig,
             init_annotations,
             synchronized_types,
-            synchronizer_name,
             current_target_module,
             runtime_package,
             skip_first_param=True,  # Skip 'self'
@@ -906,13 +890,13 @@ def compile_class(
                 transformer_annotation, synchronized_types_with_self, runtime_package
             )
             method_helpers = method_return_transformer.get_wrapper_helpers(
-                synchronized_types_with_self, current_target_module, synchronizer_name, indent="    "
+                synchronized_types_with_self, current_target_module, indent="    "
             )
             all_helpers_dict.update(method_helpers)
 
             # Format return annotations
             method_sync_return_str, method_async_return_str = _format_return_annotation(
-                method_return_transformer, synchronized_types_with_self, synchronizer_name, current_target_module
+                method_return_transformer, synchronized_types_with_self, current_target_module
             )
 
             # Build call expression
@@ -924,7 +908,6 @@ def compile_class(
                 method_call_expr,
                 method_return_transformer,
                 synchronized_types_with_self,
-                synchronizer_name,
                 current_target_module,
                 indent=sync_indent,
                 is_async=False,
@@ -947,7 +930,6 @@ def compile_class(
                 method_call_expr,
                 method_return_transformer,
                 synchronized_types_with_self,
-                synchronizer_name,
                 current_target_module,
                 indent="        ",
                 is_async=True,
@@ -1001,7 +983,6 @@ def compile_class(
             f"""    \"\"\"Wrapper class for {origin_module}.{cls.__name__} """
             f"""with sync/async method support\"\"\"
 
-    _synchronizer = get_synchronizer('{synchronizer_name}')
     _instance_cache: weakref.WeakValueDictionary = weakref.WeakValueDictionary()"""
         )
     else:

@@ -10,7 +10,7 @@ wrapper_module = Module("event_loop_check")
 
 async def check_event_loop():
     """Check that we're running in the synchronizer's event loop."""
-    # Note: The generated wrappers use get_synchronizer() with the name from Module.
+    # Note: Generated wrapper modules bind module-level _synchronizer via get_synchronizer(name).
     # For tests using Module-based generation, we need to get the synchronizer that was actually
     # created by the wrapper code, not the one we defined here.
     # The wrapper code will create/get a synchronizer when first called, so we just verify

@@ -165,7 +165,6 @@ def _parse_parameters_with_transformers(
     sig: inspect.Signature,
     annotations: dict,
     synchronized_types: dict[type, tuple[str, str]],
-    synchronizer_name: str,
     current_target_module: str,
     runtime_package: str = "synchronicity",
     skip_first_param: bool = False,
@@ -178,7 +177,6 @@ def _parse_parameters_with_transformers(
         sig: Function signature
         annotations: Resolved annotations from inspect.get_annotations
         synchronized_types: Dict mapping implementation types to (target_module, wrapper_name)
-        synchronizer_name: Name of the synchronizer
         current_target_module: Current target module
         skip_first_param: Whether to skip the first parameter (for instance/class methods)
         unwrap_indent: Indentation for unwrap statements
@@ -302,7 +300,6 @@ def _build_call_with_wrap(
     call_expr: str,
     return_transformer,
     synchronized_types: dict[type, tuple[str, str]],
-    synchronizer_name: str,
     current_target_module: str,
     indent: str = "    ",
     is_async: bool = True,
@@ -320,7 +317,6 @@ def _build_call_with_wrap(
         call_expr: The function call expression
         return_transformer: TypeTransformer for the return type
         synchronized_types: Dict mapping implementation types to (target_module, wrapper_name)
-        synchronizer_name: Name of the synchronizer
         current_target_module: Current target module
         indent: Indentation string
         is_async: Whether this is an async context (affects generator wrapping)
@@ -337,10 +333,10 @@ def _build_call_with_wrap(
         # Wrap the call with synchronizer to await/run it
         if is_async:
             # For async context: await synchronizer._run_function_async(call_expr)
-            wrapped_call = f"await get_synchronizer('{synchronizer_name}')._run_function_async({call_expr})"
+            wrapped_call = f"await _synchronizer._run_function_async({call_expr})"
         else:
             # For sync context: synchronizer._run_function_sync(call_expr)
-            wrapped_call = f"get_synchronizer('{synchronizer_name}')._run_function_sync({call_expr})"
+            wrapped_call = f"_synchronizer._run_function_sync({call_expr})"
 
         # Now apply any additional wrapping from the inner return transformer
         inner_transformer = return_transformer.return_transformer
@@ -371,7 +367,6 @@ def _build_call_with_wrap(
 def _format_return_annotation(
     return_transformer,
     synchronized_types: dict[type, tuple[str, str]],
-    synchronizer_name: str,
     current_target_module: str,
 ) -> tuple[str, str]:
     """
@@ -379,7 +374,7 @@ def _format_return_annotation(
 
     Args:
         return_transformer: TypeTransformer for the return type
-        synchronizer: The Synchronizer instance
+        synchronized_types: Mapping from implementation types to wrapper locations
         current_target_module: Current target module
 
     Returns:

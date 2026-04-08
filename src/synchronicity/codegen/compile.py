@@ -291,10 +291,12 @@ def compile_module(
 
 {imports}
 
-{_runtime_import_header(runtime_package)}"""
+{_runtime_import_header(runtime_package)}_synchronizer = get_synchronizer({repr(synchronizer_name)})
+
+"""
 
     if cross_module_imports_str:
-        header += f"\n{cross_module_imports_str}\n"
+        header += f"{cross_module_imports_str}\n"
 
     compiled_code = [header]
 
@@ -353,7 +355,6 @@ def compile_module(
         code = compile_class(
             cls,
             module.target_module,
-            synchronizer_name,
             synchronized_types,
             runtime_package=runtime_package,
         )
@@ -368,7 +369,6 @@ def compile_module(
         code = compile_function(
             func,
             module.target_module,
-            synchronizer_name,
             synchronized_types,
             globals_dict=module_globals,
             runtime_package=runtime_package,

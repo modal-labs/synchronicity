@@ -41,7 +41,8 @@ class Module:
 
     Attributes:
         _target_module: The module name where wrapper code will be generated
-        _synchronizer_name: Registered name passed to ``get_synchronizer`` in generated code
+        _synchronizer_name: Registered name passed to ``get_synchronizer`` for the module-level
+            ``_synchronizer`` binding in generated wrapper modules
     """
 
     def __init__(
@@ -54,7 +55,8 @@ class Module:
         Args:
             target_module: The module name where wrapper code will be generated.
                           Must be provided (auto-detection not yet implemented).
-            synchronizer_name: Name for ``get_synchronizer(...)`` in generated wrappers.
+            synchronizer_name: Name passed to ``get_synchronizer(...)`` when generating
+                ``_synchronizer = get_synchronizer(...)`` at module scope.
                 Defaults to :data:`DEFAULT_SYNCHRONIZER_NAME` (``"default_synchronizer"``).
 
         Raises:
@@ -81,7 +83,7 @@ class Module:
 
     @property
     def synchronizer_name(self) -> str:
-        """Name of the synchronizer instance used in generated wrapper code."""
+        """Registry name used for the module-level ``_synchronizer`` in generated wrappers."""
         return self._synchronizer_name
 
     @property
