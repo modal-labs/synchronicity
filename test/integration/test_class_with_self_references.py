@@ -21,11 +21,18 @@ def test_runtime():
 
 def test_pyright_implementation():
     # check that the implementation type checks correctly
-    import class_with_translation_impl
+    import class_with_self_references_impl
 
-    check_pyright([Path(class_with_translation_impl.__file__)])
+    check_pyright([Path(class_with_self_references_impl.__file__)])
 
 
 def test_pyright_wrapper():
+    import class_with_self_references
+
+    # check that the generated wrapper itself has correct types
+    check_pyright([Path(class_with_self_references.__file__)])
+
+
+def test_pyright_usage():
     # check that usage of the generated wrapper type checks correctly
     check_pyright_with_xfail("class_with_self_references_typecheck")
