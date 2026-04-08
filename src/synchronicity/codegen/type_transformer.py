@@ -99,6 +99,29 @@ class TypeTransformer(ABC):
         return {}
 
 
+class IdentityStrTransformer(TypeTransformer):
+    """Like :class:`IdentityTransformer` but stores only the preformatted type string."""
+
+    def __init__(self, signature_text: str):
+        self._signature_text = signature_text
+
+    def wrapped_type(
+        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, is_async: bool = True
+    ) -> str:
+        return self._signature_text
+
+    def unwrap_expr(self, synchronized_types: dict[type, tuple[str, str]], var_name: str) -> str:
+        return var_name
+
+    def wrap_expr(
+        self, synchronized_types: dict[type, tuple[str, str]], target_module: str, var_name: str, is_async: bool = True
+    ) -> str:
+        return var_name
+
+    def needs_translation(self) -> bool:
+        return False
+
+
 class IdentityTransformer(TypeTransformer):
     """Transformer for types that don't need translation (primitives, etc.)."""
 
