@@ -1014,38 +1014,13 @@ def compile_class(
             f"""    \"\"\"Wrapper class for {origin_module}.{cls.__name__} with sync/async method support\"\"\""""
         )
 
-    # Generate __init__ method (call super if there are wrapped bases)
+    # Generate __init__: unwrap wrapper args, call this class's impl ctor (subclasses use the
+    # same pattern as roots — impl __init__ runs the real MRO; no wrapper super() chain).
     # Format signature: "self" or "self, param1, param2, ..."
     init_params = f"self, {init_signature}" if init_signature else "self"
 
-    if wrapped_bases:
-        if init_unwrap_code:
-            init_method = f"""    def __init__({init_params}):
+    init_method = f"""    def __init__({init_params}):
 {init_unwrap_code}
-        super().__init__({init_call})
-        # Update to more specific derived type
-        _prev_impl = self._impl_instance
-        self._impl_instance = {origin_module}.{cls.__name__}({init_call})
-        _cache = type(self)._instance_cache
-        _cache.pop(id(_prev_impl), None)
-        _cache[id(self._impl_instance)] = self"""
-        else:
-            init_method = f"""    def __init__({init_params}):
-        super().__init__({init_call})
-        # Update to more specific derived type
-        _prev_impl = self._impl_instance
-        self._impl_instance = {origin_module}.{cls.__name__}({init_call})
-        _cache = type(self)._instance_cache
-        _cache.pop(id(_prev_impl), None)
-        _cache[id(self._impl_instance)] = self"""
-    else:
-        if init_unwrap_code:
-            init_method = f"""    def __init__({init_params}):
-{init_unwrap_code}
-        self._impl_instance = {origin_module}.{cls.__name__}({init_call})
-        type(self)._instance_cache[id(self._impl_instance)] = self"""
-        else:
-            init_method = f"""    def __init__({init_params}):
         self._impl_instance = {origin_module}.{cls.__name__}({init_call})
         type(self)._instance_cache[id(self._impl_instance)] = self"""
 
