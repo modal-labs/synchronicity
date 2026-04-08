@@ -35,13 +35,22 @@ class ModuleCompilationIR:
     target_module: str
     synchronizer_name: str
     impl_modules: frozenset[str]
-    has_wrapped_classes: bool
     cross_module_imports: dict[str, frozenset[str]]
     typevar_specs: tuple[TypeVarSpecIR, ...]
-    class_refs: tuple[ImplQualifiedRef, ...]
-    function_refs: tuple[ImplQualifiedRef, ...]
     class_wrappers: tuple[ClassWrapperIR, ...]
     module_functions_ir: tuple[ModuleLevelFunctionIR, ...]
+
+    @property
+    def has_wrapped_classes(self) -> bool:
+        return bool(self.class_wrappers)
+
+    @property
+    def class_refs(self) -> tuple[ImplQualifiedRef, ...]:
+        return tuple(c.impl_ref for c in self.class_wrappers)
+
+    @property
+    def function_refs(self) -> tuple[ImplQualifiedRef, ...]:
+        return tuple(f.impl_ref for f in self.module_functions_ir)
 
 
 @dataclasses.dataclass(frozen=True)

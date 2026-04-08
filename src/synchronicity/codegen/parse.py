@@ -89,7 +89,6 @@ def build_module_compilation_ir(
 ) -> ModuleCompilationIR:
     """Step 1–2 for a single output module: layout, cross-refs, and collected type variables."""
     impl_modules = {o.__module__ for o in module.module_items().keys()}
-    has_wrapped_classes = len(module._registered_classes) > 0
     cross = cross_module_imports_for_module(module.target_module, module.module_items(), synchronized_types)
 
     classes: list[type] = []
@@ -123,8 +122,6 @@ def build_module_compilation_ir(
 
     typevar_specs = typevar_specs_from_collected(module_typevars, synchronized_types, module.target_module)
     cross_frozen = {k: frozenset(v) for k, v in cross.items()}
-    class_refs = tuple(ImplQualifiedRef(c.__module__, c.__qualname__) for c in classes)
-    function_refs = tuple(ImplQualifiedRef(f.__module__, f.__qualname__) for f in functions)
 
     class_wrappers = tuple(parse_class_wrapper_ir(c, module.target_module, synchronized_types) for c in classes)
     module_functions_ir_list: list[ModuleLevelFunctionIR] = []
@@ -139,11 +136,8 @@ def build_module_compilation_ir(
         target_module=module.target_module,
         synchronizer_name=module.synchronizer_name,
         impl_modules=frozenset(impl_modules),
-        has_wrapped_classes=has_wrapped_classes,
         cross_module_imports=cross_frozen,
         typevar_specs=typevar_specs,
-        class_refs=class_refs,
-        function_refs=function_refs,
         class_wrappers=class_wrappers,
         module_functions_ir=module_functions_ir,
     )
