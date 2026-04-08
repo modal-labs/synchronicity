@@ -13,6 +13,8 @@ T = typing.TypeVar("T", bound=typing.Union[type, Callable])
 F = typing.TypeVar("F", bound=types.FunctionType)
 C = typing.TypeVar("C", bound=type)
 
+DEFAULT_SYNCHRONIZER_NAME = "default_synchronizer"
+
 
 class Module:
     """Lightweight build-time registration for async code wrapper generation.
@@ -39,24 +41,35 @@ class Module:
 
     Attributes:
         _target_module: The module name where wrapper code will be generated
+        _synchronizer_name: Registered name passed to ``get_synchronizer`` in generated code
     """
 
-    def __init__(self, target_module: Optional[str]):
+    def __init__(
+        self,
+        target_module: Optional[str],
+        synchronizer_name: str = DEFAULT_SYNCHRONIZER_NAME,
+    ):
         """Initialize a Module for wrapper registration.
 
         Args:
             target_module: The module name where wrapper code will be generated.
                           Must be provided (auto-detection not yet implemented).
+            synchronizer_name: Name for ``get_synchronizer(...)`` in generated wrappers.
+                Defaults to :data:`DEFAULT_SYNCHRONIZER_NAME` (``"default_synchronizer"``).
 
         Raises:
             NotImplementedError: If target_module is None (auto-detection not supported).
+            ValueError: If synchronizer_name is empty.
         """
         if not target_module:
             # TODO: Use call stack to infer calling module, if it's underscored
             # or suffixed with "_impl" -> default to output in same dir
             raise NotImplementedError("Auto module not implemented")
+        if not synchronizer_name:
+            raise ValueError("synchronizer_name must be a non-empty string")
 
         self._target_module: str = target_module
+        self._synchronizer_name: str = synchronizer_name
         # Instance-level registries - each Module tracks its own wrapped items
         self._wrapped_classes: dict[type, tuple[str, str]] = {}
         self._wrapped_functions: dict[types.FunctionType, tuple[str, str]] = {}
@@ -65,6 +78,11 @@ class Module:
     def target_module(self) -> str:
         """Get the target module name for code generation."""
         return self._target_module
+
+    @property
+    def synchronizer_name(self) -> str:
+        """Name of the synchronizer instance used in generated wrapper code."""
+        return self._synchronizer_name
 
     @property
     def _registered_classes(self) -> dict[type, tuple[str, str]]:

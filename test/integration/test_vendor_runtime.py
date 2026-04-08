@@ -26,7 +26,7 @@ def test_compile_modules_respects_runtime_package(generated_wrappers) -> None:
     assert module_objs
 
     custom = "my_library._vendored_synchronicity"
-    out = compile_modules(module_objs, "s", runtime_package=custom)
+    out = compile_modules(module_objs, runtime_package=custom)
     code = "\n".join(out.values())
 
     assert f"import {custom}.types" in code

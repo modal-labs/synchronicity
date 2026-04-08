@@ -14,6 +14,8 @@ import inspect
 import typing
 from abc import ABC, abstractmethod
 
+from synchronicity.module import DEFAULT_SYNCHRONIZER_NAME
+
 
 class TypeTransformer(ABC):
     """Base class for type transformers that handle type signatures and translation."""
@@ -669,7 +671,7 @@ class AsyncIteratorTransformer(TypeTransformer):
         is_async: bool = True,
     ) -> str:
         """Return expression that creates a SyncOrAsyncIterator wrapping an async iterator."""
-        synchronizer_name = "s"  # Default synchronizer name
+        synchronizer_name = DEFAULT_SYNCHRONIZER_NAME
 
         if not self.item_transformer.needs_translation():
             # Items don't need wrapping
@@ -758,7 +760,7 @@ class AsyncIterableTransformer(TypeTransformer):
         self, synchronized_types: dict[type, tuple[str, str]], target_module: str, var_name: str, is_async: bool = True
     ) -> str:
         """Return expression that creates a SyncOrAsyncIterable wrapping an async iterable."""
-        synchronizer_name = "s"  # Default synchronizer name
+        synchronizer_name = DEFAULT_SYNCHRONIZER_NAME
 
         if not self.item_transformer.needs_translation():
             # Items don't need wrapping

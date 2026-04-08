@@ -1,15 +1,13 @@
 """Weather implementation module for README-style integration and markdown tests.
 
-The CLI matches ``Module`` with ``isinstance(..., synchronicity.module.Module)``, so this
-file imports from the main package. In your library, use
-``from mylib.synchronicity import Module`` against your vendored copy instead.
+Imports ``Module`` from the vendored runtime package, matching typical library layout.
 """
 
 from __future__ import annotations
 
 import collections.abc
 
-from synchronicity import Module
+from mylib.synchronicity import Module
 
 wrapper_module = Module("mylib.weather")
 

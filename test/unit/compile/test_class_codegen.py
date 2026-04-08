@@ -106,7 +106,7 @@ def test_compile_class_basic(simple_class):
 
     synchronized_types = {simple_class: ("test_module", "TestClass")}
     # Generate code
-    generated_code = compile_class(simple_class, "test_module", "test_synchronizer", synchronized_types)
+    generated_code = compile_class(simple_class, "test_module", "default_synchronizer", synchronized_types)
 
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
@@ -125,7 +125,7 @@ def test_compile_class_method_descriptors(simple_class):
     """Test that method descriptors are properly generated"""
 
     synchronized_types = {simple_class: ("test_module", "TestClass")}
-    generated_code = compile_class(simple_class, "test_module", "test_synchronizer", synchronized_types)
+    generated_code = compile_class(simple_class, "test_module", "default_synchronizer", synchronized_types)
     print(generated_code)
     # Verify method wrapper classes are generated
     assert "@wrapped_method(__add_to_value_aio)" in generated_code
@@ -137,7 +137,7 @@ def test_compile_class_complex_types(complex_class):
     """Test class compilation with complex type annotations"""
 
     synchronized_types = {complex_class: ("test_module", "ComplexClass")}
-    generated_code = compile_class(complex_class, "test_module", "test_synchronizer", synchronized_types)
+    generated_code = compile_class(complex_class, "test_module", "default_synchronizer", synchronized_types)
 
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
@@ -156,7 +156,7 @@ def test_compile_class_async_generators(async_generator_class):
     """Test class compilation with async generator methods"""
 
     synchronized_types = {async_generator_class: ("test_module", "AsyncGeneratorClass")}
-    generated_code = compile_class(async_generator_class, "test_module", "test_synchronizer", synchronized_types)
+    generated_code = compile_class(async_generator_class, "test_module", "default_synchronizer", synchronized_types)
 
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
@@ -174,7 +174,7 @@ def test_compile_class_mixed_methods(mixed_class):
     """Test class compilation with mixed method types"""
 
     synchronized_types = {mixed_class: ("test_module", "MixedClass")}
-    generated_code = compile_class(mixed_class, "test_module", "test_synchronizer", synchronized_types)
+    generated_code = compile_class(mixed_class, "test_module", "default_synchronizer", synchronized_types)
 
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
@@ -193,7 +193,7 @@ def test_compile_class_type_annotations_preserved(simple_class):
     """Test that method type annotations are preserved"""
 
     synchronized_types = {simple_class: ("test_module", "TestClass")}
-    generated_code = compile_class(simple_class, "test_module", "test_synchronizer", synchronized_types)
+    generated_code = compile_class(simple_class, "test_module", "default_synchronizer", synchronized_types)
 
     # Verify type annotations are preserved
     assert "new_value: int" in generated_code
@@ -206,7 +206,7 @@ def test_compile_class_impl_instance_access(simple_class):
     """Test that the generated class provides access to the original instance"""
 
     synchronized_types = {simple_class: ("test_module", "TestClass")}
-    generated_code = compile_class(simple_class, "test_module", "test_synchronizer", synchronized_types)
+    generated_code = compile_class(simple_class, "test_module", "default_synchronizer", synchronized_types)
 
     # Verify original instance is created and accessible
     # Should reference the actual module where the class is defined
@@ -228,7 +228,7 @@ def test_compile_class_multiple_classes(simple_class, complex_class):
 
     # Each should generate valid code
     for cls, (target_module, target_name) in synchronized_types.items():
-        generated_code = compile_class(cls, "test_module", "test_synchronizer", synchronized_types)
+        generated_code = compile_class(cls, "test_module", "default_synchronizer", synchronized_types)
 
         # Should compile without errors
         compile(generated_code, "<string>", "exec")
@@ -252,7 +252,7 @@ def test_compile_class_no_methods():
     # Register the class
     synchronized_types = {EmptyClass: ("test_module", "EmptyClass")}
 
-    generated_code = compile_class(EmptyClass, "test_module", "test_synchronizer", synchronized_types)
+    generated_code = compile_class(EmptyClass, "test_module", "default_synchronizer", synchronized_types)
 
     # Should still generate a valid wrapper class
     compile(generated_code, "<string>", "exec")
@@ -273,7 +273,7 @@ def test_compile_class_method_with_varargs():
 
     synchronized_types = {VarArgsClass: ("test_module", "VarArgsClass")}
 
-    generated_code = compile_class(VarArgsClass, "test_module", "test_synchronizer", synchronized_types)
+    generated_code = compile_class(VarArgsClass, "test_module", "default_synchronizer", synchronized_types)
     print(generated_code)
     # Check that varargs markers are preserved in method signatures
     assert "*args: str" in generated_code
@@ -309,7 +309,7 @@ def test_compile_module_multiple_classes_separation(simple_class, complex_class)
     }
 
     # Compile the module
-    generated_code = compile_module(test_module, synchronized_types, "test_synchronizer")
+    generated_code = compile_module(test_module, synchronized_types)
 
     # Verify the code compiles
     compile(generated_code, "<string>", "exec")
@@ -354,7 +354,7 @@ def test_compile_class_constructor_signature_with_types():
         Container: ("test_module", "Container"),
     }
 
-    generated_code = compile_class(Container, "test_module", "test_synchronizer", synchronized_types)
+    generated_code = compile_class(Container, "test_module", "default_synchronizer", synchronized_types)
 
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
@@ -381,7 +381,7 @@ def test_compile_class_with_sync_method_returning_coroutine():
         def create_coroutine(self, x: int) -> Coroutine[None, None, str]: ...
 
     synchronized_types = {}
-    generated_code = compile_class(TestClass, "test_module", "test_synchronizer", synchronized_types)
+    generated_code = compile_class(TestClass, "test_module", "default_synchronizer", synchronized_types)
     print(generated_code)
 
     assert "@wrapped_method" in generated_code
@@ -400,7 +400,7 @@ def test_compile_class_with_sync_method_returning_awaitable():
         def create_awaitable(self, x: int) -> Awaitable[str]: ...
 
     synchronized_types = {}
-    generated_code = compile_class(TestClass, "test_module", "test_synchronizer", synchronized_types)
+    generated_code = compile_class(TestClass, "test_module", "default_synchronizer", synchronized_types)
     print(generated_code)
 
     assert "@wrapped_method" in generated_code
@@ -417,7 +417,7 @@ def test_compile_class_with_aiter_has_typed_iter():
         def __aiter__(self) -> typing.AsyncIterator[str]: ...
 
     synchronized_types = {}
-    generated_code = compile_class(AsyncIterableClass, "test_module", "test_synchronizer", synchronized_types)
+    generated_code = compile_class(AsyncIterableClass, "test_module", "default_synchronizer", synchronized_types)
     print(generated_code)
 
     # __aiter__ returns AsyncIterator[str], which should be transformed to SyncOrAsyncIterator[str]
@@ -436,7 +436,7 @@ def test_compile_class_with_anext_has_typed_next():
         async def __anext__(self) -> int: ...
 
     synchronized_types = {}
-    generated_code = compile_class(AsyncIteratorClass, "test_module", "test_synchronizer", synchronized_types)
+    generated_code = compile_class(AsyncIteratorClass, "test_module", "default_synchronizer", synchronized_types)
     print(generated_code)
 
     # __anext__ returns int, both __next__ and __anext__ should return int
@@ -456,7 +456,7 @@ def test_compile_class_aiter_signature_variations():
     class SyncWithAnnotation:
         def __aiter__(self) -> typing.AsyncIterator[str]: ...
 
-    code = compile_class(SyncWithAnnotation, "test_module", "test_synchronizer", {})
+    code = compile_class(SyncWithAnnotation, "test_module", "default_synchronizer", {})
     assert 'def __iter__(self) -> "synchronicity.types.SyncOrAsyncIterator[str]":' in code
     assert 'def __aiter__(self) -> "synchronicity.types.SyncOrAsyncIterator[str]":' in code
 
@@ -464,7 +464,7 @@ def test_compile_class_aiter_signature_variations():
     class SyncWithoutAnnotation:
         def __aiter__(self): ...
 
-    code = compile_class(SyncWithoutAnnotation, "test_module", "test_synchronizer", {})
+    code = compile_class(SyncWithoutAnnotation, "test_module", "default_synchronizer", {})
     assert "def __iter__(self):" in code
     assert "def __aiter__(self):" in code
     # Should not have " -> :" which would be invalid syntax
@@ -474,7 +474,7 @@ def test_compile_class_aiter_signature_variations():
     class AsyncWithAnnotation:
         async def __aiter__(self) -> collections.abc.AsyncIterator[int]: ...
 
-    code = compile_class(AsyncWithAnnotation, "test_module", "test_synchronizer", {})
+    code = compile_class(AsyncWithAnnotation, "test_module", "default_synchronizer", {})
     assert 'def __iter__(self) -> "synchronicity.types.SyncOrAsyncIterator[int]":' in code
     assert 'def __aiter__(self) -> "synchronicity.types.SyncOrAsyncIterator[int]":' in code
 
@@ -483,7 +483,7 @@ def test_compile_class_aiter_signature_variations():
     class AsyncWithoutAnnotation:
         async def __aiter__(self): ...
 
-    code = compile_class(AsyncWithoutAnnotation, "test_module", "test_synchronizer", {})
+    code = compile_class(AsyncWithoutAnnotation, "test_module", "default_synchronizer", {})
     assert "def __iter__(self) -> typing.Any:" in code
     assert "def __aiter__(self) -> typing.Any:" in code
 
@@ -492,7 +492,7 @@ def test_compile_class_aiter_signature_variations():
     class AsyncWithGenerator:
         async def __aiter__(self) -> typing.AsyncGenerator[float, None]: ...
 
-    code = compile_class(AsyncWithGenerator, "test_module", "test_synchronizer", {})
+    code = compile_class(AsyncWithGenerator, "test_module", "default_synchronizer", {})
     # __iter__ (sync) should use Generator
     assert 'def __iter__(self) -> "typing.Generator[float, None, None]":' in code
     # __aiter__ should preserve AsyncGenerator (as a regular method, not async def)
@@ -502,7 +502,7 @@ def test_compile_class_aiter_signature_variations():
     class AsyncIterType:
         def __aiter__(self) -> typing.AsyncIterator[bool]: ...
 
-    code = compile_class(AsyncIterType, "test_module", "test_synchronizer", {})
+    code = compile_class(AsyncIterType, "test_module", "default_synchronizer", {})
     # Both __iter__ and __aiter__ use SyncOrAsyncIterator (which works in both contexts)
     assert 'def __iter__(self) -> "synchronicity.types.SyncOrAsyncIterator[bool]":' in code
     assert 'def __aiter__(self) -> "synchronicity.types.SyncOrAsyncIterator[bool]":' in code
@@ -516,7 +516,7 @@ def test_compile_class_without_explicit_init():
             return 42
 
     synchronized_types = {}
-    generated_code = compile_class(NoInit, "test_module", "test_synchronizer", synchronized_types)
+    generated_code = compile_class(NoInit, "test_module", "default_synchronizer", synchronized_types)
     print(generated_code)
 
     # Should have __init__ with empty signature (no *args, **kwargs)

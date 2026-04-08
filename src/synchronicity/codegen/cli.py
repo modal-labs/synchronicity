@@ -3,24 +3,17 @@
 Command line interface for synchronicity compilation and runtime vendoring.
 
 Usage:
-    python -m synchronicity.codegen -m <module> [<module> ...] <synchronizer_name>
-    # Or use the CLI entrypoint:
-    synchronicity -m <module> [<module> ...] <synchronizer_name>
-
+    synchronicity wrappers -m <module> [<module> ...] [-o DIR] ...
     synchronicity vendor <dotted.package.path> -o <output_dir>
 
-The codegen command imports the specified modules, which causes them to register wrapped items
-with the named synchronizer, then generates wrapper code for all wrapped items.
+    python -m synchronicity.codegen wrappers -m <module> ...
 
-Examples:
-    # Generate wrappers from a single module
-    python -m synchronicity.codegen -m my.package.module my_sync > generated.py
-    synchronicity -m my.package.module my_sync > generated.py
-
-    # Generate wrappers from multiple modules
-    python -m synchronicity.codegen -m package.a -m package.b my_sync > generated.py
-    synchronicity -m package.a -m package.b my_sync > generated.py
+The ``wrappers`` command imports the specified modules, which causes them to register
+wrapped items with ``Module`` (including each module's synchronizer name), then
+generates wrapper code.
 """
+
+from __future__ import annotations
 
 import argparse
 import importlib
@@ -104,49 +97,57 @@ def import_modules_two_pass(module_names: list[str]) -> list:
     return imported_modules
 
 
-def main() -> None:
-    """Main CLI entry point."""
-    if len(sys.argv) >= 2 and sys.argv[1] == "vendor":
-        from .runtime_vendor import run_vendor_cli
-
-        run_vendor_cli(sys.argv[2:])
-        return
-
-    _run_codegen()
-
-
-def _run_codegen() -> None:
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Compile synchronicity wrappers for modules using a specific synchronizer",
+        prog="synchronicity",
+        description="Vendor the synchronicity runtime and generate sync/async wrapper modules.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
+
+    vendor_parser = subparsers.add_parser(
+        "vendor",
+        help="Copy runtime (Module, synchronizer, types, descriptor) into a package tree",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Example:
+  synchronicity vendor my_lib.synchronicity -o src/
+
+Creates src/my_lib/synchronicity/{__init__.py,module.py,types.py,descriptor.py,synchronizer.py}.
+Then pass --runtime-package my_lib.synchronicity to ``synchronicity wrappers`` so generated
+code imports that package instead of top-level synchronicity.
+        """,
+    )
+    vendor_parser.add_argument(
+        "target_package",
+        help="Dotted package path to create under the output directory (e.g. my_lib.synchronicity)",
+    )
+    vendor_parser.add_argument(
+        "-o",
+        "--output-dir",
+        required=True,
+        type=Path,
+        help="Base directory; package directories are created beneath it",
+    )
+
+    wrappers_parser = subparsers.add_parser(
+        "wrappers",
+        help="Generate wrapper modules from implementation modules using Module registration",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Generate wrappers to files (default)
-  python -m synchronicity.codegen -m my.package._module my_sync
-  synchronicity -m my.package._module my_sync
-
-  # Generate wrappers to a specific directory
-  python -m synchronicity.codegen -m my.package._module my_sync -o output/
-  synchronicity -m my.package._module my_sync -o output/
-
-  # Generate and format with ruff
-  python -m synchronicity.codegen -m my.package._module my_sync --ruff
-  synchronicity -m my.package._module my_sync --ruff
-
-  # Print all modules to stdout
-  python -m synchronicity.codegen -m my.package._module my_sync --stdout
-  synchronicity -m my.package._module my_sync --stdout
-
-  # Generate wrappers for multiple modules
-  python -m synchronicity.codegen -m package._a -m package._b my_sync
-  synchronicity -m package._a -m package._b my_sync
-
-  # Vendor runtime, then generate against the copy
+  synchronicity wrappers -m my.package._module
+  synchronicity wrappers -m my.package._module -o output/
+  synchronicity wrappers -m my.package._module --ruff
+  synchronicity wrappers -m my.package._module --stdout
+  synchronicity wrappers -m package._a -m package._b
   synchronicity vendor mylib.synchronicity -o src/
-  synchronicity -m mylib._impl my_sync --runtime-package mylib.synchronicity -o src/
+  synchronicity wrappers -m mylib._impl --runtime-package mylib.synchronicity -o src/
+
+  python -m synchronicity.codegen wrappers -m my.package._module
         """,
     )
-    parser.add_argument(
+    wrappers_parser.add_argument(
         "-m",
         "--module",
         action="append",
@@ -154,27 +155,23 @@ Examples:
         required=True,
         help="Qualified module name to import (can be specified multiple times)",
     )
-    parser.add_argument(
-        "synchronizer_name",
-        help="Name of the synchronizer to use in the generated wrappers",
-    )
-    parser.add_argument(
+    wrappers_parser.add_argument(
         "-o",
         "--output-dir",
         default=".",
         help="Output directory for generated files (default: current directory)",
     )
-    parser.add_argument(
+    wrappers_parser.add_argument(
         "--stdout",
         action="store_true",
         help="Print all modules to stdout with file headers instead of writing files",
     )
-    parser.add_argument(
+    wrappers_parser.add_argument(
         "--ruff",
         action="store_true",
         help="Run ruff to autofix and format the generated files (works with both file output and --stdout)",
     )
-    parser.add_argument(
+    wrappers_parser.add_argument(
         "--runtime-package",
         default="synchronicity",
         metavar="DOTTED.PATH",
@@ -184,37 +181,68 @@ Examples:
         ),
     )
 
-    args = parser.parse_args()
+    return parser
 
+
+def _run_vendor(args: argparse.Namespace) -> None:
+    from .runtime_vendor import vendor_runtime
+
+    try:
+        dest = vendor_runtime(target_package=args.target_package, output_base=args.output_dir.resolve())
+    except (ValueError, OSError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"Vendored runtime to {dest}", file=sys.stderr)
+
+
+def _run_wrappers(args: argparse.Namespace) -> None:
+    from .compile import compile_modules
     from .runtime_vendor import validate_runtime_package
 
     try:
         validate_runtime_package(args.runtime_package)
     except ValueError as e:
-        parser.error(str(e))
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(2)
 
-    synchronizer_name = args.synchronizer_name
+    # Use the same ``Module`` class as implementation code: vendored copies are a
+    # distinct type from ``synchronicity.module.Module``, so ``isinstance`` must use
+    # the class from ``--runtime-package`` (default ``synchronicity``).
+    module_registration_path = f"{args.runtime_package}.module"
+    try:
+        registration_pkg = importlib.import_module(module_registration_path)
+    except ImportError as e:
+        print(
+            f"Error: cannot import {module_registration_path!r} "
+            f"(needed to recognize Module instances for --runtime-package): {e}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    Module = getattr(registration_pkg, "Module", None)
+    if Module is None:
+        print(
+            f"Error: {module_registration_path!r} has no attribute 'Module'.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
 
-    print(f"Importing modules for synchronizer '{synchronizer_name}'...", file=sys.stderr)
+    print("Importing modules for codegen...", file=sys.stderr)
 
-    # Import modules and collect Module objects
-
-    from synchronicity.module import Module
-
-    from .compile import compile_modules
-
-    # Import modules to register wrapped items
     module_objects = []
     for module_name in args.modules:
         print(f"  Importing module: {module_name}", file=sys.stderr)
         imported_module = importlib.import_module(module_name)
 
-        # Collect Module objects from this module
         for attr_name in dir(imported_module):
             attr = getattr(imported_module, attr_name)
             if isinstance(attr, Module):
                 module_objects.append(attr)
-                print(f"  Found Module: {attr.target_module} with {len(attr.module_items())} items", file=sys.stderr)
+                print(
+                    f"  Found Module: {attr.target_module} (synchronizer={attr.synchronizer_name!r}) "
+                    f"with {len(attr.module_items())} items",
+                    file=sys.stderr,
+                )
 
     if not module_objects:
         print(
@@ -229,16 +257,13 @@ Examples:
         print("  @wrapper_module.wrap_function", file=sys.stderr)
         sys.exit(1)
 
-    # Count total registered items
     total_items = sum(len(m.module_items()) for m in module_objects)
     print(f"\nTotal registered items: {total_items}", file=sys.stderr)
 
     print("Compiling wrappers...", file=sys.stderr)
 
-    # Compile using the Module-based API
     modules = compile_modules(
         module_objects,
-        synchronizer_name,
         runtime_package=args.runtime_package,
     )
 
@@ -249,38 +274,32 @@ Examples:
     print(f"Generated {len(modules)} module(s)", file=sys.stderr)
 
     if args.stdout:
-        # Print to stdout with file headers
         if args.ruff:
             print("Running ruff to format generated files...", file=sys.stderr)
-            # Use a temporary directory to format the code
             with tempfile.TemporaryDirectory() as tmpdir:
                 tmppath = Path(tmpdir)
-                # Write all modules to temp files
                 temp_files = {}
                 for module_path in write_modules(tmppath, modules):
                     module_name = module_path.stem
                     temp_files[module_name] = module_path
 
-                # Format each temp file with ruff
                 for module_name in sorted(temp_files.keys()):
                     file_path = temp_files[module_name]
                     run_ruff_on_file(file_path)
                     print(f"  Formatted: {module_name}", file=sys.stderr)
 
-                # Read formatted content and print to stdout
                 for module_name in sorted(temp_files.keys()):
                     file_path = temp_files[module_name]
                     module_path_str = module_name.replace(".", "/") + ".py"
                     print(f"# File: {module_path_str}\n")
                     print(file_path.read_text())
-                    print()  # Blank line between modules
+                    print()
         else:
-            # Print unformatted to stdout
             for module_name in sorted(modules.keys()):
                 module_path = module_name.replace(".", "/") + ".py"
                 print(f"# File: {module_path}\n")
                 print(modules[module_name])
-                print()  # Blank line between modules
+                print()
     else:
         output_dir = Path(args.output_dir)
         written_files = []
@@ -288,7 +307,6 @@ Examples:
             written_files.append(module_path)
             print(f"  Wrote: {module_path}", file=sys.stderr)
 
-        # Run ruff on all generated files if requested
         if args.ruff:
             print("\nRunning ruff to format generated files...", file=sys.stderr)
             for file_path in written_files:
@@ -296,6 +314,18 @@ Examples:
                 print(f"  Formatted: {file_path}", file=sys.stderr)
 
         print("\nCompilation completed successfully!", file=sys.stderr)
+
+
+def main() -> None:
+    """Main CLI entry point."""
+    parser = _build_parser()
+    args = parser.parse_args()
+    if args.command == "vendor":
+        _run_vendor(args)
+    elif args.command == "wrappers":
+        _run_wrappers(args)
+    else:  # pragma: no cover
+        parser.error(f"unknown command {args.command!r}")
 
 
 if __name__ == "__main__":

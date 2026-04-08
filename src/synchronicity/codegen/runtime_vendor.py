@@ -19,10 +19,11 @@ The `synchronicity` CLI / codegen package is still installed separately at build
 """
 
 from .descriptor import FunctionWithAio
-from .module import Module
+from .module import DEFAULT_SYNCHRONIZER_NAME, Module
 from .synchronizer import Synchronizer, classproperty, get_synchronizer
 
 __all__ = [
+    "DEFAULT_SYNCHRONIZER_NAME",
     "FunctionWithAio",
     "Module",
     "Synchronizer",
@@ -82,7 +83,7 @@ Example:
   synchronicity vendor my_lib.synchronicity -o src/
 
 Creates src/my_lib/synchronicity/{{__init__.py,module.py,types.py,descriptor.py,synchronizer.py}}.
-Then pass --runtime-package my_lib.synchronicity when running codegen so generated
+Then pass --runtime-package my_lib.synchronicity to ``synchronicity wrappers`` so generated
 wrappers import that package instead of top-level synchronicity.
         """,
     )

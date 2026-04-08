@@ -250,7 +250,6 @@ def _generate_typevar_definitions(
 def compile_module(
     module: Module,
     synchronized_types: dict[type, tuple[str, str]],
-    synchronizer_name: str,
     *,
     runtime_package: str = "synchronicity",
 ) -> str:
@@ -260,12 +259,12 @@ def compile_module(
     Args:
         module: The Module instance with registered items
         synchronized_types: Dict mapping all implementation types to (target_module, wrapper_name)
-        synchronizer_name: Name of the synchronizer
         runtime_package: Dotted import path for runtime submodules in generated imports
 
     Returns:
         String containing compiled wrapper code for this module
     """
+    synchronizer_name = module.synchronizer_name
 
     # Collect unique implementation modules
     impl_modules = set()
@@ -382,7 +381,6 @@ def compile_module(
 
 def compile_modules(
     modules: list[Module],
-    synchronizer_name: str,
     *,
     runtime_package: str = "synchronicity",
 ) -> dict[str, str]:
@@ -391,7 +389,6 @@ def compile_modules(
 
     Args:
         modules: List of Module instances to compile
-        synchronizer_name: Name of the synchronizer
         runtime_package: Dotted import path for runtime modules (``types``, ``descriptor``,
             ``synchronizer``) referenced in generated code. Use a vendored package for
             wheels that should not depend on the PyPI ``synchronicity`` distribution.
@@ -409,7 +406,6 @@ def compile_modules(
         code = compile_module(
             module,
             synchronized_classes,
-            synchronizer_name,
             runtime_package=runtime_package,
         )
         if code:

@@ -17,7 +17,7 @@ def generated_wrappers():
     This fixture:
     1. Vendors ``mylib.synchronicity`` under ``generated/`` and copies ``mylib/_weather_impl.py`` there
     2. Uses the synchronicity CLI to generate wrapper code for all support modules
-    3. Runs a second CLI pass for ``mylib.weather`` (synchronizer ``weather_synchronizer``)
+    3. Runs a second CLI pass for ``mylib.weather`` (synchronizer name from ``Module``)
     4. Adds ``generated/`` and ``support_files`` to ``sys.path``
     5. Keeps files after tests complete for manual inspection
 
@@ -74,6 +74,7 @@ def generated_wrappers():
             "multifile_impl._b",
             "classmethod_staticmethod_impl",
             "custom_iterators_impl",
+            "multi_synchronizer_impl",
         ]
 
         for module_name in module_specs:
@@ -85,8 +86,8 @@ def generated_wrappers():
                 sys.executable,
                 "-m",
                 "synchronicity.codegen",
+                "wrappers",
                 *module_args,
-                "s",  # synchronizer name
                 "-o",
                 str(generated_dir),
             ],
@@ -115,9 +116,9 @@ def generated_wrappers():
                 sys.executable,
                 "-m",
                 "synchronicity.codegen",
+                "wrappers",
                 "-m",
                 "mylib._weather_impl",
-                "weather_synchronizer",
                 "--runtime-package",
                 "mylib.synchronicity",
                 "-o",
