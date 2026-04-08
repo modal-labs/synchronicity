@@ -18,36 +18,6 @@ from .signature_utils import is_async_generator
 from .type_transformer import create_transformer
 
 
-def _convert_async_to_sync_type(type_str: str) -> str:
-    """
-    Convert async type hints to their sync equivalents for __iter__ signatures.
-
-    Examples:
-        typing.AsyncIterator[int] -> typing.Iterator[int]
-        typing.AsyncGenerator[int, None] -> typing.Generator[int, None, None]
-        synchronicity.types.SyncOrAsyncIterator[int] -> synchronicity.types.SyncOrAsyncIterator[int] (unchanged)
-        typing.Self -> typing.Self (unchanged)
-    """
-    # Simple string replacements for common async types
-    type_str = type_str.replace("typing.AsyncIterator[", "typing.Iterator[")
-    type_str = type_str.replace("typing.AsyncIterable[", "typing.Iterable[")
-    type_str = type_str.replace("collections.abc.AsyncIterator[", "collections.abc.Iterator[")
-    type_str = type_str.replace("collections.abc.AsyncIterable[", "collections.abc.Iterable[")
-
-    # AsyncGenerator[YieldType, SendType] -> Generator[YieldType, SendType, None]
-    # Note: This is a simple replacement; for complex nested types, a proper parser would be needed
-    type_str = type_str.replace("typing.AsyncGenerator[", "typing.Generator[")
-    type_str = type_str.replace("collections.abc.AsyncGenerator[", "collections.abc.Generator[")
-
-    # Fix Generator to include the return type (None) if it only has 2 args
-    # This is a simplification - real implementation would need proper parsing
-    if "Generator[" in type_str and type_str.count(",") == 1 and "]" in type_str:
-        # Generator[T, S] -> Generator[T, S, None]
-        type_str = type_str.replace("]", ", None]", 1)
-
-    return type_str
-
-
 def compile_method_wrapper(
     method: types.FunctionType,
     method_name: str,
