@@ -359,8 +359,8 @@ def test_compile_class_constructor_signature_with_types():
     # Verify the generated code compiles
     compile(generated_code, "<string>", "exec")
 
-    # Check that the constructor signature preserves the wrapper type (Node, not Node._impl_instance)
-    assert "def __init__(self, node: Node, name: str, count: int = 5):" in generated_code
+    # Check that the constructor signature preserves the wrapper type (quoted forward ref in class body)
+    assert 'def __init__(self, node: "Node", name: str, count: int = 5):' in generated_code
 
     # Check that the wrapped parameter is unwrapped before passing to impl constructor
     assert "node_impl = node._impl_instance" in generated_code
@@ -442,10 +442,24 @@ def test_compile_class_with_anext_has_typed_next():
     # __anext__ returns int, both __next__ and __anext__ should return int
     assert "def __next__(self) -> int:" in generated_code
     assert "async def __anext__(self) -> int:" in generated_code
-    # __aiter__ returns Self, which is resolved to the wrapper class
-    # Both __iter__ and __aiter__ should return the wrapper class (quoted for forward ref)
-    assert 'def __iter__(self) -> "AsyncIteratorClass":' in generated_code
-    assert 'def __aiter__(self) -> "AsyncIteratorClass":' in generated_code
+    # __aiter__ returns typing.Self in the wrapper signature
+    assert 'def __iter__(self) -> "typing.Self":' in generated_code
+    assert 'def __aiter__(self) -> "typing.Self":' in generated_code
+
+
+def test_compile_class_preserves_typing_self_in_wrapper_signature():
+    """typing.Self in the impl must appear as typing.Self on the wrapper (not the wrapper class name)."""
+
+    class SelfMethodClass:
+        def accept(self, s: typing.Self) -> typing.Self:
+            return self
+
+    synchronized_types = {SelfMethodClass: ("test_module", "SelfMethodClass")}
+    generated_code = compile_class(SelfMethodClass, "test_module", synchronized_types)
+
+    assert 'def accept(self, s: typing.Self) -> "typing.Self":' in generated_code
+    assert "typing.cast(typing.Self, self._from_impl(result))" in generated_code
+    assert "s_impl = s._impl_instance" in generated_code
 
 
 def test_compile_class_aiter_signature_variations():

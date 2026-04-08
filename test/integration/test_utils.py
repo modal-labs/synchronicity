@@ -98,7 +98,7 @@ def check_pyright_with_xfail(script_module: str):
     assert result.returncode != 0
     output = result.stdout
     expected_num_errors = len(xfail_searches)
-    if f"{expected_num_errors} error," not in output:
+    if not re.search(rf"{expected_num_errors} errors?,", output):
         # TODO: be helpful and show the only the errors we didn't expect here:
         pytest.fail(f"expected {expected_num_errors} errors, got:\n{output}", pytrace=False)
 

@@ -9,7 +9,24 @@ import types
 import typing
 
 from .signature_utils import is_async_generator
-from .type_transformer import create_transformer
+from .type_transformer import WrappedClassTransformer, create_transformer
+
+
+def _parameter_annotation_str(
+    transformer,
+    wrapper_type_str: str,
+    synchronized_types: dict[type, tuple[str, str]],
+    current_target_module: str,
+) -> str:
+    """Use quoted forward references for bare local wrapper class names (class body scope)."""
+    if not isinstance(transformer, WrappedClassTransformer):
+        return wrapper_type_str
+    if not transformer.needs_translation() or transformer.impl_type not in synchronized_types:
+        return wrapper_type_str
+    wmod, wname = synchronized_types[transformer.impl_type]
+    if wmod == current_target_module:
+        return f'"{wname}"'
+    return wrapper_type_str
 
 
 def _normalize_async_annotation(func, return_annotation):
@@ -169,6 +186,9 @@ def _parse_parameters_with_transformers(
     runtime_package: str = "synchronicity",
     skip_first_param: bool = False,
     unwrap_indent: str = "    ",
+    *,
+    owner_impl_type: type | None = None,
+    owner_has_type_parameters: bool = False,
 ) -> tuple[str, str, str]:
     """
     Parse function parameters and generate wrapper parameter list, call arguments, and unwrap code.
@@ -203,7 +223,13 @@ def _parse_parameters_with_transformers(
         param_annotation = annotations.get(name, param.annotation)
 
         # Create transformer for this parameter
-        transformer = create_transformer(param_annotation, synchronized_types, runtime_package)
+        transformer = create_transformer(
+            param_annotation,
+            synchronized_types,
+            runtime_package,
+            owner_impl_type=owner_impl_type,
+            owner_has_type_parameters=owner_has_type_parameters,
+        )
 
         # Track positional-only parameters
         if param.kind == inspect.Parameter.POSITIONAL_ONLY:
@@ -214,7 +240,10 @@ def _parse_parameters_with_transformers(
             # *args
             if param_annotation != param.empty:
                 wrapper_type_str = transformer.wrapped_type(synchronized_types, current_target_module)
-                params.append(f"*{name}: {wrapper_type_str}")
+                ann = _parameter_annotation_str(
+                    transformer, wrapper_type_str, synchronized_types, current_target_module
+                )
+                params.append(f"*{name}: {ann}")
             else:
                 params.append(f"*{name}")
             call_args.append(f"*{name}")
@@ -223,7 +252,10 @@ def _parse_parameters_with_transformers(
             # **kwargs
             if param_annotation != param.empty:
                 wrapper_type_str = transformer.wrapped_type(synchronized_types, current_target_module)
-                params.append(f"**{name}: {wrapper_type_str}")
+                ann = _parameter_annotation_str(
+                    transformer, wrapper_type_str, synchronized_types, current_target_module
+                )
+                params.append(f"**{name}: {ann}")
             else:
                 params.append(f"**{name}")
             call_args.append(f"**{name}")
@@ -232,7 +264,10 @@ def _parse_parameters_with_transformers(
             # Keyword-only parameter
             if param_annotation != param.empty:
                 wrapper_type_str = transformer.wrapped_type(synchronized_types, current_target_module)
-                param_str = f"{name}: {wrapper_type_str}"
+                ann = _parameter_annotation_str(
+                    transformer, wrapper_type_str, synchronized_types, current_target_module
+                )
+                param_str = f"{name}: {ann}"
 
                 # Generate unwrap code if needed
                 if transformer.needs_translation():
@@ -256,7 +291,10 @@ def _parse_parameters_with_transformers(
             # Handle regular parameters (POSITIONAL_ONLY, POSITIONAL_OR_KEYWORD)
             if param_annotation != param.empty:
                 wrapper_type_str = transformer.wrapped_type(synchronized_types, current_target_module)
-                param_str = f"{name}: {wrapper_type_str}"
+                ann = _parameter_annotation_str(
+                    transformer, wrapper_type_str, synchronized_types, current_target_module
+                )
+                param_str = f"{name}: {ann}"
 
                 # Generate unwrap code if needed
                 if transformer.needs_translation():
@@ -296,6 +334,25 @@ def _parse_parameters_with_transformers(
     return param_str, call_args_str, unwrap_code
 
 
+def _unwrap_to_self_transformer(transformer):
+    """If the effective return type is ``typing.Self``, return ``SelfTransformer``; else ``None``."""
+    from .type_transformer import AwaitableTransformer, CoroutineTransformer, SelfTransformer
+
+    t = transformer
+    while isinstance(t, (AwaitableTransformer, CoroutineTransformer)):
+        t = t.return_transformer
+    return t if isinstance(t, SelfTransformer) else None
+
+
+def _effective_inner_transformer(transformer):
+    from .type_transformer import AwaitableTransformer, CoroutineTransformer
+
+    t = transformer
+    while isinstance(t, (AwaitableTransformer, CoroutineTransformer)):
+        t = t.return_transformer
+    return t
+
+
 def _build_call_with_wrap(
     call_expr: str,
     return_transformer,
@@ -305,6 +362,8 @@ def _build_call_with_wrap(
     is_async: bool = True,
     *,
     is_function: bool = False,
+    method_type: str | None = None,
+    method_owner_impl_type: type | None = None,
 ) -> str:
     """
     Build a function call with optional return value wrapping.
@@ -326,7 +385,22 @@ def _build_call_with_wrap(
         Code string with the call and optional wrapping
     """
     # Import here to avoid circular imports
-    from .type_transformer import AwaitableTransformer, CoroutineTransformer
+    from .type_transformer import AwaitableTransformer, CoroutineTransformer, WrappedClassTransformer
+
+    def _wrap_result_expr(outer_transformer) -> str:
+        st = _unwrap_to_self_transformer(outer_transformer)
+        if st is not None and method_type is not None:
+            return st.wrap_expr_for_method(
+                synchronized_types,
+                current_target_module,
+                "result",
+                is_async=is_async,
+                method_type=method_type,
+            )
+        inner = outer_transformer
+        while isinstance(inner, (AwaitableTransformer, CoroutineTransformer)):
+            inner = inner.return_transformer
+        return inner.wrap_expr(synchronized_types, current_target_module, "result", is_async=is_async)
 
     # Check if this is an awaitable type that needs synchronizer wrapping
     if isinstance(return_transformer, (AwaitableTransformer, CoroutineTransformer)):
@@ -341,9 +415,17 @@ def _build_call_with_wrap(
         # Now apply any additional wrapping from the inner return transformer
         inner_transformer = return_transformer.return_transformer
         if inner_transformer.needs_translation():
-            wrap_expr = inner_transformer.wrap_expr(
-                synchronized_types, current_target_module, "result", is_async=is_async
-            )
+            eff = _effective_inner_transformer(return_transformer)
+            if (
+                method_type == "instance"
+                and not is_function
+                and method_owner_impl_type is not None
+                and isinstance(eff, WrappedClassTransformer)
+                and eff.impl_type == method_owner_impl_type
+            ):
+                wrap_expr = "self._from_impl(result)"
+            else:
+                wrap_expr = _wrap_result_expr(return_transformer)
             # For module-level functions, strip 'self.' prefix from helper calls
             if is_function:
                 wrap_expr = wrap_expr.replace("self.", "")
@@ -354,7 +436,17 @@ def _build_call_with_wrap(
 
     # Regular wrapping for non-awaitable types
     if return_transformer.needs_translation():
-        wrap_expr = return_transformer.wrap_expr(synchronized_types, current_target_module, "result", is_async=is_async)
+        eff = _effective_inner_transformer(return_transformer)
+        if (
+            method_type == "instance"
+            and not is_function
+            and method_owner_impl_type is not None
+            and isinstance(eff, WrappedClassTransformer)
+            and eff.impl_type == method_owner_impl_type
+        ):
+            wrap_expr = "self._from_impl(result)"
+        else:
+            wrap_expr = _wrap_result_expr(return_transformer)
         # For module-level functions, strip 'self.' prefix from helper calls
         if is_function:
             wrap_expr = wrap_expr.replace("self.", "")

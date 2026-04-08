@@ -55,7 +55,9 @@ def compile_method_wrapper(
     origin_module: str,
     class_name: str,
     current_target_module: str,
+    impl_class: type,
     *,
+    owner_has_type_parameters: bool = False,
     method_type: str = "instance",
     globals_dict: dict[str, typing.Any] | None = None,
     generic_typevars: dict[str, typing.TypeVar | typing.ParamSpec] | None = None,
@@ -96,8 +98,14 @@ def compile_method_wrapper(
         _contains_self_type(ann) for ann in annotations.values()
     )
 
-    # Create transformer for return type (keep Self as-is, don't replace with impl class)
-    return_transformer = create_transformer(return_annotation, synchronized_types, runtime_package)
+    # Create transformer for return type (typing.Self resolves against impl_class when synchronized)
+    return_transformer = create_transformer(
+        return_annotation,
+        synchronized_types,
+        runtime_package,
+        owner_impl_type=impl_class,
+        owner_has_type_parameters=owner_has_type_parameters,
+    )
 
     # Parse parameters using transformers
     # Skip first parameter for instance methods and classmethods (self/cls),
@@ -112,6 +120,8 @@ def compile_method_wrapper(
         runtime_package,
         skip_first_param=skip_first_param,
         unwrap_indent="    ",
+        owner_impl_type=impl_class,
+        owner_has_type_parameters=owner_has_type_parameters,
     )
 
     # For the wrapper's __call__ method, param_str is correct (cls/self already skipped).
@@ -190,6 +200,8 @@ def compile_method_wrapper(
                 current_target_module,
                 indent="    ",
                 is_async=False,
+                method_type=method_type,
+                method_owner_impl_type=impl_class,
             )
             # Add impl_method reference
             impl_method_line = f"    impl_method = {origin_module}.{class_name}.{method_name}"
@@ -246,6 +258,8 @@ def compile_method_wrapper(
                 current_target_module,
                 indent="    ",
                 is_async=True,
+                method_type=method_type,
+                method_owner_impl_type=impl_class,
             )
             if unwrap_code:
                 aio_body = impl_method_line + "\n" + unwrap_code + "\n" + aio_body
@@ -259,6 +273,8 @@ def compile_method_wrapper(
                 current_target_module,
                 indent="    ",
                 is_async=False,
+                method_type=method_type,
+                method_owner_impl_type=impl_class,
             )
             if unwrap_code:
                 sync_method_body = impl_method_line + "\n" + unwrap_code + "\n" + sync_method_body
@@ -276,6 +292,8 @@ def compile_method_wrapper(
                 current_target_module,
                 indent="    ",
                 is_async=False,
+                method_type=method_type,
+                method_owner_impl_type=impl_class,
             )
             if unwrap_code:
                 sync_method_body = unwrap_code + "\n" + sync_method_body
@@ -320,6 +338,8 @@ def compile_method_wrapper(
                 current_target_module,
                 indent="    ",
                 is_async=True,
+                method_type=method_type,
+                method_owner_impl_type=impl_class,
             )
             if unwrap_code:
                 aio_body = unwrap_code + "\n" + aio_body
@@ -331,6 +351,8 @@ def compile_method_wrapper(
                 current_target_module,
                 indent="    ",
                 is_async=False,
+                method_type=method_type,
+                method_owner_impl_type=impl_class,
             )
             if unwrap_code:
                 sync_method_body = unwrap_code + "\n" + sync_method_body
@@ -346,6 +368,8 @@ def compile_method_wrapper(
                 current_target_module,
                 indent="    ",
                 is_async=False,
+                method_type=method_type,
+                method_owner_impl_type=impl_class,
             )
             if unwrap_code:
                 sync_method_body = unwrap_code + "\n" + sync_method_body
@@ -406,6 +430,8 @@ def compile_method_wrapper(
                 current_target_module,
                 indent="    ",
                 is_async=True,
+                method_type=method_type,
+                method_owner_impl_type=impl_class,
             )
             if unwrap_code:
                 aio_body = unwrap_code + "\n" + aio_body
@@ -417,6 +443,8 @@ def compile_method_wrapper(
                 current_target_module,
                 indent="    ",
                 is_async=False,
+                method_type=method_type,
+                method_owner_impl_type=impl_class,
             )
             if unwrap_code:
                 sync_method_body = unwrap_code + "\n" + sync_method_body
@@ -752,21 +780,13 @@ def compile_class(
         annotations = _safe_get_annotations(method, globals_dict)
         sig = inspect.signature(method)
         return_annotation = annotations.get("return", sig.return_annotation)
-        # Check if typing.Self is used
-        uses_self_type = _contains_self_type(return_annotation) or any(
-            _contains_self_type(ann) for ann in annotations.values()
+        return_transformer = create_transformer(
+            return_annotation,
+            synchronized_types_with_self,
+            runtime_package,
+            owner_impl_type=cls,
+            owner_has_type_parameters=bool(generic_typevars),
         )
-        # Get impl class for Self resolution
-        impl_class = None
-        for cls_key, (mod, name) in synchronized_types_with_self.items():
-            if mod == current_target_module and name == cls.__name__:
-                impl_class = cls_key
-                break
-        transformer_annotation = return_annotation
-        if uses_self_type and impl_class is not None:
-            if return_annotation is typing.Self:
-                transformer_annotation = impl_class
-        return_transformer = create_transformer(transformer_annotation, synchronized_types, runtime_package)
         method_helpers = return_transformer.get_wrapper_helpers(
             synchronized_types_with_self, current_target_module, indent="    "
         )
@@ -780,6 +800,8 @@ def compile_class(
             origin_module,
             cls.__name__,
             current_target_module,
+            cls,
+            owner_has_type_parameters=bool(generic_typevars),
             method_type=method_type,
             globals_dict=globals_dict,
             generic_typevars=generic_typevars if generic_typevars else None,
@@ -811,6 +833,8 @@ def compile_class(
             runtime_package,
             skip_first_param=True,  # Skip 'self'
             unwrap_indent="        ",  # Indent for __init__ body
+            owner_impl_type=cls,
+            owner_has_type_parameters=bool(generic_typevars),
         )
     else:
         # No explicit __init__ - use empty signature (not *args, **kwargs)
@@ -877,17 +901,13 @@ def compile_class(
             # Normalize async def annotations
             method_return_annotation = _normalize_async_annotation(impl_method, method_return_annotation)
 
-            # Resolve typing.Self to actual class
-            transformer_annotation = method_return_annotation
-            if method_return_annotation is typing.Self:
-                for cls_key, (mod, name) in synchronized_types_with_self.items():
-                    if mod == current_target_module and name == cls.__name__:
-                        transformer_annotation = cls_key
-                        break
-
-            # Create transformer and collect helpers
+            # Create transformer and collect helpers (typing.Self resolves via owner_impl_type)
             method_return_transformer = create_transformer(
-                transformer_annotation, synchronized_types_with_self, runtime_package
+                method_return_annotation,
+                synchronized_types_with_self,
+                runtime_package,
+                owner_impl_type=cls,
+                owner_has_type_parameters=bool(generic_typevars),
             )
             method_helpers = method_return_transformer.get_wrapper_helpers(
                 synchronized_types_with_self, current_target_module, indent="    "
@@ -911,6 +931,8 @@ def compile_class(
                 current_target_module,
                 indent=sync_indent,
                 is_async=False,
+                method_type="instance",
+                method_owner_impl_type=cls,
             )
             if add_exception_handling:
                 sync_method = f"""    def {sync_method_name}(self){method_sync_return_str}:
@@ -933,6 +955,8 @@ def compile_class(
                 current_target_module,
                 indent="        ",
                 is_async=True,
+                method_type="instance",
+                method_owner_impl_type=cls,
             )
             # __anext__ should be async def, __aiter__ should be regular def
             async_def_keyword = "async def" if impl_method_name == "__anext__" else "def"
@@ -1000,20 +1024,30 @@ def compile_class(
 {init_unwrap_code}
         super().__init__({init_call})
         # Update to more specific derived type
-        self._impl_instance = {origin_module}.{cls.__name__}({init_call})"""
+        _prev_impl = self._impl_instance
+        self._impl_instance = {origin_module}.{cls.__name__}({init_call})
+        _cache = type(self)._instance_cache
+        _cache.pop(id(_prev_impl), None)
+        _cache[id(self._impl_instance)] = self"""
         else:
             init_method = f"""    def __init__({init_params}):
         super().__init__({init_call})
         # Update to more specific derived type
-        self._impl_instance = {origin_module}.{cls.__name__}({init_call})"""
+        _prev_impl = self._impl_instance
+        self._impl_instance = {origin_module}.{cls.__name__}({init_call})
+        _cache = type(self)._instance_cache
+        _cache.pop(id(_prev_impl), None)
+        _cache[id(self._impl_instance)] = self"""
     else:
         if init_unwrap_code:
             init_method = f"""    def __init__({init_params}):
 {init_unwrap_code}
-        self._impl_instance = {origin_module}.{cls.__name__}({init_call})"""
+        self._impl_instance = {origin_module}.{cls.__name__}({init_call})
+        type(self)._instance_cache[id(self._impl_instance)] = self"""
         else:
             init_method = f"""    def __init__({init_params}):
-        self._impl_instance = {origin_module}.{cls.__name__}({init_call})"""
+        self._impl_instance = {origin_module}.{cls.__name__}({init_call})
+        type(self)._instance_cache[id(self._impl_instance)] = self"""
 
     # Build sections list, only including non-empty sections
     sections = [init_method]

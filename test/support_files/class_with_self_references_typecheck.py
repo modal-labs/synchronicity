@@ -16,7 +16,10 @@ wrapped_instance.accept_self(impl_instance)
 accept_self_by_name_result = wrapped_instance.accept_self_by_name(wrapped_instance)
 assert_type(accept_self_by_name_result, class_with_self_references.SomeClass)
 
+sub_wrapped = class_with_self_references.SomeSubclass()
+sub_self_result = sub_wrapped.accept_self(sub_wrapped)
+assert_type(sub_self_result, class_with_self_references.SomeSubclass)
 
 # xfail: Argument of type "SomeClass" cannot be assigned to parameter\
-#        "s" of type "SomeClass" in function "accept_self"
+#        "s" of type "SomeClass" in function "accept_self_by_name"
 wrapped_instance.accept_self_by_name(impl_instance)  # this should fail

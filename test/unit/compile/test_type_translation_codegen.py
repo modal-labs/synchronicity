@@ -54,7 +54,7 @@ def test_compile_with_translation():
     # Check that the class code contains the expected translation elements
     assert "_instance_cache: weakref.WeakValueDictionary" in class_code
     assert "def _from_impl(cls, impl_instance" in class_code
-    assert "TestNode._from_impl(" in class_code
+    assert "self._from_impl(" in class_code
     # Check that _from_impl uses the helper function
     assert "_wrapped_from_impl(cls, impl_instance, cls._instance_cache)" in class_code
 
@@ -74,8 +74,9 @@ def test_compile_with_translation():
         in get_optional_node_code
     )
     assert (
-        'def connect_nodes(parent: TestNode, child: TestNode) -> "tuple[TestNode, TestNode]":' in connect_nodes_code
-        or "def connect_nodes(parent: TestNode, child: TestNode) -> 'tuple[TestNode, TestNode]':" in connect_nodes_code
+        'def connect_nodes(parent: "TestNode", child: "TestNode") -> "tuple[TestNode, TestNode]":' in connect_nodes_code
+        or "def connect_nodes(parent: 'TestNode', child: 'TestNode') -> 'tuple[TestNode, TestNode]':"
+        in connect_nodes_code
     )
 
     # Check for unwrap/wrap in connect_nodes
