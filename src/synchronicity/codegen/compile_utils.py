@@ -8,10 +8,11 @@ import sys
 import types
 import typing
 
+from .ir import ParameterIR
 from .signature_utils import is_async_generator
 from .sync_registry import SyncRegistry
 from .transformer_ir import ImplQualifiedRef
-from .type_transformer import WrappedClassTransformer, create_transformer
+from .type_transformer import WrappedClassTransformer
 
 
 def _parameter_annotation_str(
@@ -180,67 +181,81 @@ def _extract_typevars_from_function(
     return collected
 
 
-def _parse_parameters_with_transformers(
+def parse_parameters_to_ir(
     sig: inspect.Signature,
     annotations: dict,
     sync: SyncRegistry,
-    current_target_module: str,
-    runtime_package: str = "synchronicity",
-    skip_first_param: bool = False,
-    unwrap_indent: str = "    ",
     *,
+    skip_first_param: bool = False,
     owner_impl_type: type | None = None,
     owner_has_type_parameters: bool = False,
-) -> tuple[str, str, str]:
-    """
-    Parse function parameters and generate wrapper parameter list, call arguments, and unwrap code.
+) -> tuple[ParameterIR, ...]:
+    """Collect :class:`ParameterIR` from a signature (no emission strings)."""
+    from .transformer_materialize import annotation_to_transformer_ir
 
-    Args:
-        sig: Function signature
-        annotations: Resolved annotations from inspect.get_annotations
-        sync: Registry mapping implementation qualified refs to (wrapper_module, wrapper_name)
-        current_target_module: Current target module
-        skip_first_param: Whether to skip the first parameter (for instance/class methods)
-        unwrap_indent: Indentation for unwrap statements
-
-    Returns:
-        Tuple of (param_str, call_args_str, unwrap_code):
-        - param_str: Parameter list for wrapper function
-        - call_args_str: Arguments to pass to implementation function
-        - unwrap_code: Code to unwrap wrapper arguments to implementation arguments
-    """
-    params = []
-    call_args = []
-    unwrap_stmts = []
-
-    # Track if we need to add positional-only marker (/)
-    last_positional_only_index = -1
-    positional_only_marker_added = False
-
+    result: list[ParameterIR] = []
     for i, (name, param) in enumerate(sig.parameters.items()):
-        # Skip first parameter if requested (self/cls in methods)
         if i == 0 and skip_first_param:
             continue
 
         param_annotation = annotations.get(name, param.annotation)
+        if param_annotation is inspect.Signature.empty or param_annotation is param.empty:
+            annotation_ir = None
+        else:
+            annotation_ir = annotation_to_transformer_ir(
+                param_annotation,
+                sync,
+                owner_impl_type=owner_impl_type,
+                owner_has_type_parameters=owner_has_type_parameters,
+            )
 
-        # Create transformer for this parameter
-        transformer = create_transformer(
-            param_annotation,
-            sync,
-            runtime_package,
-            owner_impl_type=owner_impl_type,
-            owner_has_type_parameters=owner_has_type_parameters,
+        default_repr: str | None = None
+        if param.default is not inspect.Parameter.empty:
+            default_repr = repr(param.default)
+
+        result.append(
+            ParameterIR(
+                name=name,
+                kind=int(param.kind),
+                annotation_ir=annotation_ir,
+                default_repr=default_repr,
+            )
+        )
+    return tuple(result)
+
+
+def format_parameters_for_emit(
+    parameters: tuple[ParameterIR, ...],
+    sync: SyncRegistry,
+    current_target_module: str,
+    runtime_package: str = "synchronicity",
+    unwrap_indent: str = "    ",
+) -> tuple[str, str, str]:
+    """Build ``param_str``, ``call_args_str``, and unwrap lines from :class:`ParameterIR` (emitter-side)."""
+    from .transformer_materialize import materialize_transformer_ir
+
+    params: list[str] = []
+    call_args: list[str] = []
+    unwrap_stmts: list[str] = []
+
+    last_positional_only_index = -1
+    positional_only_marker_added = False
+
+    for param_ir in parameters:
+        name = param_ir.name
+        kind = param_ir.kind
+        transformer = (
+            materialize_transformer_ir(param_ir.annotation_ir, sync, runtime_package)
+            if param_ir.annotation_ir is not None
+            else None
         )
 
-        # Track positional-only parameters
-        if param.kind == inspect.Parameter.POSITIONAL_ONLY:
+        if kind == inspect.Parameter.POSITIONAL_ONLY:
             last_positional_only_index = len(params)
 
-        # Handle VAR_POSITIONAL (*args) and VAR_KEYWORD (**kwargs)
-        if param.kind == inspect.Parameter.VAR_POSITIONAL:
-            # *args
-            if param_annotation != param.empty:
+        if kind == inspect.Parameter.VAR_POSITIONAL:
+            if param_ir.annotation_ir is not None:
+                assert transformer is not None
                 wrapper_type_str = transformer.wrapped_type(sync, current_target_module)
                 ann = _parameter_annotation_str(transformer, wrapper_type_str, sync, current_target_module)
                 params.append(f"*{name}: {ann}")
@@ -248,9 +263,9 @@ def _parse_parameters_with_transformers(
                 params.append(f"*{name}")
             call_args.append(f"*{name}")
 
-        elif param.kind == inspect.Parameter.VAR_KEYWORD:
-            # **kwargs
-            if param_annotation != param.empty:
+        elif kind == inspect.Parameter.VAR_KEYWORD:
+            if param_ir.annotation_ir is not None:
+                assert transformer is not None
                 wrapper_type_str = transformer.wrapped_type(sync, current_target_module)
                 ann = _parameter_annotation_str(transformer, wrapper_type_str, sync, current_target_module)
                 params.append(f"**{name}: {ann}")
@@ -258,14 +273,13 @@ def _parse_parameters_with_transformers(
                 params.append(f"**{name}")
             call_args.append(f"**{name}")
 
-        elif param.kind == inspect.Parameter.KEYWORD_ONLY:
-            # Keyword-only parameter
-            if param_annotation != param.empty:
+        elif kind == inspect.Parameter.KEYWORD_ONLY:
+            if param_ir.annotation_ir is not None:
+                assert transformer is not None
                 wrapper_type_str = transformer.wrapped_type(sync, current_target_module)
                 ann = _parameter_annotation_str(transformer, wrapper_type_str, sync, current_target_module)
                 param_str = f"{name}: {ann}"
 
-                # Generate unwrap code if needed
                 if transformer.needs_translation():
                     unwrap_expr = transformer.unwrap_expr(sync, name)
                     unwrap_stmts.append(f"{unwrap_indent}{name}_impl = {unwrap_expr}")
@@ -276,21 +290,18 @@ def _parse_parameters_with_transformers(
                 param_str = name
                 call_args.append(f"{name}={name}")
 
-            # Handle default values
-            if param.default is not param.empty:
-                default_val = repr(param.default)
-                param_str += f" = {default_val}"
+            if param_ir.default_repr is not None:
+                param_str += f" = {param_ir.default_repr}"
 
             params.append(param_str)
 
         else:
-            # Handle regular parameters (POSITIONAL_ONLY, POSITIONAL_OR_KEYWORD)
-            if param_annotation != param.empty:
+            if param_ir.annotation_ir is not None:
+                assert transformer is not None
                 wrapper_type_str = transformer.wrapped_type(sync, current_target_module)
                 ann = _parameter_annotation_str(transformer, wrapper_type_str, sync, current_target_module)
                 param_str = f"{name}: {ann}"
 
-                # Generate unwrap code if needed
                 if transformer.needs_translation():
                     unwrap_expr = transformer.unwrap_expr(sync, name)
                     unwrap_stmts.append(f"{unwrap_indent}{name}_impl = {unwrap_expr}")
@@ -301,28 +312,22 @@ def _parse_parameters_with_transformers(
                 param_str = name
                 call_args.append(name)
 
-            # Handle default values
-            if param.default is not param.empty:
-                default_val = repr(param.default)
-                param_str += f" = {default_val}"
+            if param_ir.default_repr is not None:
+                param_str += f" = {param_ir.default_repr}"
 
             params.append(param_str)
 
-        # Add positional-only marker after last POSITIONAL_ONLY parameter
         if not positional_only_marker_added and last_positional_only_index >= 0:
             if (
-                param.kind != inspect.Parameter.POSITIONAL_ONLY
-                and param.kind != inspect.Parameter.VAR_POSITIONAL
+                kind != inspect.Parameter.POSITIONAL_ONLY
+                and kind != inspect.Parameter.VAR_POSITIONAL
                 and len(params) > last_positional_only_index
             ):
-                # Insert the / marker after the last positional-only parameter
                 params.insert(last_positional_only_index + 1, "/")
                 positional_only_marker_added = True
 
     param_str = ", ".join(params)
     call_args_str = ", ".join(call_args)
-
-    # Build unwrap code block
     unwrap_code = "\n".join(unwrap_stmts) if unwrap_stmts else ""
 
     return param_str, call_args_str, unwrap_code

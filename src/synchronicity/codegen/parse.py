@@ -13,8 +13,8 @@ from synchronicity.module import Module
 from .compile_utils import (
     _extract_typevars_from_function,
     _normalize_async_annotation,
-    _parse_parameters_with_transformers,
     _safe_get_annotations,
+    parse_parameters_to_ir,
 )
 from .ir import (
     ClassWrapperIR,
@@ -171,14 +171,11 @@ def parse_module_level_function_ir(
 
     return_ir = annotation_to_transformer_ir(return_annotation, sync, owner_impl_type=None)
 
-    param_str, call_args_str, unwrap_code = _parse_parameters_with_transformers(
+    parameters = parse_parameters_to_ir(
         sig,
         annotations,
         sync,
-        target_module,
-        runtime_package,
         skip_first_param=False,
-        unwrap_indent="    ",
     )
 
     is_async_gen = is_async_generator(f, return_annotation)
@@ -192,9 +189,7 @@ def parse_module_level_function_ir(
         impl_name=f.__name__,
         needs_async_wrapper=needs_async_wrapper,
         is_async_gen=is_async_gen,
-        param_str=param_str,
-        call_args_str=call_args_str,
-        unwrap_code=unwrap_code,
+        parameters=parameters,
         return_transformer_ir=return_ir,
     )
 
@@ -229,40 +224,19 @@ def parse_method_wrapper_ir(
 
     skip_first_param = method_type in ("instance", "classmethod")
 
-    param_str, call_args_str, unwrap_code = _parse_parameters_with_transformers(
+    parameters = parse_parameters_to_ir(
         sig,
         annotations,
         sync,
-        current_target_module,
-        runtime_package,
         skip_first_param=skip_first_param,
-        unwrap_indent="    ",
         owner_impl_type=impl_class,
         owner_has_type_parameters=owner_has_type_parameters,
     )
-
-    dummy_param_str = param_str
-    if method_type == "classmethod":
-        if dummy_param_str:
-            dummy_param_str = f'cls: type["{class_name}"], {dummy_param_str}'
-        else:
-            dummy_param_str = f'cls: type["{class_name}"]'
 
     is_async_gen = is_async_generator(method, return_annotation)
     return_ir = _normalize_return_transformer_ir(return_ir, is_async_gen=is_async_gen)
 
     is_async = is_async_gen or isinstance(return_ir, (AwaitableTypeIR, CoroutineTypeIR))
-
-    if method_type == "instance":
-        call_expr_prefix = f"impl_method(wrapper_instance._impl_instance, {call_args_str})"
-    elif method_type == "classmethod":
-        impl_class_ref = f"{origin_module}.{class_name}"
-        call_expr_prefix = f"{impl_class_ref}.{method_name}({call_args_str})"
-    elif method_type == "staticmethod":
-        impl_class_ref = f"{origin_module}.{class_name}"
-        call_expr_prefix = f"{impl_class_ref}.{method_name}({call_args_str})"
-    else:
-        call_expr_prefix = f"impl_method(wrapper_instance._impl_instance, {call_args_str})"
 
     return MethodWrapperIR(
         method_name=method_name,
@@ -272,13 +246,9 @@ def parse_method_wrapper_ir(
         current_target_module=current_target_module,
         owner_impl_ref=ImplQualifiedRef(impl_class.__module__, impl_class.__qualname__),
         owner_has_type_parameters=owner_has_type_parameters,
-        param_str=param_str,
-        call_args_str=call_args_str,
-        unwrap_code=unwrap_code,
-        dummy_param_str=dummy_param_str,
+        parameters=parameters,
         is_async_gen=is_async_gen,
         is_async=is_async,
-        call_expr_prefix=call_expr_prefix,
         return_transformer_ir=return_ir,
     )
 
@@ -409,7 +379,6 @@ def parse_class_wrapper_ir(
                 impl_method_name=impl_method_name,
                 sync_method_name=sync_method_name,
                 async_method_name=async_method_name,
-                call_expr=f"{origin_module}.{cls.__name__}.{impl_method_name}(self._impl_instance)",
                 return_transformer_ir=return_ir,
                 use_async_def=impl_method_name == "__anext__",
                 stop_iteration_bridge=stop_iteration_bridge,
@@ -425,21 +394,16 @@ def parse_class_wrapper_ir(
     if init_method and init_method is not object.__init__:
         sig = inspect.signature(init_method)
         init_annotations = _safe_get_annotations(init_method, globals_dict)
-        init_signature, init_call, init_unwrap_code = _parse_parameters_with_transformers(
+        init_parameters = parse_parameters_to_ir(
             sig,
             init_annotations,
             sync_base,
-            current_target_module,
-            runtime_package,
             skip_first_param=True,
-            unwrap_indent="        ",
             owner_impl_type=cls,
             owner_has_type_parameters=bool(generic_typevars),
         )
     else:
-        init_signature = ""
-        init_call = ""
-        init_unwrap_code = ""
+        init_parameters = ()
 
     return ClassWrapperIR(
         impl_ref=ImplQualifiedRef(cls.__module__, cls.__qualname__),
@@ -450,9 +414,7 @@ def parse_class_wrapper_ir(
         generic_base=generic_base,
         owner_has_type_parameters=bool(generic_typevars),
         attributes=tuple(attributes),
-        init_signature=init_signature,
-        init_call=init_call,
-        init_unwrap_code=init_unwrap_code,
+        init_parameters=init_parameters,
         methods=tuple(method_irs),
         iterator_methods=tuple(iterator_methods),
     )

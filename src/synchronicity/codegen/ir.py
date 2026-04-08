@@ -29,6 +29,16 @@ class TypeVarSpecIR:
 
 
 @dataclasses.dataclass(frozen=True)
+class ParameterIR:
+    """One formal parameter: kind + optional type as :class:`TypeTransformerIR` (emit unwraps from this)."""
+
+    name: str
+    kind: int
+    annotation_ir: TypeTransformerIR | None
+    default_repr: str | None
+
+
+@dataclasses.dataclass(frozen=True)
 class ModuleCompilationIR:
     """Planned contents of one generated wrapper module (before any text emission)."""
 
@@ -55,27 +65,28 @@ class ModuleCompilationIR:
 
 @dataclasses.dataclass(frozen=True)
 class ModuleLevelFunctionIR:
-    """Parsed module-level function: binding strings + return type as transformer IR."""
+    """Parsed module-level function: parameters + return type as transformer IR."""
 
     impl_ref: ImplQualifiedRef
     origin_module: str
     impl_name: str
     needs_async_wrapper: bool
     is_async_gen: bool
-    param_str: str
-    call_args_str: str
-    unwrap_code: str
+    parameters: tuple[ParameterIR, ...]
     return_transformer_ir: TypeTransformerIR
 
 
 @dataclasses.dataclass(frozen=True)
 class IteratorProtocolMethodIR:
-    """Async iterator protocol bridge (__aiter__/__anext__ → sync/async surface)."""
+    """Async iterator protocol bridge (__aiter__/__anext__ → sync/async surface).
+
+    The implementation call is emitted as
+    ``{ClassWrapperIR.origin_module}.{ClassWrapperIR.wrapper_class_name}.{impl_method_name}(self._impl_instance)``.
+    """
 
     impl_method_name: str
     sync_method_name: str
     async_method_name: str
-    call_expr: str
     return_transformer_ir: TypeTransformerIR
     use_async_def: bool
     stop_iteration_bridge: bool
@@ -93,16 +104,14 @@ class ClassWrapperIR:
     generic_base: str | None
     owner_has_type_parameters: bool
     attributes: tuple[tuple[str, str], ...]
-    init_signature: str
-    init_call: str
-    init_unwrap_code: str
+    init_parameters: tuple[ParameterIR, ...]
     methods: tuple[MethodWrapperIR, ...]
     iterator_methods: tuple[IteratorProtocolMethodIR, ...]
 
 
 @dataclasses.dataclass(frozen=True)
 class MethodWrapperIR:
-    """Parsed method: binding strings + return type as transformer IR."""
+    """Parsed method: parameters + return type as transformer IR."""
 
     method_name: str
     method_type: str
@@ -111,11 +120,7 @@ class MethodWrapperIR:
     current_target_module: str
     owner_impl_ref: ImplQualifiedRef
     owner_has_type_parameters: bool
-    param_str: str
-    call_args_str: str
-    unwrap_code: str
-    dummy_param_str: str
+    parameters: tuple[ParameterIR, ...]
     is_async_gen: bool
     is_async: bool
-    call_expr_prefix: str
     return_transformer_ir: TypeTransformerIR

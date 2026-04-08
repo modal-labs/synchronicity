@@ -2,12 +2,27 @@
 
 from __future__ import annotations
 
-from ..compile_utils import _build_call_with_wrap, _format_return_annotation
+from ..compile_utils import _build_call_with_wrap, _format_return_annotation, format_parameters_for_emit
 from ..ir import ClassWrapperIR, MethodWrapperIR, ModuleCompilationIR, ModuleLevelFunctionIR
 from ..sync_registry import SyncRegistry
 from ..transformer_materialize import materialize_transformer_ir
 from ..type_transformer import AwaitableTransformer, CoroutineTransformer
 from ..typevar_codegen import typevar_definition_lines
+
+
+def _method_impl_call_expr(
+    method_type: str,
+    origin_module: str,
+    class_name: str,
+    method_name: str,
+    call_args_str: str,
+) -> str:
+    impl_class_ref = f"{origin_module}.{class_name}"
+    if method_type == "instance":
+        return f"impl_method(wrapper_instance._impl_instance, {call_args_str})"
+    if method_type in ("classmethod", "staticmethod"):
+        return f"{impl_class_ref}.{method_name}({call_args_str})"
+    return f"impl_method(wrapper_instance._impl_instance, {call_args_str})"
 
 
 def _runtime_import_header(runtime_package: str) -> str:
@@ -31,9 +46,13 @@ def emit_module_level_function(
     origin_module = ir.origin_module
     current_target_module = target_module
     return_transformer = materialize_transformer_ir(ir.return_transformer_ir, sync, runtime_package)
-    param_str = ir.param_str
-    call_args_str = ir.call_args_str
-    unwrap_code = ir.unwrap_code
+    param_str, call_args_str, unwrap_code = format_parameters_for_emit(
+        ir.parameters,
+        sync,
+        current_target_module,
+        runtime_package,
+        unwrap_indent="    ",
+    )
     is_async_gen = ir.is_async_gen
     f = ir.impl_name
 
@@ -187,13 +206,24 @@ def emit_method_wrapper_pair(
     class_name = ir.class_name
     current_target_module = ir.current_target_module
     return_transformer = materialize_transformer_ir(ir.return_transformer_ir, sync, runtime_package)
-    param_str = ir.param_str
-    unwrap_code = ir.unwrap_code
-    dummy_param_str = ir.dummy_param_str
+    param_str, call_args_str, unwrap_code = format_parameters_for_emit(
+        ir.parameters,
+        sync,
+        current_target_module,
+        runtime_package,
+        unwrap_indent="    ",
+    )
+    call_expr_prefix = _method_impl_call_expr(
+        method_type,
+        origin_module,
+        class_name,
+        method_name,
+        call_args_str,
+    )
+    dummy_param_str = param_str
     is_async_gen = ir.is_async_gen
     is_async = ir.is_async
     sync_return_str, async_return_str = _format_return_annotation(return_transformer, sync, current_target_module)
-    call_expr_prefix = ir.call_expr_prefix
 
     aio_body = None
     sync_method_body = ""
@@ -630,7 +660,9 @@ def emit_class_from_ir(
             method_sync_return_str, method_async_return_str = _format_return_annotation(
                 method_return_transformer, sync_self, ir.current_target_module
             )
-            method_call_expr = spec.call_expr
+            method_call_expr = (
+                f"{ir.origin_module}.{ir.wrapper_class_name}.{spec.impl_method_name}(self._impl_instance)"
+            )
             sync_indent = "            " if spec.stop_iteration_bridge else "        "
             sync_body = _build_call_with_wrap(
                 method_call_expr,
@@ -700,10 +732,17 @@ def emit_class_from_ir(
     else:
         class_attrs = f"""    \"\"\"Wrapper class for {ir.origin_module}.{ir.wrapper_class_name} with sync/async method support\"\"\""""
 
-    init_params = f"self, {ir.init_signature}" if ir.init_signature else "self"
+    init_sig, init_call, init_unwrap = format_parameters_for_emit(
+        ir.init_parameters,
+        sync_self,
+        ir.current_target_module,
+        runtime_package,
+        unwrap_indent="        ",
+    )
+    init_params = f"self, {init_sig}" if init_sig else "self"
     init_method = f"""    def __init__({init_params}):
-{ir.init_unwrap_code}
-        self._impl_instance = {ir.origin_module}.{ir.wrapper_class_name}({ir.init_call})
+{init_unwrap}
+        self._impl_instance = {ir.origin_module}.{ir.wrapper_class_name}({init_call})
         type(self)._instance_cache[id(self._impl_instance)] = self"""
 
     properties_section = "\n\n".join(property_definitions) if property_definitions else ""
