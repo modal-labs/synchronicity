@@ -189,6 +189,8 @@ def parse_parameters_to_ir(
     skip_first_param: bool = False,
     owner_impl_type: type | None = None,
     owner_has_type_parameters: bool = False,
+    impl_modules: frozenset[str] | None = None,
+    generic_typevar_names: frozenset[str] | None = None,
 ) -> tuple[ParameterIR, ...]:
     """Collect :class:`ParameterIR` from a signature (no emission strings)."""
     from .transformer_materialize import annotation_to_transformer_ir
@@ -207,6 +209,8 @@ def parse_parameters_to_ir(
                 sync,
                 owner_impl_type=owner_impl_type,
                 owner_has_type_parameters=owner_has_type_parameters,
+                impl_modules=impl_modules,
+                generic_typevar_names=generic_typevar_names,
             )
 
         default_repr: str | None = None

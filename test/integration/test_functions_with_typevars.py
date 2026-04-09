@@ -1,6 +1,5 @@
 """Integration tests for functions_with_typevars_impl.py support file."""
 
-import pytest
 from pathlib import Path
 
 from test.integration.test_utils import check_pyright
@@ -25,10 +24,6 @@ def test_pyright_implementation():
     check_pyright([Path(functions_with_typevars_impl.__file__)])
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="TypeVar bounds that reference wrapped classes are not typed correctly yet",
-)
 def test_pyright_wrapper():
     import functions_with_typevars
 

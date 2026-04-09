@@ -127,12 +127,17 @@ def build_module_compilation_ir(
     )
     cross_frozen = {k: frozenset(v) for k, v in cross.items()}
 
-    class_wrappers = tuple(parse_class_wrapper_ir(c, module.target_module, synchronized_types) for c in classes)
+    impl_mods = frozenset(impl_modules)
+    class_wrappers = tuple(
+        parse_class_wrapper_ir(c, module.target_module, synchronized_types, impl_modules=impl_mods) for c in classes
+    )
     module_functions_ir_list: list[ModuleLevelFunctionIR] = []
     for f in functions:
         g = sys.modules[f.__module__].__dict__ if f.__module__ in sys.modules else None
         module_functions_ir_list.append(
-            parse_module_level_function_ir(f, module.target_module, synchronized_types, globals_dict=g)
+            parse_module_level_function_ir(
+                f, module.target_module, synchronized_types, globals_dict=g, impl_modules=impl_mods
+            )
         )
     module_functions_ir = tuple(module_functions_ir_list)
 
@@ -164,9 +169,12 @@ def parse_module_level_function_ir(
     *,
     globals_dict: dict[str, typing.Any] | None = None,
     runtime_package: str = "synchronicity",
+    impl_modules: frozenset[str] | None = None,
 ) -> ModuleLevelFunctionIR:
     _ = runtime_package  # reserved for parity with API; IR does not embed runtime package on nodes
     sync = SyncRegistry.from_type_map(synchronized_types)
+    if impl_modules is None:
+        impl_modules = frozenset({f.__module__})
     annotations = _safe_get_annotations(f, globals_dict)
     sig = inspect.signature(f)
     return_annotation = annotations.get("return", sig.return_annotation)
@@ -174,13 +182,19 @@ def parse_module_level_function_ir(
         return_annotation = collections.abc.AsyncGenerator[typing.Any, None]
     return_annotation = _normalize_async_annotation(f, return_annotation)
 
-    return_ir = annotation_to_transformer_ir(return_annotation, sync, owner_impl_type=None)
+    return_ir = annotation_to_transformer_ir(
+        return_annotation,
+        sync,
+        owner_impl_type=None,
+        impl_modules=impl_modules,
+    )
 
     parameters = parse_parameters_to_ir(
         sig,
         annotations,
         sync,
         skip_first_param=False,
+        impl_modules=impl_modules,
     )
 
     is_async_gen = is_async_generator(f, return_annotation)
@@ -207,8 +221,11 @@ def parse_method_wrapper_ir(
     method_type: MethodBindingKind = MethodBindingKind.INSTANCE,
     globals_dict: dict[str, typing.Any] | None = None,
     generic_typevars: dict[str, typing.TypeVar | typing.ParamSpec] | None = None,
+    impl_modules: frozenset[str] | None = None,
 ) -> MethodWrapperIR:
-    _ = generic_typevars  # retained for API compatibility; not stored on IR
+    generic_typevar_names = frozenset(generic_typevars.keys()) if generic_typevars else None
+    if impl_modules is None:
+        impl_modules = frozenset({impl_class.__module__})
     annotations = _safe_get_annotations(method, globals_dict)
     sig = inspect.signature(method)
     return_annotation = annotations.get("return", sig.return_annotation)
@@ -221,6 +238,8 @@ def parse_method_wrapper_ir(
         sync,
         owner_impl_type=impl_class,
         owner_has_type_parameters=owner_has_type_parameters,
+        impl_modules=impl_modules,
+        generic_typevar_names=generic_typevar_names,
     )
 
     skip_first_param = method_type in (MethodBindingKind.INSTANCE, MethodBindingKind.CLASSMETHOD)
@@ -232,6 +251,8 @@ def parse_method_wrapper_ir(
         skip_first_param=skip_first_param,
         owner_impl_type=impl_class,
         owner_has_type_parameters=owner_has_type_parameters,
+        impl_modules=impl_modules,
+        generic_typevar_names=generic_typevar_names,
     )
 
     is_async_gen = is_async_generator(method, return_annotation)
@@ -256,8 +277,11 @@ def parse_class_wrapper_ir(
     *,
     globals_dict: dict[str, typing.Any] | None = None,
     runtime_package: str = "synchronicity",
+    impl_modules: frozenset[str] | None = None,
 ) -> ClassWrapperIR:
     """Collect :class:`ClassWrapperIR` from a live implementation class (parse-time only)."""
+    if impl_modules is None:
+        impl_modules = frozenset({cls.__module__})
     sync_base = SyncRegistry.from_type_map(synchronized_types)
     sync_self = sync_base.with_impl_class(cls, target_module, cls.__name__)
 
@@ -316,6 +340,8 @@ def parse_class_wrapper_ir(
                 sync_self,
                 owner_impl_type=cls,
                 owner_has_type_parameters=bool(generic_typevars),
+                impl_modules=impl_modules,
+                generic_typevar_names=frozenset(generic_typevars.keys()) if generic_typevars else None,
             )
             attributes.append((name, annotation_ir))
 
@@ -331,6 +357,7 @@ def parse_class_wrapper_ir(
                 method_type=method_type,
                 globals_dict=globals_dict,
                 generic_typevars=generic_typevars if generic_typevars else None,
+                impl_modules=impl_modules,
             )
         )
 
@@ -348,6 +375,7 @@ def parse_class_wrapper_ir(
                 method_type=MethodBindingKind.INSTANCE,
                 globals_dict=globals_dict,
                 generic_typevars=generic_typevars if generic_typevars else None,
+                impl_modules=impl_modules,
             )
         )
 
@@ -365,6 +393,7 @@ def parse_class_wrapper_ir(
                 method_type=MethodBindingKind.INSTANCE,
                 globals_dict=globals_dict,
                 generic_typevars=generic_typevars if generic_typevars else None,
+                impl_modules=impl_modules,
             )
         )
     if has_anext:
@@ -379,6 +408,7 @@ def parse_class_wrapper_ir(
                 method_type=MethodBindingKind.INSTANCE,
                 globals_dict=globals_dict,
                 generic_typevars=generic_typevars if generic_typevars else None,
+                impl_modules=impl_modules,
             )
         )
 

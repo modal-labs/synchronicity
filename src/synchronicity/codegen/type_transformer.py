@@ -185,6 +185,34 @@ class WrappedClassTransformer(TypeTransformer):
         return True
 
 
+class TypeVarBoundTransformer(TypeTransformer):
+    """Type variable whose bound is a wrapped implementation class: signatures use *name* (e.g. ``T``); unwrap/wrap like :class:`WrappedClassTransformer`."""
+
+    def __init__(self, name: str, bound_impl: type | ImplQualifiedRef):
+        self._name = name
+        self._bound = WrappedClassTransformer(bound_impl)
+
+    def wrapped_type(self, sync: SyncRegistry, target_module: str, is_async: bool = True) -> str:
+        return self._name
+
+    def unwrap_expr(self, sync: SyncRegistry, var_name: str) -> str:
+        return self._bound.unwrap_expr(sync, var_name)
+
+    def wrap_expr(self, sync: SyncRegistry, target_module: str, var_name: str, is_async: bool = True) -> str:
+        return self._bound.wrap_expr(sync, target_module, var_name, is_async)
+
+    def needs_translation(self) -> bool:
+        return True
+
+    def get_wrapper_helpers(
+        self,
+        sync: SyncRegistry,
+        target_module: str,
+        indent: str = "    ",
+    ) -> dict[str, str]:
+        return self._bound.get_wrapper_helpers(sync, target_module, indent)
+
+
 class SelfTransformer(TypeTransformer):
     """``typing.Self`` on a synchronized class: unwrap/wrap like the wrapper type, but keep ``typing.Self``
     in signatures.
@@ -259,7 +287,11 @@ class ListTransformer(TypeTransformer):
             return var_name
 
         item_wrap = self.item_transformer.wrap_expr(sync, target_module, "x", is_async)
-        return f"[{item_wrap} for x in {var_name}]"
+        expr = f"[{item_wrap} for x in {var_name}]"
+        if isinstance(self.item_transformer, TypeVarBoundTransformer):
+            ann = self.wrapped_type(sync, target_module, is_async)
+            return f"typing.cast({ann}, {expr})"
+        return expr
 
     def needs_translation(self) -> bool:
         return self.item_transformer.needs_translation()
@@ -363,14 +395,18 @@ class TupleTransformer(TypeTransformer):
         if len(self.item_transformers) == 1:
             # Variable-length tuple
             item_wrap = self.item_transformers[0].wrap_expr(sync, target_module, "x", is_async)
-            return f"tuple({item_wrap} for x in {var_name})"
+            expr = f"tuple({item_wrap} for x in {var_name})"
         else:
             # Fixed-size tuple - wrap each element by index
             wrap_exprs = [
                 t.wrap_expr(sync, target_module, f"{var_name}[{i}]", is_async)
                 for i, t in enumerate(self.item_transformers)
             ]
-            return f"({', '.join(wrap_exprs)})"
+            expr = f"({', '.join(wrap_exprs)})"
+        if any(isinstance(t, TypeVarBoundTransformer) for t in self.item_transformers):
+            ann = self.wrapped_type(sync, target_module, is_async)
+            return f"typing.cast({ann}, {expr})"
+        return expr
 
     def needs_translation(self) -> bool:
         return any(t.needs_translation() for t in self.item_transformers)

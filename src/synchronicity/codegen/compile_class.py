@@ -38,6 +38,7 @@ def compile_method_wrapper(
         method_type=method_type,
         globals_dict=globals_dict,
         generic_typevars=generic_typevars,
+        impl_modules=frozenset({impl_class.__module__}),
     )
     owner = MethodEmitOwner(
         impl_ref=ImplQualifiedRef(impl_class.__module__, impl_class.__qualname__),
@@ -63,6 +64,7 @@ def compile_class(
         synchronized_types,
         globals_dict=globals_dict,
         runtime_package=runtime_package,
+        impl_modules=frozenset({cls.__module__}),
     )
     sync = SyncRegistry.from_type_map(synchronized_types)
     return emit_class_from_ir(ir, sync, target_module, runtime_package=runtime_package)
