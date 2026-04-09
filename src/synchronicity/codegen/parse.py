@@ -197,9 +197,6 @@ def parse_method_wrapper_ir(
     method: types.FunctionType,
     method_name: str,
     sync: SyncRegistry,
-    origin_module: str,
-    class_name: str,
-    current_target_module: str,
     impl_class: type,
     *,
     owner_has_type_parameters: bool = False,
@@ -241,11 +238,6 @@ def parse_method_wrapper_ir(
     return MethodWrapperIR(
         method_name=method_name,
         method_type=method_type,
-        origin_module=origin_module,
-        class_name=class_name,
-        current_target_module=current_target_module,
-        owner_impl_ref=ImplQualifiedRef(impl_class.__module__, impl_class.__qualname__),
-        owner_has_type_parameters=owner_has_type_parameters,
         parameters=parameters,
         is_async_gen=is_async_gen,
         is_async=is_async,
@@ -264,7 +256,6 @@ def parse_class_wrapper_ir(
     """Collect :class:`ClassWrapperIR` from a live implementation class (parse-time only)."""
     sync_base = SyncRegistry.from_type_map(synchronized_types)
     sync_self = sync_base.with_impl_class(cls, target_module, cls.__name__)
-    origin_module = cls.__module__
     current_target_module = target_module
 
     wrapped_bases: list[str] = []
@@ -332,9 +323,6 @@ def parse_class_wrapper_ir(
                 method,
                 method_name,
                 sync_self,
-                origin_module,
-                cls.__name__,
-                current_target_module,
                 cls,
                 owner_has_type_parameters=bool(generic_typevars),
                 method_type=method_type,
@@ -349,9 +337,6 @@ def parse_class_wrapper_ir(
             aiter_method,
             "__aiter__",
             sync_self,
-            origin_module,
-            cls.__name__,
-            current_target_module,
             cls,
             owner_has_type_parameters=bool(generic_typevars),
             method_type=MethodBindingKind.INSTANCE,
@@ -363,9 +348,6 @@ def parse_class_wrapper_ir(
             anext_method,
             "__anext__",
             sync_self,
-            origin_module,
-            cls.__name__,
-            current_target_module,
             cls,
             owner_has_type_parameters=bool(generic_typevars),
             method_type=MethodBindingKind.INSTANCE,
@@ -390,9 +372,6 @@ def parse_class_wrapper_ir(
 
     return ClassWrapperIR(
         impl_ref=ImplQualifiedRef(cls.__module__, cls.__qualname__),
-        wrapper_class_name=cls.__name__,
-        origin_module=origin_module,
-        current_target_module=current_target_module,
         wrapped_base_names=tuple(wrapped_bases),
         generic_base=generic_base,
         owner_has_type_parameters=bool(generic_typevars),

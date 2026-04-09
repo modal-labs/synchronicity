@@ -86,15 +86,10 @@ class ModuleLevelFunctionIR:
 
 @dataclasses.dataclass(frozen=True)
 class MethodWrapperIR:
-    """Parsed method: parameters + return type as transformer IR."""
+    """Parsed method: parameters + return type as transformer IR (owner context is separate)."""
 
     method_name: str
     method_type: MethodBindingKind
-    origin_module: str
-    class_name: str
-    current_target_module: str
-    owner_impl_ref: ImplQualifiedRef
-    owner_has_type_parameters: bool
     parameters: tuple[ParameterIR, ...]
     is_async_gen: bool
     is_async: bool
@@ -105,6 +100,10 @@ class MethodWrapperIR:
 class ClassWrapperIR:
     """Parsed class: everything needed to emit the wrapper without live ``type`` objects.
 
+    The implementation identity is ``impl_ref`` (``__module__`` + ``__qualname__``). The generated
+    wrapper module name is not stored here; emitters take it from :class:`ModuleCompilationIR` or the
+    compile API.
+
     ``dunders`` holds implementation dunder methods keyed by **impl** name (e.g. ``__aiter__``,
     ``__anext__``). Those names are omitted from ``methods``. Async-iterator protocol dunders are the
     only entries today; the emitter maps ``__aiter__`` / ``__anext__`` to wrapper sync/async surface
@@ -112,9 +111,6 @@ class ClassWrapperIR:
     """
 
     impl_ref: ImplQualifiedRef
-    wrapper_class_name: str
-    origin_module: str
-    current_target_module: str
     wrapped_base_names: tuple[str, ...]
     generic_base: str | None
     owner_has_type_parameters: bool

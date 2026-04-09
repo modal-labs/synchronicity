@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import dataclasses
+
 from ..compile_utils import _build_call_with_wrap, _format_return_annotation, format_parameters_for_emit
 from ..ir import (
     ClassWrapperIR,
@@ -11,9 +13,43 @@ from ..ir import (
     ModuleLevelFunctionIR,
 )
 from ..sync_registry import SyncRegistry
+from ..transformer_ir import ImplQualifiedRef
 from ..transformer_materialize import materialize_transformer_ir
 from ..type_transformer import AwaitableTransformer, CoroutineTransformer
 from ..typevar_codegen import typevar_definition_lines
+
+
+@dataclasses.dataclass(frozen=True)
+class MethodEmitOwner:
+    """Class-wrapper context needed when emitting method wrappers (emitter-only)."""
+
+    impl_ref: ImplQualifiedRef
+    target_module: str
+
+
+def _wrapper_short_name(impl_ref: ImplQualifiedRef) -> str:
+    """Emitted wrapper class identifier (last segment of implementation ``__qualname__``)."""
+
+    return impl_ref.qualname.rpartition(".")[2]
+
+
+def _impl_type_dotted(impl_ref: ImplQualifiedRef) -> str:
+    """Dotted path to the implementation type for emitted source.
+
+    Uses ``module`` + ``.__qualname__`` when qualname is a normal attribute path. If
+    ``__qualname__`` contains ``<locals>`` (nested in a function), only the last
+    segment is appended so the reference matches the previous
+    ``impl_ref.module`` + short-name emission (full qualname is not valid Python).
+    """
+
+    q = impl_ref.qualname
+    if ".<locals>." in q or q.startswith("<locals>."):
+        return f"{impl_ref.module}.{q.rpartition('.')[2]}"
+    return f"{impl_ref.module}.{q}"
+
+
+def method_emit_owner(class_ir: ClassWrapperIR, target_module: str) -> MethodEmitOwner:
+    return MethodEmitOwner(impl_ref=class_ir.impl_ref, target_module=target_module)
 
 
 def _async_iterator_dunder_surfaces(
@@ -29,12 +65,11 @@ def _async_iterator_dunder_surfaces(
 
 def _method_impl_call_expr(
     method_type: MethodBindingKind,
-    origin_module: str,
-    class_name: str,
+    impl_class_dotted: str,
     method_name: str,
     call_args_str: str,
 ) -> str:
-    impl_class_ref = f"{origin_module}.{class_name}"
+    impl_class_ref = impl_class_dotted
     if method_type == MethodBindingKind.INSTANCE:
         return f"impl_method(wrapper_instance._impl_instance, {call_args_str})"
     if method_type in (MethodBindingKind.CLASSMETHOD, MethodBindingKind.STATICMETHOD):
@@ -212,19 +247,20 @@ def {f}({param_str}){sync_return_str}:
 
 
 def emit_method_wrapper_pair(
-    ir: MethodWrapperIR,
+    owner: MethodEmitOwner,
+    mir: MethodWrapperIR,
     sync: SyncRegistry,
     *,
     runtime_package: str = "synchronicity",
 ) -> tuple[str, str]:
-    method_name = ir.method_name
-    method_type = ir.method_type
-    origin_module = ir.origin_module
-    class_name = ir.class_name
-    current_target_module = ir.current_target_module
-    return_transformer = materialize_transformer_ir(ir.return_transformer_ir, sync, runtime_package)
+    method_name = mir.method_name
+    method_type = mir.method_type
+    impl_dotted = _impl_type_dotted(owner.impl_ref)
+    short_name = _wrapper_short_name(owner.impl_ref)
+    current_target_module = owner.target_module
+    return_transformer = materialize_transformer_ir(mir.return_transformer_ir, sync, runtime_package)
     param_str, call_args_str, unwrap_code = format_parameters_for_emit(
-        ir.parameters,
+        mir.parameters,
         sync,
         current_target_module,
         runtime_package,
@@ -232,14 +268,13 @@ def emit_method_wrapper_pair(
     )
     call_expr_prefix = _method_impl_call_expr(
         method_type,
-        origin_module,
-        class_name,
+        impl_dotted,
         method_name,
         call_args_str,
     )
     dummy_param_str = param_str
-    is_async_gen = ir.is_async_gen
-    is_async = ir.is_async
+    is_async_gen = mir.is_async_gen
+    is_async = mir.is_async
     sync_return_str, async_return_str = _format_return_annotation(return_transformer, sync, current_target_module)
 
     aio_body = None
@@ -256,9 +291,9 @@ def emit_method_wrapper_pair(
                 indent="    ",
                 is_async=False,
                 method_type=method_type,
-                method_owner_impl_ref=ir.owner_impl_ref,
+                method_owner_impl_ref=owner.impl_ref,
             )
-            impl_method_line = f"    impl_method = {origin_module}.{class_name}.{method_name}"
+            impl_method_line = f"    impl_method = {impl_dotted}.{method_name}"
             if unwrap_code:
                 sync_method_body = impl_method_line + "\n" + unwrap_code + "\n" + sync_method_body
             else:
@@ -268,7 +303,7 @@ def emit_method_wrapper_pair(
             gen_call = call_expr_prefix
             wrap_expr_raw = return_transformer.wrap_expr(sync, current_target_module, "gen")
             wrap_expr = wrap_expr_raw.replace("self.", "wrapper_instance.")
-            impl_method_line = f"impl_method = {origin_module}.{class_name}.{method_name}"
+            impl_method_line = f"impl_method = {impl_dotted}.{method_name}"
             unwrap_lines = f"\n{unwrap_code}\n" if unwrap_code else "\n"
             aio_body = (
                 f"    {impl_method_line}{unwrap_lines}"
@@ -295,7 +330,7 @@ def emit_method_wrapper_pair(
             else:
                 sync_method_body = f"{impl_method_line_sync}\n    gen = {gen_call}\n    yield from {sync_wrap_expr}"
         else:
-            impl_method_line = f"    impl_method = {origin_module}.{class_name}.{method_name}"
+            impl_method_line = f"    impl_method = {impl_dotted}.{method_name}"
 
             aio_body = _build_call_with_wrap(
                 call_expr_prefix,
@@ -305,7 +340,7 @@ def emit_method_wrapper_pair(
                 indent="    ",
                 is_async=True,
                 method_type=method_type,
-                method_owner_impl_ref=ir.owner_impl_ref,
+                method_owner_impl_ref=owner.impl_ref,
             )
             if unwrap_code:
                 aio_body = impl_method_line + "\n" + unwrap_code + "\n" + aio_body
@@ -320,7 +355,7 @@ def emit_method_wrapper_pair(
                 indent="    ",
                 is_async=False,
                 method_type=method_type,
-                method_owner_impl_ref=ir.owner_impl_ref,
+                method_owner_impl_ref=owner.impl_ref,
             )
             if unwrap_code:
                 sync_method_body = impl_method_line + "\n" + unwrap_code + "\n" + sync_method_body
@@ -337,7 +372,7 @@ def emit_method_wrapper_pair(
                 indent="    ",
                 is_async=False,
                 method_type=method_type,
-                method_owner_impl_ref=ir.owner_impl_ref,
+                method_owner_impl_ref=owner.impl_ref,
             )
             if unwrap_code:
                 sync_method_body = unwrap_code + "\n" + sync_method_body
@@ -376,7 +411,7 @@ def emit_method_wrapper_pair(
                 indent="    ",
                 is_async=True,
                 method_type=method_type,
-                method_owner_impl_ref=ir.owner_impl_ref,
+                method_owner_impl_ref=owner.impl_ref,
             )
             if unwrap_code:
                 aio_body = unwrap_code + "\n" + aio_body
@@ -389,7 +424,7 @@ def emit_method_wrapper_pair(
                 indent="    ",
                 is_async=False,
                 method_type=method_type,
-                method_owner_impl_ref=ir.owner_impl_ref,
+                method_owner_impl_ref=owner.impl_ref,
             )
             if unwrap_code:
                 sync_method_body = unwrap_code + "\n" + sync_method_body
@@ -404,7 +439,7 @@ def emit_method_wrapper_pair(
                 indent="    ",
                 is_async=False,
                 method_type=method_type,
-                method_owner_impl_ref=ir.owner_impl_ref,
+                method_owner_impl_ref=owner.impl_ref,
             )
             if unwrap_code:
                 sync_method_body = unwrap_code + "\n" + sync_method_body
@@ -413,7 +448,7 @@ def emit_method_wrapper_pair(
             gen_call = call_expr_prefix
             wrap_expr_raw = return_transformer.wrap_expr(sync, current_target_module, "gen")
             if "self." in wrap_expr_raw:
-                wrap_expr = wrap_expr_raw.replace("self.", f"{class_name}()._").replace("_(", "(")
+                wrap_expr = wrap_expr_raw.replace("self.", f"{short_name}()._").replace("_(", "(")
             else:
                 wrap_expr = wrap_expr_raw
             unwrap_lines = f"{unwrap_code}\n    " if unwrap_code else ""
@@ -433,7 +468,7 @@ def emit_method_wrapper_pair(
             )
             sync_wrap_expr_raw = return_transformer.wrap_expr(sync, current_target_module, "gen", is_async=False)
             if "self." in sync_wrap_expr_raw:
-                sync_wrap_expr = sync_wrap_expr_raw.replace("self.", f"{class_name}()._").replace("_(", "(")
+                sync_wrap_expr = sync_wrap_expr_raw.replace("self.", f"{short_name}()._").replace("_(", "(")
             else:
                 sync_wrap_expr = sync_wrap_expr_raw
             if unwrap_code:
@@ -449,7 +484,7 @@ def emit_method_wrapper_pair(
                 indent="    ",
                 is_async=True,
                 method_type=method_type,
-                method_owner_impl_ref=ir.owner_impl_ref,
+                method_owner_impl_ref=owner.impl_ref,
             )
             if unwrap_code:
                 aio_body = unwrap_code + "\n" + aio_body
@@ -462,7 +497,7 @@ def emit_method_wrapper_pair(
                 indent="    ",
                 is_async=False,
                 method_type=method_type,
-                method_owner_impl_ref=ir.owner_impl_ref,
+                method_owner_impl_ref=owner.impl_ref,
             )
             if unwrap_code:
                 sync_method_body = unwrap_code + "\n" + sync_method_body
@@ -614,24 +649,24 @@ def emit_method_wrapper_pair(
 def emit_class_from_ir(
     ir: ClassWrapperIR,
     sync: SyncRegistry,
+    target_module: str,
     *,
     runtime_package: str = "synchronicity",
 ) -> str:
     """Emit wrapper class source from :class:`ClassWrapperIR` (no live implementation objects)."""
-    sync_self = sync.with_impl_ref(ir.impl_ref, ir.current_target_module, ir.wrapper_class_name)
+    wshort = _wrapper_short_name(ir.impl_ref)
+    impl_dot = _impl_type_dotted(ir.impl_ref)
+    sync_self = sync.with_impl_ref(ir.impl_ref, target_module, wshort)
+    owner = method_emit_owner(ir, target_module)
     all_helpers_dict: dict[str, str] = {}
 
     for mir in ir.methods:
         return_transformer = materialize_transformer_ir(mir.return_transformer_ir, sync_self, runtime_package)
-        all_helpers_dict.update(
-            return_transformer.get_wrapper_helpers(sync_self, ir.current_target_module, indent="    ")
-        )
+        all_helpers_dict.update(return_transformer.get_wrapper_helpers(sync_self, target_module, indent="    "))
 
     for mir in ir.dunders.values():
         return_transformer = materialize_transformer_ir(mir.return_transformer_ir, sync_self, runtime_package)
-        all_helpers_dict.update(
-            return_transformer.get_wrapper_helpers(sync_self, ir.current_target_module, indent="    ")
-        )
+        all_helpers_dict.update(return_transformer.get_wrapper_helpers(sync_self, target_module, indent="    "))
 
     helpers_code = "\n".join(all_helpers_dict.values()) if all_helpers_dict else ""
     helpers_section = f"\n{helpers_code}\n" if helpers_code else ""
@@ -639,7 +674,7 @@ def emit_class_from_ir(
     method_definitions_with_async: list[str] = []
     for mir in ir.methods:
         wrapper_functions_code, sync_method_code = emit_method_wrapper_pair(
-            mir, sync_self, runtime_package=runtime_package
+            owner, mir, sync_self, runtime_package=runtime_package
         )
         if wrapper_functions_code:
             method_definitions_with_async.append(f"{wrapper_functions_code}\n\n{sync_method_code}")
@@ -679,15 +714,15 @@ def emit_class_from_ir(
                 mir.return_transformer_ir, sync_self, runtime_package
             )
             method_sync_return_str, method_async_return_str = _format_return_annotation(
-                method_return_transformer, sync_self, ir.current_target_module
+                method_return_transformer, sync_self, target_module
             )
-            method_call_expr = f"{ir.origin_module}.{ir.wrapper_class_name}.{mir.method_name}(self._impl_instance)"
+            method_call_expr = f"{impl_dot}.{mir.method_name}(self._impl_instance)"
             sync_indent = "            " if stop_iteration_bridge else "        "
             sync_body = _build_call_with_wrap(
                 method_call_expr,
                 method_return_transformer,
                 sync_self,
-                ir.current_target_module,
+                target_module,
                 indent=sync_indent,
                 is_async=False,
                 method_type=MethodBindingKind.INSTANCE,
@@ -708,7 +743,7 @@ def emit_class_from_ir(
                 method_call_expr,
                 method_return_transformer,
                 sync_self,
-                ir.current_target_module,
+                target_module,
                 indent="        ",
                 is_async=True,
                 method_type=MethodBindingKind.INSTANCE,
@@ -723,7 +758,7 @@ def emit_class_from_ir(
     wrapped_bases = list(ir.wrapped_base_names)
     if not wrapped_bases:
         from_impl_method = f"""    @classmethod
-    def _from_impl(cls, impl_instance: {ir.origin_module}.{ir.wrapper_class_name}) -> "{ir.wrapper_class_name}":
+    def _from_impl(cls, impl_instance: {impl_dot}) -> "{wshort}":
         \"\"\"Create wrapper from implementation instance, preserving identity via cache.\"\"\"
         return _wrapped_from_impl(cls, impl_instance, cls._instance_cache)"""
     else:
@@ -737,31 +772,31 @@ def emit_class_from_ir(
 
     if all_bases:
         bases_str = ", ".join(all_bases)
-        class_declaration = f"""class {ir.wrapper_class_name}({bases_str}):"""
+        class_declaration = f"""class {wshort}({bases_str}):"""
     else:
-        class_declaration = f"""class {ir.wrapper_class_name}:"""
+        class_declaration = f"""class {wshort}:"""
 
     if not wrapped_bases:
         class_attrs = (
-            f"""    \"\"\"Wrapper class for {ir.origin_module}.{ir.wrapper_class_name} """
+            f"""    \"\"\"Wrapper class for {impl_dot} """
             f"""with sync/async method support\"\"\"
 
     _instance_cache: weakref.WeakValueDictionary = weakref.WeakValueDictionary()"""
         )
     else:
-        class_attrs = f"""    \"\"\"Wrapper class for {ir.origin_module}.{ir.wrapper_class_name} with sync/async method support\"\"\""""
+        class_attrs = f"""    \"\"\"Wrapper class for {impl_dot} with sync/async method support\"\"\""""
 
     init_sig, init_call, init_unwrap = format_parameters_for_emit(
         ir.init_parameters,
         sync_self,
-        ir.current_target_module,
+        target_module,
         runtime_package,
         unwrap_indent="        ",
     )
     init_params = f"self, {init_sig}" if init_sig else "self"
     init_method = f"""    def __init__({init_params}):
 {init_unwrap}
-        self._impl_instance = {ir.origin_module}.{ir.wrapper_class_name}({init_call})
+        self._impl_instance = {impl_dot}({init_call})
         type(self)._instance_cache[id(self._impl_instance)] = self"""
 
     properties_section = "\n\n".join(property_definitions) if property_definitions else ""
@@ -826,7 +861,7 @@ class SyncAsyncWrapperEmitter:
             compiled_code.append("")
 
         for i, cw in enumerate(ir.class_wrappers):
-            code = emit_class_from_ir(cw, sync, runtime_package=runtime_package)
+            code = emit_class_from_ir(cw, sync, ir.target_module, runtime_package=runtime_package)
             if i > 0:
                 compiled_code.append("")
             compiled_code.append(code)

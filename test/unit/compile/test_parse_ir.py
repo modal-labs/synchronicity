@@ -41,7 +41,7 @@ def test_build_module_compilation_ir_uses_qualified_refs():
     assert ir.class_refs == (ImplQualifiedRef(Service.__module__, Service.__qualname__),)
     assert ir.function_refs == (ImplQualifiedRef(top_level.__module__, top_level.__qualname__),)
     assert len(ir.class_wrappers) == 1
-    assert ir.class_wrappers[0].wrapper_class_name == "Service"
+    assert ir.class_wrappers[0].impl_ref.qualname.rpartition(".")[2] == "Service"
     assert len(ir.module_functions_ir) == 1
     assert ir.module_functions_ir[0].impl_ref == ir.function_refs[0]
     assert ir.has_wrapped_classes is True

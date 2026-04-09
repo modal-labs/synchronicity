@@ -5,18 +5,17 @@ from __future__ import annotations
 import types
 import typing
 
-from .emitters.sync_async_wrappers import emit_class_from_ir, emit_method_wrapper_pair
+from .emitters.sync_async_wrappers import MethodEmitOwner, emit_class_from_ir, emit_method_wrapper_pair
 from .ir import MethodBindingKind
 from .parse import parse_class_wrapper_ir, parse_method_wrapper_ir
 from .sync_registry import SyncRegistry
+from .transformer_ir import ImplQualifiedRef
 
 
 def compile_method_wrapper(
     method: types.FunctionType,
     method_name: str,
     synchronized_types: dict[type, tuple[str, str]],
-    origin_module: str,
-    class_name: str,
     current_target_module: str,
     impl_class: type,
     *,
@@ -34,16 +33,17 @@ def compile_method_wrapper(
         method,
         method_name,
         sync_self,
-        origin_module,
-        class_name,
-        current_target_module,
         impl_class,
         owner_has_type_parameters=owner_has_type_parameters,
         method_type=method_type,
         globals_dict=globals_dict,
         generic_typevars=generic_typevars,
     )
-    return emit_method_wrapper_pair(ir, sync_self, runtime_package=runtime_package)
+    owner = MethodEmitOwner(
+        impl_ref=ImplQualifiedRef(impl_class.__module__, impl_class.__qualname__),
+        target_module=current_target_module,
+    )
+    return emit_method_wrapper_pair(owner, ir, sync_self, runtime_package=runtime_package)
 
 
 def compile_class(
@@ -65,4 +65,4 @@ def compile_class(
         runtime_package=runtime_package,
     )
     sync = SyncRegistry.from_type_map(synchronized_types)
-    return emit_class_from_ir(ir, sync, runtime_package=runtime_package)
+    return emit_class_from_ir(ir, sync, target_module, runtime_package=runtime_package)
