@@ -166,6 +166,8 @@ def parse_module_level_function_ir(
     annotations = _safe_get_annotations(f, globals_dict)
     sig = inspect.signature(f)
     return_annotation = annotations.get("return", sig.return_annotation)
+    if is_async_generator(f, return_annotation) and return_annotation == inspect.Signature.empty:
+        return_annotation = collections.abc.AsyncGenerator[typing.Any, None]
     return_annotation = _normalize_async_annotation(f, return_annotation)
 
     return_ir = annotation_to_transformer_ir(return_annotation, sync, owner_impl_type=None)
@@ -206,16 +208,13 @@ def parse_method_wrapper_ir(
     method_type: str = "instance",
     globals_dict: dict[str, typing.Any] | None = None,
     generic_typevars: dict[str, typing.TypeVar | typing.ParamSpec] | None = None,
-    runtime_package: str = "synchronicity",
-    dunder_iterator_protocol: bool = False,
 ) -> MethodWrapperIR:
     _ = generic_typevars  # retained for API compatibility; not stored on IR
     annotations = _safe_get_annotations(method, globals_dict)
     sig = inspect.signature(method)
     return_annotation = annotations.get("return", sig.return_annotation)
-    if dunder_iterator_protocol:
-        if is_async_generator(method, return_annotation) and return_annotation == inspect.Signature.empty:
-            return_annotation = collections.abc.AsyncGenerator[typing.Any, None]
+    if is_async_generator(method, return_annotation) and return_annotation == inspect.Signature.empty:
+        return_annotation = collections.abc.AsyncGenerator[typing.Any, None]
     return_annotation = _normalize_async_annotation(method, return_annotation)
 
     return_ir = annotation_to_transformer_ir(
@@ -343,7 +342,6 @@ def parse_class_wrapper_ir(
                 method_type=method_type,
                 globals_dict=globals_dict,
                 generic_typevars=generic_typevars if generic_typevars else None,
-                runtime_package=runtime_package,
             )
         )
 
@@ -361,8 +359,6 @@ def parse_class_wrapper_ir(
             method_type="instance",
             globals_dict=globals_dict,
             generic_typevars=generic_typevars if generic_typevars else None,
-            runtime_package=runtime_package,
-            dunder_iterator_protocol=True,
         )
     if has_anext:
         dunders["__anext__"] = parse_method_wrapper_ir(
@@ -377,8 +373,6 @@ def parse_class_wrapper_ir(
             method_type="instance",
             globals_dict=globals_dict,
             generic_typevars=generic_typevars if generic_typevars else None,
-            runtime_package=runtime_package,
-            dunder_iterator_protocol=True,
         )
 
     init_method = getattr(cls, "__init__", None)

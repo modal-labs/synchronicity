@@ -41,7 +41,6 @@ def compile_method_wrapper(
         method_type=method_type,
         globals_dict=globals_dict,
         generic_typevars=generic_typevars,
-        runtime_package=runtime_package,
     )
     return emit_method_wrapper_pair(ir, sync_self, runtime_package=runtime_package)
 
