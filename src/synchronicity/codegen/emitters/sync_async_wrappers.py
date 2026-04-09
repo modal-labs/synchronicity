@@ -60,7 +60,6 @@ def emit_module_level_function(
     target_module: str,
     runtime_package: str = "synchronicity",
 ) -> str:
-    origin_module = ir.origin_module
     current_target_module = target_module
     return_transformer = materialize_transformer_ir(ir.return_transformer_ir, sync, runtime_package)
     param_str, call_args_str, unwrap_code = format_parameters_for_emit(
@@ -71,7 +70,8 @@ def emit_module_level_function(
         unwrap_indent="    ",
     )
     is_async_gen = ir.is_async_gen
-    f = ir.impl_name
+    f = ir.impl_ref.qualname.rpartition(".")[2]
+    impl_dotted = f"{ir.impl_ref.module}.{f}"
 
     if not ir.needs_async_wrapper:
         sync_return_str, _ = _format_return_annotation(return_transformer, sync, current_target_module)
@@ -101,7 +101,7 @@ def emit_module_level_function(
             is_function=True,
         )
 
-        impl_ref = f"    impl_function = {origin_module}.{f}"
+        impl_ref = f"    impl_function = {impl_dotted}"
         if unwrap_code:
             function_body = f"{impl_ref}\n{unwrap_code}\n{function_body}"
         else:
@@ -142,7 +142,7 @@ def emit_module_level_function(
 
     aio_function_name = f"__{f}_aio"
 
-    aio_impl_ref = f"    impl_function = {origin_module}.{f}"
+    aio_impl_ref = f"    impl_function = {impl_dotted}"
     aio_unwrap_section = aio_impl_ref
     if unwrap_code:
         aio_unwrap_section += "\n" + unwrap_code
@@ -180,7 +180,7 @@ def emit_module_level_function(
 {aio_body}
 """
 
-    sync_impl_ref = f"    impl_function = {origin_module}.{f}"
+    sync_impl_ref = f"    impl_function = {impl_dotted}"
     sync_unwrap_section = sync_impl_ref
     if unwrap_code:
         sync_unwrap_section += "\n" + unwrap_code

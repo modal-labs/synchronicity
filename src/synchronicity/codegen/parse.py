@@ -163,7 +163,6 @@ def parse_module_level_function_ir(
 ) -> ModuleLevelFunctionIR:
     _ = runtime_package  # reserved for parity with API; IR does not embed runtime package on nodes
     sync = SyncRegistry.from_type_map(synchronized_types)
-    origin_module = f.__module__
     annotations = _safe_get_annotations(f, globals_dict)
     sig = inspect.signature(f)
     return_annotation = annotations.get("return", sig.return_annotation)
@@ -187,8 +186,6 @@ def parse_module_level_function_ir(
 
     return ModuleLevelFunctionIR(
         impl_ref=ImplQualifiedRef(f.__module__, f.__qualname__),
-        origin_module=origin_module,
-        impl_name=f.__name__,
         needs_async_wrapper=needs_async_wrapper,
         is_async_gen=is_async_gen,
         parameters=parameters,
@@ -297,7 +294,7 @@ def parse_class_wrapper_ir(
                 else:
                     wrapped_bases.append(f"{base_target_module}.{base_wrapper_name}")
 
-    methods: list[tuple[str, types.FunctionType, str]] = []
+    methods: list[tuple[str, types.FunctionType, MethodBindingKind]] = []
     classmethod_staticmethod_names: set[str] = set()
     for name, attr in cls.__dict__.items():
         if name.startswith("_"):

@@ -43,5 +43,5 @@ def test_build_module_compilation_ir_uses_qualified_refs():
     assert len(ir.class_wrappers) == 1
     assert ir.class_wrappers[0].wrapper_class_name == "Service"
     assert len(ir.module_functions_ir) == 1
-    assert ir.module_functions_ir[0].impl_name == "top_level"
+    assert ir.module_functions_ir[0].impl_ref == ir.function_refs[0]
     assert ir.has_wrapped_classes is True

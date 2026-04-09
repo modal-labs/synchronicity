@@ -78,8 +78,6 @@ class ModuleLevelFunctionIR:
     """Parsed module-level function: parameters + return type as transformer IR."""
 
     impl_ref: ImplQualifiedRef
-    origin_module: str
-    impl_name: str
     needs_async_wrapper: bool
     is_async_gen: bool
     parameters: tuple[ParameterIR, ...]
