@@ -72,20 +72,6 @@ def _materialize_context_for_module(specs: tuple[TypeVarSpecIR, ...]) -> Materia
     return MaterializeContext(typevar_specs_by_name={s.name: s for s in specs})
 
 
-def _materialize_context_for_class(
-    specs: tuple[TypeVarSpecIR, ...], class_ir: ClassWrapperIR
-) -> MaterializeContext | None:
-    m: dict[str, TypeVarSpecIR] | None = {s.name: s for s in specs} if specs else None
-    gt = class_ir.generic_type_parameters
-    if not gt:
-        return MaterializeContext(typevar_specs_by_name=m) if m else None
-    return MaterializeContext(
-        typevar_specs_by_name=m,
-        opaque_typevar_names=frozenset(gt),
-        owner_has_type_parameters=True,
-    )
-
-
 _CLASS_INIT_NAME = "__init__"
 _ASYNC_ITERATOR_DUNDERS = frozenset({"__aiter__", "__anext__"})
 
@@ -932,9 +918,8 @@ class SyncAsyncWrapperEmitter:
 
         module_mat_ctx = _materialize_context_for_module(ir.typevar_specs)
         for i, cw in enumerate(ir.class_wrappers):
-            class_mat_ctx = _materialize_context_for_class(ir.typevar_specs, cw)
             code = emit_class_from_ir(
-                cw, sync, ir.target_module, runtime_package=runtime_package, mat_ctx=class_mat_ctx
+                cw, sync, ir.target_module, runtime_package=runtime_package, mat_ctx=module_mat_ctx
             )
             if i > 0:
                 compiled_code.append("")

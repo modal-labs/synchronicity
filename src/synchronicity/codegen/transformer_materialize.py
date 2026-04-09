@@ -32,11 +32,9 @@ from .transformer_ir import (
 
 @dataclasses.dataclass
 class MaterializeContext:
-    """Module + class context for resolving :class:`TypeVarIR` and opaque class type parameters."""
+    """Module-level type variable specs for resolving :class:`TypeVarIR` (name → bound translation)."""
 
     typevar_specs_by_name: dict[str, TypeVarSpecIR] | None = None
-    opaque_typevar_names: frozenset[str] | None = None
-    owner_has_type_parameters: bool = False
 
 
 def impl_qualified(t: type) -> ImplQualifiedRef:
@@ -279,13 +277,6 @@ def _materialize_typevar_ir(
     runtime_package: str,
     ctx: MaterializeContext | None,
 ) -> tt.TypeTransformer:
-    if (
-        ctx is not None
-        and ctx.owner_has_type_parameters
-        and ctx.opaque_typevar_names is not None
-        and ir.name in ctx.opaque_typevar_names
-    ):
-        return tt.IdentityStrTransformer(ir.name)
     if ctx is None or ctx.typevar_specs_by_name is None:
         return tt.IdentityStrTransformer(ir.name)
     spec = ctx.typevar_specs_by_name.get(ir.name)

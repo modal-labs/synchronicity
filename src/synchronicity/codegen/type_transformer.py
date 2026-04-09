@@ -199,7 +199,8 @@ class TypeVarBoundTransformer(TypeTransformer):
         return self._bound.unwrap_expr(sync, var_name)
 
     def wrap_expr(self, sync: SyncRegistry, target_module: str, var_name: str, is_async: bool = True) -> str:
-        return self._bound.wrap_expr(sync, target_module, var_name, is_async)
+        inner = self._bound.wrap_expr(sync, target_module, var_name, is_async)
+        return f"typing.cast({self._name}, {inner})"
 
     def needs_translation(self) -> bool:
         return True

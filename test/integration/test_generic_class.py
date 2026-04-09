@@ -1,6 +1,5 @@
 """Integration tests for generic_class_impl.py support file."""
 
-import pytest
 from pathlib import Path
 
 from test.integration.test_utils import check_pyright
@@ -12,15 +11,15 @@ def test_runtime():
     assert hasattr(generic_class, "Container")
     assert hasattr(generic_class, "FunctionWrapper")
 
-    container_int = generic_class.Container(42)
-    container_str = generic_class.Container("hello")
-    assert container_int.get() == 42
-    assert container_str.get() == "hello"
+    container_42 = generic_class.Container(generic_class.WrappedType(42))
+    container_43 = generic_class.Container(generic_class.WrappedType(43))
+    assert container_42.get().val == 42
+    assert container_43.get().val == 43
 
-    container = generic_class.Container(100)
-    assert container.get() == 100
-    container.set(200)
-    assert container.get() == 200
+    container_100 = generic_class.Container(generic_class.WrappedType(100))
+    assert container_100.get().val == 100
+    container_100.set(generic_class.WrappedType(200))
+    assert container_100.get().val == 200
 
     def add(x: int, y: int) -> int:
         return x + y
@@ -34,7 +33,7 @@ def test_runtime():
     wrapper2 = generic_class.FunctionWrapper(add2)
     assert wrapper2._impl_instance.f == add2
 
-    container3 = generic_class.Container(generic_class.WrappedType())
+    container3 = generic_class.Container(generic_class.WrappedType(3))
     assert hasattr(container3, "get")
     assert hasattr(container3, "set")
     wrapper3 = generic_class.FunctionWrapper(lambda x: x)
@@ -47,10 +46,6 @@ def test_pyright_implementation():
     check_pyright([Path(generic_class_impl.__file__)])
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Pyright does not yet accept generic Container wrapper passing T into impl Container(value)",
-)
 def test_pyright_wrapper():
     import generic_class
 

@@ -11,7 +11,10 @@ mod = synchronicity.Module("generic_class")
 
 @mod.wrap_class
 class WrappedType:
-    pass
+    val: int
+
+    def __init__(self, val: int):
+        self.val = val
 
 
 @mod.wrap_class
@@ -19,12 +22,14 @@ class Container(Generic[T]):
     """A generic container class."""
 
     def __init__(self, value: T):
+        assert isinstance(value, WrappedType)
         self.value = value
 
     async def get(self) -> T:
         return self.value
 
     async def set(self, value: T) -> None:
+        assert isinstance(value, WrappedType)
         self.value = value
 
 
