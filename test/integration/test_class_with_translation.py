@@ -111,4 +111,5 @@ def test_pyright_keyword_arguments(generated_wrappers, support_files):
 def test_type_in_constructor(generated_wrappers):
     import class_with_translation
 
-    res = class_with_translation.WrappedTypeInConstructor(class_with_translation.Node(10))
+    result = class_with_translation.WrappedTypeInConstructor(class_with_translation.Node(10))
+    assert result is not None

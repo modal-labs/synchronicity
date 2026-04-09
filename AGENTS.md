@@ -23,6 +23,7 @@
 - For integration tests, make sure to test both runtime logic assumptions and static type checking of the generated wrapper classes
 - Ask before making changes to integration tests themselves to make tests pass. Unit tests can be changed more permissively if the output syntax in gencode is intentionded to change.
 - When running pytest, always activate the virtualenv in `.venv` first.
+- Before pushing code, run the repo's pre-commit hooks and fix any reported lint or format issues. Install once per clone with `pre-commit install`; run all hooks manually with `pre-commit run --all-files` (or rely on hooks at commit time).
 - Update docs and examples to reflect changes and new features as they are added
 - Preserve accurate feature documentation by checking the current source and tests
 - Use type annotations in examples and implementation - code generation depends on them.
