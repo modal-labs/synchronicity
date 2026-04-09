@@ -10,15 +10,28 @@ Tests each transformer type for:
 import pytest
 
 from synchronicity.codegen.sync_registry import SyncRegistry
+from synchronicity.codegen.transformer_materialize import (
+    annotation_to_transformer_ir,
+    materialize_transformer_ir,
+)
 from synchronicity.codegen.type_transformer import (
+    AsyncGeneratorTransformer,
+    AwaitableTransformer,
+    CoroutineTransformer,
     DictTransformer,
+    IdentityStrTransformer,
     IdentityTransformer,
     ListTransformer,
     OptionalTransformer,
     TupleTransformer,
     WrappedClassTransformer,
-    create_transformer,
 )
+
+
+def _materialize(annotation, sync: SyncRegistry, **kwargs):
+    """Annotation → TypeTransformerIR → runtime transformer (same path as codegen)."""
+    ir = annotation_to_transformer_ir(annotation, sync, **kwargs)
+    return materialize_transformer_ir(ir, sync, "synchronicity")
 
 
 @pytest.fixture
@@ -410,57 +423,55 @@ class TestGeneratorTransformer:
         assert transformer4.needs_translation() is True
 
 
-class TestCreateTransformer:
-    """Test the create_transformer factory function."""
+class TestMaterializeFromAnnotation:
+    """``annotation_to_transformer_ir`` + ``materialize_transformer_ir`` (codegen path)."""
 
     def test_create_primitive(self, sync):
-        transformer = create_transformer(int, sync)
-        assert isinstance(transformer, IdentityTransformer)
+        transformer = _materialize(int, sync)
+        assert isinstance(transformer, IdentityStrTransformer)
 
     def test_create_wrapped_class(self, sync, wrapped_class):
-        transformer = create_transformer(wrapped_class, sync)
+        transformer = _materialize(wrapped_class, sync)
         assert isinstance(transformer, WrappedClassTransformer)
 
     def test_create_list(self, sync):
         from typing import List
 
-        transformer = create_transformer(List[int], sync)
+        transformer = _materialize(List[int], sync)
         assert isinstance(transformer, ListTransformer)
-        assert isinstance(transformer.item_transformer, IdentityTransformer)
+        assert isinstance(transformer.item_transformer, IdentityStrTransformer)
 
     def test_create_dict(self, sync):
         from typing import Dict
 
-        transformer = create_transformer(Dict[str, int], sync)
+        transformer = _materialize(Dict[str, int], sync)
         assert isinstance(transformer, DictTransformer)
 
     def test_create_tuple_fixed(self, sync, wrapped_class):
         from typing import Tuple
 
-        transformer = create_transformer(Tuple[int, wrapped_class], sync)
+        transformer = _materialize(Tuple[int, wrapped_class], sync)
         assert isinstance(transformer, TupleTransformer)
         assert len(transformer.item_transformers) == 2
 
     def test_create_optional(self, sync, wrapped_class):
         from typing import Optional
 
-        transformer = create_transformer(Optional[wrapped_class], sync)
+        transformer = _materialize(Optional[wrapped_class], sync)
         assert isinstance(transformer, OptionalTransformer)
         assert isinstance(transformer.inner_transformer, WrappedClassTransformer)
 
     def test_create_async_generator(self, sync):
         from typing import AsyncGenerator
 
-        from synchronicity.codegen.type_transformer import AsyncGeneratorTransformer
-
-        transformer = create_transformer(AsyncGenerator[str, None], sync)
+        transformer = _materialize(AsyncGenerator[str, None], sync)
         assert isinstance(transformer, AsyncGeneratorTransformer)
 
     def test_nested_list_of_optional_wrapped(self, sync, wrapped_class):
         """Test nested type: list[Optional[WrappedClass]]."""
         from typing import List, Optional
 
-        transformer = create_transformer(List[Optional[wrapped_class]], sync)
+        transformer = _materialize(List[Optional[wrapped_class]], sync)
         assert isinstance(transformer, ListTransformer)
         assert isinstance(transformer.item_transformer, OptionalTransformer)
         assert isinstance(transformer.item_transformer.inner_transformer, WrappedClassTransformer)
@@ -476,9 +487,7 @@ class TestCreateTransformer:
         """Test Coroutine[Any, Any, str] creates CoroutineTransformer."""
         from typing import Any, Coroutine
 
-        from synchronicity.codegen.type_transformer import CoroutineTransformer
-
-        transformer = create_transformer(Coroutine[Any, Any, str], sync)
+        transformer = _materialize(Coroutine[Any, Any, str], sync)
         assert isinstance(transformer, CoroutineTransformer)
 
         # Check that return type is unwrapped to str
@@ -489,21 +498,15 @@ class TestCreateTransformer:
         """Test bare Coroutine (no type args) creates CoroutineTransformer with identity return."""
         from typing import Coroutine
 
-        from synchronicity.codegen.type_transformer import CoroutineTransformer, IdentityTransformer
-
-        transformer = create_transformer(Coroutine, sync)
-        # Should be a CoroutineTransformer, not IdentityTransformer
+        transformer = _materialize(Coroutine, sync)
         assert isinstance(transformer, CoroutineTransformer)
-        # The return transformer should be identity since no type args
-        assert isinstance(transformer.return_transformer, IdentityTransformer)
+        assert isinstance(transformer.return_transformer, IdentityStrTransformer)
 
     def test_create_awaitable_with_args(self, sync):
         """Test Awaitable[str] creates AwaitableTransformer."""
         from typing import Awaitable
 
-        from synchronicity.codegen.type_transformer import AwaitableTransformer
-
-        transformer = create_transformer(Awaitable[str], sync)
+        transformer = _materialize(Awaitable[str], sync)
         assert isinstance(transformer, AwaitableTransformer)
 
         # Check that return type is unwrapped to str
@@ -514,13 +517,9 @@ class TestCreateTransformer:
         """Test bare Awaitable (no type args) creates AwaitableTransformer with identity return."""
         from typing import Awaitable
 
-        from synchronicity.codegen.type_transformer import AwaitableTransformer, IdentityTransformer
-
-        transformer = create_transformer(Awaitable, sync)
-        # Should be an AwaitableTransformer, not IdentityTransformer
+        transformer = _materialize(Awaitable, sync)
         assert isinstance(transformer, AwaitableTransformer)
-        # The return transformer should be identity since no type args
-        assert isinstance(transformer.return_transformer, IdentityTransformer)
+        assert isinstance(transformer.return_transformer, IdentityStrTransformer)
 
 
 class TestComplexNestedTypes:
@@ -530,7 +529,7 @@ class TestComplexNestedTypes:
         """Test dict[str, list[WrappedClass]]."""
         from typing import Dict, List
 
-        transformer = create_transformer(Dict[str, List[wrapped_class]], sync)
+        transformer = _materialize(Dict[str, List[wrapped_class]], sync)
 
         # Check type signature
         result = transformer.wrapped_type(sync, "test_module")
@@ -548,7 +547,7 @@ class TestComplexNestedTypes:
         """Test tuple[int, WrappedClass, str]."""
         from typing import Tuple
 
-        transformer = create_transformer(Tuple[int, wrapped_class, str], sync)
+        transformer = _materialize(Tuple[int, wrapped_class, str], sync)
 
         # Check type signature
         result = transformer.wrapped_type(sync, "test_module")

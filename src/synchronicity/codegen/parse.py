@@ -34,7 +34,6 @@ from .transformer_ir import (
     TypeTransformerIR,
 )
 from .transformer_materialize import annotation_to_transformer_ir
-from .type_transformer import create_transformer
 from .typevar_codegen import typevar_specs_from_collected
 
 
@@ -306,15 +305,19 @@ def parse_class_wrapper_ir(
     aiter_method = cls.__dict__.get("__aiter__")
     anext_method = cls.__dict__.get("__anext__")
 
-    attributes: list[tuple[str, str]] = []
+    attributes: list[tuple[str, TypeTransformerIR | None]] = []
     class_annotations = cls.__annotations__ if hasattr(cls, "__annotations__") else {}
     for name, annotation in class_annotations.items():
         if not name.startswith("_"):
             annotations_resolved = _safe_get_annotations(cls, globals_dict)
             resolved_annotation = annotations_resolved.get(name, annotation)
-            transformer = create_transformer(resolved_annotation, sync_base, runtime_package)
-            attr_type = transformer.wrapped_type(sync_base, current_target_module)
-            attributes.append((name, attr_type))
+            annotation_ir = annotation_to_transformer_ir(
+                resolved_annotation,
+                sync_self,
+                owner_impl_type=cls,
+                owner_has_type_parameters=bool(generic_typevars),
+            )
+            attributes.append((name, annotation_ir))
 
     method_irs: list[MethodWrapperIR] = []
     for method_name, method, method_type in methods:

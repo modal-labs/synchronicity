@@ -682,15 +682,19 @@ def emit_class_from_ir(
             method_definitions_with_async.append(sync_method_code)
 
     property_definitions = []
-    for attr_name, attr_type in ir.attributes:
-        if attr_type:
+    for attr_name, annotation_ir in ir.attributes:
+        attr_type_str = ""
+        if annotation_ir is not None:
+            attr_transformer = materialize_transformer_ir(annotation_ir, sync_self, runtime_package)
+            attr_type_str = attr_transformer.wrapped_type(sync_self, target_module)
+        if attr_type_str:
             property_code = f"""    # Generated properties
     @property
-    def {attr_name}(self) -> {attr_type}:
+    def {attr_name}(self) -> {attr_type_str}:
         return self._impl_instance.{attr_name}
 
     @{attr_name}.setter
-    def {attr_name}(self, value: {attr_type}):
+    def {attr_name}(self, value: {attr_type_str}):
         self._impl_instance.{attr_name} = value"""
         else:
             property_code = f"""    @property

@@ -13,6 +13,7 @@
 - The determination of what to translate should be statically determinated at gencode time by looking at function signatures - never through runtime type inspection except possibly in very niche use cases like `Union` types.
 
 ## Development practices
+- Prefer clean refactors and a single obvious name over backward-compatibility aliases or duplicate APIs. There is no obligation to preserve synchronicity 0.x naming or shims; keep changes minimal but do not carry legacy aliases “just in case.” If `pytest test/integration/` (and the rest of the suite) still passes, the change is acceptable.
 - Use `uv` for managing dependencies and virtualenvs. For local development in this repo:
   ```bash
   uv sync --dev
@@ -46,7 +47,7 @@
 - `src/synchronicity/synchronizer.py`: runtime event-loop execution engine
 - `src/synchronicity/descriptor.py`: descriptors for dual sync/async method access
 - `src/synchronicity/types.py`: shared sync-or-async iterable helpers
-- `src/synchronicity/codegen/`: build-time utilities - should never be imported by runtime code
+- `src/synchronicity/codegen/`: build-time utilities - should never be imported by runtime code; see `src/synchronicity/codegen/ARCHITECTURE.md` for parse IR vs emission layering; see `src/synchronicity/codegen/ARCHITECTURE.md` for parse IR vs emission layering
 - `test/unit/`: codegen and transformer unit tests
 - `test/integration/`: end-to-end wrapper generation and runtime behavior tests
 - `test/support_files/`: example implementation modules used to generate wrappers in tests

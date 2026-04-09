@@ -22,10 +22,6 @@ class MethodBindingKind(str, enum.Enum):
     STATICMETHOD = "staticmethod"
 
 
-# Backward-compatible alias for “reference to impl object” in module plans.
-ImplObjectRef = ImplQualifiedRef
-
-
 @dataclasses.dataclass(frozen=True)
 class TypeVarSpecIR:
     """Enough information to emit ``TypeVar`` / ``ParamSpec`` definitions."""
@@ -104,6 +100,9 @@ class ClassWrapperIR:
     wrapper module name is not stored here; emitters take it from :class:`ModuleCompilationIR` or the
     compile API.
 
+    ``attributes`` holds public instance attribute names with :class:`transformer_ir.TypeTransformerIR`
+    for each annotation (no pre-rendered wrapper type strings).
+
     ``dunders`` holds implementation dunder methods keyed by **impl** name (e.g. ``__aiter__``,
     ``__anext__``). Those names are omitted from ``methods``. Async-iterator protocol dunders are the
     only entries today; the emitter maps ``__aiter__`` / ``__anext__`` to wrapper sync/async surface
@@ -114,7 +113,7 @@ class ClassWrapperIR:
     wrapped_base_names: tuple[str, ...]
     generic_base: str | None
     owner_has_type_parameters: bool
-    attributes: tuple[tuple[str, str], ...]
+    attributes: tuple[tuple[str, TypeTransformerIR | None], ...]
     init_parameters: tuple[ParameterIR, ...]
     methods: tuple[MethodWrapperIR, ...]
     dunders: dict[str, MethodWrapperIR]

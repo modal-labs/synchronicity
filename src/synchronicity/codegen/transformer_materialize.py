@@ -38,7 +38,7 @@ def annotation_to_transformer_ir(
     owner_impl_type: type | None = None,
     owner_has_type_parameters: bool = False,
 ) -> TypeTransformerIR:
-    """Mirror :func:`type_transformer.create_transformer` but produce IR (qualified refs, no ``TypeTransformer``)."""
+    """Build :class:`transformer_ir.TypeTransformerIR` from a resolved annotation (no runtime transformers)."""
     if annotation == inspect.Signature.empty:
         return IdentityTypeIR("")
     if annotation is None:
