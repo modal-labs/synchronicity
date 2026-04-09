@@ -16,19 +16,25 @@
 - [ ] Add support for explicit @property - break synchronicity 1 backwards compatibility by raising if the underlying function is async
 - [ ] Add support for synchronicity-specific @classproperty decorator. Similarly, only allow sync non-blocking methods to be used
 
-- [ ] **Support dependency-free generated code**
-  - [ ] Instead of module level inline Module definitions (requiring `from synchronicity import Module` etc) we would want a different way of specifying what to generate. Possibly a manifest file. This would have the additional advantage of adding a natural place to define the entire generation flow, instead of having to point ot modules on the command line.
-  - [ ] Any synchronicity runtime dependencies would have to be imported via the generated package name - this should in most cases be limited to imports within the generated code base itself so this isn't an issue for users. In very special cases, like using special utilities included, like FunctionWithAio, @classproperty etc., we would have to come up with a different solution.
-
 - [ ] **First class support for opt-in manual wrapper implementations**
   This is useful when the function needs to do stuff that should not be part of the synchronizer event loop, like consuming data from iterators passed by users that may not be thread safe, or risk being blocking.
   We could export the MethodWithAio
   
-
-
-
-
 ### Medium Priority
+- [ ] **Investigate “most specific” wrapper on return (runtime type vs declared type)**
+  - If impl types form a hierarchy (e.g. wrapped `Foo` and wrapped `Bar(Foo)`) and a function is annotated to return `Foo` but actually returns a `Bar` instance, today codegen wraps using the **declared** wrapper’s `_from_impl` (e.g. `Foo._from_impl(bar_impl)`), which may not yield the most specific public wrapper type.
+  - Consider whether to resolve or dispatch to the wrapper that matches the **runtime** impl type (most specific registered wrapper), and how that interacts with static determinism (gencode follows annotations only).
+  - If we keep declared-type wrapping only, document that limitation clearly for users who rely on subclass instances at runtime.
+
+- [ ] **Investigate generics whose type parameters may or may not be bound to wrapped classes**
+  - For a `TypeVar` with a bound that is (or normalizes to) a wrapped implementation type, translation at the boundary is well motivated (unwrap in / wrap out relative to that bound).
+  - For an **unbounded** type variable, a plausible policy is to treat values as **opaque** at the wrapper/impl bridge: do not unwrap/wrap even if a concrete substitution could have been a wrapped type, because the implementation contract is not allowed to depend on wrapped-class structure—only on the opaque type parameter.
+  - Still worth spelling out edge cases (e.g. users instantiating `G[Wrapper]` where `T` is unbounded), deciding what we guarantee, and **documenting** the chosen behavior either way.
+
+- [ ] **Support a different kind of generation manifest**
+  - [ ] One idea is to just put Modules and their specs in a separate file from implementation (should already be possible but needs to be confirmed)
+  - [ ] One idea is to piggyback on `__all__`
+
 - [ ] Transfer docstrings to generated wrappers
 - [ ] Backport some of the traceback stripping (if needed?)
 - [ ] **Improve error messages in code generation**
@@ -36,14 +42,8 @@
   - Clear error messages for unsupported type constructs
   - Helpful suggestions for common mistakes
 - [ ] **Investigate translation of TypeVar bounds that reference wrapped classes**
-  - Example: `T = typing.TypeVar("T", bound="SomeClass")` where `SomeClass` is a wrapped class
-  - Current behavior partially supports this at TypeVar definition/codegen time: generated code recreates `TypeVar(..., bound="WrapperType")`
-  - The missing piece is bound-aware translation in the annotation transformer: when a signature contains `T`, the compiler currently treats `T` as opaque rather than "translate according to the bound"
-  - This means generic declaration and some ordinary generic container code paths work, but translation-sensitive paths still fail
   - Confirmed failing typed paths include `tuple[T, ...] -> list[T]` where `T` is bound to a wrapped class
   - Confirmed failing typed paths also include callback/callable forms like `Callable[P, T] -> Callable[P, list[T]]` when `T` is bound to a wrapped class
-  - Evaluate whether TypeVar bounds should be lowered to wrapper-aware transformers, not just wrapper-aware emitted definitions
-  - Evaluate edge cases and type checking compatibility
 - [ ] **Add callback/callable translation for wrapped classes**
   - Plain callback forms like `Callable[[Node], Node]` and `Callable[[Node], int]` are not translated to public wrapper types today
   - This is a separate limitation from TypeVar-bound translation, though the two interact in callback-heavy generic APIs
@@ -56,9 +56,6 @@
   - Share common code between similar wrappers
   - Consider template-based generation
 
-- [ ] **Add Python 3.14+ improvements**
-  - Test with free-threaded Python
-
 - [ ] **IDE support**
   - Verify PyCharm/VSCode jump-to-definition
   - Check compatibility with MyPy and ty
@@ -67,7 +64,7 @@
 
 - [ ] **Better CLI ergonomics**
   - Add `--watch` mode for development
-  - Support glob patterns for module discovery
+  - Support glob patterns for module discovery, or full package discovery
 
 - [ ] **Performance profiling**
   - Benchmark thread overhead
