@@ -255,10 +255,9 @@ def parse_class_wrapper_ir(
     """Collect :class:`ClassWrapperIR` from a live implementation class (parse-time only)."""
     sync_base = SyncRegistry.from_type_map(synchronized_types)
     sync_self = sync_base.with_impl_class(cls, target_module, cls.__name__)
-    current_target_module = target_module
 
-    wrapped_bases: list[str] = []
-    generic_base: str | None = None
+    wrapped_bases: list[ImplQualifiedRef] = []
+    generic_type_parameters: tuple[str, ...] | None = None
     generic_typevars: dict[str, typing.TypeVar | typing.ParamSpec] = {}
 
     bases_to_check = getattr(cls, "__orig_bases__", cls.__bases__)
@@ -274,15 +273,11 @@ def parse_class_wrapper_ir(
 
                 typevar_names = [arg.__name__ for arg in args if isinstance(arg, (typing.TypeVar, typing.ParamSpec))]
                 if typevar_names:
-                    generic_base = f"typing.Generic[{', '.join(typevar_names)}]"
+                    generic_type_parameters = tuple(typevar_names)
         elif base is not object and isinstance(base, type):
             loc = sync_base.lookup_wrapper(base)
             if loc is not None:
-                base_target_module, base_wrapper_name = loc
-                if base_target_module == current_target_module:
-                    wrapped_bases.append(base_wrapper_name)
-                else:
-                    wrapped_bases.append(f"{base_target_module}.{base_wrapper_name}")
+                wrapped_bases.append(ImplQualifiedRef(base.__module__, base.__qualname__))
 
     methods: list[tuple[str, types.FunctionType, MethodBindingKind]] = []
     classmethod_staticmethod_names: set[str] = set()
@@ -334,52 +329,58 @@ def parse_class_wrapper_ir(
             )
         )
 
-    dunders: dict[str, MethodWrapperIR] = {}
-    if has_aiter:
-        dunders["__aiter__"] = parse_method_wrapper_ir(
-            aiter_method,
-            "__aiter__",
-            sync_self,
-            cls,
-            owner_has_type_parameters=bool(generic_typevars),
-            method_type=MethodBindingKind.INSTANCE,
-            globals_dict=globals_dict,
-            generic_typevars=generic_typevars if generic_typevars else None,
-        )
-    if has_anext:
-        dunders["__anext__"] = parse_method_wrapper_ir(
-            anext_method,
-            "__anext__",
-            sync_self,
-            cls,
-            owner_has_type_parameters=bool(generic_typevars),
-            method_type=MethodBindingKind.INSTANCE,
-            globals_dict=globals_dict,
-            generic_typevars=generic_typevars if generic_typevars else None,
-        )
+    combined_methods: list[MethodWrapperIR] = []
 
     init_method = getattr(cls, "__init__", None)
     if init_method and init_method is not object.__init__:
-        sig = inspect.signature(init_method)
-        init_annotations = _safe_get_annotations(init_method, globals_dict)
-        init_parameters = parse_parameters_to_ir(
-            sig,
-            init_annotations,
-            sync_base,
-            skip_first_param=True,
-            owner_impl_type=cls,
-            owner_has_type_parameters=bool(generic_typevars),
+        combined_methods.append(
+            parse_method_wrapper_ir(
+                init_method,
+                "__init__",
+                sync_self,
+                cls,
+                owner_has_type_parameters=bool(generic_typevars),
+                method_type=MethodBindingKind.INSTANCE,
+                globals_dict=globals_dict,
+                generic_typevars=generic_typevars if generic_typevars else None,
+            )
         )
-    else:
-        init_parameters = ()
+
+    combined_methods.extend(method_irs)
+
+    if has_aiter:
+        assert aiter_method is not None
+        combined_methods.append(
+            parse_method_wrapper_ir(
+                aiter_method,
+                "__aiter__",
+                sync_self,
+                cls,
+                owner_has_type_parameters=bool(generic_typevars),
+                method_type=MethodBindingKind.INSTANCE,
+                globals_dict=globals_dict,
+                generic_typevars=generic_typevars if generic_typevars else None,
+            )
+        )
+    if has_anext:
+        assert anext_method is not None
+        combined_methods.append(
+            parse_method_wrapper_ir(
+                anext_method,
+                "__anext__",
+                sync_self,
+                cls,
+                owner_has_type_parameters=bool(generic_typevars),
+                method_type=MethodBindingKind.INSTANCE,
+                globals_dict=globals_dict,
+                generic_typevars=generic_typevars if generic_typevars else None,
+            )
+        )
 
     return ClassWrapperIR(
         impl_ref=ImplQualifiedRef(cls.__module__, cls.__qualname__),
-        wrapped_base_names=tuple(wrapped_bases),
-        generic_base=generic_base,
-        owner_has_type_parameters=bool(generic_typevars),
+        wrapped_base_impl_refs=tuple(wrapped_bases),
+        generic_type_parameters=generic_type_parameters,
         attributes=tuple(attributes),
-        init_parameters=init_parameters,
-        methods=tuple(method_irs),
-        dunders=dunders,
+        methods=tuple(combined_methods),
     )

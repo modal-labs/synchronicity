@@ -103,17 +103,18 @@ class ClassWrapperIR:
     ``attributes`` holds public instance attribute names with :class:`transformer_ir.TypeTransformerIR`
     for each annotation (no pre-rendered wrapper type strings).
 
-    ``dunders`` holds implementation dunder methods keyed by **impl** name (e.g. ``__aiter__``,
-    ``__anext__``). Those names are omitted from ``methods``. Async-iterator protocol dunders are the
-    only entries today; the emitter maps ``__aiter__`` / ``__anext__`` to wrapper sync/async surface
-    names (``__iter__``/``__aiter__``, ``__next__``/``__anext__``) from the key alone.
+    ``methods`` includes public methods, ``__init__`` (when not ``object.__init__``), and async
+    iterator protocol dunders (``__aiter__``, ``__anext__``). The emitter partitions by
+    ``method_name`` (e.g. iterator dunders map to ``__iter__``/``__aiter__``, ``__next__``/``__anext__``).
+
+    ``wrapped_base_impl_refs`` lists implementation bases that participate in synchronicity
+    inheritance (each maps to a wrapper at emit time via :class:`~sync_registry.SyncRegistry`).
+    ``generic_type_parameters`` holds ``TypeVar`` / ``ParamSpec`` **names** for the
+    ``typing.Generic[...]`` base; the emitter formats that base string.
     """
 
     impl_ref: ImplQualifiedRef
-    wrapped_base_names: tuple[str, ...]
-    generic_base: str | None
-    owner_has_type_parameters: bool
+    wrapped_base_impl_refs: tuple[ImplQualifiedRef, ...]
+    generic_type_parameters: tuple[str, ...] | None
     attributes: tuple[tuple[str, TypeTransformerIR | None], ...]
-    init_parameters: tuple[ParameterIR, ...]
     methods: tuple[MethodWrapperIR, ...]
-    dunders: dict[str, MethodWrapperIR]

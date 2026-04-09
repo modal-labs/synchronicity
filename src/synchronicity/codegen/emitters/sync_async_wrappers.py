@@ -33,6 +33,19 @@ def _wrapper_short_name(impl_ref: ImplQualifiedRef) -> str:
     return impl_ref.qualname.rpartition(".")[2]
 
 
+def _wrapper_class_reference_for_emit(
+    impl_ref: ImplQualifiedRef,
+    sync: SyncRegistry,
+    target_module: str,
+) -> str:
+    """Resolve a wrapped implementation class to the identifier used on a generated class line."""
+
+    wrapper_module, wrapper_name = sync[impl_ref]
+    if wrapper_module == target_module:
+        return wrapper_name
+    return f"{wrapper_module}.{wrapper_name}"
+
+
 def _impl_type_dotted(impl_ref: ImplQualifiedRef) -> str:
     """Dotted path to the implementation type for emitted source.
 
@@ -50,6 +63,30 @@ def _impl_type_dotted(impl_ref: ImplQualifiedRef) -> str:
 
 def method_emit_owner(class_ir: ClassWrapperIR, target_module: str) -> MethodEmitOwner:
     return MethodEmitOwner(impl_ref=class_ir.impl_ref, target_module=target_module)
+
+
+_CLASS_INIT_NAME = "__init__"
+_ASYNC_ITERATOR_DUNDERS = frozenset({"__aiter__", "__anext__"})
+
+
+def _partition_class_methods(
+    methods: tuple[MethodWrapperIR, ...],
+) -> tuple[MethodWrapperIR | None, tuple[MethodWrapperIR, ...], tuple[MethodWrapperIR, ...]]:
+    """Split ``__init__``, async-iterator dunders, and everything else for emission order."""
+
+    init_mir: MethodWrapperIR | None = None
+    iterator: list[MethodWrapperIR] = []
+    normal: list[MethodWrapperIR] = []
+    iter_order = {"__aiter__": 0, "__anext__": 1}
+    for mir in methods:
+        if mir.method_name == _CLASS_INIT_NAME:
+            init_mir = mir
+        elif mir.method_name in _ASYNC_ITERATOR_DUNDERS:
+            iterator.append(mir)
+        else:
+            normal.append(mir)
+    iterator.sort(key=lambda m: iter_order[m.method_name])
+    return init_mir, tuple(iterator), tuple(normal)
 
 
 def _async_iterator_dunder_surfaces(
@@ -658,13 +695,10 @@ def emit_class_from_ir(
     impl_dot = _impl_type_dotted(ir.impl_ref)
     sync_self = sync.with_impl_ref(ir.impl_ref, target_module, wshort)
     owner = method_emit_owner(ir, target_module)
+    init_mir, iterator_mirs, normal_methods = _partition_class_methods(ir.methods)
+
     all_helpers_dict: dict[str, str] = {}
-
     for mir in ir.methods:
-        return_transformer = materialize_transformer_ir(mir.return_transformer_ir, sync_self, runtime_package)
-        all_helpers_dict.update(return_transformer.get_wrapper_helpers(sync_self, target_module, indent="    "))
-
-    for mir in ir.dunders.values():
         return_transformer = materialize_transformer_ir(mir.return_transformer_ir, sync_self, runtime_package)
         all_helpers_dict.update(return_transformer.get_wrapper_helpers(sync_self, target_module, indent="    "))
 
@@ -672,7 +706,7 @@ def emit_class_from_ir(
     helpers_section = f"\n{helpers_code}\n" if helpers_code else ""
 
     method_definitions_with_async: list[str] = []
-    for mir in ir.methods:
+    for mir in normal_methods:
         wrapper_functions_code, sync_method_code = emit_method_wrapper_pair(
             owner, mir, sync_self, runtime_package=runtime_package
         )
@@ -707,10 +741,10 @@ def emit_class_from_ir(
         property_definitions.append(property_code)
 
     iterator_methods_section = ""
-    if ir.dunders:
+    if iterator_mirs:
         iterator_blocks: list[str] = []
-        for impl_name, mir in ir.dunders.items():
-            surfaces = _async_iterator_dunder_surfaces(impl_name)
+        for mir in iterator_mirs:
+            surfaces = _async_iterator_dunder_surfaces(mir.method_name)
             if surfaces is None:
                 continue
             sync_method_name, async_method_name, use_async_def, stop_iteration_bridge = surfaces
@@ -759,8 +793,10 @@ def emit_class_from_ir(
             iterator_blocks.append(async_method)
         iterator_methods_section = "\n\n".join(iterator_blocks)
 
-    wrapped_bases = list(ir.wrapped_base_names)
-    if not wrapped_bases:
+    wrapped_base_strings = [
+        _wrapper_class_reference_for_emit(base_impl, sync, target_module) for base_impl in ir.wrapped_base_impl_refs
+    ]
+    if not wrapped_base_strings:
         from_impl_method = f"""    @classmethod
     def _from_impl(cls, impl_instance: {impl_dot}) -> "{wshort}":
         \"\"\"Create wrapper from implementation instance, preserving identity via cache.\"\"\"
@@ -769,10 +805,10 @@ def emit_class_from_ir(
         from_impl_method = ""
 
     all_bases: list[str] = []
-    if wrapped_bases:
-        all_bases.extend(wrapped_bases)
-    if ir.generic_base:
-        all_bases.append(ir.generic_base)
+    if wrapped_base_strings:
+        all_bases.extend(wrapped_base_strings)
+    if ir.generic_type_parameters:
+        all_bases.append(f"typing.Generic[{', '.join(ir.generic_type_parameters)}]")
 
     if all_bases:
         bases_str = ", ".join(all_bases)
@@ -780,7 +816,7 @@ def emit_class_from_ir(
     else:
         class_declaration = f"""class {wshort}:"""
 
-    if not wrapped_bases:
+    if not wrapped_base_strings:
         class_attrs = (
             f"""    \"\"\"Wrapper class for {impl_dot} """
             f"""with sync/async method support\"\"\"
@@ -791,7 +827,7 @@ def emit_class_from_ir(
         class_attrs = f"""    \"\"\"Wrapper class for {impl_dot} with sync/async method support\"\"\""""
 
     init_sig, init_call, init_unwrap = format_parameters_for_emit(
-        ir.init_parameters,
+        init_mir.parameters if init_mir else (),
         sync_self,
         target_module,
         runtime_package,
