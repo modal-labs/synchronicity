@@ -1,7 +1,4 @@
-"""Integration tests for callback_translation_impl.py support file.
-
-Tests callback and callable translation behavior for generated wrappers.
-"""
+"""Integration tests for callback_translation_impl.py support file."""
 
 import pytest
 from pathlib import Path
@@ -13,7 +10,7 @@ from test.integration.test_utils import check_pyright
     strict=True,
     reason="Callback parameters and returns that mention wrapped types are not translated yet",
 )
-def test_generated_code_execution_callbacks(generated_wrappers):
+def test_runtime():
     import callback_translation
 
     node = callback_translation.Node(1)
@@ -30,11 +27,29 @@ def test_generated_code_execution_callbacks(generated_wrappers):
     assert callback_translation.map_node_to_int(node, read_node) == 1
 
 
+def test_pyright_implementation():
+    import callback_translation_impl
+
+    check_pyright([Path(callback_translation_impl.__file__)])
+
+
 @pytest.mark.xfail(
     strict=True,
     reason="Callback and callable annotations that mention wrapped types are not typed correctly yet",
 )
-def test_pyright_callback_translation(generated_wrappers, support_files):
+def test_pyright_wrapper():
     import callback_translation
 
-    check_pyright([Path(callback_translation.__file__), support_files / "callback_translation_typecheck.py"])
+    check_pyright([Path(callback_translation.__file__)])
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="Callback and callable annotations that mention wrapped types are not typed correctly yet",
+)
+def test_pyright_usage():
+    from importlib.util import find_spec
+
+    spec = find_spec("callback_translation_typecheck")
+    assert spec and spec.origin
+    check_pyright([Path(spec.origin)])

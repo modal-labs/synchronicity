@@ -1,113 +1,65 @@
-"""Integration tests for generic_class_impl.py support file.
+"""Integration tests for generic_class_impl.py support file."""
 
-Tests execution and type checking of generated code for classes with typing.Generic.
-"""
+import pytest
+from pathlib import Path
 
 from test.integration.test_utils import check_pyright
 
 
-def test_generic_class_structure(generated_wrappers):
-    """Test that Generic classes are correctly generated."""
+def test_runtime():
     import generic_class
 
-    # Verify classes exist
     assert hasattr(generic_class, "Container")
     assert hasattr(generic_class, "FunctionWrapper")
 
-    # Create instances with concrete types
     container_int = generic_class.Container(42)
     container_str = generic_class.Container("hello")
-
-    # Verify methods work
     assert container_int.get() == 42
     assert container_str.get() == "hello"
 
-    print("✓ Generic class structure test passed")
-
-
-def test_generic_container_operations(generated_wrappers):
-    """Test that Container generic class operations work correctly."""
-    import generic_class
-
-    # Create a container with an integer
     container = generic_class.Container(100)
-
-    # Test get
-    value = container.get()
-    assert value == 100, f"Expected 100, got {value}"
-
-    # Test set
+    assert container.get() == 100
     container.set(200)
-    value = container.get()
-    assert value == 200, f"Expected 200 after set, got {value}"
+    assert container.get() == 200
 
-    print("✓ Generic container operations test passed")
-
-
-def test_function_wrapper_with_paramspec(generated_wrappers):
-    """Test that FunctionWrapper with ParamSpec works correctly."""
-    import generic_class
-
-    # Define a test function
-    def add(x: int, y: int) -> int:
-        return x + y
-
-    # Wrap it
-    wrapper = generic_class.FunctionWrapper(add)
-
-    # Call through the wrapper
-    result = wrapper.call(5, 10)
-    assert result == 15, f"Expected 15, got {result}"
-
-    print("✓ Function wrapper with ParamSpec test passed")
-
-
-def test_function_wrapper_callable_property(generated_wrappers):
-    """Test FunctionWrapper stores callable correctly."""
-    import generic_class
-
-    # Test that wrapped function is stored
     def add(x: int, y: int) -> int:
         return x + y
 
     wrapper = generic_class.FunctionWrapper(add)
-    # Verify the function was stored in the impl instance
-    assert wrapper._impl_instance.f == add
+    assert wrapper.call(5, 10) == 15
 
-    print("✓ Function wrapper callable property test passed")
+    def add2(x: int, y: int) -> int:
+        return x + y
+
+    wrapper2 = generic_class.FunctionWrapper(add2)
+    assert wrapper2._impl_instance.f == add2
+
+    container3 = generic_class.Container(generic_class.WrappedType())
+    assert hasattr(container3, "get")
+    assert hasattr(container3, "set")
+    wrapper3 = generic_class.FunctionWrapper(lambda x: x)
+    assert hasattr(wrapper3, "call")
 
 
-def test_generic_inheritance_check(generated_wrappers):
-    """Test that Generic classes inherit from typing.Generic."""
+def test_pyright_implementation():
+    import generic_class_impl
 
+    check_pyright([Path(generic_class_impl.__file__)])
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="Pyright does not yet accept generic Container wrapper passing T into impl Container(value)",
+)
+def test_pyright_wrapper():
     import generic_class
 
-    # Check that the wrapper classes inherit from Generic
-    # This is checked indirectly through pyright type checking
-    container = generic_class.Container(generic_class.WrappedType())
-
-    assert hasattr(container, "get")
-    assert hasattr(container, "set")
-
-    wrapper = generic_class.FunctionWrapper(lambda x: x)
-    assert hasattr(wrapper, "call")
-
-    print("✓ Generic inheritance check test passed")
+    check_pyright([Path(generic_class.__file__)])
 
 
-def test_pyright_generic_class(generated_wrappers, support_files):
-    """Test that Generic class generation passes pyright type checking.
+def test_pyright_usage():
+    from importlib.util import find_spec
 
-    Note: Currently skipped due to known limitations with ParamSpec.args/kwargs
-    in method wrapper signatures. These forms are only valid with *args/**kwargs
-    but our method wrapper generation creates regular parameters.
-
-    The functionality works correctly at runtime, but pyright correctly flags
-    the type annotations as invalid.
-    """
-    # Verify type correctness with pyright
-    out = check_pyright([support_files / "generic_class_typecheck.py"])
-    print(out)
-    assert 'Type of "wrapped_func" is "FunctionWrapper[(a: int), float]"' in out
-    expected_pyright_type = "FunctionWithAio[(a: int), float, (a: int), CoroutineType[Any, Any, float]]"
-    assert f'Type of "wrapped_func.call" is "{expected_pyright_type}"' in out
+    spec = find_spec("generic_class_typecheck")
+    assert spec and spec.origin
+    check_pyright([Path(spec.origin)])

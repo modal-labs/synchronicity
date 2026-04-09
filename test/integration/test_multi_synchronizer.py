@@ -1,8 +1,11 @@
 """Two named synchronizers use distinct worker threads and event loops."""
 
+from pathlib import Path
 
-def test_distinct_synchronizers_separate_threads_and_loops(generated_wrappers):
-    """Wrappers tied to different ``Module(..., synchronizer_name)`` values do not share a loop."""
+from test.integration.test_utils import check_pyright
+
+
+def test_runtime():
     import multi_sync.a
     import multi_sync.b
 
@@ -11,8 +14,8 @@ def test_distinct_synchronizers_separate_threads_and_loops(generated_wrappers):
     tid_a, lid_a = multi_sync.a.thread_and_loop_a()
     tid_b, lid_b = multi_sync.b.thread_and_loop_b()
 
-    assert tid_a != tid_b, "implementation threads for the two synchronizers should differ"
-    assert lid_a != lid_b, "asyncio loops for the two synchronizers should differ"
+    assert tid_a != tid_b
+    assert lid_a != lid_b
 
     sync_a = get_synchronizer("synchronizer_alpha")
     sync_b = get_synchronizer("synchronizer_beta")
@@ -21,3 +24,24 @@ def test_distinct_synchronizers_separate_threads_and_loops(generated_wrappers):
     assert sync_b._thread.ident == tid_b
     assert sync_a._loop is not None and sync_b._loop is not None
     assert sync_a._loop is not sync_b._loop
+
+
+def test_pyright_implementation():
+    import multi_synchronizer_impl
+
+    check_pyright([Path(multi_synchronizer_impl.__file__)])
+
+
+def test_pyright_wrapper():
+    import multi_sync.a
+    import multi_sync.b
+
+    check_pyright([Path(multi_sync.a.__file__), Path(multi_sync.b.__file__)])
+
+
+def test_pyright_usage():
+    from importlib.util import find_spec
+
+    spec = find_spec("multi_synchronizer_typecheck")
+    assert spec and spec.origin
+    check_pyright([Path(spec.origin)])

@@ -1,4 +1,8 @@
-"""Tests for vendoring the runtime and ``--runtime-package`` / ``compile_modules``."""
+"""Tests for vendoring the runtime and ``--runtime-package`` / ``compile_modules``.
+
+These are infrastructure tests and intentionally do not follow the four-tier
+runtime / pyright (impl, wrapper, usage) layout used by scenario integration tests.
+"""
 
 import importlib
 from pathlib import Path

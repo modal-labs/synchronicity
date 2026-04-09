@@ -119,7 +119,12 @@ def build_module_compilation_ir(
                 annotations = _safe_get_annotations(method)
                 module_typevars.update(_extract_typevars_from_function(method, annotations))
 
-    typevar_specs = typevar_specs_from_collected(module_typevars, synchronized_types, module.target_module)
+    typevar_specs = typevar_specs_from_collected(
+        module_typevars,
+        synchronized_types,
+        module.target_module,
+        impl_modules=frozenset(impl_modules),
+    )
     cross_frozen = {k: frozenset(v) for k, v in cross.items()}
 
     class_wrappers = tuple(parse_class_wrapper_ir(c, module.target_module, synchronized_types) for c in classes)

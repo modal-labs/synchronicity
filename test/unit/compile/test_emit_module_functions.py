@@ -256,6 +256,8 @@ IR_FN_WITH_DEFAULTS = ModuleLevelFunctionIR(
     return_transformer_ir=IdentityTypeIR(signature_text="str"),
 )
 
+# --- SyncRegistry: ImplQualifiedRef → (TARGET, wrapper name) ---
+
 REG_EMPTY = SyncRegistry({})
 
 REG_PERSON = SyncRegistry(
