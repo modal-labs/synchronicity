@@ -34,11 +34,10 @@ class WrappedClassTypeIR:
 
 
 @dataclasses.dataclass(frozen=True)
-class TypeVarWithBoundTypeIR:
-    """``typing.TypeVar`` whose bound is a wrapped implementation class (unwrap/wrap like :class:`WrappedClassTypeIR`)."""
+class TypeVarIR:
+    """Reference to a module-level ``typing.TypeVar`` by name (bound / translation from :class:`~ir.TypeVarSpecIR`)."""
 
     name: str
-    bound_impl: ImplQualifiedRef
 
 
 @dataclasses.dataclass(frozen=True)
@@ -106,7 +105,7 @@ class AwaitableTypeIR:
 TypeTransformerIR = typing.Union[
     IdentityTypeIR,
     WrappedClassTypeIR,
-    TypeVarWithBoundTypeIR,
+    TypeVarIR,
     SelfTypeIR,
     ListTypeIR,
     DictTypeIR,

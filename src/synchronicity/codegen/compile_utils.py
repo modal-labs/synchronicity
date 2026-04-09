@@ -14,6 +14,9 @@ from .sync_registry import SyncRegistry
 from .transformer_ir import ImplQualifiedRef
 from .type_transformer import WrappedClassTransformer
 
+if typing.TYPE_CHECKING:
+    from .transformer_materialize import MaterializeContext
+
 
 def _parameter_annotation_str(
     transformer,
@@ -190,7 +193,6 @@ def parse_parameters_to_ir(
     owner_impl_type: type | None = None,
     owner_has_type_parameters: bool = False,
     impl_modules: frozenset[str] | None = None,
-    generic_typevar_names: frozenset[str] | None = None,
 ) -> tuple[ParameterIR, ...]:
     """Collect :class:`ParameterIR` from a signature (no emission strings)."""
     from .transformer_materialize import annotation_to_transformer_ir
@@ -210,7 +212,6 @@ def parse_parameters_to_ir(
                 owner_impl_type=owner_impl_type,
                 owner_has_type_parameters=owner_has_type_parameters,
                 impl_modules=impl_modules,
-                generic_typevar_names=generic_typevar_names,
             )
 
         default_repr: str | None = None
@@ -234,6 +235,8 @@ def format_parameters_for_emit(
     current_target_module: str,
     runtime_package: str = "synchronicity",
     unwrap_indent: str = "    ",
+    *,
+    mat_ctx: MaterializeContext | None = None,
 ) -> tuple[str, str, str]:
     """Build ``param_str``, ``call_args_str``, and unwrap lines from :class:`ParameterIR` (emitter-side)."""
     from .transformer_materialize import materialize_transformer_ir
@@ -249,7 +252,7 @@ def format_parameters_for_emit(
         name = param_ir.name
         kind = param_ir.kind
         transformer = (
-            materialize_transformer_ir(param_ir.annotation_ir, sync, runtime_package)
+            materialize_transformer_ir(param_ir.annotation_ir, sync, runtime_package, ctx=mat_ctx)
             if param_ir.annotation_ir is not None
             else None
         )

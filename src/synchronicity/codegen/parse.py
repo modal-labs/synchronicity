@@ -223,7 +223,6 @@ def parse_method_wrapper_ir(
     generic_typevars: dict[str, typing.TypeVar | typing.ParamSpec] | None = None,
     impl_modules: frozenset[str] | None = None,
 ) -> MethodWrapperIR:
-    generic_typevar_names = frozenset(generic_typevars.keys()) if generic_typevars else None
     if impl_modules is None:
         impl_modules = frozenset({impl_class.__module__})
     annotations = _safe_get_annotations(method, globals_dict)
@@ -239,7 +238,6 @@ def parse_method_wrapper_ir(
         owner_impl_type=impl_class,
         owner_has_type_parameters=owner_has_type_parameters,
         impl_modules=impl_modules,
-        generic_typevar_names=generic_typevar_names,
     )
 
     skip_first_param = method_type in (MethodBindingKind.INSTANCE, MethodBindingKind.CLASSMETHOD)
@@ -252,7 +250,6 @@ def parse_method_wrapper_ir(
         owner_impl_type=impl_class,
         owner_has_type_parameters=owner_has_type_parameters,
         impl_modules=impl_modules,
-        generic_typevar_names=generic_typevar_names,
     )
 
     is_async_gen = is_async_generator(method, return_annotation)
@@ -341,7 +338,6 @@ def parse_class_wrapper_ir(
                 owner_impl_type=cls,
                 owner_has_type_parameters=bool(generic_typevars),
                 impl_modules=impl_modules,
-                generic_typevar_names=frozenset(generic_typevars.keys()) if generic_typevars else None,
             )
             attributes.append((name, annotation_ir))
 

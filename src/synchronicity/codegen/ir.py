@@ -24,7 +24,11 @@ class MethodBindingKind(str, enum.Enum):
 
 @dataclasses.dataclass(frozen=True)
 class TypeVarSpecIR:
-    """Enough information to emit ``TypeVar`` / ``ParamSpec`` definitions."""
+    """Enough information to emit ``TypeVar`` / ``ParamSpec`` definitions.
+
+    ``bound_translation_ir`` is set when the bound is a synchronized implementation class; it is the
+    single source for how values typed as this type parameter translate at wrapper/impl boundaries.
+    """
 
     name: str
     is_paramspec: bool
@@ -32,6 +36,7 @@ class TypeVarSpecIR:
     bound_value: str | None
     covariant: bool
     contravariant: bool
+    bound_translation_ir: TypeTransformerIR | None = None
 
 
 @dataclasses.dataclass(frozen=True)

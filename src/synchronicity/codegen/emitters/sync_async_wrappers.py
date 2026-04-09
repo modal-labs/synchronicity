@@ -11,10 +11,11 @@ from ..ir import (
     MethodWrapperIR,
     ModuleCompilationIR,
     ModuleLevelFunctionIR,
+    TypeVarSpecIR,
 )
 from ..sync_registry import SyncRegistry
 from ..transformer_ir import ImplQualifiedRef
-from ..transformer_materialize import materialize_transformer_ir
+from ..transformer_materialize import MaterializeContext, materialize_transformer_ir
 from ..type_transformer import AwaitableTransformer, CoroutineTransformer
 from ..typevar_codegen import typevar_definition_lines
 
@@ -63,6 +64,26 @@ def _impl_type_dotted(impl_ref: ImplQualifiedRef) -> str:
 
 def method_emit_owner(class_ir: ClassWrapperIR, target_module: str) -> MethodEmitOwner:
     return MethodEmitOwner(impl_ref=class_ir.impl_ref, target_module=target_module)
+
+
+def _materialize_context_for_module(specs: tuple[TypeVarSpecIR, ...]) -> MaterializeContext | None:
+    if not specs:
+        return None
+    return MaterializeContext(typevar_specs_by_name={s.name: s for s in specs})
+
+
+def _materialize_context_for_class(
+    specs: tuple[TypeVarSpecIR, ...], class_ir: ClassWrapperIR
+) -> MaterializeContext | None:
+    m: dict[str, TypeVarSpecIR] | None = {s.name: s for s in specs} if specs else None
+    gt = class_ir.generic_type_parameters
+    if not gt:
+        return MaterializeContext(typevar_specs_by_name=m) if m else None
+    return MaterializeContext(
+        typevar_specs_by_name=m,
+        opaque_typevar_names=frozenset(gt),
+        owner_has_type_parameters=True,
+    )
 
 
 _CLASS_INIT_NAME = "__init__"
@@ -131,15 +152,18 @@ def emit_module_level_function(
     sync: SyncRegistry,
     target_module: str,
     runtime_package: str = "synchronicity",
+    *,
+    mat_ctx: MaterializeContext | None = None,
 ) -> str:
     current_target_module = target_module
-    return_transformer = materialize_transformer_ir(ir.return_transformer_ir, sync, runtime_package)
+    return_transformer = materialize_transformer_ir(ir.return_transformer_ir, sync, runtime_package, ctx=mat_ctx)
     param_str, call_args_str, unwrap_code = format_parameters_for_emit(
         ir.parameters,
         sync,
         current_target_module,
         runtime_package,
         unwrap_indent="    ",
+        mat_ctx=mat_ctx,
     )
     is_async_gen = ir.is_async_gen
     f = ir.impl_ref.qualname.rpartition(".")[2]
@@ -289,19 +313,21 @@ def emit_method_wrapper_pair(
     sync: SyncRegistry,
     *,
     runtime_package: str = "synchronicity",
+    mat_ctx: MaterializeContext | None = None,
 ) -> tuple[str, str]:
     method_name = mir.method_name
     method_type = mir.method_type
     impl_dotted = _impl_type_dotted(owner.impl_ref)
     short_name = _wrapper_short_name(owner.impl_ref)
     current_target_module = owner.target_module
-    return_transformer = materialize_transformer_ir(mir.return_transformer_ir, sync, runtime_package)
+    return_transformer = materialize_transformer_ir(mir.return_transformer_ir, sync, runtime_package, ctx=mat_ctx)
     param_str, call_args_str, unwrap_code = format_parameters_for_emit(
         mir.parameters,
         sync,
         current_target_module,
         runtime_package,
         unwrap_indent="    ",
+        mat_ctx=mat_ctx,
     )
     call_expr_prefix = _method_impl_call_expr(
         method_type,
@@ -689,6 +715,7 @@ def emit_class_from_ir(
     target_module: str,
     *,
     runtime_package: str = "synchronicity",
+    mat_ctx: MaterializeContext | None = None,
 ) -> str:
     """Emit wrapper class source from :class:`ClassWrapperIR` (no live implementation objects)."""
     wshort = _wrapper_short_name(ir.impl_ref)
@@ -699,7 +726,9 @@ def emit_class_from_ir(
 
     all_helpers_dict: dict[str, str] = {}
     for mir in ir.methods:
-        return_transformer = materialize_transformer_ir(mir.return_transformer_ir, sync_self, runtime_package)
+        return_transformer = materialize_transformer_ir(
+            mir.return_transformer_ir, sync_self, runtime_package, ctx=mat_ctx
+        )
         all_helpers_dict.update(return_transformer.get_wrapper_helpers(sync_self, target_module, indent="    "))
 
     helpers_code = "\n".join(all_helpers_dict.values()) if all_helpers_dict else ""
@@ -708,7 +737,7 @@ def emit_class_from_ir(
     method_definitions_with_async: list[str] = []
     for mir in normal_methods:
         wrapper_functions_code, sync_method_code = emit_method_wrapper_pair(
-            owner, mir, sync_self, runtime_package=runtime_package
+            owner, mir, sync_self, runtime_package=runtime_package, mat_ctx=mat_ctx
         )
         if wrapper_functions_code:
             method_definitions_with_async.append(f"{wrapper_functions_code}\n\n{sync_method_code}")
@@ -719,7 +748,7 @@ def emit_class_from_ir(
     for attr_name, annotation_ir in ir.attributes:
         attr_type_str = ""
         if annotation_ir is not None:
-            attr_transformer = materialize_transformer_ir(annotation_ir, sync_self, runtime_package)
+            attr_transformer = materialize_transformer_ir(annotation_ir, sync_self, runtime_package, ctx=mat_ctx)
             attr_type_str = attr_transformer.wrapped_type(sync_self, target_module)
         if attr_type_str:
             property_code = f"""    # Generated properties
@@ -749,7 +778,7 @@ def emit_class_from_ir(
                 continue
             sync_method_name, async_method_name, use_async_def, stop_iteration_bridge = surfaces
             method_return_transformer = materialize_transformer_ir(
-                mir.return_transformer_ir, sync_self, runtime_package
+                mir.return_transformer_ir, sync_self, runtime_package, ctx=mat_ctx
             )
             method_sync_return_str, method_async_return_str = _format_return_annotation(
                 method_return_transformer, sync_self, target_module
@@ -832,6 +861,7 @@ def emit_class_from_ir(
         target_module,
         runtime_package,
         unwrap_indent="        ",
+        mat_ctx=mat_ctx,
     )
     init_params = f"self, {init_sig}" if init_sig else "self"
     init_method = f"""    def __init__({init_params}):
@@ -900,14 +930,24 @@ class SyncAsyncWrapperEmitter:
                 compiled_code.append(definition)
             compiled_code.append("")
 
+        module_mat_ctx = _materialize_context_for_module(ir.typevar_specs)
         for i, cw in enumerate(ir.class_wrappers):
-            code = emit_class_from_ir(cw, sync, ir.target_module, runtime_package=runtime_package)
+            class_mat_ctx = _materialize_context_for_class(ir.typevar_specs, cw)
+            code = emit_class_from_ir(
+                cw, sync, ir.target_module, runtime_package=runtime_package, mat_ctx=class_mat_ctx
+            )
             if i > 0:
                 compiled_code.append("")
             compiled_code.append(code)
 
         for func_ir in ir.module_functions_ir:
-            code = emit_module_level_function(func_ir, sync, ir.target_module, runtime_package=runtime_package)
+            code = emit_module_level_function(
+                func_ir,
+                sync,
+                ir.target_module,
+                runtime_package=runtime_package,
+                mat_ctx=module_mat_ctx,
+            )
             compiled_code.append(code)
             compiled_code.append("")
 

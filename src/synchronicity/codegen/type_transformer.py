@@ -186,11 +186,11 @@ class WrappedClassTransformer(TypeTransformer):
 
 
 class TypeVarBoundTransformer(TypeTransformer):
-    """Type variable whose bound is a wrapped implementation class: signatures use *name* (e.g. ``T``); unwrap/wrap like :class:`WrappedClassTransformer`."""
+    """Type variable: signature shows *name* (e.g. ``T``); unwrap/wrap follows the bound type transformer."""
 
-    def __init__(self, name: str, bound_impl: type | ImplQualifiedRef):
+    def __init__(self, name: str, bound_transformer: TypeTransformer):
         self._name = name
-        self._bound = WrappedClassTransformer(bound_impl)
+        self._bound = bound_transformer
 
     def wrapped_type(self, sync: SyncRegistry, target_module: str, is_async: bool = True) -> str:
         return self._name

@@ -5,6 +5,9 @@ from __future__ import annotations
 import typing
 
 from .ir import TypeVarSpecIR
+from .sync_registry import SyncRegistry
+from .transformer_ir import TypeTransformerIR, WrappedClassTypeIR
+from .transformer_materialize import resolve_typevar_bound_to_wrapped_impl
 
 
 def translate_typevar_bound(
@@ -62,6 +65,7 @@ def typevar_specs_from_collected(
     impl_modules: frozenset[str] | None = None,
 ) -> tuple[TypeVarSpecIR, ...]:
     specs: list[TypeVarSpecIR] = []
+    sync_reg = SyncRegistry.from_type_map(synchronized_types)
     for name in sorted(module_typevars.keys()):
         tv = module_typevars[name]
         if isinstance(tv, typing.ParamSpec):
@@ -73,6 +77,7 @@ def typevar_specs_from_collected(
                     bound_value=None,
                     covariant=False,
                     contravariant=False,
+                    bound_translation_ir=None,
                 )
             )
             continue
@@ -102,6 +107,11 @@ def typevar_specs_from_collected(
                 tv.__bound__, synchronized_types, target_module, impl_modules=impl_modules
             )
 
+        bound_translation_ir: TypeTransformerIR | None = None
+        impl_ref = resolve_typevar_bound_to_wrapped_impl(tv, sync_reg, impl_modules)
+        if impl_ref is not None:
+            bound_translation_ir = WrappedClassTypeIR(impl_ref)
+
         specs.append(
             TypeVarSpecIR(
                 name=name,
@@ -110,6 +120,7 @@ def typevar_specs_from_collected(
                 bound_value=bound_value,
                 covariant=bool(getattr(tv, "__covariant__", False)),
                 contravariant=bool(getattr(tv, "__contravariant__", False)),
+                bound_translation_ir=bound_translation_ir,
             )
         )
     return tuple(specs)
