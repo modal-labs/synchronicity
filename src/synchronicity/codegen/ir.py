@@ -77,39 +77,6 @@ class ModuleLevelFunctionIR:
 
 
 @dataclasses.dataclass(frozen=True)
-class IteratorProtocolMethodIR:
-    """Async iterator protocol bridge (__aiter__/__anext__ → sync/async surface).
-
-    The implementation call is emitted as
-    ``{ClassWrapperIR.origin_module}.{ClassWrapperIR.wrapper_class_name}.{impl_method_name}(self._impl_instance)``.
-    """
-
-    impl_method_name: str
-    sync_method_name: str
-    async_method_name: str
-    return_transformer_ir: TypeTransformerIR
-    use_async_def: bool
-    stop_iteration_bridge: bool
-
-
-@dataclasses.dataclass(frozen=True)
-class ClassWrapperIR:
-    """Parsed class: everything needed to emit the wrapper without live ``type`` objects."""
-
-    impl_ref: ImplQualifiedRef
-    wrapper_class_name: str
-    origin_module: str
-    current_target_module: str
-    wrapped_base_names: tuple[str, ...]
-    generic_base: str | None
-    owner_has_type_parameters: bool
-    attributes: tuple[tuple[str, str], ...]
-    init_parameters: tuple[ParameterIR, ...]
-    methods: tuple[MethodWrapperIR, ...]
-    iterator_methods: tuple[IteratorProtocolMethodIR, ...]
-
-
-@dataclasses.dataclass(frozen=True)
 class MethodWrapperIR:
     """Parsed method: parameters + return type as transformer IR."""
 
@@ -124,3 +91,26 @@ class MethodWrapperIR:
     is_async_gen: bool
     is_async: bool
     return_transformer_ir: TypeTransformerIR
+
+
+@dataclasses.dataclass(frozen=True)
+class ClassWrapperIR:
+    """Parsed class: everything needed to emit the wrapper without live ``type`` objects.
+
+    ``dunders`` holds implementation dunder methods keyed by **impl** name (e.g. ``__aiter__``,
+    ``__anext__``). Those names are omitted from ``methods``. Async-iterator protocol dunders are the
+    only entries today; the emitter maps ``__aiter__`` / ``__anext__`` to wrapper sync/async surface
+    names (``__iter__``/``__aiter__``, ``__next__``/``__anext__``) from the key alone.
+    """
+
+    impl_ref: ImplQualifiedRef
+    wrapper_class_name: str
+    origin_module: str
+    current_target_module: str
+    wrapped_base_names: tuple[str, ...]
+    generic_base: str | None
+    owner_has_type_parameters: bool
+    attributes: tuple[tuple[str, str], ...]
+    init_parameters: tuple[ParameterIR, ...]
+    methods: tuple[MethodWrapperIR, ...]
+    dunders: dict[str, MethodWrapperIR]

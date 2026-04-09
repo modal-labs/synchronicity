@@ -10,6 +10,17 @@ from ..type_transformer import AwaitableTransformer, CoroutineTransformer
 from ..typevar_codegen import typevar_definition_lines
 
 
+def _async_iterator_dunder_surfaces(
+    impl_dunder: str,
+) -> tuple[str, str, bool, bool] | None:
+    """Map impl ``__aiter__`` / ``__anext__`` to wrapper sync name, async name, ``async def`` flag, bridge."""
+    if impl_dunder == "__aiter__":
+        return ("__iter__", "__aiter__", False, False)
+    if impl_dunder == "__anext__":
+        return ("__next__", "__anext__", True, True)
+    return None
+
+
 def _method_impl_call_expr(
     method_type: str,
     origin_module: str,
@@ -610,8 +621,8 @@ def emit_class_from_ir(
             return_transformer.get_wrapper_helpers(sync_self, ir.current_target_module, indent="    ")
         )
 
-    for spec in ir.iterator_methods:
-        return_transformer = materialize_transformer_ir(spec.return_transformer_ir, sync_self, runtime_package)
+    for mir in ir.dunders.values():
+        return_transformer = materialize_transformer_ir(mir.return_transformer_ir, sync_self, runtime_package)
         all_helpers_dict.update(
             return_transformer.get_wrapper_helpers(sync_self, ir.current_target_module, indent="    ")
         )
@@ -651,19 +662,21 @@ def emit_class_from_ir(
         property_definitions.append(property_code)
 
     iterator_methods_section = ""
-    if ir.iterator_methods:
+    if ir.dunders:
         iterator_blocks: list[str] = []
-        for spec in ir.iterator_methods:
+        for impl_name, mir in ir.dunders.items():
+            surfaces = _async_iterator_dunder_surfaces(impl_name)
+            if surfaces is None:
+                continue
+            sync_method_name, async_method_name, use_async_def, stop_iteration_bridge = surfaces
             method_return_transformer = materialize_transformer_ir(
-                spec.return_transformer_ir, sync_self, runtime_package
+                mir.return_transformer_ir, sync_self, runtime_package
             )
             method_sync_return_str, method_async_return_str = _format_return_annotation(
                 method_return_transformer, sync_self, ir.current_target_module
             )
-            method_call_expr = (
-                f"{ir.origin_module}.{ir.wrapper_class_name}.{spec.impl_method_name}(self._impl_instance)"
-            )
-            sync_indent = "            " if spec.stop_iteration_bridge else "        "
+            method_call_expr = f"{ir.origin_module}.{ir.wrapper_class_name}.{mir.method_name}(self._impl_instance)"
+            sync_indent = "            " if stop_iteration_bridge else "        "
             sync_body = _build_call_with_wrap(
                 method_call_expr,
                 method_return_transformer,
@@ -674,14 +687,14 @@ def emit_class_from_ir(
                 method_type="instance",
                 method_owner_impl_ref=ir.impl_ref,
             )
-            if spec.stop_iteration_bridge:
-                sync_method = f"""    def {spec.sync_method_name}(self){method_sync_return_str}:
+            if stop_iteration_bridge:
+                sync_method = f"""    def {sync_method_name}(self){method_sync_return_str}:
         try:
 {sync_body}
         except StopAsyncIteration:
             raise StopIteration()"""
             else:
-                sync_method = f"""    def {spec.sync_method_name}(self){method_sync_return_str}:
+                sync_method = f"""    def {sync_method_name}(self){method_sync_return_str}:
 {sync_body}"""
             iterator_blocks.append(sync_method)
 
@@ -695,8 +708,8 @@ def emit_class_from_ir(
                 method_type="instance",
                 method_owner_impl_ref=ir.impl_ref,
             )
-            async_def_keyword = "async def" if spec.use_async_def else "def"
-            async_method = f"""    {async_def_keyword} {spec.async_method_name}(self){method_async_return_str}:
+            async_def_keyword = "async def" if use_async_def else "def"
+            async_method = f"""    {async_def_keyword} {async_method_name}(self){method_async_return_str}:
 {async_body}"""
             iterator_blocks.append(async_method)
         iterator_methods_section = "\n\n".join(iterator_blocks)
