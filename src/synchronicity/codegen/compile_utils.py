@@ -8,7 +8,7 @@ import sys
 import types
 import typing
 
-from .ir import ParameterIR
+from .ir import MethodBindingKind, ParameterIR
 from .signature_utils import is_async_generator
 from .sync_registry import SyncRegistry
 from .transformer_ir import ImplQualifiedRef
@@ -361,7 +361,7 @@ def _build_call_with_wrap(
     is_async: bool = True,
     *,
     is_function: bool = False,
-    method_type: str | None = None,
+    method_type: MethodBindingKind | None = None,
     method_owner_impl_ref: ImplQualifiedRef | None = None,
 ) -> str:
     """
@@ -416,7 +416,7 @@ def _build_call_with_wrap(
         if inner_transformer.needs_translation():
             eff = _effective_inner_transformer(return_transformer)
             if (
-                method_type == "instance"
+                method_type == MethodBindingKind.INSTANCE
                 and not is_function
                 and method_owner_impl_ref is not None
                 and isinstance(eff, WrappedClassTransformer)
@@ -437,7 +437,7 @@ def _build_call_with_wrap(
     if return_transformer.needs_translation():
         eff = _effective_inner_transformer(return_transformer)
         if (
-            method_type == "instance"
+            method_type == MethodBindingKind.INSTANCE
             and not is_function
             and method_owner_impl_ref is not None
             and isinstance(eff, WrappedClassTransformer)

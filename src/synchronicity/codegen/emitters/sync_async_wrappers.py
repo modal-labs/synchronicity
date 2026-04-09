@@ -3,7 +3,13 @@
 from __future__ import annotations
 
 from ..compile_utils import _build_call_with_wrap, _format_return_annotation, format_parameters_for_emit
-from ..ir import ClassWrapperIR, MethodWrapperIR, ModuleCompilationIR, ModuleLevelFunctionIR
+from ..ir import (
+    ClassWrapperIR,
+    MethodBindingKind,
+    MethodWrapperIR,
+    ModuleCompilationIR,
+    ModuleLevelFunctionIR,
+)
 from ..sync_registry import SyncRegistry
 from ..transformer_materialize import materialize_transformer_ir
 from ..type_transformer import AwaitableTransformer, CoroutineTransformer
@@ -22,16 +28,16 @@ def _async_iterator_dunder_surfaces(
 
 
 def _method_impl_call_expr(
-    method_type: str,
+    method_type: MethodBindingKind,
     origin_module: str,
     class_name: str,
     method_name: str,
     call_args_str: str,
 ) -> str:
     impl_class_ref = f"{origin_module}.{class_name}"
-    if method_type == "instance":
+    if method_type == MethodBindingKind.INSTANCE:
         return f"impl_method(wrapper_instance._impl_instance, {call_args_str})"
-    if method_type in ("classmethod", "staticmethod"):
+    if method_type in (MethodBindingKind.CLASSMETHOD, MethodBindingKind.STATICMETHOD):
         return f"{impl_class_ref}.{method_name}({call_args_str})"
     return f"impl_method(wrapper_instance._impl_instance, {call_args_str})"
 
@@ -239,7 +245,7 @@ def emit_method_wrapper_pair(
     aio_body = None
     sync_method_body = ""
 
-    if method_type == "instance":
+    if method_type == MethodBindingKind.INSTANCE:
         if not is_async:
             sync_call_expr = call_expr_prefix
             sync_method_body = _build_call_with_wrap(
@@ -320,7 +326,7 @@ def emit_method_wrapper_pair(
                 sync_method_body = impl_method_line + "\n" + unwrap_code + "\n" + sync_method_body
             else:
                 sync_method_body = impl_method_line + "\n" + sync_method_body
-    elif method_type == "classmethod":
+    elif method_type == MethodBindingKind.CLASSMETHOD:
         if not is_async:
             sync_call_expr = call_expr_prefix
             sync_method_body = _build_call_with_wrap(
@@ -387,7 +393,7 @@ def emit_method_wrapper_pair(
             )
             if unwrap_code:
                 sync_method_body = unwrap_code + "\n" + sync_method_body
-    elif method_type == "staticmethod":
+    elif method_type == MethodBindingKind.STATICMETHOD:
         if not is_async:
             sync_call_expr = call_expr_prefix
             sync_method_body = _build_call_with_wrap(
@@ -463,7 +469,7 @@ def emit_method_wrapper_pair(
 
     aio_method_name = f"__{method_name}_aio"
 
-    if method_type == "instance":
+    if method_type == MethodBindingKind.INSTANCE:
         if aio_body is not None:
             aio_body_with_self = aio_body.replace("wrapper_instance", "self")
             aio_body_lines = aio_body_with_self.split("\n")
@@ -484,7 +490,7 @@ def emit_method_wrapper_pair(
         else:
             wrapper_functions_code = ""
             aio_body = None
-    elif method_type == "classmethod":
+    elif method_type == MethodBindingKind.CLASSMETHOD:
         if aio_body is not None:
             aio_body_with_cls = aio_body.replace("wrapper_class", "cls")
             aio_body_lines = aio_body_with_cls.split("\n")
@@ -507,7 +513,7 @@ def emit_method_wrapper_pair(
         else:
             wrapper_functions_code = ""
             aio_body = None
-    elif method_type == "staticmethod":
+    elif method_type == MethodBindingKind.STATICMETHOD:
         if aio_body is not None:
             aio_body_lines = aio_body.split("\n")
             aio_body_indented = "\n".join(
@@ -532,26 +538,26 @@ def emit_method_wrapper_pair(
     else:
         wrapper_functions_code = ""
 
-    if method_type == "classmethod":
+    if method_type == MethodBindingKind.CLASSMETHOD:
         decorator_func = "wrapped_classmethod"
-    elif method_type == "staticmethod":
+    elif method_type == MethodBindingKind.STATICMETHOD:
         decorator_func = "wrapped_staticmethod"
     else:
         decorator_func = "wrapped_method"
 
     if aio_body is not None:
-        if method_type == "classmethod":
+        if method_type == MethodBindingKind.CLASSMETHOD:
             decorator_line = f"@{decorator_func}({aio_method_name})\n    @classmethod"
-        elif method_type == "staticmethod":
+        elif method_type == MethodBindingKind.STATICMETHOD:
             decorator_line = f"@{decorator_func}({aio_method_name})\n    @staticmethod"
         else:
             decorator_line = f"@{decorator_func}({aio_method_name})"
-        if method_type == "instance":
+        if method_type == MethodBindingKind.INSTANCE:
             method_body_lines = sync_method_body.replace("wrapper_instance", "self").split("\n")
             method_body = "\n".join(
                 "        " + line.lstrip() if line.strip() else "" for line in method_body_lines
             ).strip()
-        elif method_type == "classmethod":
+        elif method_type == MethodBindingKind.CLASSMETHOD:
             method_body_lines = sync_method_body.replace("wrapper_class", "cls").split("\n")
             method_body = "\n".join(
                 "        " + line.lstrip() if line.strip() else "" for line in method_body_lines
@@ -562,13 +568,13 @@ def emit_method_wrapper_pair(
                 "        " + line.lstrip() if line.strip() else "" for line in method_body_lines
             ).strip()
     else:
-        if method_type == "instance":
+        if method_type == MethodBindingKind.INSTANCE:
             decorator_line = ""
             method_body_lines = sync_method_body.replace("wrapper_instance", "self").split("\n")
             method_body = "\n".join(
                 "        " + line.lstrip() if line.strip() else "" for line in method_body_lines
             ).strip()
-        elif method_type == "classmethod":
+        elif method_type == MethodBindingKind.CLASSMETHOD:
             decorator_line = "@classmethod"
             method_body_lines = sync_method_body.replace("wrapper_class", "cls").split("\n")
             method_body = "\n".join(
@@ -581,8 +587,8 @@ def emit_method_wrapper_pair(
                 "        " + line.lstrip() if line.strip() else "" for line in method_body_lines
             ).strip()
 
-    if method_type in ("classmethod", "staticmethod"):
-        if method_type == "classmethod":
+    if method_type in (MethodBindingKind.CLASSMETHOD, MethodBindingKind.STATICMETHOD):
+        if method_type == MethodBindingKind.CLASSMETHOD:
             if param_str:
                 plain_param_str = f"cls, {param_str}"
             else:
@@ -684,7 +690,7 @@ def emit_class_from_ir(
                 ir.current_target_module,
                 indent=sync_indent,
                 is_async=False,
-                method_type="instance",
+                method_type=MethodBindingKind.INSTANCE,
                 method_owner_impl_ref=ir.impl_ref,
             )
             if stop_iteration_bridge:
@@ -705,7 +711,7 @@ def emit_class_from_ir(
                 ir.current_target_module,
                 indent="        ",
                 is_async=True,
-                method_type="instance",
+                method_type=MethodBindingKind.INSTANCE,
                 method_owner_impl_ref=ir.impl_ref,
             )
             async_def_keyword = "async def" if use_async_def else "def"

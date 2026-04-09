@@ -6,6 +6,7 @@ import types
 import typing
 
 from .emitters.sync_async_wrappers import emit_class_from_ir, emit_method_wrapper_pair
+from .ir import MethodBindingKind
 from .parse import parse_class_wrapper_ir, parse_method_wrapper_ir
 from .sync_registry import SyncRegistry
 
@@ -20,7 +21,7 @@ def compile_method_wrapper(
     impl_class: type,
     *,
     owner_has_type_parameters: bool = False,
-    method_type: str = "instance",
+    method_type: MethodBindingKind = MethodBindingKind.INSTANCE,
     globals_dict: dict[str, typing.Any] | None = None,
     generic_typevars: dict[str, typing.TypeVar | typing.ParamSpec] | None = None,
     runtime_package: str = "synchronicity",

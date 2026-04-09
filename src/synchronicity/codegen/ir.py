@@ -9,8 +9,18 @@ live implementation types). Materialize at emit time with
 from __future__ import annotations
 
 import dataclasses
+import enum
 
 from .transformer_ir import ImplQualifiedRef, TypeTransformerIR
+
+
+class MethodBindingKind(str, enum.Enum):
+    """How an implementation method is bound on the class (mirrors ``classmethod`` / ``staticmethod``)."""
+
+    INSTANCE = "instance"
+    CLASSMETHOD = "classmethod"
+    STATICMETHOD = "staticmethod"
+
 
 # Backward-compatible alias for “reference to impl object” in module plans.
 ImplObjectRef = ImplQualifiedRef
@@ -81,7 +91,7 @@ class MethodWrapperIR:
     """Parsed method: parameters + return type as transformer IR."""
 
     method_name: str
-    method_type: str
+    method_type: MethodBindingKind
     origin_module: str
     class_name: str
     current_target_module: str

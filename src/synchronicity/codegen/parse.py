@@ -19,6 +19,7 @@ from .compile_utils import (
 from .ir import (
     ClassWrapperIR,
     ImplQualifiedRef,
+    MethodBindingKind,
     MethodWrapperIR,
     ModuleCompilationIR,
     ModuleLevelFunctionIR,
@@ -205,7 +206,7 @@ def parse_method_wrapper_ir(
     impl_class: type,
     *,
     owner_has_type_parameters: bool = False,
-    method_type: str = "instance",
+    method_type: MethodBindingKind = MethodBindingKind.INSTANCE,
     globals_dict: dict[str, typing.Any] | None = None,
     generic_typevars: dict[str, typing.TypeVar | typing.ParamSpec] | None = None,
 ) -> MethodWrapperIR:
@@ -224,7 +225,7 @@ def parse_method_wrapper_ir(
         owner_has_type_parameters=owner_has_type_parameters,
     )
 
-    skip_first_param = method_type in ("instance", "classmethod")
+    skip_first_param = method_type in (MethodBindingKind.INSTANCE, MethodBindingKind.CLASSMETHOD)
 
     parameters = parse_parameters_to_ir(
         sig,
@@ -302,15 +303,15 @@ def parse_class_wrapper_ir(
         if name.startswith("_"):
             continue
         if isinstance(attr, classmethod):
-            methods.append((name, attr.__func__, "classmethod"))
+            methods.append((name, attr.__func__, MethodBindingKind.CLASSMETHOD))
             classmethod_staticmethod_names.add(name)
         elif isinstance(attr, staticmethod):
-            methods.append((name, attr.__func__, "staticmethod"))
+            methods.append((name, attr.__func__, MethodBindingKind.STATICMETHOD))
             classmethod_staticmethod_names.add(name)
 
     for name, method in inspect.getmembers(cls, predicate=inspect.isfunction):
         if not name.startswith("_") and name in cls.__dict__ and name not in classmethod_staticmethod_names:
-            methods.append((name, method, "instance"))
+            methods.append((name, method, MethodBindingKind.INSTANCE))
 
     has_aiter = "__aiter__" in cls.__dict__
     has_anext = "__anext__" in cls.__dict__
@@ -356,7 +357,7 @@ def parse_class_wrapper_ir(
             current_target_module,
             cls,
             owner_has_type_parameters=bool(generic_typevars),
-            method_type="instance",
+            method_type=MethodBindingKind.INSTANCE,
             globals_dict=globals_dict,
             generic_typevars=generic_typevars if generic_typevars else None,
         )
@@ -370,7 +371,7 @@ def parse_class_wrapper_ir(
             current_target_module,
             cls,
             owner_has_type_parameters=bool(generic_typevars),
-            method_type="instance",
+            method_type=MethodBindingKind.INSTANCE,
             globals_dict=globals_dict,
             generic_typevars=generic_typevars if generic_typevars else None,
         )

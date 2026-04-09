@@ -14,6 +14,7 @@ import inspect
 import typing
 from abc import ABC, abstractmethod
 
+from .ir import MethodBindingKind
 from .sync_registry import SyncRegistry
 from .transformer_ir import ImplQualifiedRef
 
@@ -211,12 +212,12 @@ class SelfTransformer(TypeTransformer):
         var_name: str,
         *,
         is_async: bool,
-        method_type: str,
+        method_type: MethodBindingKind,
     ) -> str:
         """Runtime wrap for ``typing.Self`` (``_from_impl`` is a classmethod; call via ``self`` / ``cls``)."""
-        if method_type == "classmethod":
+        if method_type == MethodBindingKind.CLASSMETHOD:
             binding = "cls"
-        elif method_type == "staticmethod":
+        elif method_type == MethodBindingKind.STATICMETHOD:
             return self._impl.wrap_expr(sync, target_module, var_name, is_async)
         else:
             binding = "self"
