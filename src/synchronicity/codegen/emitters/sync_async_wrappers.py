@@ -811,13 +811,10 @@ def emit_class_from_ir(
     wrapped_base_strings = [
         _wrapper_class_reference_for_emit(base_impl, sync, target_module) for base_impl in ir.wrapped_base_impl_refs
     ]
-    if not wrapped_base_strings:
-        from_impl_method = f"""    @classmethod
-    def _from_impl(cls, impl_instance: {impl_dot}) -> "{wshort}":
+    from_impl_method = f"""    @classmethod
+    def _from_impl(cls, impl_instance: typing.Any) -> "{wshort}":
         \"\"\"Create wrapper from implementation instance, preserving identity via cache.\"\"\"
         return _wrapped_from_impl(cls, impl_instance, cls._instance_cache)"""
-    else:
-        from_impl_method = ""
 
     all_bases: list[str] = []
     if wrapped_base_strings:

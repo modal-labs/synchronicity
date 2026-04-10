@@ -48,6 +48,26 @@ IR_CLASS_HELPER = ClassWrapperIR(
         ),
     ),
 )
+IR_CLASS_HELPER_SUBCLASS = ClassWrapperIR(
+    impl_ref=ImplQualifiedRef(IMPL, "HelperTestSubclass"),
+    wrapped_base_impl_refs=(ImplQualifiedRef(IMPL, "HelperTestClass"),),
+    generic_type_parameters=None,
+    attributes=(),
+    methods=(
+        MethodWrapperIR(
+            method_name="__init__",
+            method_type=MethodBindingKind.INSTANCE,
+            parameters=(
+                ParameterIR(
+                    name="value", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_repr=None
+                ),
+            ),
+            is_async_gen=False,
+            is_async=False,
+            return_transformer_ir=IdentityTypeIR(signature_text=""),
+        ),
+    ),
+)
 IR_FN_NODE_GENERATOR = ModuleLevelFunctionIR(
     impl_ref=ImplQualifiedRef(IMPL, "fn_node_generator"),
     needs_async_wrapper=True,
@@ -241,6 +261,7 @@ REG_TESTNODE = SyncRegistry(
 REG_HELPER = SyncRegistry(
     {
         ImplQualifiedRef(IMPL, "HelperTestClass"): (TARGET, "HelperTestClass"),
+        ImplQualifiedRef(IMPL, "HelperTestSubclass"): (TARGET, "HelperTestSubclass"),
     }
 )
 
@@ -266,7 +287,7 @@ def test_emit_translation_function_and_class_signatures():
     class_code = emit_class_from_ir(IR_TR_TESTNODE_CLASS, sync, TARGET)
 
     assert "_instance_cache: weakref.WeakValueDictionary" in class_code
-    assert "def _from_impl(cls, impl_instance" in class_code
+    assert "def _from_impl(cls, impl_instance: typing.Any)" in class_code
     assert "_wrapped_from_impl(cls, impl_instance, cls._instance_cache)" in class_code
 
     assert (
@@ -298,8 +319,17 @@ def test_emit_translation_function_and_class_signatures():
 def test_emit_wrapper_helpers():
     compiled_code = emit_class_from_ir(IR_CLASS_HELPER, REG_HELPER, TARGET)
     assert "_instance_cache: weakref.WeakValueDictionary = weakref.WeakValueDictionary()" in compiled_code
-    assert "def _from_impl(cls, impl_instance:" in compiled_code
+    assert "def _from_impl(cls, impl_instance: typing.Any)" in compiled_code
     assert "_wrapped_from_impl(cls, impl_instance, cls._instance_cache)" in compiled_code
+
+
+def test_emit_subclass_wrapper_helpers_reuse_root_cache():
+    compiled_code = emit_class_from_ir(IR_CLASS_HELPER_SUBCLASS, REG_HELPER, TARGET)
+    assert "class HelperTestSubclass(HelperTestClass):" in compiled_code
+    assert "def _from_impl(cls, impl_instance: typing.Any)" in compiled_code
+    assert '-> "HelperTestSubclass":' in compiled_code or "-> 'HelperTestSubclass':" in compiled_code
+    assert "_wrapped_from_impl(cls, impl_instance, cls._instance_cache)" in compiled_code
+    assert "WeakValueDictionary = weakref.WeakValueDictionary()" not in compiled_code
 
 
 def test_emit_unwrap_in_function_bodies():
