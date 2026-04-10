@@ -133,6 +133,15 @@ from {runtime_package}.synchronizer import get_synchronizer, _wrapped_from_impl
 """
 
 
+def _wrapper_registration_lines(class_wrappers: tuple[ClassWrapperIR, ...]) -> list[str]:
+    lines: list[str] = []
+    for ir in class_wrappers:
+        lines.append(
+            f"_synchronizer.register_wrapper_class({_impl_type_dotted(ir.impl_ref)}, {_wrapper_short_name(ir.impl_ref)})"
+        )
+    return lines
+
+
 def emit_module_level_function(
     ir: ModuleLevelFunctionIR,
     sync: SyncRegistry,
@@ -814,7 +823,7 @@ def emit_class_from_ir(
     from_impl_method = f"""    @classmethod
     def _from_impl(cls, impl_instance: typing.Any) -> "{wshort}":
         \"\"\"Create wrapper from implementation instance, preserving identity via cache.\"\"\"
-        return _wrapped_from_impl(cls, impl_instance, cls._instance_cache)"""
+        return _wrapped_from_impl(cls, impl_instance, cls._instance_cache, _synchronizer)"""
 
     all_bases: list[str] = []
     if wrapped_base_strings:
@@ -921,6 +930,11 @@ class SyncAsyncWrapperEmitter:
             if i > 0:
                 compiled_code.append("")
             compiled_code.append(code)
+
+        if ir.class_wrappers:
+            compiled_code.append("")
+            compiled_code.extend(_wrapper_registration_lines(ir.class_wrappers))
+            compiled_code.append("")
 
         for func_ir in ir.module_functions_ir:
             code = emit_module_level_function(

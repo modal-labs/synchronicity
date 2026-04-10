@@ -130,3 +130,11 @@ def test_emit_module_two_classes_separated_by_blank_lines():
         prev_line_idx = idx - 1
         assert prev_line_idx >= 0
         assert lines[prev_line_idx].strip() == ""
+    assert (
+        "_synchronizer.register_wrapper_class(test.unit.compile.test_emit_module.EmitModuleClassA, EmitModuleClassA)"
+        in generated_code
+    )
+    assert (
+        "_synchronizer.register_wrapper_class(test.unit.compile.test_emit_module.EmitModuleClassB, EmitModuleClassB)"
+        in generated_code
+    )

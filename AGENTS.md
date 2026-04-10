@@ -48,7 +48,7 @@
 - `src/synchronicity/synchronizer.py`: runtime event-loop execution engine
 - `src/synchronicity/descriptor.py`: descriptors for dual sync/async method access
 - `src/synchronicity/types.py`: shared sync-or-async iterable helpers
-- `src/synchronicity/codegen/`: build-time utilities - should never be imported by runtime code; see `src/synchronicity/codegen/ARCHITECTURE.md` for parse IR vs emission layering; see `src/synchronicity/codegen/ARCHITECTURE.md` for parse IR vs emission layering
+- `src/synchronicity/codegen/`: build-time utilities - should never be imported by runtime code; see `ARCHITECTURE.md` for parse IR vs emission layering
 - `test/unit/`: codegen and transformer unit tests
 - `test/integration/`: end-to-end wrapper generation and runtime behavior tests
 - `test/support_files/`: example implementation modules used to generate wrappers in tests

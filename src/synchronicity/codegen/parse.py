@@ -58,6 +58,22 @@ def _check_annotation_for_cross_refs(
             _check_annotation_for_cross_refs(arg, current_module, sync, cross_module_refs)
 
 
+def _check_impl_type_for_cross_ref(
+    impl_type: type,
+    current_module: str,
+    sync: SyncRegistry,
+    cross_module_refs: dict[str, set[str]],
+) -> None:
+    loc = sync.lookup_wrapper(impl_type)
+    if loc is None:
+        return
+    target_module, wrapper_name = loc
+    if target_module != current_module:
+        if target_module not in cross_module_refs:
+            cross_module_refs[target_module] = set()
+        cross_module_refs[target_module].add(wrapper_name)
+
+
 def cross_module_imports_for_module(
     module_name: str,
     module_items: dict,
@@ -72,6 +88,8 @@ def cross_module_imports_for_module(
             for annotation in annotations.values():
                 _check_annotation_for_cross_refs(annotation, module_name, sync, cross_module_refs)
         elif isinstance(obj, type):
+            for base in getattr(obj, "__bases__", ()):
+                _check_impl_type_for_cross_ref(base, module_name, sync, cross_module_refs)
             for method_name, method in inspect.getmembers(obj, predicate=inspect.isfunction):
                 if method_name.startswith("_"):
                     continue

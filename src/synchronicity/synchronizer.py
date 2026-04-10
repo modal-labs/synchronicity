@@ -1,10 +1,13 @@
 import asyncio
 import atexit
 import concurrent.futures
+import importlib
 import os
 import threading
 import typing
 from typing import Callable, Optional
+
+from .module import _IMPL_WRAPPER_LOCATION_ATTR
 
 # Global registry for synchronizer instances
 _synchronizer_registry = {}
@@ -48,7 +51,10 @@ def get_synchronizer(name: str) -> "Synchronizer":
 
 
 def _wrapped_from_impl(
-    wrapper_cls: type[WRAPPER_CLASS_T], impl_instance: typing.Any, cache: typing.Any
+    wrapper_cls: type[WRAPPER_CLASS_T],
+    impl_instance: typing.Any,
+    cache: typing.Any,
+    synchronizer: "Synchronizer",
 ) -> WRAPPER_CLASS_T:
     """
     Create or retrieve a wrapper instance from an implementation instance.
@@ -60,23 +66,27 @@ def _wrapped_from_impl(
         wrapper_cls: The wrapper class to create an instance of
         impl_instance: The implementation instance to wrap
         cache: A WeakValueDictionary cache for storing wrapper instances
+        synchronizer: The synchronizer that owns runtime wrapper registrations
 
     Returns:
         A wrapper instance (either from cache or newly created)
     """
+    resolved_wrapper_cls = typing.cast(type[WRAPPER_CLASS_T], synchronizer._resolve_wrapper_class(impl_instance))
+    resolved_cache = getattr(resolved_wrapper_cls, "_instance_cache", cache)
+
     # Use id() as cache key since impl instances are Python objects
     cache_key = id(impl_instance)
 
     # Check cache first
-    if cache_key in cache:
-        return cache[cache_key]
+    if cache_key in resolved_cache:
+        return resolved_cache[cache_key]
 
     # Create new wrapper using __new__ to bypass __init__
-    wrapper = wrapper_cls.__new__(wrapper_cls)
+    wrapper = resolved_wrapper_cls.__new__(resolved_wrapper_cls)
     wrapper._impl_instance = impl_instance
 
     # Cache it
-    cache[cache_key] = wrapper
+    resolved_cache[cache_key] = wrapper
 
     return wrapper
 
@@ -99,8 +109,41 @@ class Synchronizer:
         self._nowrap_attr = "_sync_nonwrap_%d" % id(self)
         self._input_translation_attr = "_sync_input_translation_%d" % id(self)
         self._output_translation_attr = "_sync_output_translation_%d" % id(self)
+        self._wrapper_classes: dict[type, type[WrapperClassProtocol]] = {}
 
         atexit.register(self._close_loop)
+
+    def register_wrapper_class(self, impl_type: type, wrapper_cls: type[WrapperClassProtocol]) -> None:
+        existing = self._wrapper_classes.get(impl_type)
+        if existing is not None and existing is not wrapper_cls:
+            raise RuntimeError(
+                f"Implementation type {impl_type!r} already registered to wrapper {existing!r}, "
+                f"cannot replace it with {wrapper_cls!r}"
+            )
+        self._wrapper_classes[impl_type] = wrapper_cls
+
+    def _resolve_wrapper_class(
+        self,
+        impl_instance: typing.Any,
+    ) -> type[WrapperClassProtocol]:
+        impl_type = type(impl_instance)
+        wrapper_cls = self._wrapper_classes.get(impl_type)
+        if wrapper_cls is not None:
+            return wrapper_cls
+
+        location = getattr(impl_type, _IMPL_WRAPPER_LOCATION_ATTR, None)
+        if location is None:
+            raise RuntimeError(f"Implementation type {impl_type!r} has no registered wrapper location")
+
+        target_module, wrapper_name = location
+        importlib.import_module(target_module)
+        wrapper_cls = self._wrapper_classes.get(impl_type)
+        if wrapper_cls is None:
+            raise RuntimeError(
+                f"Wrapper module {target_module!r} did not register wrapper {wrapper_name!r} "
+                f"for implementation type {impl_type!r}"
+            )
+        return wrapper_cls
 
     def _start_loop(self) -> asyncio.AbstractEventLoop:
         with self._loop_creation_lock:

@@ -14,6 +14,7 @@ F = typing.TypeVar("F", bound=types.FunctionType)
 C = typing.TypeVar("C", bound=type)
 
 DEFAULT_SYNCHRONIZER_NAME = "default_synchronizer"
+_IMPL_WRAPPER_LOCATION_ATTR = "__synchronicity_wrapper_location__"
 
 
 class Module:
@@ -126,8 +127,9 @@ class Module:
     def wrap_class(self, cls: C) -> C:
         """Decorator to mark a class for wrapper generation.
 
-        This decorator registers the class for wrapper code generation but
-        returns it unchanged. It has zero runtime overhead.
+        This decorator registers the class for wrapper code generation, records
+        where its generated wrapper class will live at runtime, and returns it
+        unchanged.
 
         Args:
             cls: The class to register for wrapper generation.
@@ -135,5 +137,14 @@ class Module:
         Returns:
             The original class, unchanged.
         """
-        self._wrapped_classes[cls] = (self._target_module, cls.__name__)
+        wrapper_location = (self._target_module, cls.__name__)
+        existing_location = cls.__dict__.get(_IMPL_WRAPPER_LOCATION_ATTR)
+        if existing_location is not None and existing_location != wrapper_location:
+            raise RuntimeError(
+                f"Implementation class {cls!r} already has wrapper location {existing_location!r}, "
+                f"cannot replace it with {wrapper_location!r}"
+            )
+
+        setattr(cls, _IMPL_WRAPPER_LOCATION_ATTR, wrapper_location)
+        self._wrapped_classes[cls] = wrapper_location
         return cls

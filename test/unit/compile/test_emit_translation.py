@@ -288,7 +288,7 @@ def test_emit_translation_function_and_class_signatures():
 
     assert "_instance_cache: weakref.WeakValueDictionary" in class_code
     assert "def _from_impl(cls, impl_instance: typing.Any)" in class_code
-    assert "_wrapped_from_impl(cls, impl_instance, cls._instance_cache)" in class_code
+    assert "_wrapped_from_impl(cls, impl_instance, cls._instance_cache, _synchronizer)" in class_code
 
     assert (
         'def tr_create_node(value: int) -> "TestNode":' in create_node_code
@@ -320,7 +320,7 @@ def test_emit_wrapper_helpers():
     compiled_code = emit_class_from_ir(IR_CLASS_HELPER, REG_HELPER, TARGET)
     assert "_instance_cache: weakref.WeakValueDictionary = weakref.WeakValueDictionary()" in compiled_code
     assert "def _from_impl(cls, impl_instance: typing.Any)" in compiled_code
-    assert "_wrapped_from_impl(cls, impl_instance, cls._instance_cache)" in compiled_code
+    assert "_wrapped_from_impl(cls, impl_instance, cls._instance_cache, _synchronizer)" in compiled_code
 
 
 def test_emit_subclass_wrapper_helpers_reuse_root_cache():
@@ -328,7 +328,7 @@ def test_emit_subclass_wrapper_helpers_reuse_root_cache():
     assert "class HelperTestSubclass(HelperTestClass):" in compiled_code
     assert "def _from_impl(cls, impl_instance: typing.Any)" in compiled_code
     assert '-> "HelperTestSubclass":' in compiled_code or "-> 'HelperTestSubclass':" in compiled_code
-    assert "_wrapped_from_impl(cls, impl_instance, cls._instance_cache)" in compiled_code
+    assert "_wrapped_from_impl(cls, impl_instance, cls._instance_cache, _synchronizer)" in compiled_code
     assert "WeakValueDictionary = weakref.WeakValueDictionary()" not in compiled_code
 
 
