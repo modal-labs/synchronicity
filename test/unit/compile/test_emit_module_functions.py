@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from synchronicity.codegen.emitters.sync_async_wrappers import emit_module_level_function
 from synchronicity.codegen.ir import ModuleLevelFunctionIR, ParameterIR
-from synchronicity.codegen.sync_registry import SyncRegistry
 from synchronicity.codegen.transformer_ir import (
     AsyncGeneratorTypeIR,
     AwaitableTypeIR,
@@ -19,6 +18,7 @@ from synchronicity.codegen.transformer_ir import (
     ListTypeIR,
     OptionalTypeIR,
     WrappedClassTypeIR,
+    WrapperRef,
 )
 
 IMPL = __name__
@@ -105,7 +105,9 @@ IR_FN_CREATE_PEOPLE = ModuleLevelFunctionIR(
             name="names", kind=1, annotation_ir=ListTypeIR(item=IdentityTypeIR(signature_text="str")), default_repr=None
         ),
     ),
-    return_transformer_ir=ListTypeIR(item=WrappedClassTypeIR(impl=ImplQualifiedRef(IMPL, "Person"))),
+    return_transformer_ir=ListTypeIR(
+        item=WrappedClassTypeIR(impl=ImplQualifiedRef(IMPL, "Person"), wrapper=WrapperRef(TARGET, "Person"))
+    ),
 )
 IR_FN_CREATE_PERSON = ModuleLevelFunctionIR(
     impl_ref=ImplQualifiedRef(IMPL, "fn_create_person"),
@@ -114,7 +116,9 @@ IR_FN_CREATE_PERSON = ModuleLevelFunctionIR(
     parameters=(
         ParameterIR(name="name", kind=1, annotation_ir=IdentityTypeIR(signature_text="str"), default_repr=None),
     ),
-    return_transformer_ir=WrappedClassTypeIR(impl=ImplQualifiedRef(IMPL, "Person")),
+    return_transformer_ir=WrappedClassTypeIR(
+        impl=ImplQualifiedRef(IMPL, "Person"), wrapper=WrapperRef(TARGET, "Person")
+    ),
 )
 IR_FN_GENERIC_TYPES = ModuleLevelFunctionIR(
     impl_ref=ImplQualifiedRef(IMPL, "fn_generic_types"),
@@ -153,7 +157,9 @@ IR_FN_GREET = ModuleLevelFunctionIR(
         ParameterIR(
             name="person",
             kind=1,
-            annotation_ir=WrappedClassTypeIR(impl=ImplQualifiedRef(IMPL, "Person")),
+            annotation_ir=WrappedClassTypeIR(
+                impl=ImplQualifiedRef(IMPL, "Person"), wrapper=WrapperRef(TARGET, "Person")
+            ),
             default_repr=None,
         ),
     ),
@@ -206,7 +212,10 @@ IR_FN_STREAM_BATCHES = ModuleLevelFunctionIR(
         ParameterIR(name="batch_size", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_repr=None),
     ),
     return_transformer_ir=AsyncGeneratorTypeIR(
-        yield_item=ListTypeIR(item=WrappedClassTypeIR(impl=ImplQualifiedRef(IMPL, "Person"))), send_type_str=None
+        yield_item=ListTypeIR(
+            item=WrappedClassTypeIR(impl=ImplQualifiedRef(IMPL, "Person"), wrapper=WrapperRef(TARGET, "Person"))
+        ),
+        send_type_str=None,
     ),
 )
 IR_FN_STREAM_PEOPLE = ModuleLevelFunctionIR(
@@ -217,7 +226,8 @@ IR_FN_STREAM_PEOPLE = ModuleLevelFunctionIR(
         ParameterIR(name="count", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_repr=None),
     ),
     return_transformer_ir=AsyncGeneratorTypeIR(
-        yield_item=WrappedClassTypeIR(impl=ImplQualifiedRef(IMPL, "Person")), send_type_str=None
+        yield_item=WrappedClassTypeIR(impl=ImplQualifiedRef(IMPL, "Person"), wrapper=WrapperRef(TARGET, "Person")),
+        send_type_str=None,
     ),
 )
 IR_FN_SYNC_ADD = ModuleLevelFunctionIR(
@@ -256,16 +266,6 @@ IR_FN_WITH_DEFAULTS = ModuleLevelFunctionIR(
     return_transformer_ir=IdentityTypeIR(signature_text="str"),
 )
 
-# --- SyncRegistry: ImplQualifiedRef → (TARGET, wrapper name) ---
-
-REG_EMPTY = SyncRegistry({})
-
-REG_PERSON = SyncRegistry(
-    {
-        ImplQualifiedRef(IMPL, "Person"): (TARGET, "Person"),
-    }
-)
-
 
 def _fn_short(ir: ModuleLevelFunctionIR) -> str:
     return ir.impl_ref.qualname.rpartition(".")[2]
@@ -273,7 +273,7 @@ def _fn_short(ir: ModuleLevelFunctionIR) -> str:
 
 def test_emit_async_function_basic_template():
     ir = IR_FN_SIMPLE_TYPES
-    code = emit_module_level_function(ir, REG_EMPTY, TARGET)
+    code = emit_module_level_function(ir, TARGET)
     compile(code, "<string>", "exec")
     name = _fn_short(ir)
     assert f"impl_function = {IMPL}." in code
@@ -287,7 +287,7 @@ def test_emit_async_function_basic_template():
 
 
 def test_emit_async_function_complex_types():
-    code = emit_module_level_function(IR_FN_COMPLEX_TYPES, REG_EMPTY, TARGET)
+    code = emit_module_level_function(IR_FN_COMPLEX_TYPES, TARGET)
     compile(code, "<string>", "exec")
     assert "items: list" in code
     assert "config: dict" in code
@@ -302,7 +302,7 @@ def test_emit_async_function_complex_types():
 
 def test_emit_async_function_no_annotations():
     ir = IR_FN_NO_ANNOTATION
-    code = emit_module_level_function(ir, REG_EMPTY, TARGET)
+    code = emit_module_level_function(ir, TARGET)
     compile(code, "<string>", "exec")
     n = _fn_short(ir)
     assert f"async def __{n}_aio" in code
@@ -311,14 +311,14 @@ def test_emit_async_function_no_annotations():
 
 def test_emit_async_function_template_line_order():
     ir = IR_FN_SIMPLE_TYPES
-    code = emit_module_level_function(ir, REG_EMPTY, TARGET)
+    code = emit_module_level_function(ir, TARGET)
     lines = code.split("\n")
     async_line = next(i for i, line in enumerate(lines) if f"async def __{_fn_short(ir)}_aio" in line)
     assert async_line is not None
 
 
 def test_emit_async_function_generic_types():
-    code = emit_module_level_function(IR_FN_GENERIC_TYPES, REG_EMPTY, TARGET)
+    code = emit_module_level_function(IR_FN_GENERIC_TYPES, TARGET)
     compile(code, "<string>", "exec")
     assert "items: list[str]" in code
     assert "mapping: dict[str, int]" in code
@@ -331,7 +331,7 @@ def test_emit_async_function_generic_types():
 
 
 def test_emit_async_generator_function():
-    code = emit_module_level_function(IR_FN_ASYNC_GEN, REG_EMPTY, TARGET)
+    code = emit_module_level_function(IR_FN_ASYNC_GEN, TARGET)
     compile(code, "<string>", "exec")
     assert "_run_generator_sync" in code
     assert "_run_generator_async" in code
@@ -353,7 +353,7 @@ def test_emit_async_generator_function():
 
 def test_emit_async_generator_template_pattern():
     ir = IR_FN_ASYNC_GEN
-    code = emit_module_level_function(ir, REG_EMPTY, TARGET)
+    code = emit_module_level_function(ir, TARGET)
     name = _fn_short(ir)
     assert f"async def __{name}_aio" in code
     assert f"@wrapped_function(__{name}_aio)" in code
@@ -364,7 +364,7 @@ def test_emit_async_generator_template_pattern():
 
 
 def test_emit_async_generator_wrapped_yield_type_quoting():
-    code = emit_module_level_function(IR_FN_STREAM_PEOPLE, REG_PERSON, TARGET)
+    code = emit_module_level_function(IR_FN_STREAM_PEOPLE, TARGET)
     compile(code, "<string>", "exec")
     assert ' -> "typing.Generator[Person, None, None]"' in code
     assert ' -> "typing.AsyncGenerator[Person]"' in code
@@ -373,21 +373,21 @@ def test_emit_async_generator_wrapped_yield_type_quoting():
 
 
 def test_emit_async_generator_nested_wrapped_yield_quoting():
-    code = emit_module_level_function(IR_FN_STREAM_BATCHES, REG_PERSON, TARGET)
+    code = emit_module_level_function(IR_FN_STREAM_BATCHES, TARGET)
     compile(code, "<string>", "exec")
     assert ' -> "typing.Generator[list[Person], None, None]"' in code
     assert ' -> "typing.AsyncGenerator[list[Person]]"' in code
 
 
 def test_emit_declared_bare_iterator():
-    code = emit_module_level_function(IR_FN_BARE_ITERATOR, REG_EMPTY, TARGET)
+    code = emit_module_level_function(IR_FN_BARE_ITERATOR, TARGET)
     assert 'async def __fn_declared_bare_iterator_aio() -> "typing.AsyncGenerator[typing.Any, None]"' in code
     assert "@wrapped_function" in code
     assert 'def fn_declared_bare_iterator() -> "typing.Generator[typing.Any, None, None]"' in code
 
 
 def test_emit_sync_function_basic():
-    code = emit_module_level_function(IR_FN_SYNC_ADD, REG_EMPTY, TARGET)
+    code = emit_module_level_function(IR_FN_SYNC_ADD, TARGET)
     compile(code, "<string>", "exec")
     assert "await impl_function" not in code
     assert "_run_function_sync" not in code
@@ -399,7 +399,7 @@ def test_emit_sync_function_basic():
 
 
 def test_emit_sync_function_wrapped_arg():
-    code = emit_module_level_function(IR_FN_GREET, REG_PERSON, TARGET)
+    code = emit_module_level_function(IR_FN_GREET, TARGET)
     compile(code, "<string>", "exec")
     assert "person_impl = person._impl_instance" in code
     assert "return impl_function(person_impl)" in code
@@ -409,7 +409,7 @@ def test_emit_sync_function_wrapped_arg():
 
 
 def test_emit_sync_function_wrapped_return():
-    code = emit_module_level_function(IR_FN_CREATE_PERSON, REG_PERSON, TARGET)
+    code = emit_module_level_function(IR_FN_CREATE_PERSON, TARGET)
     compile(code, "<string>", "exec")
     assert "result = impl_function(name)" in code
     assert "return Person._from_impl(result)" in code
@@ -418,7 +418,7 @@ def test_emit_sync_function_wrapped_return():
 
 
 def test_emit_sync_function_list_wrapped_return():
-    code = emit_module_level_function(IR_FN_CREATE_PEOPLE, REG_PERSON, TARGET)
+    code = emit_module_level_function(IR_FN_CREATE_PEOPLE, TARGET)
     compile(code, "<string>", "exec")
     assert "result = impl_function(names)" in code
     assert "[Person._from_impl(x) for x in result]" in code
@@ -427,14 +427,14 @@ def test_emit_sync_function_list_wrapped_return():
 
 
 def test_emit_sync_function_no_annotations():
-    code = emit_module_level_function(IR_FN_NO_TYPES, REG_EMPTY, TARGET)
+    code = emit_module_level_function(IR_FN_NO_TYPES, TARGET)
     compile(code, "<string>", "exec")
     assert "return impl_function(x, y)" in code
     assert "_run_function_sync" not in code
 
 
 def test_emit_sync_function_default_args():
-    code = emit_module_level_function(IR_FN_WITH_DEFAULTS, REG_EMPTY, TARGET)
+    code = emit_module_level_function(IR_FN_WITH_DEFAULTS, TARGET)
     compile(code, "<string>", "exec")
     assert "b: int = 10" in code
     assert "c: str = 'hello'" in code
@@ -442,21 +442,21 @@ def test_emit_sync_function_default_args():
 
 
 def test_emit_function_varargs():
-    code = emit_module_level_function(IR_FN_VARARGS, REG_EMPTY, TARGET)
+    code = emit_module_level_function(IR_FN_VARARGS, TARGET)
     assert "def fn_with_varargs(posonly, a: int, b: int = 10, *extra: int, c, **extrakwargs)" in code
     assert "return impl_function(posonly, a, b, *extra, c=c, **extrakwargs)" in code
     compile(code, "<string>", "exec")
 
 
 def test_emit_function_positional_only():
-    code = emit_module_level_function(IR_FN_POSONLY, REG_EMPTY, TARGET)
+    code = emit_module_level_function(IR_FN_POSONLY, TARGET)
     assert "def fn_with_posonly(a, b, /, c, d = 10)" in code
     assert "return impl_function(a, b, c, d)" in code
     compile(code, "<string>", "exec")
 
 
 def test_emit_sync_function_returning_coroutine():
-    code = emit_module_level_function(IR_FN_CREATE_COROUTINE, REG_EMPTY, TARGET)
+    code = emit_module_level_function(IR_FN_CREATE_COROUTINE, TARGET)
     assert "@wrapped_function" in code
     assert "async def __fn_create_coroutine_aio(x: int) -> str" in code
     assert "def fn_create_coroutine(x: int) -> str" in code
@@ -465,7 +465,7 @@ def test_emit_sync_function_returning_coroutine():
 
 
 def test_emit_sync_function_returning_awaitable():
-    code = emit_module_level_function(IR_FN_CREATE_AWAITABLE, REG_EMPTY, TARGET)
+    code = emit_module_level_function(IR_FN_CREATE_AWAITABLE, TARGET)
     assert "@wrapped_function" in code
     assert "async def __fn_create_awaitable_aio(x: int) -> str" in code
     assert "def fn_create_awaitable(x: int) -> str" in code
@@ -474,7 +474,7 @@ def test_emit_sync_function_returning_awaitable():
 
 
 def test_emit_sync_function_returning_bare_awaitable():
-    code = emit_module_level_function(IR_FN_CREATE_AWAITABLE_BARE, REG_EMPTY, TARGET)
+    code = emit_module_level_function(IR_FN_CREATE_AWAITABLE_BARE, TARGET)
     assert "@wrapped_function" in code
     assert "async def __fn_create_awaitable_bare_aio(x: int) -> typing.Any" in code
     assert "def fn_create_awaitable_bare(x: int) -> typing.Any" in code

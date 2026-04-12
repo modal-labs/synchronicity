@@ -8,7 +8,7 @@ import sys
 import types
 import typing
 
-from synchronicity.module import Module
+from synchronicity.module import _IMPL_WRAPPER_LOCATION_ATTR, Module
 
 from .compile_utils import (
     _extract_typevars_from_function,
@@ -25,26 +25,29 @@ from .ir import (
     ModuleLevelFunctionIR,
 )
 from .signature_utils import is_async_generator
-from .sync_registry import SyncRegistry
 from .transformer_ir import (
     AsyncGeneratorTypeIR,
     AsyncIteratorTypeIR,
     AwaitableTypeIR,
     CoroutineTypeIR,
     TypeTransformerIR,
+    WrapperRef,
 )
 from .transformer_materialize import annotation_to_transformer_ir
 from .typevar_codegen import typevar_specs_from_collected
 
 
+def _get_wrapper_location(t: type) -> tuple[str, str] | None:
+    return getattr(t, _IMPL_WRAPPER_LOCATION_ATTR, None)
+
+
 def _check_annotation_for_cross_refs(
     annotation,
     current_module: str,
-    sync: SyncRegistry,
     cross_module_refs: dict,
 ) -> None:
     if isinstance(annotation, type):
-        loc = sync.lookup_wrapper(annotation)
+        loc = _get_wrapper_location(annotation)
         if loc is not None:
             target_module, wrapper_name = loc
             if target_module != current_module:
@@ -55,16 +58,15 @@ def _check_annotation_for_cross_refs(
     args = typing.get_args(annotation)
     if args:
         for arg in args:
-            _check_annotation_for_cross_refs(arg, current_module, sync, cross_module_refs)
+            _check_annotation_for_cross_refs(arg, current_module, cross_module_refs)
 
 
 def _check_impl_type_for_cross_ref(
     impl_type: type,
     current_module: str,
-    sync: SyncRegistry,
     cross_module_refs: dict[str, set[str]],
 ) -> None:
-    loc = sync.lookup_wrapper(impl_type)
+    loc = _get_wrapper_location(impl_type)
     if loc is None:
         return
     target_module, wrapper_name = loc
@@ -77,36 +79,33 @@ def _check_impl_type_for_cross_ref(
 def cross_module_imports_for_module(
     module_name: str,
     module_items: dict,
-    synchronized_types: dict[type, tuple[str, str]],
 ) -> dict[str, set[str]]:
-    sync = SyncRegistry.from_type_map(synchronized_types)
     cross_module_refs: dict[str, set[str]] = {}
 
     for obj in module_items.keys():
         if isinstance(obj, types.FunctionType):
             annotations = _safe_get_annotations(obj)
             for annotation in annotations.values():
-                _check_annotation_for_cross_refs(annotation, module_name, sync, cross_module_refs)
+                _check_annotation_for_cross_refs(annotation, module_name, cross_module_refs)
         elif isinstance(obj, type):
             for base in getattr(obj, "__bases__", ()):
-                _check_impl_type_for_cross_ref(base, module_name, sync, cross_module_refs)
+                _check_impl_type_for_cross_ref(base, module_name, cross_module_refs)
             for method_name, method in inspect.getmembers(obj, predicate=inspect.isfunction):
                 if method_name.startswith("_"):
                     continue
                 annotations = _safe_get_annotations(method)
                 for annotation in annotations.values():
-                    _check_annotation_for_cross_refs(annotation, module_name, sync, cross_module_refs)
+                    _check_annotation_for_cross_refs(annotation, module_name, cross_module_refs)
 
     return cross_module_refs
 
 
 def build_module_compilation_ir(
     module: Module,
-    synchronized_types: dict[type, tuple[str, str]],
 ) -> ModuleCompilationIR:
     """Step 1–2 for a single output module: layout, cross-refs, and collected type variables."""
     impl_modules = {o.__module__ for o in module.module_items().keys()}
-    cross = cross_module_imports_for_module(module.target_module, module.module_items(), synchronized_types)
+    cross = cross_module_imports_for_module(module.target_module, module.module_items())
 
     classes: list[type] = []
     functions: list[types.FunctionType] = []
@@ -137,25 +136,22 @@ def build_module_compilation_ir(
                 annotations = _safe_get_annotations(method)
                 module_typevars.update(_extract_typevars_from_function(method, annotations))
 
+    known_impl_types = frozenset(o for o in module.module_items().keys() if isinstance(o, type))
     typevar_specs = typevar_specs_from_collected(
         module_typevars,
-        synchronized_types,
+        known_impl_types,
         module.target_module,
         impl_modules=frozenset(impl_modules),
     )
     cross_frozen = {k: frozenset(v) for k, v in cross.items()}
 
     impl_mods = frozenset(impl_modules)
-    class_wrappers = tuple(
-        parse_class_wrapper_ir(c, module.target_module, synchronized_types, impl_modules=impl_mods) for c in classes
-    )
+    class_wrappers = tuple(parse_class_wrapper_ir(c, module.target_module, impl_modules=impl_mods) for c in classes)
     module_functions_ir_list: list[ModuleLevelFunctionIR] = []
     for f in functions:
         g = sys.modules[f.__module__].__dict__ if f.__module__ in sys.modules else None
         module_functions_ir_list.append(
-            parse_module_level_function_ir(
-                f, module.target_module, synchronized_types, globals_dict=g, impl_modules=impl_mods
-            )
+            parse_module_level_function_ir(f, module.target_module, globals_dict=g, impl_modules=impl_mods)
         )
     module_functions_ir = tuple(module_functions_ir_list)
 
@@ -183,14 +179,12 @@ def _normalize_return_transformer_ir(
 def parse_module_level_function_ir(
     f: types.FunctionType,
     target_module: str,
-    synchronized_types: dict[type, tuple[str, str]],
     *,
     globals_dict: dict[str, typing.Any] | None = None,
     runtime_package: str = "synchronicity",
     impl_modules: frozenset[str] | None = None,
 ) -> ModuleLevelFunctionIR:
     _ = runtime_package  # reserved for parity with API; IR does not embed runtime package on nodes
-    sync = SyncRegistry.from_type_map(synchronized_types)
     if impl_modules is None:
         impl_modules = frozenset({f.__module__})
     annotations = _safe_get_annotations(f, globals_dict)
@@ -202,7 +196,6 @@ def parse_module_level_function_ir(
 
     return_ir = annotation_to_transformer_ir(
         return_annotation,
-        sync,
         owner_impl_type=None,
         impl_modules=impl_modules,
     )
@@ -210,7 +203,6 @@ def parse_module_level_function_ir(
     parameters = parse_parameters_to_ir(
         sig,
         annotations,
-        sync,
         skip_first_param=False,
         impl_modules=impl_modules,
     )
@@ -232,7 +224,6 @@ def parse_module_level_function_ir(
 def parse_method_wrapper_ir(
     method: types.FunctionType,
     method_name: str,
-    sync: SyncRegistry,
     impl_class: type,
     *,
     owner_has_type_parameters: bool = False,
@@ -252,7 +243,6 @@ def parse_method_wrapper_ir(
 
     return_ir = annotation_to_transformer_ir(
         return_annotation,
-        sync,
         owner_impl_type=impl_class,
         owner_has_type_parameters=owner_has_type_parameters,
         impl_modules=impl_modules,
@@ -263,7 +253,6 @@ def parse_method_wrapper_ir(
     parameters = parse_parameters_to_ir(
         sig,
         annotations,
-        sync,
         skip_first_param=skip_first_param,
         owner_impl_type=impl_class,
         owner_has_type_parameters=owner_has_type_parameters,
@@ -288,7 +277,6 @@ def parse_method_wrapper_ir(
 def parse_class_wrapper_ir(
     cls: type,
     target_module: str,
-    synchronized_types: dict[type, tuple[str, str]],
     *,
     globals_dict: dict[str, typing.Any] | None = None,
     runtime_package: str = "synchronicity",
@@ -297,10 +285,8 @@ def parse_class_wrapper_ir(
     """Collect :class:`ClassWrapperIR` from a live implementation class (parse-time only)."""
     if impl_modules is None:
         impl_modules = frozenset({cls.__module__})
-    sync_base = SyncRegistry.from_type_map(synchronized_types)
-    sync_self = sync_base.with_impl_class(cls, target_module, cls.__name__)
 
-    wrapped_bases: list[ImplQualifiedRef] = []
+    wrapped_bases: list[tuple[ImplQualifiedRef, WrapperRef]] = []
     generic_type_parameters: tuple[str, ...] | None = None
     generic_typevars: dict[str, typing.TypeVar | typing.ParamSpec] = {}
 
@@ -319,9 +305,9 @@ def parse_class_wrapper_ir(
                 if typevar_names:
                     generic_type_parameters = tuple(typevar_names)
         elif base is not object and isinstance(base, type):
-            loc = sync_base.lookup_wrapper(base)
+            loc = _get_wrapper_location(base)
             if loc is not None:
-                wrapped_bases.append(ImplQualifiedRef(base.__module__, base.__qualname__))
+                wrapped_bases.append((ImplQualifiedRef(base.__module__, base.__qualname__), WrapperRef(*loc)))
 
     methods: list[tuple[str, types.FunctionType, MethodBindingKind]] = []
     classmethod_staticmethod_names: set[str] = set()
@@ -352,7 +338,6 @@ def parse_class_wrapper_ir(
             resolved_annotation = annotations_resolved.get(name, annotation)
             annotation_ir = annotation_to_transformer_ir(
                 resolved_annotation,
-                sync_self,
                 owner_impl_type=cls,
                 owner_has_type_parameters=bool(generic_typevars),
                 impl_modules=impl_modules,
@@ -365,7 +350,6 @@ def parse_class_wrapper_ir(
             parse_method_wrapper_ir(
                 method,
                 method_name,
-                sync_self,
                 cls,
                 owner_has_type_parameters=bool(generic_typevars),
                 method_type=method_type,
@@ -383,7 +367,6 @@ def parse_class_wrapper_ir(
             parse_method_wrapper_ir(
                 init_method,
                 "__init__",
-                sync_self,
                 cls,
                 owner_has_type_parameters=bool(generic_typevars),
                 method_type=MethodBindingKind.INSTANCE,
@@ -401,7 +384,6 @@ def parse_class_wrapper_ir(
             parse_method_wrapper_ir(
                 aiter_method,
                 "__aiter__",
-                sync_self,
                 cls,
                 owner_has_type_parameters=bool(generic_typevars),
                 method_type=MethodBindingKind.INSTANCE,
@@ -416,7 +398,6 @@ def parse_class_wrapper_ir(
             parse_method_wrapper_ir(
                 anext_method,
                 "__anext__",
-                sync_self,
                 cls,
                 owner_has_type_parameters=bool(generic_typevars),
                 method_type=MethodBindingKind.INSTANCE,
@@ -426,9 +407,15 @@ def parse_class_wrapper_ir(
             )
         )
 
+    # Read wrapper location from marker attribute
+    wrapper_loc = _get_wrapper_location(cls)
+    assert wrapper_loc is not None, f"{cls!r} missing {_IMPL_WRAPPER_LOCATION_ATTR}"
+    wrapper_ref = WrapperRef(*wrapper_loc)
+
     return ClassWrapperIR(
         impl_ref=ImplQualifiedRef(cls.__module__, cls.__qualname__),
-        wrapped_base_impl_refs=tuple(wrapped_bases),
+        wrapper_ref=wrapper_ref,
+        wrapped_bases=tuple(wrapped_bases),
         generic_type_parameters=generic_type_parameters,
         attributes=tuple(attributes),
         methods=tuple(combined_methods),

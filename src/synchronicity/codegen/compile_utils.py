@@ -10,7 +10,6 @@ import typing
 
 from .ir import MethodBindingKind, ParameterIR
 from .signature_utils import is_async_generator
-from .sync_registry import SyncRegistry
 from .transformer_ir import ImplQualifiedRef
 from .type_transformer import WrappedClassTransformer
 
@@ -21,17 +20,15 @@ if typing.TYPE_CHECKING:
 def _parameter_annotation_str(
     transformer,
     wrapper_type_str: str,
-    sync: SyncRegistry,
     current_target_module: str,
 ) -> str:
     """Use quoted forward references for bare local wrapper class names (class body scope)."""
     if not isinstance(transformer, WrappedClassTransformer):
         return wrapper_type_str
-    if not transformer.needs_translation() or transformer.impl_ref not in sync:
+    if not transformer.needs_translation():
         return wrapper_type_str
-    wmod, wname = sync[transformer.impl_ref]
-    if wmod == current_target_module:
-        return f'"{wname}"'
+    if transformer._wrapper.wrapper_module == current_target_module:
+        return f'"{transformer._wrapper.wrapper_name}"'
     return wrapper_type_str
 
 
@@ -141,12 +138,7 @@ def _contains_self_type(annotation) -> bool:
 
 
 def _extract_typevars_from_annotation(annotation, collected: dict[str, typing.TypeVar | typing.ParamSpec]) -> None:
-    """Recursively extract TypeVar and ParamSpec instances from a type annotation.
-
-    Args:
-        annotation: Type annotation to extract from
-        collected: Dict to store found typevars (name -> typevar instance)
-    """
+    """Recursively extract TypeVar and ParamSpec instances from a type annotation."""
     # Handle TypeVar and ParamSpec directly
     if isinstance(annotation, typing.TypeVar):
         collected[annotation.__name__] = annotation
@@ -166,15 +158,7 @@ def _extract_typevars_from_annotation(annotation, collected: dict[str, typing.Ty
 def _extract_typevars_from_function(
     f: types.FunctionType, annotations: dict[str, typing.Any]
 ) -> dict[str, typing.TypeVar | typing.ParamSpec]:
-    """Extract all TypeVar and ParamSpec instances used in a function's signature.
-
-    Args:
-        f: The function to extract from
-        annotations: Resolved annotations dict from inspect.get_annotations
-
-    Returns:
-        Dict mapping typevar name to typevar instance
-    """
+    """Extract all TypeVar and ParamSpec instances used in a function's signature."""
     collected: dict[str, typing.TypeVar | typing.ParamSpec] = {}
 
     # Extract from all annotations (parameters and return type)
@@ -187,7 +171,6 @@ def _extract_typevars_from_function(
 def parse_parameters_to_ir(
     sig: inspect.Signature,
     annotations: dict,
-    sync: SyncRegistry,
     *,
     skip_first_param: bool = False,
     owner_impl_type: type | None = None,
@@ -208,7 +191,6 @@ def parse_parameters_to_ir(
         else:
             annotation_ir = annotation_to_transformer_ir(
                 param_annotation,
-                sync,
                 owner_impl_type=owner_impl_type,
                 owner_has_type_parameters=owner_has_type_parameters,
                 impl_modules=impl_modules,
@@ -231,7 +213,6 @@ def parse_parameters_to_ir(
 
 def format_parameters_for_emit(
     parameters: tuple[ParameterIR, ...],
-    sync: SyncRegistry,
     current_target_module: str,
     runtime_package: str = "synchronicity",
     unwrap_indent: str = "    ",
@@ -252,7 +233,7 @@ def format_parameters_for_emit(
         name = param_ir.name
         kind = param_ir.kind
         transformer = (
-            materialize_transformer_ir(param_ir.annotation_ir, sync, runtime_package, ctx=mat_ctx)
+            materialize_transformer_ir(param_ir.annotation_ir, runtime_package, ctx=mat_ctx)
             if param_ir.annotation_ir is not None
             else None
         )
@@ -263,8 +244,8 @@ def format_parameters_for_emit(
         if kind == inspect.Parameter.VAR_POSITIONAL:
             if param_ir.annotation_ir is not None:
                 assert transformer is not None
-                wrapper_type_str = transformer.wrapped_type(sync, current_target_module)
-                ann = _parameter_annotation_str(transformer, wrapper_type_str, sync, current_target_module)
+                wrapper_type_str = transformer.wrapped_type(current_target_module)
+                ann = _parameter_annotation_str(transformer, wrapper_type_str, current_target_module)
                 params.append(f"*{name}: {ann}")
             else:
                 params.append(f"*{name}")
@@ -273,8 +254,8 @@ def format_parameters_for_emit(
         elif kind == inspect.Parameter.VAR_KEYWORD:
             if param_ir.annotation_ir is not None:
                 assert transformer is not None
-                wrapper_type_str = transformer.wrapped_type(sync, current_target_module)
-                ann = _parameter_annotation_str(transformer, wrapper_type_str, sync, current_target_module)
+                wrapper_type_str = transformer.wrapped_type(current_target_module)
+                ann = _parameter_annotation_str(transformer, wrapper_type_str, current_target_module)
                 params.append(f"**{name}: {ann}")
             else:
                 params.append(f"**{name}")
@@ -283,12 +264,12 @@ def format_parameters_for_emit(
         elif kind == inspect.Parameter.KEYWORD_ONLY:
             if param_ir.annotation_ir is not None:
                 assert transformer is not None
-                wrapper_type_str = transformer.wrapped_type(sync, current_target_module)
-                ann = _parameter_annotation_str(transformer, wrapper_type_str, sync, current_target_module)
+                wrapper_type_str = transformer.wrapped_type(current_target_module)
+                ann = _parameter_annotation_str(transformer, wrapper_type_str, current_target_module)
                 param_str = f"{name}: {ann}"
 
                 if transformer.needs_translation():
-                    unwrap_expr = transformer.unwrap_expr(sync, name)
+                    unwrap_expr = transformer.unwrap_expr(name)
                     unwrap_stmts.append(f"{unwrap_indent}{name}_impl = {unwrap_expr}")
                     call_args.append(f"{name}={name}_impl")
                 else:
@@ -305,12 +286,12 @@ def format_parameters_for_emit(
         else:
             if param_ir.annotation_ir is not None:
                 assert transformer is not None
-                wrapper_type_str = transformer.wrapped_type(sync, current_target_module)
-                ann = _parameter_annotation_str(transformer, wrapper_type_str, sync, current_target_module)
+                wrapper_type_str = transformer.wrapped_type(current_target_module)
+                ann = _parameter_annotation_str(transformer, wrapper_type_str, current_target_module)
                 param_str = f"{name}: {ann}"
 
                 if transformer.needs_translation():
-                    unwrap_expr = transformer.unwrap_expr(sync, name)
+                    unwrap_expr = transformer.unwrap_expr(name)
                     unwrap_stmts.append(f"{unwrap_indent}{name}_impl = {unwrap_expr}")
                     call_args.append(f"{name}_impl")
                 else:
@@ -362,7 +343,6 @@ def _effective_inner_transformer(transformer):
 def _build_call_with_wrap(
     call_expr: str,
     return_transformer,
-    sync: SyncRegistry,
     current_target_module: str,
     indent: str = "    ",
     is_async: bool = True,
@@ -371,33 +351,13 @@ def _build_call_with_wrap(
     method_type: MethodBindingKind | None = None,
     method_owner_impl_ref: ImplQualifiedRef | None = None,
 ) -> str:
-    """
-    Build a function call with optional return value wrapping.
-
-    This is used for non-generator return types. Nested generators inside
-    return values (e.g., tuple[AsyncGenerator, ...]) are properly wrapped
-    according to the is_async context.
-
-    Args:
-        call_expr: The function call expression
-        return_transformer: TypeTransformer for the return type
-        sync: Registry mapping implementation qualified refs to wrapper locations
-        current_target_module: Current target module
-        indent: Indentation string
-        is_async: Whether this is an async context (affects generator wrapping)
-        is_function: Whether this is for a module-level function (not a method). If True, strips 'self.' from wrap_expr.
-
-    Returns:
-        Code string with the call and optional wrapping
-    """
-    # Import here to avoid circular imports
+    """Build a function call with optional return value wrapping."""
     from .type_transformer import AwaitableTransformer, CoroutineTransformer, WrappedClassTransformer
 
     def _wrap_result_expr(outer_transformer) -> str:
         st = _unwrap_to_self_transformer(outer_transformer)
         if st is not None and method_type is not None:
             return st.wrap_expr_for_method(
-                sync,
                 current_target_module,
                 "result",
                 is_async=is_async,
@@ -406,19 +366,16 @@ def _build_call_with_wrap(
         inner = outer_transformer
         while isinstance(inner, (AwaitableTransformer, CoroutineTransformer)):
             inner = inner.return_transformer
-        return inner.wrap_expr(sync, current_target_module, "result", is_async=is_async)
+        return inner.wrap_expr(current_target_module, "result", is_async=is_async)
 
     # Check if this is an awaitable type that needs synchronizer wrapping
     if isinstance(return_transformer, (AwaitableTransformer, CoroutineTransformer)):
         # Wrap the call with synchronizer to await/run it
         if is_async:
-            # For async context: await synchronizer._run_function_async(call_expr)
             wrapped_call = f"await _synchronizer._run_function_async({call_expr})"
         else:
-            # For sync context: synchronizer._run_function_sync(call_expr)
             wrapped_call = f"_synchronizer._run_function_sync({call_expr})"
 
-        # Now apply any additional wrapping from the inner return transformer
         inner_transformer = return_transformer.return_transformer
         if inner_transformer.needs_translation():
             eff = _effective_inner_transformer(return_transformer)
@@ -432,7 +389,6 @@ def _build_call_with_wrap(
                 wrap_expr = "self._from_impl(result)"
             else:
                 wrap_expr = _wrap_result_expr(return_transformer)
-            # For module-level functions, strip 'self.' prefix from helper calls
             if is_function:
                 wrap_expr = wrap_expr.replace("self.", "")
             return f"""{indent}result = {wrapped_call}
@@ -453,7 +409,6 @@ def _build_call_with_wrap(
             wrap_expr = "self._from_impl(result)"
         else:
             wrap_expr = _wrap_result_expr(return_transformer)
-        # For module-level functions, strip 'self.' prefix from helper calls
         if is_function:
             wrap_expr = wrap_expr.replace("self.", "")
         return f"""{indent}result = {call_expr}
@@ -464,32 +419,17 @@ def _build_call_with_wrap(
 
 def _format_return_annotation(
     return_transformer,
-    sync: SyncRegistry,
     current_target_module: str,
 ) -> tuple[str, str]:
-    """
-    Format return type annotations for both sync and async versions.
-
-    Args:
-        return_transformer: TypeTransformer for the return type
-        sync: Registry mapping implementation qualified refs to wrapper locations
-        current_target_module: Current target module
-
-    Returns:
-        Tuple of (sync_return_str, async_return_str) with " -> " prefix
-    """
-    # Import here to avoid circular imports
+    """Format return type annotations for both sync and async versions."""
     from .type_transformer import AwaitableTransformer, CoroutineTransformer
 
-    # Get the wrapped types for both sync and async contexts
-    sync_return_type = return_transformer.wrapped_type(sync, current_target_module, is_async=False)
-    async_return_type = return_transformer.wrapped_type(sync, current_target_module, is_async=True)
+    sync_return_type = return_transformer.wrapped_type(current_target_module, is_async=False)
+    async_return_type = return_transformer.wrapped_type(current_target_module, is_async=True)
 
     if not sync_return_type:
         return "", ""
 
-    # Quote the entire type annotation if it contains wrapped types
-    # For AwaitableTransformer/CoroutineTransformer, check the inner type for quoting
     if isinstance(return_transformer, (AwaitableTransformer, CoroutineTransformer)):
         should_quote = return_transformer.return_transformer.needs_translation()
     else:

@@ -7,9 +7,10 @@ import dataclasses
 import inspect
 import typing
 
+from synchronicity.module import _IMPL_WRAPPER_LOCATION_ATTR
+
 from . import type_transformer as tt
 from .ir import TypeVarSpecIR
-from .sync_registry import SyncRegistry
 from .transformer_ir import (
     AsyncGeneratorTypeIR,
     AsyncIterableTypeIR,
@@ -27,6 +28,7 @@ from .transformer_ir import (
     TypeTransformerIR,
     TypeVarIR,
     WrappedClassTypeIR,
+    WrapperRef,
 )
 
 
@@ -41,9 +43,24 @@ def impl_qualified(t: type) -> ImplQualifiedRef:
     return ImplQualifiedRef(module=t.__module__, qualname=t.__qualname__)
 
 
+def _get_wrapper_location(impl_type: type) -> tuple[str, str] | None:
+    """Read the wrapper location from the marker attribute set by ``Module.wrap_class``."""
+    return getattr(impl_type, _IMPL_WRAPPER_LOCATION_ATTR, None)
+
+
+def _is_wrapped_impl(t: type) -> bool:
+    return hasattr(t, _IMPL_WRAPPER_LOCATION_ATTR)
+
+
+def _wrapper_ref_from_type(impl_type: type) -> WrapperRef:
+    loc = _get_wrapper_location(impl_type)
+    assert loc is not None
+    return WrapperRef(*loc)
+
+
 def resolve_typevar_bound_to_wrapped_impl(
     tv: typing.TypeVar,
-    sync: SyncRegistry,
+    known_impl_types: frozenset[type],
     impl_modules: frozenset[str] | None,
 ) -> ImplQualifiedRef | None:
     """Return the impl ref when *tv*'s bound is a synchronized class or forward-refers to one by name."""
@@ -51,8 +68,9 @@ def resolve_typevar_bound_to_wrapped_impl(
     if bound is None:
         return None
     if isinstance(bound, type):
-        ref = impl_qualified(bound)
-        return ref if ref in sync else None
+        if _is_wrapped_impl(bound):
+            return impl_qualified(bound)
+        return None
     bound_name: str | None = None
     if hasattr(bound, "__forward_arg__"):
         bound_name = bound.__forward_arg__  # type: ignore[assignment]
@@ -60,7 +78,8 @@ def resolve_typevar_bound_to_wrapped_impl(
         bound_name = bound
     if bound_name is None:
         return None
-    for ref in sync:
+    for t in known_impl_types:
+        ref = impl_qualified(t)
         if ref.qualname.split(".")[-1] != bound_name:
             continue
         if impl_modules is not None and ref.module not in impl_modules:
@@ -71,7 +90,6 @@ def resolve_typevar_bound_to_wrapped_impl(
 
 def annotation_to_transformer_ir(
     annotation: object,
-    sync: SyncRegistry,
     *,
     owner_impl_type: type | None = None,
     owner_has_type_parameters: bool = False,
@@ -90,8 +108,8 @@ def annotation_to_transformer_ir(
             f"Use inspect.get_annotations(eval_str=True) to resolve forward references."
         )
 
-    if isinstance(annotation, type) and sync.has_wrapped_class(annotation):
-        return WrappedClassTypeIR(impl_qualified(annotation))
+    if isinstance(annotation, type) and _is_wrapped_impl(annotation):
+        return WrappedClassTypeIR(impl_qualified(annotation), _wrapper_ref_from_type(annotation))
 
     if isinstance(annotation, typing.TypeVar):
         return TypeVarIR(name=annotation.__name__)
@@ -100,12 +118,8 @@ def annotation_to_transformer_ir(
     args = typing.get_args(annotation)
 
     if origin is None:
-        if (
-            tt._is_self_annotation(annotation)
-            and owner_impl_type is not None
-            and sync.has_wrapped_class(owner_impl_type)
-        ):
-            return SelfTypeIR(impl_qualified(owner_impl_type))
+        if tt._is_self_annotation(annotation) and owner_impl_type is not None and _is_wrapped_impl(owner_impl_type):
+            return SelfTypeIR(impl_qualified(owner_impl_type), _wrapper_ref_from_type(owner_impl_type))
         return IdentityTypeIR(tt._format_annotation_str(annotation))
 
     if origin is list:
@@ -113,7 +127,6 @@ def annotation_to_transformer_ir(
             return ListTypeIR(
                 annotation_to_transformer_ir(
                     args[0],
-                    sync,
                     owner_impl_type=owner_impl_type,
                     owner_has_type_parameters=owner_has_type_parameters,
                     impl_modules=impl_modules,
@@ -126,14 +139,12 @@ def annotation_to_transformer_ir(
             return DictTypeIR(
                 annotation_to_transformer_ir(
                     args[0],
-                    sync,
                     owner_impl_type=owner_impl_type,
                     owner_has_type_parameters=owner_has_type_parameters,
                     impl_modules=impl_modules,
                 ),
                 annotation_to_transformer_ir(
                     args[1],
-                    sync,
                     owner_impl_type=owner_impl_type,
                     owner_has_type_parameters=owner_has_type_parameters,
                     impl_modules=impl_modules,
@@ -148,7 +159,6 @@ def annotation_to_transformer_ir(
                     (
                         annotation_to_transformer_ir(
                             args[0],
-                            sync,
                             owner_impl_type=owner_impl_type,
                             owner_has_type_parameters=owner_has_type_parameters,
                             impl_modules=impl_modules,
@@ -160,7 +170,6 @@ def annotation_to_transformer_ir(
                 tuple(
                     annotation_to_transformer_ir(
                         arg,
-                        sync,
                         owner_impl_type=owner_impl_type,
                         owner_has_type_parameters=owner_has_type_parameters,
                         impl_modules=impl_modules,
@@ -177,7 +186,6 @@ def annotation_to_transformer_ir(
             return OptionalTypeIR(
                 annotation_to_transformer_ir(
                     non_none_args[0],
-                    sync,
                     owner_impl_type=owner_impl_type,
                     owner_has_type_parameters=owner_has_type_parameters,
                     impl_modules=impl_modules,
@@ -190,7 +198,6 @@ def annotation_to_transformer_ir(
             return SyncGeneratorTypeIR(
                 annotation_to_transformer_ir(
                     args[0],
-                    sync,
                     owner_impl_type=owner_impl_type,
                     owner_has_type_parameters=owner_has_type_parameters,
                     impl_modules=impl_modules,
@@ -203,7 +210,6 @@ def annotation_to_transformer_ir(
             return AsyncIteratorTypeIR(
                 annotation_to_transformer_ir(
                     args[0],
-                    sync,
                     owner_impl_type=owner_impl_type,
                     owner_has_type_parameters=owner_has_type_parameters,
                     impl_modules=impl_modules,
@@ -216,7 +222,6 @@ def annotation_to_transformer_ir(
             return AsyncIterableTypeIR(
                 annotation_to_transformer_ir(
                     args[0],
-                    sync,
                     owner_impl_type=owner_impl_type,
                     owner_has_type_parameters=owner_has_type_parameters,
                     impl_modules=impl_modules,
@@ -233,7 +238,6 @@ def annotation_to_transformer_ir(
             return AsyncGeneratorTypeIR(
                 annotation_to_transformer_ir(
                     yield_arg,
-                    sync,
                     owner_impl_type=owner_impl_type,
                     owner_has_type_parameters=owner_has_type_parameters,
                     impl_modules=impl_modules,
@@ -247,7 +251,6 @@ def annotation_to_transformer_ir(
             return CoroutineTypeIR(
                 annotation_to_transformer_ir(
                     args[2],
-                    sync,
                     owner_impl_type=owner_impl_type,
                     owner_has_type_parameters=owner_has_type_parameters,
                     impl_modules=impl_modules,
@@ -260,7 +263,6 @@ def annotation_to_transformer_ir(
             return AwaitableTypeIR(
                 annotation_to_transformer_ir(
                     args[0],
-                    sync,
                     owner_impl_type=owner_impl_type,
                     owner_has_type_parameters=owner_has_type_parameters,
                     impl_modules=impl_modules,
@@ -273,7 +275,6 @@ def annotation_to_transformer_ir(
 
 def _materialize_typevar_ir(
     ir: TypeVarIR,
-    sync: SyncRegistry,
     runtime_package: str,
     ctx: MaterializeContext | None,
 ) -> tt.TypeTransformer:
@@ -283,14 +284,13 @@ def _materialize_typevar_ir(
     if spec is None or spec.is_paramspec:
         return tt.IdentityStrTransformer(ir.name)
     if spec.bound_translation_ir is not None:
-        inner = materialize_transformer_ir(spec.bound_translation_ir, sync, runtime_package, ctx=ctx)
+        inner = materialize_transformer_ir(spec.bound_translation_ir, runtime_package, ctx=ctx)
         return tt.TypeVarBoundTransformer(ir.name, inner)
     return tt.IdentityStrTransformer(ir.name)
 
 
 def materialize_transformer_ir(
     ir: TypeTransformerIR,
-    sync: SyncRegistry,
     runtime_package: str,
     *,
     ctx: MaterializeContext | None = None,
@@ -298,44 +298,44 @@ def materialize_transformer_ir(
     if isinstance(ir, IdentityTypeIR):
         return tt.IdentityStrTransformer(ir.signature_text)
     if isinstance(ir, WrappedClassTypeIR):
-        return tt.WrappedClassTransformer(ir.impl)
+        return tt.WrappedClassTransformer(ir.impl, ir.wrapper)
     if isinstance(ir, TypeVarIR):
-        return _materialize_typevar_ir(ir, sync, runtime_package, ctx)
+        return _materialize_typevar_ir(ir, runtime_package, ctx)
     if isinstance(ir, SelfTypeIR):
-        return tt.SelfTransformer(ir.owner_impl)
+        return tt.SelfTransformer(ir.owner_impl, ir.wrapper)
     if isinstance(ir, ListTypeIR):
-        return tt.ListTransformer(materialize_transformer_ir(ir.item, sync, runtime_package, ctx=ctx))
+        return tt.ListTransformer(materialize_transformer_ir(ir.item, runtime_package, ctx=ctx))
     if isinstance(ir, DictTypeIR):
         return tt.DictTransformer(
-            materialize_transformer_ir(ir.key, sync, runtime_package, ctx=ctx),
-            materialize_transformer_ir(ir.value, sync, runtime_package, ctx=ctx),
+            materialize_transformer_ir(ir.key, runtime_package, ctx=ctx),
+            materialize_transformer_ir(ir.value, runtime_package, ctx=ctx),
         )
     if isinstance(ir, TupleTypeIR):
         if ir.variadic:
             (single,) = ir.elements
-            return tt.TupleTransformer([materialize_transformer_ir(single, sync, runtime_package, ctx=ctx)])
-        return tt.TupleTransformer([materialize_transformer_ir(e, sync, runtime_package, ctx=ctx) for e in ir.elements])
+            return tt.TupleTransformer([materialize_transformer_ir(single, runtime_package, ctx=ctx)])
+        return tt.TupleTransformer([materialize_transformer_ir(e, runtime_package, ctx=ctx) for e in ir.elements])
     if isinstance(ir, OptionalTypeIR):
-        return tt.OptionalTransformer(materialize_transformer_ir(ir.inner, sync, runtime_package, ctx=ctx))
+        return tt.OptionalTransformer(materialize_transformer_ir(ir.inner, runtime_package, ctx=ctx))
     if isinstance(ir, AsyncGeneratorTypeIR):
         return tt.AsyncGeneratorTransformer(
-            materialize_transformer_ir(ir.yield_item, sync, runtime_package, ctx=ctx),
+            materialize_transformer_ir(ir.yield_item, runtime_package, ctx=ctx),
             send_type_str=ir.send_type_str,
         )
     if isinstance(ir, SyncGeneratorTypeIR):
-        return tt.SyncGeneratorTransformer(materialize_transformer_ir(ir.yield_item, sync, runtime_package, ctx=ctx))
+        return tt.SyncGeneratorTransformer(materialize_transformer_ir(ir.yield_item, runtime_package, ctx=ctx))
     if isinstance(ir, AsyncIteratorTypeIR):
         return tt.AsyncIteratorTransformer(
-            materialize_transformer_ir(ir.item, sync, runtime_package, ctx=ctx),
+            materialize_transformer_ir(ir.item, runtime_package, ctx=ctx),
             runtime_package,
         )
     if isinstance(ir, AsyncIterableTypeIR):
         return tt.AsyncIterableTransformer(
-            materialize_transformer_ir(ir.item, sync, runtime_package, ctx=ctx),
+            materialize_transformer_ir(ir.item, runtime_package, ctx=ctx),
             runtime_package,
         )
     if isinstance(ir, CoroutineTypeIR):
-        return tt.CoroutineTransformer(materialize_transformer_ir(ir.return_type, sync, runtime_package, ctx=ctx))
+        return tt.CoroutineTransformer(materialize_transformer_ir(ir.return_type, runtime_package, ctx=ctx))
     if isinstance(ir, AwaitableTypeIR):
-        return tt.AwaitableTransformer(materialize_transformer_ir(ir.inner, sync, runtime_package, ctx=ctx))
+        return tt.AwaitableTransformer(materialize_transformer_ir(ir.inner, runtime_package, ctx=ctx))
     raise TypeError(f"Unhandled transformer IR: {type(ir)!r}")

@@ -13,7 +13,6 @@ from synchronicity.codegen.ir import (
     ModuleLevelFunctionIR,
     ParameterIR,
 )
-from synchronicity.codegen.sync_registry import SyncRegistry
 from synchronicity.codegen.transformer_ir import (
     AsyncGeneratorTypeIR,
     AwaitableTypeIR,
@@ -23,6 +22,7 @@ from synchronicity.codegen.transformer_ir import (
     OptionalTypeIR,
     TupleTypeIR,
     WrappedClassTypeIR,
+    WrapperRef,
 )
 
 IMPL = __name__
@@ -30,7 +30,8 @@ TARGET = "test_module"
 
 IR_CLASS_HELPER = ClassWrapperIR(
     impl_ref=ImplQualifiedRef(IMPL, "HelperTestClass"),
-    wrapped_base_impl_refs=(),
+    wrapper_ref=WrapperRef(TARGET, "HelperTestClass"),
+    wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
     methods=(
@@ -50,7 +51,8 @@ IR_CLASS_HELPER = ClassWrapperIR(
 )
 IR_CLASS_HELPER_SUBCLASS = ClassWrapperIR(
     impl_ref=ImplQualifiedRef(IMPL, "HelperTestSubclass"),
-    wrapped_base_impl_refs=(ImplQualifiedRef(IMPL, "HelperTestClass"),),
+    wrapper_ref=WrapperRef(TARGET, "HelperTestSubclass"),
+    wrapped_bases=((ImplQualifiedRef(IMPL, "HelperTestClass"), WrapperRef(TARGET, "HelperTestClass")),),
     generic_type_parameters=None,
     attributes=(),
     methods=(
@@ -74,7 +76,8 @@ IR_FN_NODE_GENERATOR = ModuleLevelFunctionIR(
     is_async_gen=True,
     parameters=(),
     return_transformer_ir=AsyncGeneratorTypeIR(
-        yield_item=WrappedClassTypeIR(impl=ImplQualifiedRef(IMPL, "GenNode")), send_type_str="None"
+        yield_item=WrappedClassTypeIR(impl=ImplQualifiedRef(IMPL, "GenNode"), wrapper=WrapperRef(TARGET, "GenNode")),
+        send_type_str="None",
     ),
 )
 IR_FN_RETURNS_STRING = ModuleLevelFunctionIR(
@@ -114,21 +117,25 @@ IR_TR_CONNECT_NODES = ModuleLevelFunctionIR(
         ParameterIR(
             name="parent",
             kind=1,
-            annotation_ir=WrappedClassTypeIR(impl=ImplQualifiedRef(IMPL, "TestNode")),
+            annotation_ir=WrappedClassTypeIR(
+                impl=ImplQualifiedRef(IMPL, "TestNode"), wrapper=WrapperRef(TARGET, "TestNode")
+            ),
             default_repr=None,
         ),
         ParameterIR(
             name="child",
             kind=1,
-            annotation_ir=WrappedClassTypeIR(impl=ImplQualifiedRef(IMPL, "TestNode")),
+            annotation_ir=WrappedClassTypeIR(
+                impl=ImplQualifiedRef(IMPL, "TestNode"), wrapper=WrapperRef(TARGET, "TestNode")
+            ),
             default_repr=None,
         ),
     ),
     return_transformer_ir=AwaitableTypeIR(
         inner=TupleTypeIR(
             elements=(
-                WrappedClassTypeIR(impl=ImplQualifiedRef(IMPL, "TestNode")),
-                WrappedClassTypeIR(impl=ImplQualifiedRef(IMPL, "TestNode")),
+                WrappedClassTypeIR(impl=ImplQualifiedRef(IMPL, "TestNode"), wrapper=WrapperRef(TARGET, "TestNode")),
+                WrappedClassTypeIR(impl=ImplQualifiedRef(IMPL, "TestNode"), wrapper=WrapperRef(TARGET, "TestNode")),
             ),
             variadic=False,
         )
@@ -141,7 +148,9 @@ IR_TR_CREATE_NODE = ModuleLevelFunctionIR(
     parameters=(
         ParameterIR(name="value", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_repr=None),
     ),
-    return_transformer_ir=AwaitableTypeIR(inner=WrappedClassTypeIR(impl=ImplQualifiedRef(IMPL, "TestNode"))),
+    return_transformer_ir=AwaitableTypeIR(
+        inner=WrappedClassTypeIR(impl=ImplQualifiedRef(IMPL, "TestNode"), wrapper=WrapperRef(TARGET, "TestNode"))
+    ),
 )
 IR_TR_GET_NODE_LIST = ModuleLevelFunctionIR(
     impl_ref=ImplQualifiedRef(IMPL, "tr_get_node_list"),
@@ -151,12 +160,16 @@ IR_TR_GET_NODE_LIST = ModuleLevelFunctionIR(
         ParameterIR(
             name="nodes",
             kind=1,
-            annotation_ir=ListTypeIR(item=WrappedClassTypeIR(impl=ImplQualifiedRef(IMPL, "TestNode"))),
+            annotation_ir=ListTypeIR(
+                item=WrappedClassTypeIR(impl=ImplQualifiedRef(IMPL, "TestNode"), wrapper=WrapperRef(TARGET, "TestNode"))
+            ),
             default_repr=None,
         ),
     ),
     return_transformer_ir=AwaitableTypeIR(
-        inner=ListTypeIR(item=WrappedClassTypeIR(impl=ImplQualifiedRef(IMPL, "TestNode")))
+        inner=ListTypeIR(
+            item=WrappedClassTypeIR(impl=ImplQualifiedRef(IMPL, "TestNode"), wrapper=WrapperRef(TARGET, "TestNode"))
+        )
     ),
 )
 IR_TR_GET_OPTIONAL_NODE = ModuleLevelFunctionIR(
@@ -167,12 +180,18 @@ IR_TR_GET_OPTIONAL_NODE = ModuleLevelFunctionIR(
         ParameterIR(
             name="node",
             kind=1,
-            annotation_ir=OptionalTypeIR(inner=WrappedClassTypeIR(impl=ImplQualifiedRef(IMPL, "TestNode"))),
+            annotation_ir=OptionalTypeIR(
+                inner=WrappedClassTypeIR(
+                    impl=ImplQualifiedRef(IMPL, "TestNode"), wrapper=WrapperRef(TARGET, "TestNode")
+                )
+            ),
             default_repr=None,
         ),
     ),
     return_transformer_ir=AwaitableTypeIR(
-        inner=OptionalTypeIR(inner=WrappedClassTypeIR(impl=ImplQualifiedRef(IMPL, "TestNode")))
+        inner=OptionalTypeIR(
+            inner=WrappedClassTypeIR(impl=ImplQualifiedRef(IMPL, "TestNode"), wrapper=WrapperRef(TARGET, "TestNode"))
+        )
     ),
 )
 IR_TR_PROCESS_LIST = ModuleLevelFunctionIR(
@@ -183,12 +202,20 @@ IR_TR_PROCESS_LIST = ModuleLevelFunctionIR(
         ParameterIR(
             name="nodes",
             kind=1,
-            annotation_ir=ListTypeIR(item=WrappedClassTypeIR(impl=ImplQualifiedRef(IMPL, "CollectionTestNode"))),
+            annotation_ir=ListTypeIR(
+                item=WrappedClassTypeIR(
+                    impl=ImplQualifiedRef(IMPL, "CollectionTestNode"), wrapper=WrapperRef(TARGET, "CollectionTestNode")
+                )
+            ),
             default_repr=None,
         ),
     ),
     return_transformer_ir=AwaitableTypeIR(
-        inner=ListTypeIR(item=WrappedClassTypeIR(impl=ImplQualifiedRef(IMPL, "CollectionTestNode")))
+        inner=ListTypeIR(
+            item=WrappedClassTypeIR(
+                impl=ImplQualifiedRef(IMPL, "CollectionTestNode"), wrapper=WrapperRef(TARGET, "CollectionTestNode")
+            )
+        )
     ),
 )
 IR_TR_PROCESS_NODE = ModuleLevelFunctionIR(
@@ -199,15 +226,22 @@ IR_TR_PROCESS_NODE = ModuleLevelFunctionIR(
         ParameterIR(
             name="node",
             kind=1,
-            annotation_ir=WrappedClassTypeIR(impl=ImplQualifiedRef(IMPL, "UnwrapTestNode")),
+            annotation_ir=WrappedClassTypeIR(
+                impl=ImplQualifiedRef(IMPL, "UnwrapTestNode"), wrapper=WrapperRef(TARGET, "UnwrapTestNode")
+            ),
             default_repr=None,
         ),
     ),
-    return_transformer_ir=AwaitableTypeIR(inner=WrappedClassTypeIR(impl=ImplQualifiedRef(IMPL, "UnwrapTestNode"))),
+    return_transformer_ir=AwaitableTypeIR(
+        inner=WrappedClassTypeIR(
+            impl=ImplQualifiedRef(IMPL, "UnwrapTestNode"), wrapper=WrapperRef(TARGET, "UnwrapTestNode")
+        )
+    ),
 )
 IR_TR_TESTNODE_CLASS = ClassWrapperIR(
     impl_ref=ImplQualifiedRef(IMPL, "TestNode"),
-    wrapped_base_impl_refs=(),
+    wrapper_ref=WrapperRef(TARGET, "TestNode"),
+    wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
     methods=(
@@ -238,53 +272,13 @@ IR_TR_TESTNODE_CLASS = ClassWrapperIR(
     ),
 )
 
-REG_EMPTY = SyncRegistry({})
-
-REG_PERSON = SyncRegistry(
-    {
-        ImplQualifiedRef(IMPL, "Person"): (TARGET, "Person"),
-    }
-)
-
-REG_GENNODE = SyncRegistry(
-    {
-        ImplQualifiedRef(IMPL, "GenNode"): (TARGET, "GenNode"),
-    }
-)
-
-REG_TESTNODE = SyncRegistry(
-    {
-        ImplQualifiedRef(IMPL, "TestNode"): (TARGET, "TestNode"),
-    }
-)
-
-REG_HELPER = SyncRegistry(
-    {
-        ImplQualifiedRef(IMPL, "HelperTestClass"): (TARGET, "HelperTestClass"),
-        ImplQualifiedRef(IMPL, "HelperTestSubclass"): (TARGET, "HelperTestSubclass"),
-    }
-)
-
-REG_UNWRAP = SyncRegistry(
-    {
-        ImplQualifiedRef(IMPL, "UnwrapTestNode"): (TARGET, "UnwrapTestNode"),
-    }
-)
-
-REG_COLL = SyncRegistry(
-    {
-        ImplQualifiedRef(IMPL, "CollectionTestNode"): (TARGET, "CollectionTestNode"),
-    }
-)
-
 
 def test_emit_translation_function_and_class_signatures():
-    sync = REG_TESTNODE
-    create_node_code = emit_module_level_function(IR_TR_CREATE_NODE, sync, TARGET)
-    connect_nodes_code = emit_module_level_function(IR_TR_CONNECT_NODES, sync, TARGET)
-    get_node_list_code = emit_module_level_function(IR_TR_GET_NODE_LIST, sync, TARGET)
-    get_optional_node_code = emit_module_level_function(IR_TR_GET_OPTIONAL_NODE, sync, TARGET)
-    class_code = emit_class_from_ir(IR_TR_TESTNODE_CLASS, sync, TARGET)
+    create_node_code = emit_module_level_function(IR_TR_CREATE_NODE, TARGET)
+    connect_nodes_code = emit_module_level_function(IR_TR_CONNECT_NODES, TARGET)
+    get_node_list_code = emit_module_level_function(IR_TR_GET_NODE_LIST, TARGET)
+    get_optional_node_code = emit_module_level_function(IR_TR_GET_OPTIONAL_NODE, TARGET)
+    class_code = emit_class_from_ir(IR_TR_TESTNODE_CLASS, TARGET)
 
     assert "_instance_cache: weakref.WeakValueDictionary" in class_code
     assert "def _from_impl(cls, impl_instance: typing.Any)" in class_code
@@ -317,14 +311,14 @@ def test_emit_translation_function_and_class_signatures():
 
 
 def test_emit_wrapper_helpers():
-    compiled_code = emit_class_from_ir(IR_CLASS_HELPER, REG_HELPER, TARGET)
+    compiled_code = emit_class_from_ir(IR_CLASS_HELPER, TARGET)
     assert "_instance_cache: weakref.WeakValueDictionary = weakref.WeakValueDictionary()" in compiled_code
     assert "def _from_impl(cls, impl_instance: typing.Any)" in compiled_code
     assert "_wrapped_from_impl(cls, impl_instance, cls._instance_cache, _synchronizer)" in compiled_code
 
 
 def test_emit_subclass_wrapper_helpers_reuse_root_cache():
-    compiled_code = emit_class_from_ir(IR_CLASS_HELPER_SUBCLASS, REG_HELPER, TARGET)
+    compiled_code = emit_class_from_ir(IR_CLASS_HELPER_SUBCLASS, TARGET)
     assert "class HelperTestSubclass(HelperTestClass):" in compiled_code
     assert "def _from_impl(cls, impl_instance: typing.Any)" in compiled_code
     assert '-> "HelperTestSubclass":' in compiled_code or "-> 'HelperTestSubclass':" in compiled_code
@@ -333,24 +327,24 @@ def test_emit_subclass_wrapper_helpers_reuse_root_cache():
 
 
 def test_emit_unwrap_in_function_bodies():
-    compiled_code = emit_module_level_function(IR_TR_PROCESS_NODE, REG_UNWRAP, TARGET)
+    compiled_code = emit_module_level_function(IR_TR_PROCESS_NODE, TARGET)
     assert "node_impl = node._impl_instance" in compiled_code
     assert "return UnwrapTestNode._from_impl(result)" in compiled_code
 
 
 def test_emit_collection_translation():
-    compiled_code = emit_module_level_function(IR_TR_PROCESS_LIST, REG_COLL, TARGET)
+    compiled_code = emit_module_level_function(IR_TR_PROCESS_LIST, TARGET)
     assert "[x._impl_instance for x in nodes]" in compiled_code
     assert "[CollectionTestNode._from_impl(x) for x in " in compiled_code
 
 
 def test_emit_primitives_no_impl_suffix():
-    compiled_code = emit_module_level_function(IR_FN_RETURNS_STRING, REG_EMPTY, TARGET)
+    compiled_code = emit_module_level_function(IR_FN_RETURNS_STRING, TARGET)
     assert "str._from_impl" not in compiled_code
 
 
 def test_emit_async_generator_wrapping_helpers():
-    compiled_code = emit_module_level_function(IR_FN_SIMPLE_GEN, REG_EMPTY, TARGET)
+    compiled_code = emit_module_level_function(IR_FN_SIMPLE_GEN, TARGET)
     assert "_wrap_async_gen_str" in compiled_code
     assert "_wrap_async_gen_str_sync" in compiled_code
     assert "async def _wrap_async_gen_str(_gen):" in compiled_code
@@ -364,7 +358,7 @@ def test_emit_async_generator_wrapping_helpers():
 
 
 def test_emit_tuple_of_generators():
-    compiled_code = emit_module_level_function(IR_FN_TUPLE_GENERATORS, REG_EMPTY, TARGET)
+    compiled_code = emit_module_level_function(IR_FN_TUPLE_GENERATORS, TARGET)
     assert "_wrap_async_gen_str" in compiled_code
     assert "_wrap_async_gen_int" in compiled_code
     assert "_wrap_async_gen_str_sync" in compiled_code
@@ -384,7 +378,7 @@ def test_emit_tuple_of_generators():
 
 
 def test_emit_generator_with_wrapped_yield_type():
-    compiled_code = emit_module_level_function(IR_FN_NODE_GENERATOR, REG_GENNODE, TARGET)
+    compiled_code = emit_module_level_function(IR_FN_NODE_GENERATOR, TARGET)
     assert "_wrap_async_gen" in compiled_code
     assert "GenNode._from_impl(_item)" in compiled_code
     assert "async def _wrap_async_gen" in compiled_code

@@ -12,6 +12,10 @@ def test_runtime():
     bar = same_object_two_types.bar_getter()
 
     assert isinstance(foo, same_object_two_types.Foo)
+    # The following two checks would fail if the type of the
+    # returned wrapper was purely determined by the return type
+    # of foo_getter (either foo would be a `Foo` but not a `Bar`,
+    # or foo would not be the same as `bar`)
     assert isinstance(bar, same_object_two_types.Bar)
     assert foo is bar
 

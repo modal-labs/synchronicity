@@ -8,14 +8,12 @@ import typing
 from .emitters.sync_async_wrappers import MethodEmitOwner, emit_class_from_ir, emit_method_wrapper_pair
 from .ir import MethodBindingKind
 from .parse import parse_class_wrapper_ir, parse_method_wrapper_ir
-from .sync_registry import SyncRegistry
 from .transformer_ir import ImplQualifiedRef
 
 
 def compile_method_wrapper(
     method: types.FunctionType,
     method_name: str,
-    synchronized_types: dict[type, tuple[str, str]],
     current_target_module: str,
     impl_class: type,
     *,
@@ -28,11 +26,9 @@ def compile_method_wrapper(
     """
     Compile a method wrapper class that provides both sync and async versions.
     """
-    sync_self = SyncRegistry.from_type_map(synchronized_types)
     ir = parse_method_wrapper_ir(
         method,
         method_name,
-        sync_self,
         impl_class,
         owner_has_type_parameters=owner_has_type_parameters,
         method_type=method_type,
@@ -44,13 +40,12 @@ def compile_method_wrapper(
         impl_ref=ImplQualifiedRef(impl_class.__module__, impl_class.__qualname__),
         target_module=current_target_module,
     )
-    return emit_method_wrapper_pair(owner, ir, sync_self, runtime_package=runtime_package)
+    return emit_method_wrapper_pair(owner, ir, runtime_package=runtime_package)
 
 
 def compile_class(
     cls: type,
     target_module: str,
-    synchronized_types: dict[type, tuple[str, str]],
     *,
     globals_dict: dict[str, typing.Any] | None = None,
     runtime_package: str = "synchronicity",
@@ -61,10 +56,8 @@ def compile_class(
     ir = parse_class_wrapper_ir(
         cls,
         target_module,
-        synchronized_types,
         globals_dict=globals_dict,
         runtime_package=runtime_package,
         impl_modules=frozenset({cls.__module__}),
     )
-    sync = SyncRegistry.from_type_map(synchronized_types)
-    return emit_class_from_ir(ir, sync, target_module, runtime_package=runtime_package)
+    return emit_class_from_ir(ir, target_module, runtime_package=runtime_package)

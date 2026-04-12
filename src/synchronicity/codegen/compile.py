@@ -1,9 +1,8 @@
 """Main compilation module for generating wrapper code.
 
 Pipeline:
-1. :func:`~synchronicity.codegen.registry.collect_synchronized_types` — aggregate class registrations
-2. :func:`~synchronicity.codegen.parse.build_module_compilation_ir` — parse layout, cross-refs, typevars
-3. :class:`~synchronicity.codegen.emitters.sync_async_wrappers.SyncAsyncWrapperEmitter` — emit source
+1. :func:`~synchronicity.codegen.parse.build_module_compilation_ir` — parse layout, cross-refs, typevars
+2. :class:`~synchronicity.codegen.emitters.sync_async_wrappers.SyncAsyncWrapperEmitter` — emit source
 
 Function- and method-level parsing lives in :mod:`synchronicity.codegen.parse`; the default sync/async
 shape is emitted from :mod:`synchronicity.codegen.emitters.sync_async_wrappers`.
@@ -18,21 +17,17 @@ from .compile_function import compile_function
 from .emitters.protocol import CodegenEmitter
 from .emitters.sync_async_wrappers import SyncAsyncWrapperEmitter
 from .parse import build_module_compilation_ir
-from .registry import collect_synchronized_types
-from .sync_registry import SyncRegistry
 
 __all__ = [
     "compile_class",
     "compile_function",
     "compile_module",
     "compile_modules",
-    "collect_synchronized_types",
 ]
 
 
 def compile_module(
     module: Module,
-    synchronized_types: dict[type, tuple[str, str]],
     *,
     runtime_package: str = "synchronicity",
     emitter: CodegenEmitter | None = None,
@@ -42,17 +37,15 @@ def compile_module(
 
     Args:
         module: The Module instance with registered items
-        synchronized_types: Dict mapping all implementation types to (target_module, wrapper_name)
         runtime_package: Dotted import path for runtime submodules in generated imports
         emitter: Optional emitter (defaults to :class:`SyncAsyncWrapperEmitter` with ``runtime_package``)
 
     Returns:
         String containing compiled wrapper code for this module
     """
-    ir = build_module_compilation_ir(module, synchronized_types)
+    ir = build_module_compilation_ir(module)
     gen = emitter or SyncAsyncWrapperEmitter(runtime_package=runtime_package)
-    sync = SyncRegistry.from_type_map(synchronized_types)
-    return gen.emit_module(ir, sync)
+    return gen.emit_module(ir)
 
 
 def compile_modules(
@@ -74,12 +67,11 @@ def compile_modules(
     Returns:
         Dict mapping module names to their generated code
     """
-    synchronized_classes = collect_synchronized_types(modules)
     gen = emitter or SyncAsyncWrapperEmitter(runtime_package=runtime_package)
 
     result = {}
     for module in modules:
-        code = compile_module(module, synchronized_classes, emitter=gen)
+        code = compile_module(module, emitter=gen)
         if code:
             result[module.target_module] = code
 

@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from synchronicity.codegen.emitters.sync_async_wrappers import emit_class_from_ir
 from synchronicity.codegen.ir import ClassWrapperIR, MethodBindingKind, MethodWrapperIR, ParameterIR
-from synchronicity.codegen.sync_registry import SyncRegistry
 from synchronicity.codegen.transformer_ir import (
     AsyncGeneratorTypeIR,
     AsyncIteratorTypeIR,
@@ -21,6 +20,7 @@ from synchronicity.codegen.transformer_ir import (
     OptionalTypeIR,
     SelfTypeIR,
     WrappedClassTypeIR,
+    WrapperRef,
 )
 
 IMPL = __name__
@@ -28,7 +28,8 @@ TARGET = "test_module"
 
 IR_CLASS_AITER_ASYNC_GEN = ClassWrapperIR(
     impl_ref=ImplQualifiedRef(IMPL, "EmitAsyncWithGenerator"),
-    wrapped_base_impl_refs=(),
+    wrapper_ref=WrapperRef(TARGET, "EmitAsyncWithGenerator"),
+    wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
     methods=(
@@ -47,7 +48,8 @@ IR_CLASS_AITER_ASYNC_GEN = ClassWrapperIR(
 
 IR_CLASS_AITER_ASYNC_ITER_TYPE = ClassWrapperIR(
     impl_ref=ImplQualifiedRef(IMPL, "EmitAsyncIterType"),
-    wrapped_base_impl_refs=(),
+    wrapper_ref=WrapperRef(TARGET, "EmitAsyncIterType"),
+    wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
     methods=(
@@ -64,7 +66,8 @@ IR_CLASS_AITER_ASYNC_ITER_TYPE = ClassWrapperIR(
 
 IR_CLASS_AITER_ASYNC_NO_ANN = ClassWrapperIR(
     impl_ref=ImplQualifiedRef(IMPL, "EmitAsyncWithoutAnnotation"),
-    wrapped_base_impl_refs=(),
+    wrapper_ref=WrapperRef(TARGET, "EmitAsyncWithoutAnnotation"),
+    wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
     methods=(
@@ -81,7 +84,8 @@ IR_CLASS_AITER_ASYNC_NO_ANN = ClassWrapperIR(
 
 IR_CLASS_AITER_ASYNC_WITH_ANN = ClassWrapperIR(
     impl_ref=ImplQualifiedRef(IMPL, "EmitAsyncWithAnnotation"),
-    wrapped_base_impl_refs=(),
+    wrapper_ref=WrapperRef(TARGET, "EmitAsyncWithAnnotation"),
+    wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
     methods=(
@@ -98,7 +102,8 @@ IR_CLASS_AITER_ASYNC_WITH_ANN = ClassWrapperIR(
 
 IR_CLASS_AITER_SYNC_NO_ANN = ClassWrapperIR(
     impl_ref=ImplQualifiedRef(IMPL, "EmitSyncWithoutAnnotation"),
-    wrapped_base_impl_refs=(),
+    wrapper_ref=WrapperRef(TARGET, "EmitSyncWithoutAnnotation"),
+    wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
     methods=(
@@ -115,7 +120,8 @@ IR_CLASS_AITER_SYNC_NO_ANN = ClassWrapperIR(
 
 IR_CLASS_AITER_SYNC_WITH_ANN = ClassWrapperIR(
     impl_ref=ImplQualifiedRef(IMPL, "EmitSyncWithAnnotation"),
-    wrapped_base_impl_refs=(),
+    wrapper_ref=WrapperRef(TARGET, "EmitSyncWithAnnotation"),
+    wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
     methods=(
@@ -132,7 +138,8 @@ IR_CLASS_AITER_SYNC_WITH_ANN = ClassWrapperIR(
 
 IR_CLASS_ASYNC_GEN = ClassWrapperIR(
     impl_ref=ImplQualifiedRef(IMPL, "EmitAsyncGeneratorClass"),
-    wrapped_base_impl_refs=(),
+    wrapper_ref=WrapperRef(TARGET, "EmitAsyncGeneratorClass"),
+    wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
     methods=(
@@ -180,7 +187,8 @@ IR_CLASS_ASYNC_GEN = ClassWrapperIR(
 
 IR_CLASS_ASYNC_ITERABLE = ClassWrapperIR(
     impl_ref=ImplQualifiedRef(IMPL, "EmitAsyncIterableClass"),
-    wrapped_base_impl_refs=(),
+    wrapper_ref=WrapperRef(TARGET, "EmitAsyncIterableClass"),
+    wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
     methods=(
@@ -197,7 +205,8 @@ IR_CLASS_ASYNC_ITERABLE = ClassWrapperIR(
 
 IR_CLASS_ASYNC_ITERATOR = ClassWrapperIR(
     impl_ref=ImplQualifiedRef(IMPL, "EmitAsyncIteratorClass"),
-    wrapped_base_impl_refs=(),
+    wrapper_ref=WrapperRef(TARGET, "EmitAsyncIteratorClass"),
+    wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
     methods=(
@@ -207,7 +216,10 @@ IR_CLASS_ASYNC_ITERATOR = ClassWrapperIR(
             parameters=(),
             is_async_gen=False,
             is_async=False,
-            return_transformer_ir=SelfTypeIR(owner_impl=ImplQualifiedRef(IMPL, "EmitAsyncIteratorClass")),
+            return_transformer_ir=SelfTypeIR(
+                owner_impl=ImplQualifiedRef(IMPL, "EmitAsyncIteratorClass"),
+                wrapper=WrapperRef(TARGET, "EmitAsyncIteratorClass"),
+            ),
         ),
         MethodWrapperIR(
             method_name="__anext__",
@@ -222,7 +234,8 @@ IR_CLASS_ASYNC_ITERATOR = ClassWrapperIR(
 
 IR_CLASS_AWAITABLE_METHOD = ClassWrapperIR(
     impl_ref=ImplQualifiedRef(IMPL, "EmitAwaitableMethodClass"),
-    wrapped_base_impl_refs=(),
+    wrapper_ref=WrapperRef(TARGET, "EmitAwaitableMethodClass"),
+    wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
     methods=(
@@ -241,7 +254,8 @@ IR_CLASS_AWAITABLE_METHOD = ClassWrapperIR(
 
 IR_CLASS_COMPLEX = ClassWrapperIR(
     impl_ref=ImplQualifiedRef(IMPL, "EmitComplexClass"),
-    wrapped_base_impl_refs=(),
+    wrapper_ref=WrapperRef(TARGET, "EmitComplexClass"),
+    wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
     methods=(
@@ -296,7 +310,8 @@ IR_CLASS_COMPLEX = ClassWrapperIR(
 
 IR_CLASS_CONTAINER = ClassWrapperIR(
     impl_ref=ImplQualifiedRef(IMPL, "EmitContainer"),
-    wrapped_base_impl_refs=(),
+    wrapper_ref=WrapperRef(TARGET, "EmitContainer"),
+    wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
     methods=(
@@ -307,7 +322,9 @@ IR_CLASS_CONTAINER = ClassWrapperIR(
                 ParameterIR(
                     name="node",
                     kind=1,
-                    annotation_ir=WrappedClassTypeIR(impl=ImplQualifiedRef(IMPL, "EmitNode")),
+                    annotation_ir=WrappedClassTypeIR(
+                        impl=ImplQualifiedRef(IMPL, "EmitNode"), wrapper=WrapperRef(TARGET, "Node")
+                    ),
                     default_repr=None,
                 ),
                 ParameterIR(name="name", kind=1, annotation_ir=IdentityTypeIR(signature_text="str"), default_repr=None),
@@ -322,7 +339,8 @@ IR_CLASS_CONTAINER = ClassWrapperIR(
 
 IR_CLASS_COROUTINE_METHOD = ClassWrapperIR(
     impl_ref=ImplQualifiedRef(IMPL, "EmitCoroutineMethodClass"),
-    wrapped_base_impl_refs=(),
+    wrapper_ref=WrapperRef(TARGET, "EmitCoroutineMethodClass"),
+    wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
     methods=(
@@ -341,7 +359,8 @@ IR_CLASS_COROUTINE_METHOD = ClassWrapperIR(
 
 IR_CLASS_EMPTY = ClassWrapperIR(
     impl_ref=ImplQualifiedRef(IMPL, "EmitEmptyClass"),
-    wrapped_base_impl_refs=(),
+    wrapper_ref=WrapperRef(TARGET, "EmitEmptyClass"),
+    wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
     methods=(
@@ -370,7 +389,8 @@ IR_CLASS_EMPTY = ClassWrapperIR(
 
 IR_CLASS_MIXED = ClassWrapperIR(
     impl_ref=ImplQualifiedRef(IMPL, "EmitMixedClass"),
-    wrapped_base_impl_refs=(),
+    wrapper_ref=WrapperRef(TARGET, "EmitMixedClass"),
+    wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
     methods=(
@@ -424,7 +444,8 @@ IR_CLASS_MIXED = ClassWrapperIR(
 
 IR_CLASS_NO_INIT = ClassWrapperIR(
     impl_ref=ImplQualifiedRef(IMPL, "EmitNoInit"),
-    wrapped_base_impl_refs=(),
+    wrapper_ref=WrapperRef(TARGET, "EmitNoInit"),
+    wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
     methods=(
@@ -441,7 +462,8 @@ IR_CLASS_NO_INIT = ClassWrapperIR(
 
 IR_CLASS_SELF = ClassWrapperIR(
     impl_ref=ImplQualifiedRef(IMPL, "EmitSelfMethodClass"),
-    wrapped_base_impl_refs=(),
+    wrapper_ref=WrapperRef(TARGET, "EmitSelfMethodClass"),
+    wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
     methods=(
@@ -452,20 +474,27 @@ IR_CLASS_SELF = ClassWrapperIR(
                 ParameterIR(
                     name="s",
                     kind=1,
-                    annotation_ir=SelfTypeIR(owner_impl=ImplQualifiedRef(IMPL, "EmitSelfMethodClass")),
+                    annotation_ir=SelfTypeIR(
+                        owner_impl=ImplQualifiedRef(IMPL, "EmitSelfMethodClass"),
+                        wrapper=WrapperRef(TARGET, "EmitSelfMethodClass"),
+                    ),
                     default_repr=None,
                 ),
             ),
             is_async_gen=False,
             is_async=False,
-            return_transformer_ir=SelfTypeIR(owner_impl=ImplQualifiedRef(IMPL, "EmitSelfMethodClass")),
+            return_transformer_ir=SelfTypeIR(
+                owner_impl=ImplQualifiedRef(IMPL, "EmitSelfMethodClass"),
+                wrapper=WrapperRef(TARGET, "EmitSelfMethodClass"),
+            ),
         ),
     ),
 )
 
 IR_CLASS_SIMPLE = ClassWrapperIR(
     impl_ref=ImplQualifiedRef(IMPL, "EmitSimpleClass"),
-    wrapped_base_impl_refs=(),
+    wrapper_ref=WrapperRef(TARGET, "EmitSimpleClass"),
+    wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
     methods=(
@@ -518,7 +547,8 @@ IR_CLASS_SIMPLE = ClassWrapperIR(
 
 IR_CLASS_VARARGS = ClassWrapperIR(
     impl_ref=ImplQualifiedRef(IMPL, "EmitVarArgsClass"),
-    wrapped_base_impl_refs=(),
+    wrapper_ref=WrapperRef(TARGET, "EmitVarArgsClass"),
+    wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
     methods=(
@@ -554,65 +584,13 @@ IR_CLASS_VARARGS = ClassWrapperIR(
 )
 
 
-REG_EMIT_SIMPLE = SyncRegistry(
-    {
-        ImplQualifiedRef(IMPL, "EmitSimpleClass"): (TARGET, "TestClass"),
-    }
-)
-
-REG_EMIT_COMPLEX = SyncRegistry(
-    {
-        ImplQualifiedRef(IMPL, "EmitComplexClass"): (TARGET, "ComplexClass"),
-    }
-)
-
-REG_EMIT_AGEN = SyncRegistry(
-    {
-        ImplQualifiedRef(IMPL, "EmitAsyncGeneratorClass"): (TARGET, "AsyncGeneratorClass"),
-    }
-)
-
-REG_EMIT_MIXED = SyncRegistry(
-    {
-        ImplQualifiedRef(IMPL, "EmitMixedClass"): (TARGET, "MixedClass"),
-    }
-)
-
-REG_EMIT_EMPTY = SyncRegistry(
-    {
-        ImplQualifiedRef(IMPL, "EmitEmptyClass"): (TARGET, "EmptyClass"),
-    }
-)
-
-REG_EMIT_VARARGS = SyncRegistry(
-    {
-        ImplQualifiedRef(IMPL, "EmitVarArgsClass"): (TARGET, "VarArgsClass"),
-    }
-)
-
-REG_CONTAINER = SyncRegistry(
-    {
-        ImplQualifiedRef(IMPL, "EmitNode"): (TARGET, "Node"),
-        ImplQualifiedRef(IMPL, "EmitContainer"): (TARGET, "Container"),
-    }
-)
-
-REG_SELF = SyncRegistry(
-    {
-        ImplQualifiedRef(IMPL, "EmitSelfMethodClass"): (TARGET, "SelfMethodClass"),
-    }
-)
-
-REG_EMPTY = SyncRegistry({})
-
-
 def _impl_short(ir: ClassWrapperIR) -> str:
     return ir.impl_ref.qualname.rpartition(".")[2]
 
 
 def test_emit_class_basic():
     ir = IR_CLASS_SIMPLE
-    code = emit_class_from_ir(ir, REG_EMIT_SIMPLE, TARGET)
+    code = emit_class_from_ir(ir, TARGET)
     compile(code, "<string>", "exec")
     assert f"class {_impl_short(ir)}:" in code
     assert "_impl_instance" in code
@@ -624,14 +602,14 @@ def test_emit_class_basic():
 
 
 def test_emit_class_method_descriptors():
-    code = emit_class_from_ir(IR_CLASS_SIMPLE, REG_EMIT_SIMPLE, TARGET)
+    code = emit_class_from_ir(IR_CLASS_SIMPLE, TARGET)
     assert "@wrapped_method(__add_to_value_aio)" in code
     assert "async def __add_to_value_aio(self, amount: int) -> int" in code
     assert "def add_to_value(self, amount: int) -> int" in code
 
 
 def test_emit_class_complex_types():
-    code = emit_class_from_ir(IR_CLASS_COMPLEX, REG_EMIT_COMPLEX, TARGET)
+    code = emit_class_from_ir(IR_CLASS_COMPLEX, TARGET)
     compile(code, "<string>", "exec")
     assert "config: dict[str, int]" in code
     assert (
@@ -643,7 +621,7 @@ def test_emit_class_complex_types():
 
 
 def test_emit_class_async_generators():
-    code = emit_class_from_ir(IR_CLASS_ASYNC_GEN, REG_EMIT_AGEN, TARGET)
+    code = emit_class_from_ir(IR_CLASS_ASYNC_GEN, TARGET)
     compile(code, "<string>", "exec")
     assert "_run_generator_sync" in code
     assert "_run_generator_async" in code
@@ -653,7 +631,7 @@ def test_emit_class_async_generators():
 
 
 def test_emit_class_mixed_methods():
-    code = emit_class_from_ir(IR_CLASS_MIXED, REG_EMIT_MIXED, TARGET)
+    code = emit_class_from_ir(IR_CLASS_MIXED, TARGET)
     compile(code, "<string>", "exec")
     assert "@wrapped_method(" in code
     assert "def process_sync(self" in code
@@ -661,7 +639,7 @@ def test_emit_class_mixed_methods():
 
 
 def test_emit_class_type_annotations_preserved():
-    code = emit_class_from_ir(IR_CLASS_SIMPLE, REG_EMIT_SIMPLE, TARGET)
+    code = emit_class_from_ir(IR_CLASS_SIMPLE, TARGET)
     assert "new_value: int" in code
     assert "amount: int" in code
     assert "-> int" in code
@@ -670,7 +648,7 @@ def test_emit_class_type_annotations_preserved():
 
 def test_emit_class_impl_instance_access():
     ir = IR_CLASS_SIMPLE
-    code = emit_class_from_ir(ir, REG_EMIT_SIMPLE, TARGET)
+    code = emit_class_from_ir(ir, TARGET)
     short = _impl_short(ir)
     assert f"self._impl_instance = {IMPL}.{short}(" in code
     assert f"class {short}:" in code
@@ -678,8 +656,8 @@ def test_emit_class_impl_instance_access():
 
 
 def test_emit_class_multiple_wrapped_registry_entries():
-    for ir, reg in ((IR_CLASS_SIMPLE, REG_EMIT_SIMPLE), (IR_CLASS_COMPLEX, REG_EMIT_COMPLEX)):
-        code = emit_class_from_ir(ir, reg, TARGET)
+    for ir in (IR_CLASS_SIMPLE, IR_CLASS_COMPLEX):
+        code = emit_class_from_ir(ir, TARGET)
         compile(code, "<string>", "exec")
         assert f"class {_impl_short(ir)}:" in code
         assert "_impl_instance" in code
@@ -687,14 +665,14 @@ def test_emit_class_multiple_wrapped_registry_entries():
 
 def test_emit_class_no_async_methods():
     ir = IR_CLASS_EMPTY
-    code = emit_class_from_ir(ir, REG_EMIT_EMPTY, TARGET)
+    code = emit_class_from_ir(ir, TARGET)
     compile(code, "<string>", "exec")
     assert f"class {_impl_short(ir)}:" in code
     assert "_impl_instance" in code
 
 
 def test_emit_class_method_with_varargs():
-    code = emit_class_from_ir(IR_CLASS_VARARGS, REG_EMIT_VARARGS, TARGET)
+    code = emit_class_from_ir(IR_CLASS_VARARGS, TARGET)
     assert "*args: str" in code
     assert "**kwargs: float" in code
     assert "a: int, *args: str, b, **kwargs: float" in code
@@ -706,7 +684,7 @@ def test_emit_class_method_with_varargs():
 
 
 def test_emit_class_constructor_with_wrapped_param():
-    code = emit_class_from_ir(IR_CLASS_CONTAINER, REG_CONTAINER, TARGET)
+    code = emit_class_from_ir(IR_CLASS_CONTAINER, TARGET)
     compile(code, "<string>", "exec")
     assert 'def __init__(self, node: "Node", name: str, count: int = 5):' in code
     assert "node_impl = node._impl_instance" in code
@@ -716,7 +694,7 @@ def test_emit_class_constructor_with_wrapped_param():
 
 
 def test_emit_class_sync_method_returning_coroutine():
-    code = emit_class_from_ir(IR_CLASS_COROUTINE_METHOD, REG_EMPTY, TARGET)
+    code = emit_class_from_ir(IR_CLASS_COROUTINE_METHOD, TARGET)
     assert "@wrapped_method" in code
     assert "def create_coroutine(self, x: int) -> str:" in code
     assert "async def __create_coroutine_aio(self, x: int) -> str:" in code
@@ -725,7 +703,7 @@ def test_emit_class_sync_method_returning_coroutine():
 
 
 def test_emit_class_sync_method_returning_awaitable():
-    code = emit_class_from_ir(IR_CLASS_AWAITABLE_METHOD, REG_EMPTY, TARGET)
+    code = emit_class_from_ir(IR_CLASS_AWAITABLE_METHOD, TARGET)
     assert "@wrapped_method" in code
     assert "def create_awaitable(self, x: int) -> str:" in code
     assert "async def __create_awaitable_aio(self, x: int) -> str:" in code
@@ -734,13 +712,13 @@ def test_emit_class_sync_method_returning_awaitable():
 
 
 def test_emit_class_aiter_typed_iter():
-    code = emit_class_from_ir(IR_CLASS_ASYNC_ITERABLE, REG_EMPTY, TARGET)
+    code = emit_class_from_ir(IR_CLASS_ASYNC_ITERABLE, TARGET)
     assert 'def __iter__(self) -> "synchronicity.types.SyncOrAsyncIterator[str]":' in code
     assert 'def __aiter__(self) -> "synchronicity.types.SyncOrAsyncIterator[str]":' in code
 
 
 def test_emit_class_anext_typed_next():
-    code = emit_class_from_ir(IR_CLASS_ASYNC_ITERATOR, REG_EMPTY, TARGET)
+    code = emit_class_from_ir(IR_CLASS_ASYNC_ITERATOR, TARGET)
     assert "def __next__(self) -> int:" in code
     assert "async def __anext__(self) -> int:" in code
     assert 'def __iter__(self) -> "typing.Self":' in code
@@ -748,42 +726,42 @@ def test_emit_class_anext_typed_next():
 
 
 def test_emit_class_preserves_typing_self():
-    code = emit_class_from_ir(IR_CLASS_SELF, REG_SELF, TARGET)
+    code = emit_class_from_ir(IR_CLASS_SELF, TARGET)
     assert 'def accept(self, s: typing.Self) -> "typing.Self":' in code
     assert "typing.cast(typing.Self, self._from_impl(result))" in code
     assert "s_impl = s._impl_instance" in code
 
 
 def test_emit_class_aiter_signature_variations():
-    code = emit_class_from_ir(IR_CLASS_AITER_SYNC_WITH_ANN, REG_EMPTY, TARGET)
+    code = emit_class_from_ir(IR_CLASS_AITER_SYNC_WITH_ANN, TARGET)
     assert 'def __iter__(self) -> "synchronicity.types.SyncOrAsyncIterator[str]":' in code
     assert 'def __aiter__(self) -> "synchronicity.types.SyncOrAsyncIterator[str]":' in code
 
-    code = emit_class_from_ir(IR_CLASS_AITER_SYNC_NO_ANN, REG_EMPTY, TARGET)
+    code = emit_class_from_ir(IR_CLASS_AITER_SYNC_NO_ANN, TARGET)
     assert "def __iter__(self):" in code
     assert "def __aiter__(self):" in code
     assert " -> :" not in code
 
-    code = emit_class_from_ir(IR_CLASS_AITER_ASYNC_WITH_ANN, REG_EMPTY, TARGET)
+    code = emit_class_from_ir(IR_CLASS_AITER_ASYNC_WITH_ANN, TARGET)
     assert 'def __iter__(self) -> "synchronicity.types.SyncOrAsyncIterator[int]":' in code
     assert 'def __aiter__(self) -> "synchronicity.types.SyncOrAsyncIterator[int]":' in code
 
-    code = emit_class_from_ir(IR_CLASS_AITER_ASYNC_NO_ANN, REG_EMPTY, TARGET)
+    code = emit_class_from_ir(IR_CLASS_AITER_ASYNC_NO_ANN, TARGET)
     assert "def __iter__(self) -> typing.Any:" in code
     assert "def __aiter__(self) -> typing.Any:" in code
 
-    code = emit_class_from_ir(IR_CLASS_AITER_ASYNC_GEN, REG_EMPTY, TARGET)
+    code = emit_class_from_ir(IR_CLASS_AITER_ASYNC_GEN, TARGET)
     assert 'def __iter__(self) -> "typing.Generator[float, None, None]":' in code
     assert 'def __aiter__(self) -> "typing.AsyncGenerator[float, None]":' in code
 
-    code = emit_class_from_ir(IR_CLASS_AITER_ASYNC_ITER_TYPE, REG_EMPTY, TARGET)
+    code = emit_class_from_ir(IR_CLASS_AITER_ASYNC_ITER_TYPE, TARGET)
     assert 'def __iter__(self) -> "synchronicity.types.SyncOrAsyncIterator[bool]":' in code
     assert 'def __aiter__(self) -> "synchronicity.types.SyncOrAsyncIterator[bool]":' in code
 
 
 def test_emit_class_without_explicit_init():
     ir = IR_CLASS_NO_INIT
-    code = emit_class_from_ir(ir, REG_EMPTY, TARGET)
+    code = emit_class_from_ir(ir, TARGET)
     assert "def __init__(self):" in code
     assert "def __init__(self, *args, **kwargs):" not in code
     assert f"{IMPL}.{_impl_short(ir)}()" in code

@@ -11,7 +11,7 @@ from __future__ import annotations
 import dataclasses
 import enum
 
-from .transformer_ir import ImplQualifiedRef, TypeTransformerIR
+from .transformer_ir import ImplQualifiedRef, TypeTransformerIR, WrapperRef
 
 
 class MethodBindingKind(str, enum.Enum):
@@ -112,14 +112,15 @@ class ClassWrapperIR:
     iterator protocol dunders (``__aiter__``, ``__anext__``). The emitter partitions by
     ``method_name`` (e.g. iterator dunders map to ``__iter__``/``__aiter__``, ``__next__``/``__anext__``).
 
-    ``wrapped_base_impl_refs`` lists implementation bases that participate in synchronicity
-    inheritance (each maps to a wrapper at emit time via :class:`~sync_registry.SyncRegistry`).
+    ``wrapped_bases`` lists implementation bases that participate in synchronicity
+    inheritance, each carrying both the impl ref and the resolved wrapper location.
     ``generic_type_parameters`` holds ``TypeVar`` / ``ParamSpec`` **names** for the
     ``typing.Generic[...]`` base; the emitter formats that base string.
     """
 
     impl_ref: ImplQualifiedRef
-    wrapped_base_impl_refs: tuple[ImplQualifiedRef, ...]
+    wrapper_ref: WrapperRef
+    wrapped_bases: tuple[tuple[ImplQualifiedRef, WrapperRef], ...]
     generic_type_parameters: tuple[str, ...] | None
     attributes: tuple[tuple[str, TypeTransformerIR | None], ...]
     methods: tuple[MethodWrapperIR, ...]

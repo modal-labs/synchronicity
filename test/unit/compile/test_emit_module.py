@@ -12,7 +12,6 @@ from synchronicity.codegen.ir import (
     ModuleCompilationIR,
     ParameterIR,
 )
-from synchronicity.codegen.sync_registry import SyncRegistry
 from synchronicity.codegen.transformer_ir import (
     AwaitableTypeIR,
     DictTypeIR,
@@ -20,6 +19,7 @@ from synchronicity.codegen.transformer_ir import (
     ImplQualifiedRef,
     ListTypeIR,
     OptionalTypeIR,
+    WrapperRef,
 )
 
 IMPL = __name__
@@ -34,7 +34,8 @@ IR_MODULE_TWO_CLASSES = ModuleCompilationIR(
     class_wrappers=(
         ClassWrapperIR(
             impl_ref=ImplQualifiedRef(IMPL, "EmitModuleClassA"),
-            wrapped_base_impl_refs=(),
+            wrapper_ref=WrapperRef(TARGET, "EmitModuleClassA"),
+            wrapped_bases=(),
             generic_type_parameters=None,
             attributes=(),
             methods=(
@@ -62,7 +63,8 @@ IR_MODULE_TWO_CLASSES = ModuleCompilationIR(
         ),
         ClassWrapperIR(
             impl_ref=ImplQualifiedRef(IMPL, "EmitModuleClassB"),
-            wrapped_base_impl_refs=(),
+            wrapper_ref=WrapperRef(TARGET, "EmitModuleClassB"),
+            wrapped_bases=(),
             generic_type_parameters=None,
             attributes=(),
             methods=(
@@ -110,16 +112,9 @@ IR_MODULE_TWO_CLASSES = ModuleCompilationIR(
     module_functions_ir=(),
 )
 
-REG_TWO_MOD = SyncRegistry(
-    {
-        ImplQualifiedRef(IMPL, "EmitModuleClassA"): (TARGET, "TestClass"),
-        ImplQualifiedRef(IMPL, "EmitModuleClassB"): (TARGET, "ComplexClass"),
-    }
-)
-
 
 def test_emit_module_two_classes_separated_by_blank_lines():
-    generated_code = SyncAsyncWrapperEmitter().emit_module(IR_MODULE_TWO_CLASSES, REG_TWO_MOD)
+    generated_code = SyncAsyncWrapperEmitter().emit_module(IR_MODULE_TWO_CLASSES)
     compile(generated_code, "<string>", "exec")
 
     class_pattern = r"^class\s+\w+"

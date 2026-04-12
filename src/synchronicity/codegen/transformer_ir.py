@@ -20,6 +20,14 @@ class ImplQualifiedRef:
 
 
 @dataclasses.dataclass(frozen=True)
+class WrapperRef:
+    """Resolved wrapper location: where the wrapper class lives in generated code."""
+
+    wrapper_module: str
+    wrapper_name: str
+
+
+@dataclasses.dataclass(frozen=True)
 class IdentityTypeIR:
     """Non-wrapped annotation; ``signature_text`` is the type as it should appear in source."""
 
@@ -28,9 +36,10 @@ class IdentityTypeIR:
 
 @dataclasses.dataclass(frozen=True)
 class WrappedClassTypeIR:
-    """Registered wrapped class (``ImplQualifiedRef``; materialized with :class:`~sync_registry.SyncRegistry`)."""
+    """Registered wrapped class with resolved wrapper location."""
 
     impl: ImplQualifiedRef
+    wrapper: WrapperRef
 
 
 @dataclasses.dataclass(frozen=True)
@@ -45,6 +54,7 @@ class SelfTypeIR:
     """``typing.Self`` tied to a wrapped owner class."""
 
     owner_impl: ImplQualifiedRef
+    wrapper: WrapperRef
 
 
 @dataclasses.dataclass(frozen=True)

@@ -13,8 +13,7 @@ from ..ir import (
     ModuleLevelFunctionIR,
     TypeVarSpecIR,
 )
-from ..sync_registry import SyncRegistry
-from ..transformer_ir import ImplQualifiedRef
+from ..transformer_ir import ImplQualifiedRef, WrapperRef
 from ..transformer_materialize import MaterializeContext, materialize_transformer_ir
 from ..type_transformer import AwaitableTransformer, CoroutineTransformer
 from ..typevar_codegen import typevar_definition_lines
@@ -34,17 +33,15 @@ def _wrapper_short_name(impl_ref: ImplQualifiedRef) -> str:
     return impl_ref.qualname.rpartition(".")[2]
 
 
-def _wrapper_class_reference_for_emit(
-    impl_ref: ImplQualifiedRef,
-    sync: SyncRegistry,
+def _wrapper_class_reference(
+    wrapper: WrapperRef,
     target_module: str,
 ) -> str:
-    """Resolve a wrapped implementation class to the identifier used on a generated class line."""
+    """Resolve a wrapper ref to the identifier used on a generated class line."""
 
-    wrapper_module, wrapper_name = sync[impl_ref]
-    if wrapper_module == target_module:
-        return wrapper_name
-    return f"{wrapper_module}.{wrapper_name}"
+    if wrapper.wrapper_module == target_module:
+        return wrapper.wrapper_name
+    return f"{wrapper.wrapper_module}.{wrapper.wrapper_name}"
 
 
 def _impl_type_dotted(impl_ref: ImplQualifiedRef) -> str:
@@ -136,25 +133,23 @@ from {runtime_package}.synchronizer import get_synchronizer, _wrapped_from_impl
 def _wrapper_registration_lines(class_wrappers: tuple[ClassWrapperIR, ...]) -> list[str]:
     lines: list[str] = []
     for ir in class_wrappers:
-        lines.append(
-            f"_synchronizer.register_wrapper_class({_impl_type_dotted(ir.impl_ref)}, {_wrapper_short_name(ir.impl_ref)})"
-        )
+        impl_dot = _impl_type_dotted(ir.impl_ref)
+        wshort = _wrapper_short_name(ir.impl_ref)
+        lines.append(f"_synchronizer.register_wrapper_class({impl_dot}, {wshort})")
     return lines
 
 
 def emit_module_level_function(
     ir: ModuleLevelFunctionIR,
-    sync: SyncRegistry,
     target_module: str,
     runtime_package: str = "synchronicity",
     *,
     mat_ctx: MaterializeContext | None = None,
 ) -> str:
     current_target_module = target_module
-    return_transformer = materialize_transformer_ir(ir.return_transformer_ir, sync, runtime_package, ctx=mat_ctx)
+    return_transformer = materialize_transformer_ir(ir.return_transformer_ir, runtime_package, ctx=mat_ctx)
     param_str, call_args_str, unwrap_code = format_parameters_for_emit(
         ir.parameters,
-        sync,
         current_target_module,
         runtime_package,
         unwrap_indent="    ",
@@ -165,9 +160,9 @@ def emit_module_level_function(
     impl_dotted = f"{ir.impl_ref.module}.{f}"
 
     if not ir.needs_async_wrapper:
-        sync_return_str, _ = _format_return_annotation(return_transformer, sync, current_target_module)
+        sync_return_str, _ = _format_return_annotation(return_transformer, current_target_module)
 
-        inline_helpers_dict = return_transformer.get_wrapper_helpers(sync, current_target_module, indent="")
+        inline_helpers_dict = return_transformer.get_wrapper_helpers(current_target_module, indent="")
         if inline_helpers_dict:
             cleaned_helpers = {}
             for name, helper_code in inline_helpers_dict.items():
@@ -185,7 +180,6 @@ def emit_module_level_function(
         function_body = _build_call_with_wrap(
             f"impl_function({call_args_str})",
             return_transformer,
-            sync,
             current_target_module,
             indent="    ",
             is_async=False,
@@ -205,14 +199,12 @@ def emit_module_level_function(
             return f"{helpers_code}\n\n{function_code}"
         return function_code
 
-    sync_return_str, async_return_str = _format_return_annotation(return_transformer, sync, current_target_module)
+    sync_return_str, async_return_str = _format_return_annotation(return_transformer, current_target_module)
 
-    inline_helpers_dict = return_transformer.get_wrapper_helpers(sync, current_target_module, indent="    ")
+    inline_helpers_dict = return_transformer.get_wrapper_helpers(current_target_module, indent="    ")
 
     if isinstance(return_transformer, (AwaitableTransformer, CoroutineTransformer)):
-        inner_helpers = return_transformer.return_transformer.get_wrapper_helpers(
-            sync, current_target_module, indent="    "
-        )
+        inner_helpers = return_transformer.return_transformer.get_wrapper_helpers(current_target_module, indent="    ")
         inline_helpers_dict.update(inner_helpers)
     if inline_helpers_dict:
         cleaned_helpers = {}
@@ -239,7 +231,7 @@ def emit_module_level_function(
         aio_unwrap_section += "\n" + unwrap_code
 
     if is_async_gen:
-        wrap_expr_raw = return_transformer.wrap_expr(sync, current_target_module, "gen")
+        wrap_expr_raw = return_transformer.wrap_expr(current_target_module, "gen")
         wrap_expr = wrap_expr_raw.replace("self.", "")
         aio_body = (
             f"    gen = impl_function({call_args_str})\n"
@@ -259,7 +251,6 @@ def emit_module_level_function(
         aio_body = _build_call_with_wrap(
             f"impl_function({call_args_str})",
             return_transformer,
-            sync,
             current_target_module,
             indent="    ",
             is_async=True,
@@ -277,14 +268,13 @@ def emit_module_level_function(
         sync_unwrap_section += "\n" + unwrap_code
 
     if is_async_gen:
-        sync_wrap_expr_raw = return_transformer.wrap_expr(sync, current_target_module, "gen", is_async=False)
+        sync_wrap_expr_raw = return_transformer.wrap_expr(current_target_module, "gen", is_async=False)
         sync_wrap_expr = sync_wrap_expr_raw.replace("self.", "")
         sync_function_body = f"    gen = impl_function({call_args_str})\n    yield from {sync_wrap_expr}"
     else:
         sync_function_body = _build_call_with_wrap(
             f"impl_function({call_args_str})",
             return_transformer,
-            sync,
             current_target_module,
             indent="    ",
             is_async=False,
@@ -305,7 +295,6 @@ def {f}({param_str}){sync_return_str}:
 def emit_method_wrapper_pair(
     owner: MethodEmitOwner,
     mir: MethodWrapperIR,
-    sync: SyncRegistry,
     *,
     runtime_package: str = "synchronicity",
     mat_ctx: MaterializeContext | None = None,
@@ -315,10 +304,9 @@ def emit_method_wrapper_pair(
     impl_dotted = _impl_type_dotted(owner.impl_ref)
     short_name = _wrapper_short_name(owner.impl_ref)
     current_target_module = owner.target_module
-    return_transformer = materialize_transformer_ir(mir.return_transformer_ir, sync, runtime_package, ctx=mat_ctx)
+    return_transformer = materialize_transformer_ir(mir.return_transformer_ir, runtime_package, ctx=mat_ctx)
     param_str, call_args_str, unwrap_code = format_parameters_for_emit(
         mir.parameters,
-        sync,
         current_target_module,
         runtime_package,
         unwrap_indent="    ",
@@ -333,7 +321,7 @@ def emit_method_wrapper_pair(
     dummy_param_str = param_str
     is_async_gen = mir.is_async_gen
     is_async = mir.is_async
-    sync_return_str, async_return_str = _format_return_annotation(return_transformer, sync, current_target_module)
+    sync_return_str, async_return_str = _format_return_annotation(return_transformer, current_target_module)
 
     aio_body = None
     sync_method_body = ""
@@ -344,7 +332,6 @@ def emit_method_wrapper_pair(
             sync_method_body = _build_call_with_wrap(
                 sync_call_expr,
                 return_transformer,
-                sync,
                 current_target_module,
                 indent="    ",
                 is_async=False,
@@ -359,7 +346,7 @@ def emit_method_wrapper_pair(
             aio_body = None
         elif is_async_gen:
             gen_call = call_expr_prefix
-            wrap_expr_raw = return_transformer.wrap_expr(sync, current_target_module, "gen")
+            wrap_expr_raw = return_transformer.wrap_expr(current_target_module, "gen")
             wrap_expr = wrap_expr_raw.replace("self.", "wrapper_instance.")
             impl_method_line = f"impl_method = {impl_dotted}.{method_name}"
             unwrap_lines = f"\n{unwrap_code}\n" if unwrap_code else "\n"
@@ -378,7 +365,7 @@ def emit_method_wrapper_pair(
                 f"    finally:\n"
                 f"        await _wrapped.aclose()"
             )
-            sync_wrap_expr_raw = return_transformer.wrap_expr(sync, current_target_module, "gen", is_async=False)
+            sync_wrap_expr_raw = return_transformer.wrap_expr(current_target_module, "gen", is_async=False)
             sync_wrap_expr = sync_wrap_expr_raw
             impl_method_line_sync = f"    {impl_method_line}"
             if unwrap_code:
@@ -393,7 +380,6 @@ def emit_method_wrapper_pair(
             aio_body = _build_call_with_wrap(
                 call_expr_prefix,
                 return_transformer,
-                sync,
                 current_target_module,
                 indent="    ",
                 is_async=True,
@@ -408,7 +394,6 @@ def emit_method_wrapper_pair(
             sync_method_body = _build_call_with_wrap(
                 call_expr_prefix,
                 return_transformer,
-                sync,
                 current_target_module,
                 indent="    ",
                 is_async=False,
@@ -425,7 +410,6 @@ def emit_method_wrapper_pair(
             sync_method_body = _build_call_with_wrap(
                 sync_call_expr,
                 return_transformer,
-                sync,
                 current_target_module,
                 indent="    ",
                 is_async=False,
@@ -437,7 +421,7 @@ def emit_method_wrapper_pair(
             aio_body = None
         elif is_async_gen:
             gen_call = call_expr_prefix
-            wrap_expr_raw = return_transformer.wrap_expr(sync, current_target_module, "gen")
+            wrap_expr_raw = return_transformer.wrap_expr(current_target_module, "gen")
             wrap_expr = wrap_expr_raw.replace("self.", "wrapper_class.")
             unwrap_lines = f"{unwrap_code}\n    " if unwrap_code else ""
             aio_body = (
@@ -454,7 +438,7 @@ def emit_method_wrapper_pair(
                 f"    finally:\n"
                 f"        await _wrapped.aclose()"
             )
-            sync_wrap_expr_raw = return_transformer.wrap_expr(sync, current_target_module, "gen", is_async=False)
+            sync_wrap_expr_raw = return_transformer.wrap_expr(current_target_module, "gen", is_async=False)
             sync_wrap_expr = sync_wrap_expr_raw
             if unwrap_code:
                 sync_method_body = f"{unwrap_code}\n    gen = {gen_call}\n    yield from {sync_wrap_expr}"
@@ -464,7 +448,6 @@ def emit_method_wrapper_pair(
             aio_body = _build_call_with_wrap(
                 call_expr_prefix,
                 return_transformer,
-                sync,
                 current_target_module,
                 indent="    ",
                 is_async=True,
@@ -477,7 +460,6 @@ def emit_method_wrapper_pair(
             sync_method_body = _build_call_with_wrap(
                 call_expr_prefix,
                 return_transformer,
-                sync,
                 current_target_module,
                 indent="    ",
                 is_async=False,
@@ -492,7 +474,6 @@ def emit_method_wrapper_pair(
             sync_method_body = _build_call_with_wrap(
                 sync_call_expr,
                 return_transformer,
-                sync,
                 current_target_module,
                 indent="    ",
                 is_async=False,
@@ -504,7 +485,7 @@ def emit_method_wrapper_pair(
             aio_body = None
         elif is_async_gen:
             gen_call = call_expr_prefix
-            wrap_expr_raw = return_transformer.wrap_expr(sync, current_target_module, "gen")
+            wrap_expr_raw = return_transformer.wrap_expr(current_target_module, "gen")
             if "self." in wrap_expr_raw:
                 wrap_expr = wrap_expr_raw.replace("self.", f"{short_name}()._").replace("_(", "(")
             else:
@@ -524,7 +505,7 @@ def emit_method_wrapper_pair(
                 f"    finally:\n"
                 f"        await _wrapped.aclose()"
             )
-            sync_wrap_expr_raw = return_transformer.wrap_expr(sync, current_target_module, "gen", is_async=False)
+            sync_wrap_expr_raw = return_transformer.wrap_expr(current_target_module, "gen", is_async=False)
             if "self." in sync_wrap_expr_raw:
                 sync_wrap_expr = sync_wrap_expr_raw.replace("self.", f"{short_name}()._").replace("_(", "(")
             else:
@@ -537,7 +518,6 @@ def emit_method_wrapper_pair(
             aio_body = _build_call_with_wrap(
                 call_expr_prefix,
                 return_transformer,
-                sync,
                 current_target_module,
                 indent="    ",
                 is_async=True,
@@ -550,7 +530,6 @@ def emit_method_wrapper_pair(
             sync_method_body = _build_call_with_wrap(
                 call_expr_prefix,
                 return_transformer,
-                sync,
                 current_target_module,
                 indent="    ",
                 is_async=False,
@@ -706,7 +685,6 @@ def emit_method_wrapper_pair(
 
 def emit_class_from_ir(
     ir: ClassWrapperIR,
-    sync: SyncRegistry,
     target_module: str,
     *,
     runtime_package: str = "synchronicity",
@@ -715,16 +693,13 @@ def emit_class_from_ir(
     """Emit wrapper class source from :class:`ClassWrapperIR` (no live implementation objects)."""
     wshort = _wrapper_short_name(ir.impl_ref)
     impl_dot = _impl_type_dotted(ir.impl_ref)
-    sync_self = sync.with_impl_ref(ir.impl_ref, target_module, wshort)
     owner = method_emit_owner(ir, target_module)
     init_mir, iterator_mirs, normal_methods = _partition_class_methods(ir.methods)
 
     all_helpers_dict: dict[str, str] = {}
     for mir in ir.methods:
-        return_transformer = materialize_transformer_ir(
-            mir.return_transformer_ir, sync_self, runtime_package, ctx=mat_ctx
-        )
-        all_helpers_dict.update(return_transformer.get_wrapper_helpers(sync_self, target_module, indent="    "))
+        return_transformer = materialize_transformer_ir(mir.return_transformer_ir, runtime_package, ctx=mat_ctx)
+        all_helpers_dict.update(return_transformer.get_wrapper_helpers(target_module, indent="    "))
 
     helpers_code = "\n".join(all_helpers_dict.values()) if all_helpers_dict else ""
     helpers_section = f"\n{helpers_code}\n" if helpers_code else ""
@@ -732,7 +707,7 @@ def emit_class_from_ir(
     method_definitions_with_async: list[str] = []
     for mir in normal_methods:
         wrapper_functions_code, sync_method_code = emit_method_wrapper_pair(
-            owner, mir, sync_self, runtime_package=runtime_package, mat_ctx=mat_ctx
+            owner, mir, runtime_package=runtime_package, mat_ctx=mat_ctx
         )
         if wrapper_functions_code:
             method_definitions_with_async.append(f"{wrapper_functions_code}\n\n{sync_method_code}")
@@ -743,8 +718,8 @@ def emit_class_from_ir(
     for attr_name, annotation_ir in ir.attributes:
         attr_type_str = ""
         if annotation_ir is not None:
-            attr_transformer = materialize_transformer_ir(annotation_ir, sync_self, runtime_package, ctx=mat_ctx)
-            attr_type_str = attr_transformer.wrapped_type(sync_self, target_module)
+            attr_transformer = materialize_transformer_ir(annotation_ir, runtime_package, ctx=mat_ctx)
+            attr_type_str = attr_transformer.wrapped_type(target_module)
         if attr_type_str:
             property_code = f"""    # Generated properties
     @property
@@ -773,17 +748,16 @@ def emit_class_from_ir(
                 continue
             sync_method_name, async_method_name, use_async_def, stop_iteration_bridge = surfaces
             method_return_transformer = materialize_transformer_ir(
-                mir.return_transformer_ir, sync_self, runtime_package, ctx=mat_ctx
+                mir.return_transformer_ir, runtime_package, ctx=mat_ctx
             )
             method_sync_return_str, method_async_return_str = _format_return_annotation(
-                method_return_transformer, sync_self, target_module
+                method_return_transformer, target_module
             )
             method_call_expr = f"{impl_dot}.{mir.method_name}(self._impl_instance)"
             sync_indent = "            " if stop_iteration_bridge else "        "
             sync_body = _build_call_with_wrap(
                 method_call_expr,
                 method_return_transformer,
-                sync_self,
                 target_module,
                 indent=sync_indent,
                 is_async=False,
@@ -804,7 +778,6 @@ def emit_class_from_ir(
             async_body = _build_call_with_wrap(
                 method_call_expr,
                 method_return_transformer,
-                sync_self,
                 target_module,
                 indent="        ",
                 is_async=True,
@@ -817,9 +790,7 @@ def emit_class_from_ir(
             iterator_blocks.append(async_method)
         iterator_methods_section = "\n\n".join(iterator_blocks)
 
-    wrapped_base_strings = [
-        _wrapper_class_reference_for_emit(base_impl, sync, target_module) for base_impl in ir.wrapped_base_impl_refs
-    ]
+    wrapped_base_strings = [_wrapper_class_reference(wrapper, target_module) for _impl_ref, wrapper in ir.wrapped_bases]
     from_impl_method = f"""    @classmethod
     def _from_impl(cls, impl_instance: typing.Any) -> "{wshort}":
         \"\"\"Create wrapper from implementation instance, preserving identity via cache.\"\"\"
@@ -849,7 +820,6 @@ def emit_class_from_ir(
 
     init_sig, init_call, init_unwrap = format_parameters_for_emit(
         init_mir.parameters if init_mir else (),
-        sync_self,
         target_module,
         runtime_package,
         unwrap_indent="        ",
@@ -893,7 +863,6 @@ class SyncAsyncWrapperEmitter:
     def emit_module(
         self,
         ir: ModuleCompilationIR,
-        sync: SyncRegistry,
     ) -> str:
         runtime_package = self.runtime_package
         imports = "\n".join(f"import {mod}" for mod in sorted(ir.impl_modules))
@@ -924,9 +893,7 @@ class SyncAsyncWrapperEmitter:
 
         module_mat_ctx = _materialize_context_for_module(ir.typevar_specs)
         for i, cw in enumerate(ir.class_wrappers):
-            code = emit_class_from_ir(
-                cw, sync, ir.target_module, runtime_package=runtime_package, mat_ctx=module_mat_ctx
-            )
+            code = emit_class_from_ir(cw, ir.target_module, runtime_package=runtime_package, mat_ctx=module_mat_ctx)
             if i > 0:
                 compiled_code.append("")
             compiled_code.append(code)
@@ -939,7 +906,6 @@ class SyncAsyncWrapperEmitter:
         for func_ir in ir.module_functions_ir:
             code = emit_module_level_function(
                 func_ir,
-                sync,
                 ir.target_module,
                 runtime_package=runtime_package,
                 mat_ctx=module_mat_ctx,

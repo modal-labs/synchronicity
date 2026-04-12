@@ -4,26 +4,33 @@ from __future__ import annotations
 
 import typing
 
+from synchronicity.module import _IMPL_WRAPPER_LOCATION_ATTR
+
 from .ir import TypeVarSpecIR
-from .sync_registry import SyncRegistry
-from .transformer_ir import TypeTransformerIR, WrappedClassTypeIR
+from .transformer_ir import TypeTransformerIR, WrappedClassTypeIR, WrapperRef
 from .transformer_materialize import resolve_typevar_bound_to_wrapped_impl
+
+
+def _get_wrapper_location(t: type) -> tuple[str, str] | None:
+    return getattr(t, _IMPL_WRAPPER_LOCATION_ATTR, None)
 
 
 def translate_typevar_bound(
     bound: type | str,
-    synchronized_types: dict[type, tuple[str, str]],
+    known_impl_types: frozenset[type],
     target_module: str,
     *,
     impl_modules: frozenset[str] | None = None,
 ) -> str:
     def _iter_matching_name(name: str):
-        for impl_type, pair in synchronized_types.items():
+        for impl_type in known_impl_types:
             if impl_type.__name__ != name:
                 continue
             if impl_modules is not None and impl_type.__module__ not in impl_modules:
                 continue
-            yield impl_type, pair
+            loc = _get_wrapper_location(impl_type)
+            if loc is not None:
+                yield impl_type, loc
 
     if hasattr(bound, "__forward_arg__"):
         forward_str = bound.__forward_arg__  # type: ignore
@@ -45,8 +52,9 @@ def translate_typevar_bound(
         return f'"{bound}"'
 
     if isinstance(bound, type):
-        if bound in synchronized_types:
-            wrapper_target_module, wrapper_name = synchronized_types[bound]
+        loc = _get_wrapper_location(bound)
+        if loc is not None:
+            wrapper_target_module, wrapper_name = loc
             if wrapper_target_module == target_module:
                 return f'"{wrapper_name}"'
             return f'"{wrapper_target_module}.{wrapper_name}"'
@@ -59,13 +67,12 @@ def translate_typevar_bound(
 
 def typevar_specs_from_collected(
     module_typevars: dict[str, typing.TypeVar | typing.ParamSpec],
-    synchronized_types: dict[type, tuple[str, str]],
+    known_impl_types: frozenset[type],
     target_module: str,
     *,
     impl_modules: frozenset[str] | None = None,
 ) -> tuple[TypeVarSpecIR, ...]:
     specs: list[TypeVarSpecIR] = []
-    sync_reg = SyncRegistry.from_type_map(synchronized_types)
     for name in sorted(module_typevars.keys()):
         tv = module_typevars[name]
         if isinstance(tv, typing.ParamSpec):
@@ -86,8 +93,9 @@ def typevar_specs_from_collected(
         if hasattr(tv, "__constraints__") and tv.__constraints__:
             for constraint in tv.__constraints__:
                 if isinstance(constraint, type):
-                    if constraint in synchronized_types:
-                        wrapper_target_module, wrapper_name = synchronized_types[constraint]
+                    loc = _get_wrapper_location(constraint)
+                    if loc is not None:
+                        wrapper_target_module, wrapper_name = loc
                         if wrapper_target_module == target_module:
                             constraint_parts.append(wrapper_name)
                         else:
@@ -104,13 +112,15 @@ def typevar_specs_from_collected(
         bound_value: str | None = None
         if hasattr(tv, "__bound__") and tv.__bound__ is not None:
             bound_value = translate_typevar_bound(
-                tv.__bound__, synchronized_types, target_module, impl_modules=impl_modules
+                tv.__bound__, known_impl_types, target_module, impl_modules=impl_modules
             )
 
         bound_translation_ir: TypeTransformerIR | None = None
-        impl_ref = resolve_typevar_bound_to_wrapped_impl(tv, sync_reg, impl_modules)
+        impl_ref = resolve_typevar_bound_to_wrapped_impl(tv, known_impl_types, impl_modules)
         if impl_ref is not None:
-            bound_translation_ir = WrappedClassTypeIR(impl_ref)
+            loc = _get_wrapper_location_from_ref(impl_ref, known_impl_types)
+            if loc is not None:
+                bound_translation_ir = WrappedClassTypeIR(impl_ref, WrapperRef(*loc))
 
         specs.append(
             TypeVarSpecIR(
@@ -124,6 +134,17 @@ def typevar_specs_from_collected(
             )
         )
     return tuple(specs)
+
+
+def _get_wrapper_location_from_ref(
+    impl_ref,
+    known_impl_types: frozenset[type],
+) -> tuple[str, str] | None:
+    """Look up wrapper location for an ImplQualifiedRef by finding the matching type."""
+    for t in known_impl_types:
+        if t.__module__ == impl_ref.module and t.__qualname__ == impl_ref.qualname:
+            return _get_wrapper_location(t)
+    return None
 
 
 def typevar_definition_lines(specs: tuple[TypeVarSpecIR, ...]) -> list[str]:
