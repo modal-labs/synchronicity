@@ -309,26 +309,35 @@ def parse_class_wrapper_ir(
             if loc is not None:
                 wrapped_bases.append((ImplQualifiedRef(base.__module__, base.__qualname__), WrapperRef(*loc)))
 
-    methods: list[tuple[str, types.FunctionType, MethodBindingKind]] = []
+    # Collect all source methods: __init__, public methods, and async iterator dunders.
+    source_methods: list[tuple[str, types.FunctionType, MethodBindingKind]] = []
     classmethod_staticmethod_names: set[str] = set()
+
+    # __init__ (resolved through MRO — subclasses inherit a non-trivial __init__)
+    init_method = getattr(cls, "__init__", None)
+    if init_method and init_method is not object.__init__:
+        source_methods.append(("__init__", init_method, MethodBindingKind.INSTANCE))
+
+    # classmethods and staticmethods (descriptor unwrapping requires cls.__dict__)
     for name, attr in cls.__dict__.items():
         if name.startswith("_"):
             continue
         if isinstance(attr, classmethod):
-            methods.append((name, attr.__func__, MethodBindingKind.CLASSMETHOD))
+            source_methods.append((name, attr.__func__, MethodBindingKind.CLASSMETHOD))
             classmethod_staticmethod_names.add(name)
         elif isinstance(attr, staticmethod):
-            methods.append((name, attr.__func__, MethodBindingKind.STATICMETHOD))
+            source_methods.append((name, attr.__func__, MethodBindingKind.STATICMETHOD))
             classmethod_staticmethod_names.add(name)
 
+    # instance methods (only directly defined on cls)
     for name, method in inspect.getmembers(cls, predicate=inspect.isfunction):
         if not name.startswith("_") and name in cls.__dict__ and name not in classmethod_staticmethod_names:
-            methods.append((name, method, MethodBindingKind.INSTANCE))
+            source_methods.append((name, method, MethodBindingKind.INSTANCE))
 
-    has_aiter = "__aiter__" in cls.__dict__
-    has_anext = "__anext__" in cls.__dict__
-    aiter_method = cls.__dict__.get("__aiter__")
-    anext_method = cls.__dict__.get("__anext__")
+    # async iterator protocol dunders (only directly defined on cls)
+    for dunder_name in ("__aiter__", "__anext__"):
+        if dunder_name in cls.__dict__:
+            source_methods.append((dunder_name, cls.__dict__[dunder_name], MethodBindingKind.INSTANCE))
 
     attributes: list[tuple[str, TypeTransformerIR | None]] = []
     class_annotations = cls.__annotations__ if hasattr(cls, "__annotations__") else {}
@@ -344,68 +353,20 @@ def parse_class_wrapper_ir(
             )
             attributes.append((name, annotation_ir))
 
-    method_irs: list[MethodWrapperIR] = []
-    for method_name, method, method_type in methods:
-        method_irs.append(
-            parse_method_wrapper_ir(
-                method,
-                method_name,
-                cls,
-                owner_has_type_parameters=bool(generic_typevars),
-                method_type=method_type,
-                globals_dict=globals_dict,
-                generic_typevars=generic_typevars if generic_typevars else None,
-                impl_modules=impl_modules,
-            )
+    # Parse all source methods into IR in one pass
+    method_irs = tuple(
+        parse_method_wrapper_ir(
+            method,
+            method_name,
+            cls,
+            owner_has_type_parameters=bool(generic_typevars),
+            method_type=method_type,
+            globals_dict=globals_dict,
+            generic_typevars=generic_typevars if generic_typevars else None,
+            impl_modules=impl_modules,
         )
-
-    combined_methods: list[MethodWrapperIR] = []
-
-    init_method = getattr(cls, "__init__", None)
-    if init_method and init_method is not object.__init__:
-        combined_methods.append(
-            parse_method_wrapper_ir(
-                init_method,
-                "__init__",
-                cls,
-                owner_has_type_parameters=bool(generic_typevars),
-                method_type=MethodBindingKind.INSTANCE,
-                globals_dict=globals_dict,
-                generic_typevars=generic_typevars if generic_typevars else None,
-                impl_modules=impl_modules,
-            )
-        )
-
-    combined_methods.extend(method_irs)
-
-    if has_aiter:
-        assert aiter_method is not None
-        combined_methods.append(
-            parse_method_wrapper_ir(
-                aiter_method,
-                "__aiter__",
-                cls,
-                owner_has_type_parameters=bool(generic_typevars),
-                method_type=MethodBindingKind.INSTANCE,
-                globals_dict=globals_dict,
-                generic_typevars=generic_typevars if generic_typevars else None,
-                impl_modules=impl_modules,
-            )
-        )
-    if has_anext:
-        assert anext_method is not None
-        combined_methods.append(
-            parse_method_wrapper_ir(
-                anext_method,
-                "__anext__",
-                cls,
-                owner_has_type_parameters=bool(generic_typevars),
-                method_type=MethodBindingKind.INSTANCE,
-                globals_dict=globals_dict,
-                generic_typevars=generic_typevars if generic_typevars else None,
-                impl_modules=impl_modules,
-            )
-        )
+        for method_name, method, method_type in source_methods
+    )
 
     # Read wrapper location from marker attribute
     wrapper_loc = _get_wrapper_location(cls)
@@ -418,5 +379,5 @@ def parse_class_wrapper_ir(
         wrapped_bases=tuple(wrapped_bases),
         generic_type_parameters=generic_type_parameters,
         attributes=tuple(attributes),
-        methods=tuple(combined_methods),
+        methods=method_irs,
     )
