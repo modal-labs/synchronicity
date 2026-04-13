@@ -230,7 +230,13 @@ def get_specific_generic_name(annotation):
     >>> get_specific_generic_name(typing.List[str])
     "List"
     """
-    if hasattr(annotation, "__name__"):
+    # PEP 604 union types (e.g. str | None) — types.UnionType exists on Python 3.10+
+    if hasattr(types, "UnionType") and isinstance(annotation, types.UnionType):
+        args = typing.get_args(annotation)
+        if len(args) == 2 and type(None) in args:
+            return "Optional"
+        return "Union"
+    elif hasattr(annotation, "__name__"):
         # this works on new pythons
         return annotation.__name__
     elif hasattr(annotation, "_name") and annotation._name is not None:

@@ -12,7 +12,7 @@ import typing_extensions
 import synchronicity
 from synchronicity import classproperty, overload_tracking
 from synchronicity.async_wrap import asynccontextmanager
-from synchronicity.type_stubs import StubEmitter
+from synchronicity.type_stubs import StubEmitter, get_specific_generic_name
 
 from .type_stub_helpers import some_mod
 
@@ -25,6 +25,11 @@ def arg_no_anno(arg1): ...
 
 def scalar_args(arg1: str, arg2: int) -> float:
     return 0
+
+
+def union_args(arg1: str | int): ...
+def optional_args(arg1: str | None): ...
+def union_multiple_args(arg1: str | int | None): ...
 
 
 def generic_other_module_arg(arg: typing.List[some_mod.Foo]): ...
@@ -97,6 +102,14 @@ def test_function_basics():
     assert _function_source(noop) == "def noop():\n    ...\n"
     assert _function_source(arg_no_anno) == "def arg_no_anno(arg1):\n    ...\n"
     assert _function_source(scalar_args) == "def scalar_args(arg1: str, arg2: int) -> float:\n    ...\n"
+    assert _function_source(union_args) == "import typing\n\ndef union_args(arg1: typing.Union[str, int]):\n    ...\n"
+    assert (
+        _function_source(optional_args) == "import typing\n\ndef optional_args(arg1: typing.Optional[str]):\n    ...\n"
+    )
+    assert (
+        _function_source(union_multiple_args)
+        == "import typing\n\ndef union_multiple_args(arg1: typing.Union[str, int, None]):\n    ...\n"
+    )
 
 
 def test_function_with_imports():
@@ -850,3 +863,19 @@ def test_async_classmethod_gets_aio(synchronizer):
     assert "foo: typing.ClassVar[__foo_spec" in src
     assert "async def aio(self" in src
     assert "def __call__(self" in src
+
+
+@pytest.mark.parametrize(
+    "annotation, expected",
+    [
+        (list[str], "list"),
+        (typing.List[str], "List"),
+        (typing.Union[str, int], "Union"),
+        (typing.Union[str, None], "Optional"),
+        (str | int, "Union"),
+        (str | int | None, "Union"),
+        (str | None, "Optional"),
+    ],
+)
+def test_get_specific_generic_name(annotation, expected):
+    assert get_specific_generic_name(annotation) == expected
