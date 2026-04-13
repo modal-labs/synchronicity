@@ -1,13 +1,8 @@
 ## TODO
 ### Known bugs
 - [ ] Generated properties for attributes don't type translate at the moment (important for wrapped classes being passed in and out)
-- Self references in arguments to methods via stringified class names aren't preserved in emitted code, resulting in errors
 
 ### High Priority
-- [ ] **Add support for async context managers**
-  - Implement `__aenter__` and `__aexit__` wrapper generation
-  - Support both `with` (sync) and `async with` (async) usage
-
 - [ ] **Add tests that generated code is valid across Python 3.10+ versions**
   - The code generation process could require a newer Python version
   - Output types needs to still be backwards compatible with Python 3.10+ for now
@@ -21,11 +16,6 @@
   We could export the MethodWithAio
   
 ### Medium Priority
-- [ ] **Investigate “most specific” wrapper on return (runtime type vs declared type)**
-  - If impl types form a hierarchy (e.g. wrapped `Foo` and wrapped `Bar(Foo)`) and a function is annotated to return `Foo` but actually returns a `Bar` instance, today codegen wraps using the **declared** wrapper’s `_from_impl` (e.g. `Foo._from_impl(bar_impl)`), which may not yield the most specific public wrapper type.
-  - Consider whether to resolve or dispatch to the wrapper that matches the **runtime** impl type (most specific registered wrapper), and how that interacts with static determinism (gencode follows annotations only).
-  - If we keep declared-type wrapping only, document that limitation clearly for users who rely on subclass instances at runtime.
-
 - [ ] **Investigate generics whose type parameters may or may not be bound to wrapped classes**
   - For a `TypeVar` with a bound that is (or normalizes to) a wrapped implementation type, translation at the boundary is well motivated (unwrap in / wrap out relative to that bound).
   - For an **unbounded** type variable, a plausible policy is to treat values as **opaque** at the wrapper/impl bridge: do not unwrap/wrap even if a concrete substitution could have been a wrapped type, because the implementation contract is not allowed to depend on wrapped-class structure—only on the opaque type parameter.
@@ -42,7 +32,6 @@
   - Clear error messages for unsupported type constructs
   - Helpful suggestions for common mistakes
 - [ ] **Investigate translation of TypeVar bounds that reference wrapped classes**
-  - Confirmed failing typed paths include `tuple[T, ...] -> list[T]` where `T` is bound to a wrapped class
   - Confirmed failing typed paths also include callback/callable forms like `Callable[P, T] -> Callable[P, list[T]]` when `T` is bound to a wrapped class
 - [ ] **Add callback/callable translation for wrapped classes**
   - Plain callback forms like `Callable[[Node], Node]` and `Callable[[Node], int]` are not translated to public wrapper types today

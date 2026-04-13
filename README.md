@@ -233,6 +233,7 @@ The current codebase and tests cover:
 - wrapper-side translation of wrapped classes in annotated arguments and return values, including common container shapes like `list[...]`, `tuple[...]`, and `Optional[...]`
 - async generators, including two-way generators with `send`/`asend` and cleanup via `close`/`aclose`
 - sync and async iteration over wrapped async iterables and iterators
+- async context managers, including direct `__aenter__`/`__aexit__` wrappers and functions or methods returning async context manager values
 - wrapped classes with public instance methods
 - wrapped `classmethod` and `staticmethod`
 - sync methods on wrapped classes
@@ -324,7 +325,6 @@ The generated APIs are tested with pyright, including consumer-side usage exampl
 
 Known caveats include:
 
-- A `TypeVar` bound to a wrapped class is not typed cleanly today in all generated contexts. For example, `T = TypeVar("T", bound="SomeClass")` combined with a method like `async def tuple_to_list(self, items: tuple[T, ...]) -> list[T]` currently produces pyright errors in the generated wrapper, with mismatches like `"SomeClass*" is not assignable to "SomeClass"`.
 - Plain callback translation is also not typed correctly yet. For example, shapes like `Callable[[Node], Node]` and `Callable[[Node], int]` are not rewritten to the public wrapper type consistently, so user-facing callback signatures do not type check cleanly.
 
 ## Runtime architecture
