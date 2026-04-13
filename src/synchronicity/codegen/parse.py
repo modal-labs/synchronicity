@@ -26,6 +26,7 @@ from .ir import (
 )
 from .signature_utils import is_async_generator
 from .transformer_ir import (
+    AsyncContextManagerTypeIR,
     AsyncGeneratorTypeIR,
     AsyncIteratorTypeIR,
     AwaitableTypeIR,
@@ -166,6 +167,32 @@ def build_module_compilation_ir(
     )
 
 
+def _detect_async_context_manager_wrapper(f, return_annotation) -> typing.Any | None:
+    """Detect functions wrapped by ``@asynccontextmanager``.
+
+    Returns the yield type (context manager value type) if detected, ``None`` otherwise.
+    """
+    if return_annotation == inspect.Signature.empty:
+        return None
+
+    origin = typing.get_origin(return_annotation)
+    if origin is not collections.abc.AsyncGenerator:
+        return None
+
+    if inspect.isasyncgenfunction(f):
+        return None  # Actually is a raw async generator
+
+    # Annotation says AsyncGenerator but function isn't one — check for @asynccontextmanager
+    wrapped = getattr(f, "__wrapped__", None)
+    if wrapped is not None and inspect.isasyncgenfunction(wrapped):
+        args = typing.get_args(return_annotation)
+        if args:
+            return args[0]
+        return typing.Any
+
+    return None
+
+
 def _normalize_return_transformer_ir(
     return_ir: TypeTransformerIR,
     *,
@@ -190,6 +217,21 @@ def parse_module_level_function_ir(
     annotations = _safe_get_annotations(f, globals_dict)
     sig = inspect.signature(f)
     return_annotation = annotations.get("return", sig.return_annotation)
+
+    # Detect @asynccontextmanager-wrapped functions before async gen normalization
+    cm_value_type = _detect_async_context_manager_wrapper(f, return_annotation)
+    if cm_value_type is not None:
+        value_ir = annotation_to_transformer_ir(cm_value_type, owner_impl_type=None, impl_modules=impl_modules)
+        return_ir = AsyncContextManagerTypeIR(value=value_ir)
+        parameters = parse_parameters_to_ir(sig, annotations, skip_first_param=False, impl_modules=impl_modules)
+        return ModuleLevelFunctionIR(
+            impl_ref=ImplQualifiedRef(f.__module__, f.__qualname__),
+            needs_async_wrapper=False,
+            is_async_gen=False,
+            parameters=parameters,
+            return_transformer_ir=return_ir,
+        )
+
     if is_async_generator(f, return_annotation) and return_annotation == inspect.Signature.empty:
         return_annotation = collections.abc.AsyncGenerator[typing.Any, None]
     return_annotation = _normalize_async_annotation(f, return_annotation)
@@ -237,6 +279,35 @@ def parse_method_wrapper_ir(
     annotations = _safe_get_annotations(method, globals_dict)
     sig = inspect.signature(method)
     return_annotation = annotations.get("return", sig.return_annotation)
+
+    # Detect @asynccontextmanager-wrapped methods before async gen normalization
+    cm_value_type = _detect_async_context_manager_wrapper(method, return_annotation)
+    if cm_value_type is not None:
+        value_ir = annotation_to_transformer_ir(
+            cm_value_type,
+            owner_impl_type=impl_class,
+            owner_has_type_parameters=owner_has_type_parameters,
+            impl_modules=impl_modules,
+        )
+        return_ir = AsyncContextManagerTypeIR(value=value_ir)
+        skip_first_param = method_type in (MethodBindingKind.INSTANCE, MethodBindingKind.CLASSMETHOD)
+        parameters = parse_parameters_to_ir(
+            sig,
+            annotations,
+            skip_first_param=skip_first_param,
+            owner_impl_type=impl_class,
+            owner_has_type_parameters=owner_has_type_parameters,
+            impl_modules=impl_modules,
+        )
+        return MethodWrapperIR(
+            method_name=method_name,
+            method_type=method_type,
+            parameters=parameters,
+            is_async_gen=False,
+            is_async=False,
+            return_transformer_ir=return_ir,
+        )
+
     if is_async_generator(method, return_annotation) and return_annotation == inspect.Signature.empty:
         return_annotation = collections.abc.AsyncGenerator[typing.Any, None]
     return_annotation = _normalize_async_annotation(method, return_annotation)
@@ -336,6 +407,11 @@ def parse_class_wrapper_ir(
 
     # async iterator protocol dunders (only directly defined on cls)
     for dunder_name in ("__aiter__", "__anext__"):
+        if dunder_name in cls.__dict__:
+            source_methods.append((dunder_name, cls.__dict__[dunder_name], MethodBindingKind.INSTANCE))
+
+    # async context manager protocol dunders (only directly defined on cls)
+    for dunder_name in ("__aenter__", "__aexit__"):
         if dunder_name in cls.__dict__:
             source_methods.append((dunder_name, cls.__dict__[dunder_name], MethodBindingKind.INSTANCE))
 

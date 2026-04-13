@@ -78,6 +78,7 @@ def generated_wrappers():
             "classmethod_staticmethod_impl",
             "custom_iterators_impl",
             "multi_synchronizer_impl",
+            "async_context_manager_impl",
         ]
 
         for module_name in module_specs:

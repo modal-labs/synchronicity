@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import collections.abc
+import contextlib
 import dataclasses
 import inspect
 import typing
@@ -12,6 +13,7 @@ from synchronicity.module import _IMPL_WRAPPER_LOCATION_ATTR
 from . import type_transformer as tt
 from .ir import TypeVarSpecIR
 from .transformer_ir import (
+    AsyncContextManagerTypeIR,
     AsyncGeneratorTypeIR,
     AsyncIterableTypeIR,
     AsyncIteratorTypeIR,
@@ -270,6 +272,18 @@ def annotation_to_transformer_ir(
             )
         return AwaitableTypeIR(IdentityTypeIR(tt._format_annotation_str(typing.Any)))
 
+    if origin is contextlib.AbstractAsyncContextManager:
+        if args:
+            return AsyncContextManagerTypeIR(
+                value=annotation_to_transformer_ir(
+                    args[0],
+                    owner_impl_type=owner_impl_type,
+                    owner_has_type_parameters=owner_has_type_parameters,
+                    impl_modules=impl_modules,
+                )
+            )
+        return AsyncContextManagerTypeIR(value=IdentityTypeIR(tt._format_annotation_str(typing.Any)))
+
     return IdentityTypeIR(tt._format_annotation_str(annotation))
 
 
@@ -338,4 +352,9 @@ def materialize_transformer_ir(
         return tt.CoroutineTransformer(materialize_transformer_ir(ir.return_type, runtime_package, ctx=ctx))
     if isinstance(ir, AwaitableTypeIR):
         return tt.AwaitableTransformer(materialize_transformer_ir(ir.inner, runtime_package, ctx=ctx))
+    if isinstance(ir, AsyncContextManagerTypeIR):
+        return tt.AsyncContextManagerTransformer(
+            materialize_transformer_ir(ir.value, runtime_package, ctx=ctx),
+            runtime_package,
+        )
     raise TypeError(f"Unhandled transformer IR: {type(ir)!r}")

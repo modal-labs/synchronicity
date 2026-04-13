@@ -729,6 +729,58 @@ class AsyncIterableTransformer(TypeTransformer):
         return helpers
 
 
+class AsyncContextManagerTransformer(TypeTransformer):
+    """Transformer for AsyncContextManager[T] types.
+
+    Wraps an async context manager into SyncOrAsyncContextManager[T] which supports
+    both ``with`` (sync) and ``async with`` (async) usage.
+    """
+
+    def __init__(self, value_transformer: TypeTransformer, runtime_package: str = "synchronicity"):
+        self.value_transformer = value_transformer
+        self._runtime_package = runtime_package
+
+    def wrapped_type(self, target_module: str, is_async: bool = True) -> str:
+        value_type_str = self.value_transformer.wrapped_type(target_module, is_async)
+        return f"{self._runtime_package}.types.SyncOrAsyncContextManager[{value_type_str}]"
+
+    def unwrap_expr(self, var_name: str) -> str:
+        return var_name
+
+    def wrap_expr(self, target_module: str, var_name: str, is_async: bool = True) -> str:
+        if not self.value_transformer.needs_translation():
+            return f"{self._runtime_package}.types.SyncOrAsyncContextManager({var_name}, _synchronizer)"
+        helper_name = self._get_helper_name(target_module)
+        return (
+            f"{self._runtime_package}.types.SyncOrAsyncContextManager({var_name}, "
+            f"_synchronizer, value_wrapper=self.{helper_name})"
+        )
+
+    def needs_translation(self) -> bool:
+        return True
+
+    def _get_helper_name(self, target_module: str) -> str:
+        value_type_str = self.value_transformer.wrapped_type(target_module)
+        sanitized = value_type_str.replace("[", "_").replace("]", "").replace(".", "_").replace(", ", "_")
+        return f"_wrap_async_cm_{sanitized}"
+
+    def get_wrapper_helpers(self, target_module: str, indent: str = "    ") -> dict[str, str]:
+        helpers = {}
+        helpers.update(self.value_transformer.get_wrapper_helpers(target_module, indent))
+
+        if self.value_transformer.needs_translation():
+            helper_name = self._get_helper_name(target_module)
+            wrap_expr = self.value_transformer.wrap_expr(target_module, "_item", is_async=True)
+            wrap_expr = wrap_expr.replace("self.", "")
+
+            helper_func = f"""{indent}@staticmethod
+{indent}def {helper_name}(_item):
+{indent}    return {wrap_expr}"""
+            helpers[helper_name] = helper_func
+
+        return helpers
+
+
 class CoroutineTransformer(TypeTransformer):
     """Transformer for Coroutine[YieldType, SendType, ReturnType] types.
 
@@ -850,7 +902,7 @@ def _format_annotation_str(annotation) -> str:
                 origin_name = str(origin)
 
             # Check if we need typing prefix
-            if origin in (list, dict, tuple, set, frozenset):
+            if origin in (list, dict, tuple, set, frozenset, type):
                 # Built-in types
                 return f"{origin_name}[{', '.join(formatted_args)}]"
             else:

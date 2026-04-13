@@ -112,6 +112,11 @@ class AwaitableTypeIR:
     inner: TypeTransformerIR
 
 
+@dataclasses.dataclass(frozen=True)
+class AsyncContextManagerTypeIR:
+    value: TypeTransformerIR
+
+
 TypeTransformerIR = typing.Union[
     IdentityTypeIR,
     WrappedClassTypeIR,
@@ -127,4 +132,5 @@ TypeTransformerIR = typing.Union[
     AsyncIterableTypeIR,
     CoroutineTypeIR,
     AwaitableTypeIR,
+    AsyncContextManagerTypeIR,
 ]

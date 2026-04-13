@@ -71,26 +71,37 @@ def _materialize_context_for_module(specs: tuple[TypeVarSpecIR, ...]) -> Materia
 
 _CLASS_INIT_NAME = "__init__"
 _ASYNC_ITERATOR_DUNDERS = frozenset({"__aiter__", "__anext__"})
+_ASYNC_CONTEXT_MANAGER_DUNDERS = frozenset({"__aenter__", "__aexit__"})
 
 
 def _partition_class_methods(
     methods: tuple[MethodWrapperIR, ...],
-) -> tuple[MethodWrapperIR | None, tuple[MethodWrapperIR, ...], tuple[MethodWrapperIR, ...]]:
-    """Split ``__init__``, async-iterator dunders, and everything else for emission order."""
+) -> tuple[
+    MethodWrapperIR | None,
+    tuple[MethodWrapperIR, ...],
+    tuple[MethodWrapperIR, ...],
+    tuple[MethodWrapperIR, ...],
+]:
+    """Split ``__init__``, async-iterator dunders, context-manager dunders, and everything else."""
 
     init_mir: MethodWrapperIR | None = None
     iterator: list[MethodWrapperIR] = []
+    context_manager: list[MethodWrapperIR] = []
     normal: list[MethodWrapperIR] = []
     iter_order = {"__aiter__": 0, "__anext__": 1}
+    cm_order = {"__aenter__": 0, "__aexit__": 1}
     for mir in methods:
         if mir.method_name == _CLASS_INIT_NAME:
             init_mir = mir
         elif mir.method_name in _ASYNC_ITERATOR_DUNDERS:
             iterator.append(mir)
+        elif mir.method_name in _ASYNC_CONTEXT_MANAGER_DUNDERS:
+            context_manager.append(mir)
         else:
             normal.append(mir)
     iterator.sort(key=lambda m: iter_order[m.method_name])
-    return init_mir, tuple(iterator), tuple(normal)
+    context_manager.sort(key=lambda m: cm_order[m.method_name])
+    return init_mir, tuple(iterator), tuple(context_manager), tuple(normal)
 
 
 def _async_iterator_dunder_surfaces(
@@ -101,6 +112,17 @@ def _async_iterator_dunder_surfaces(
         return ("__iter__", "__aiter__", False, False)
     if impl_dunder == "__anext__":
         return ("__next__", "__anext__", True, True)
+    return None
+
+
+def _async_context_manager_dunder_surfaces(
+    impl_dunder: str,
+) -> tuple[str, str] | None:
+    """Map impl ``__aenter__`` / ``__aexit__`` to wrapper sync name, async name."""
+    if impl_dunder == "__aenter__":
+        return ("__enter__", "__aenter__")
+    if impl_dunder == "__aexit__":
+        return ("__exit__", "__aexit__")
     return None
 
 
@@ -694,7 +716,7 @@ def emit_class_from_ir(
     wshort = _wrapper_short_name(ir.impl_ref)
     impl_dot = _impl_type_dotted(ir.impl_ref)
     owner = method_emit_owner(ir, target_module)
-    init_mir, iterator_mirs, normal_methods = _partition_class_methods(ir.methods)
+    init_mir, iterator_mirs, context_manager_mirs, normal_methods = _partition_class_methods(ir.methods)
 
     all_helpers_dict: dict[str, str] = {}
     for mir in ir.methods:
@@ -790,6 +812,74 @@ def emit_class_from_ir(
             iterator_blocks.append(async_method)
         iterator_methods_section = "\n\n".join(iterator_blocks)
 
+    context_manager_methods_section = ""
+    if context_manager_mirs:
+        cm_blocks: list[str] = []
+        for mir in context_manager_mirs:
+            surfaces = _async_context_manager_dunder_surfaces(mir.method_name)
+            if surfaces is None:
+                continue
+            sync_method_name, async_method_name = surfaces
+            method_return_transformer = materialize_transformer_ir(
+                mir.return_transformer_ir, runtime_package, ctx=mat_ctx
+            )
+            method_sync_return_str, method_async_return_str = _format_return_annotation(
+                method_return_transformer, target_module
+            )
+            # Build parameter strings for __aexit__ (or empty for __aenter__)
+            cm_param_str, cm_call_args_str, cm_unwrap_code = format_parameters_for_emit(
+                mir.parameters,
+                target_module,
+                runtime_package,
+                unwrap_indent="        ",
+                mat_ctx=mat_ctx,
+            )
+            sync_param_str = f"self, {cm_param_str}" if cm_param_str else "self"
+
+            if cm_call_args_str:
+                method_call_expr = f"{impl_dot}.{mir.method_name}(self._impl_instance, {cm_call_args_str})"
+            else:
+                method_call_expr = f"{impl_dot}.{mir.method_name}(self._impl_instance)"
+
+            # Sync version
+            sync_body = _build_call_with_wrap(
+                method_call_expr,
+                method_return_transformer,
+                target_module,
+                indent="        ",
+                is_async=False,
+                method_type=MethodBindingKind.INSTANCE,
+                method_owner_impl_ref=ir.impl_ref,
+            )
+            if cm_unwrap_code:
+                sync_method = f"""    def {sync_method_name}({sync_param_str}){method_sync_return_str}:
+{cm_unwrap_code}
+{sync_body}"""
+            else:
+                sync_method = f"""    def {sync_method_name}({sync_param_str}){method_sync_return_str}:
+{sync_body}"""
+            cm_blocks.append(sync_method)
+
+            # Async version
+            async_body = _build_call_with_wrap(
+                method_call_expr,
+                method_return_transformer,
+                target_module,
+                indent="        ",
+                is_async=True,
+                method_type=MethodBindingKind.INSTANCE,
+                method_owner_impl_ref=ir.impl_ref,
+            )
+            if cm_unwrap_code:
+                async_method = f"""    async def {async_method_name}({sync_param_str}){method_async_return_str}:
+{cm_unwrap_code}
+{async_body}"""
+            else:
+                async_method = f"""    async def {async_method_name}({sync_param_str}){method_async_return_str}:
+{async_body}"""
+            cm_blocks.append(async_method)
+        context_manager_methods_section = "\n\n".join(cm_blocks)
+
     wrapped_base_strings = [_wrapper_class_reference(wrapper, target_module) for _impl_ref, wrapper in ir.wrapped_bases]
     from_impl_method = f"""    @classmethod
     def _from_impl(cls, impl_instance: typing.Any) -> "{wshort}":
@@ -841,6 +931,8 @@ def emit_class_from_ir(
         sections.append(properties_section)
     if iterator_methods_section:
         sections.append(iterator_methods_section)
+    if context_manager_methods_section:
+        sections.append(context_manager_methods_section)
     if methods_section:
         sections.append(methods_section)
 

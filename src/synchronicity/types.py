@@ -38,11 +38,11 @@ class SyncOrAsyncIterator(Generic[T]):
         """Return self for sync iteration protocol."""
         # Create a sync iterator wrapper using the synchronizer
         if self._sync_iterator is None:
-            if self._item_wrapper:
+            if wrap := self._item_wrapper:
                 # Wrap each item as it comes through
                 def wrapped_iter():
                     for item in self._synchronizer._run_iterator_sync(self._async_iterator):
-                        yield self._item_wrapper(item)
+                        yield wrap(item)
 
                 self._sync_iterator = wrapped_iter()
             else:
@@ -74,6 +74,50 @@ class SyncOrAsyncIterator(Generic[T]):
             raise
 
 
+class SyncOrAsyncContextManager(Generic[T]):
+    """Context manager that supports both sync (with) and async (async with) usage.
+
+    This allows the same context manager object to be used in both sync and async contexts.
+
+    Args:
+        async_cm: The underlying async context manager to wrap
+        synchronizer: The synchronizer to use for converting async to sync
+        value_wrapper: Optional function to wrap the value returned by __aenter__
+    """
+
+    def __init__(
+        self,
+        async_cm: typing.Any,
+        synchronizer: "Synchronizer",
+        value_wrapper: Callable[[typing.Any], T] | None = None,
+    ):
+        self._async_cm = async_cm
+        self._synchronizer = synchronizer
+        self._value_wrapper = value_wrapper
+
+    def __enter__(self) -> T:
+        result = self._synchronizer._run_function_sync(self._async_cm.__aenter__())
+        if self._value_wrapper:
+            return self._value_wrapper(result)
+        return result  # type: ignore
+
+    def __exit__(
+        self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: typing.Any
+    ) -> bool | None:
+        return self._synchronizer._run_function_sync(self._async_cm.__aexit__(exc_type, exc_val, exc_tb))
+
+    async def __aenter__(self) -> T:
+        result = await self._synchronizer._run_function_async(self._async_cm.__aenter__())
+        if self._value_wrapper:
+            return self._value_wrapper(result)
+        return result  # type: ignore
+
+    async def __aexit__(
+        self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: typing.Any
+    ) -> bool | None:
+        return await self._synchronizer._run_function_async(self._async_cm.__aexit__(exc_type, exc_val, exc_tb))
+
+
 class SyncOrAsyncIterable(Generic[T]):
     """Iterable that supports both sync (for) and async (async for) iteration.
 
@@ -100,11 +144,11 @@ class SyncOrAsyncIterable(Generic[T]):
         """Return a sync iterator."""
         # Call __aiter__ on the async iterable to get an async iterator
         async_iter = self._async_iterable.__aiter__()
-        if self._item_wrapper:
+        if wrap := self._item_wrapper:
             # Wrap each item as it comes through
             def wrapped_iter():
                 for item in self._synchronizer._run_iterator_sync(async_iter):
-                    yield self._item_wrapper(item)
+                    yield wrap(item)
 
             return wrapped_iter()
         else:
