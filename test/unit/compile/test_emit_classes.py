@@ -672,7 +672,8 @@ def test_emit_class_basic():
 
 def test_emit_class_method_descriptors():
     code = emit_class_from_ir(IR_CLASS_SIMPLE, TARGET)
-    assert "@wrapped_method(__add_to_value_aio)" in code
+    assert "class _EmitSimpleClass_add_to_value_MethodSurface(typing.Protocol):" in code
+    assert "@wrapped_method(__add_to_value_aio, surface_type=_EmitSimpleClass_add_to_value_MethodSurface)" in code
     assert "async def __add_to_value_aio(self, amount: int) -> int" in code
     assert "def add_to_value(self, amount: int) -> int" in code
 
@@ -766,7 +767,11 @@ def test_emit_class_constructor_with_wrapped_param():
 
 def test_emit_class_sync_method_returning_coroutine():
     code = emit_class_from_ir(IR_CLASS_COROUTINE_METHOD, TARGET)
-    assert "@wrapped_method" in code
+    assert "class _EmitCoroutineMethodClass_create_coroutine_MethodSurface(typing.Protocol):" in code
+    assert (
+        "@wrapped_method(__create_coroutine_aio, surface_type=_EmitCoroutineMethodClass_create_coroutine_MethodSurface)"
+        in code
+    )
     assert "def create_coroutine(self, x: int) -> str:" in code
     assert "async def __create_coroutine_aio(self, x: int) -> str:" in code
     assert "_run_function_sync" in code
@@ -775,7 +780,11 @@ def test_emit_class_sync_method_returning_coroutine():
 
 def test_emit_class_sync_method_returning_awaitable():
     code = emit_class_from_ir(IR_CLASS_AWAITABLE_METHOD, TARGET)
-    assert "@wrapped_method" in code
+    assert "class _EmitAwaitableMethodClass_create_awaitable_MethodSurface(typing.Protocol):" in code
+    assert (
+        "@wrapped_method(__create_awaitable_aio, "
+        "surface_type=_EmitAwaitableMethodClass_create_awaitable_MethodSurface)"
+    ) in code
     assert "def create_awaitable(self, x: int) -> str:" in code
     assert "async def __create_awaitable_aio(self, x: int) -> str:" in code
     assert "_run_function_sync" in code
@@ -785,11 +794,14 @@ def test_emit_class_sync_method_returning_awaitable():
 def test_emit_class_method_overloads_translate_each_overload():
     code = emit_class_from_ir(IR_CLASS_OVERLOADED_METHOD, TARGET)
     compile(code, "<string>", "exec")
-    assert "@typing.overload" in code
-    assert "def resolve(self, value: int) -> int: ..." in code
-    assert 'def resolve(self, value: "Node") -> "Node": ...' in code
-    assert "async def __resolve_aio(self, value: int) -> int: ..." in code
-    assert 'async def __resolve_aio(self, value: "Node") -> "Node": ...' in code
+    assert "class _EmitOverloadedMethodClass_resolve_MethodSurface(typing.Protocol):" in code
+    assert "def __call__(self, value: int) -> int: ..." in code
+    assert 'def __call__(self, value: "Node") -> "Node": ...' in code
+    assert "def aio(self, value: int) -> typing.Coroutine[typing.Any, typing.Any, int]: ..." in code
+    assert 'def aio(self, value: "Node") -> typing.Coroutine[typing.Any, typing.Any, "Node"]: ...' in code
+    assert "@wrapped_method(__resolve_aio, surface_type=_EmitOverloadedMethodClass_resolve_MethodSurface)" in code
+    assert "async def __resolve_aio(self, value) -> typing.Any:" in code
+    assert "def resolve(self, value) -> typing.Any:" in code
 
 
 def test_emit_class_aiter_typed_iter():

@@ -41,10 +41,12 @@ def test_generated_wrapper_contains_overloads():
     assert "def duplicate(value: str) -> str: ..." in source
     assert "async def __duplicate_aio(value: int) -> int: ..." in source
     assert "async def __duplicate_aio(value: str) -> str: ..." in source
-    assert "def resolve(self, value: int) -> int: ..." in source
-    assert "def resolve(self, value: str) -> str: ..." in source
-    assert "async def __resolve_aio(self, value: int) -> int: ..." in source
-    assert "async def __resolve_aio(self, value: str) -> str: ..." in source
+    assert "class _Resolver_resolve_MethodSurface(typing.Protocol):" in source
+    assert "def __call__(self, value: int) -> int: ..." in source
+    assert "def __call__(self, value: str) -> str: ..." in source
+    assert "def aio(self, value: int) -> typing.Coroutine[typing.Any, typing.Any, int]: ..." in source
+    assert "def aio(self, value: str) -> typing.Coroutine[typing.Any, typing.Any, str]: ..." in source
+    assert "@wrapped_method(__resolve_aio, surface_type=_Resolver_resolve_MethodSurface)" in source
 
 
 def test_pyright_implementation():

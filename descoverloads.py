@@ -1,50 +1,29 @@
 from __future__ import annotations
 
 import typing
-from typing import Any, Callable, Concatenate, ParamSpec, TypeVar, assert_type, overload
+from typing import Any, Callable, assert_type, overload
 
-P = ParamSpec("P")
-AIO_P = ParamSpec("AIO_P")
-R = TypeVar("R")
-AIO_R = TypeVar("AIO_R")
+Surface = typing.TypeVar("Surface", covariant=True)
+T_co = typing.TypeVar("T_co", covariant=True)
+T = typing.TypeVar("T")
 
 
-class BoundMethodWithAio(typing.Generic[P, R, AIO_P, AIO_R]):
-    sync_wrapper: Callable[P, R]
-    aio_wrapper: Callable[AIO_P, AIO_R]
-
-    def __init__(
-        self,
-        sync_wrapper: Callable[P, R],
-        aio_wrapper: Callable[AIO_P, AIO_R],
-    ):
+class BoundMethodWithAio:
+    def __init__(self, sync_wrapper: Callable[..., Any], aio_wrapper: Callable[..., Any]):
         self.sync_wrapper = sync_wrapper
         self.aio_wrapper = aio_wrapper
 
-    def __call__(self, *args: P.args, **kwargs: P.kwargs) -> R:
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
         return self.sync_wrapper(*args, **kwargs)
 
-    def aio(self, *args: AIO_P.args, **kwargs: AIO_P.kwargs) -> AIO_R:
+    def aio(self, *args: Any, **kwargs: Any) -> Any:
         return self.aio_wrapper(*args, **kwargs)
 
 
-class WrappedMethodDescriptor(typing.Generic[P, R, AIO_P, AIO_R]):
-    sync_wrapper: Callable[Concatenate[Any, P], R]
-    aio_wrapper: Callable[Concatenate[Any, AIO_P], AIO_R]
-
-    def __init__(
-        self,
-        sync_wrapper: Callable[Concatenate[Any, P], R],
-        aio_wrapper: Callable[Concatenate[Any, AIO_P], AIO_R],
-    ):
+class WrappedMethodDescriptor:
+    def __init__(self, sync_wrapper: Callable[..., Any], aio_wrapper: Callable[..., Any]):
         self.sync_wrapper = sync_wrapper
         self.aio_wrapper = aio_wrapper
-
-    @overload
-    def __get__(self, wrapper_instance: None, owner: type) -> typing.Self: ...
-
-    @overload
-    def __get__(self, wrapper_instance: object, owner: type) -> BoundMethodWithAio[P, R, AIO_P, AIO_R]: ...
 
     def __get__(self, wrapper_instance, owner):
         if wrapper_instance is None:
@@ -55,48 +34,91 @@ class WrappedMethodDescriptor(typing.Generic[P, R, AIO_P, AIO_R]):
         )
 
 
+class _MethodDescriptorSurface(typing.Protocol[Surface]):
+    @overload
+    def __get__(self, wrapper_instance: None, owner: type) -> typing.Self: ...
+
+    @overload
+    def __get__(self, wrapper_instance: object, owner: type) -> Surface: ...
+
+
 def wrapped_method(
-    aio_wrapper: Callable[Concatenate[Any, AIO_P], AIO_R],
-    sync_wrapper: Callable[Concatenate[Any, P], R],
-) -> Callable[[Callable[..., Any]], WrappedMethodDescriptor[P, R, AIO_P, AIO_R]]:
-    def decorator(_body: Callable[..., Any]) -> WrappedMethodDescriptor[P, R, AIO_P, AIO_R]:
-        return WrappedMethodDescriptor(sync_wrapper, aio_wrapper)
+    aio_wrapper: Callable[..., Any],
+    *,
+    surface_type: type[Surface],
+) -> Callable[[Callable[..., Any]], _MethodDescriptorSurface[Surface]]:
+    def decorator(sync_wrapper: Callable[..., Any]) -> _MethodDescriptorSurface[Surface]:
+        _ = surface_type
+        return typing.cast(_MethodDescriptorSurface[Surface], WrappedMethodDescriptor(sync_wrapper, aio_wrapper))
 
     return decorator
 
 
-class Example:
+class AdvancedMethodBoundSurface(typing.Protocol[T_co]):
     @overload
-    def _sync_method(self, value: int) -> int: ...
-
-    @overload
-    def _sync_method(self, value: str) -> str: ...
-
-    def _sync_method(self, value: int | str) -> int | str:
-        return value
+    def __call__(self, value: int) -> tuple[T_co, int]: ...
 
     @overload
-    async def _aio_method(self, value: int) -> int: ...
+    def __call__(self, value: str) -> tuple[T_co, str]: ...
 
     @overload
-    async def _aio_method(self, value: str) -> str: ...
+    def aio(self, value: int) -> typing.Coroutine[Any, Any, tuple[T_co, int]]: ...
 
-    async def _aio_method(self, value: int | str) -> int | str:
-        return value
-
-    @wrapped_method(_aio_method, _sync_method)
-    def wrapped_meth(self) -> Any: ...
+    @overload
+    def aio(self, value: str) -> typing.Coroutine[Any, Any, tuple[T_co, str]]: ...
 
 
-example = Example()
-assert_type(example.wrapped_meth(1), int)
-assert_type(example.wrapped_meth("x"), str)
+class SelfMethodBoundSurface(typing.Protocol[T_co]):
+    def __call__(self) -> T_co: ...
 
-example.wrapped_meth
+    def aio(self) -> typing.Coroutine[Any, Any, T_co]: ...
+
+
+class AdvancedExample(typing.Generic[T]):
+    def __init__(self, value: T):
+        self.value = value
+
+    def _sync_method(self, value: int | str) -> tuple[T, int | str]:
+        return (self.value, value)
+
+    async def _aio_method(self, value: int | str) -> tuple[T, int | str]:
+        return (self.value, value)
+
+    @wrapped_method(_aio_method, surface_type=AdvancedMethodBoundSurface[T])
+    def wrapped_meth(self, value: int | str) -> tuple[T, int | str]:
+        return self._sync_method(value)
+
+    def _sync_self(self) -> typing.Self:
+        return self
+
+    async def _aio_self(self) -> typing.Self:
+        return self
+
+    @wrapped_method(_aio_self, surface_type=SelfMethodBoundSurface[typing.Self])
+    def return_self(self) -> typing.Self:
+        return self
+
+
+advanced_int: AdvancedExample[int] = AdvancedExample(1)
+advanced_str: AdvancedExample[str] = AdvancedExample("value")
+assert_type(advanced_int.wrapped_meth(5), tuple[int, int])
+assert_type(advanced_int.wrapped_meth("x"), tuple[int, str])
+assert_type(advanced_str.wrapped_meth(5), tuple[str, int])
+assert_type(advanced_str.wrapped_meth("x"), tuple[str, str])
+assert_type(advanced_int.return_self(), AdvancedExample[int])
+assert_type(advanced_str.return_self(), AdvancedExample[str])
 
 
 async def _check_method() -> None:
-    async_number = await example.wrapped_meth.aio(1)
-    assert_type(async_number, int)
-    async_text = await example.wrapped_meth.aio("x")
-    assert_type(async_text, str)
+    async_number = await advanced_int.wrapped_meth.aio(1)
+    assert_type(async_number, tuple[int, int])
+    async_text = await advanced_int.wrapped_meth.aio("x")
+    assert_type(async_text, tuple[int, str])
+    async_number_on_str = await advanced_str.wrapped_meth.aio(1)
+    assert_type(async_number_on_str, tuple[str, int])
+    async_text_on_str = await advanced_str.wrapped_meth.aio("x")
+    assert_type(async_text_on_str, tuple[str, str])
+    async_self_int = await advanced_int.return_self.aio()
+    assert_type(async_self_int, AdvancedExample[int])
+    async_self_str = await advanced_str.return_self.aio()
+    assert_type(async_self_str, AdvancedExample[str])
