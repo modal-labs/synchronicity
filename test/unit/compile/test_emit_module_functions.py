@@ -331,20 +331,19 @@ def test_emit_async_function_generic_types():
 
 
 def test_emit_async_generator_function():
+    """When yield type needs no translation, helpers are skipped and we delegate directly."""
     code = emit_module_level_function(IR_FN_ASYNC_GEN, TARGET)
     compile(code, "<string>", "exec")
     assert "_run_generator_sync" in code
     assert "_run_generator_async" in code
     assert "_run_function_sync" not in code
-    assert "async def _wrap_async_gen" in code
-    assert "def _wrap_async_gen" in code
-    assert "_wrapped.asend(_sent)" in code
-    assert "yield from _synchronizer" in code or "_wrapped.send(_sent)" in code
-    assert "_run_generator_async(_gen)" in code
-    assert "_run_generator_sync(_gen)" in code
+    # No helper functions needed when yield type doesn't need translation
+    assert "_wrap_async_gen" not in code
+    # Direct delegation to synchronizer
+    assert "_run_generator_async(gen)" in code
+    assert "yield from _synchronizer._run_generator_sync(gen)" in code
     assert "_sent = yield _item" in code
     assert "gen = impl_function" in code
-    assert "yield from _wrap_async_gen" in code
     assert "await _wrapped.asend(_sent)" in code
     assert "typing.Generator[str" in code
     assert "typing.AsyncGenerator[str" in code

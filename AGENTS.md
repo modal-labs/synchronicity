@@ -13,6 +13,7 @@
 - The determination of what to translate should be statically determinated at gencode time by looking at function signatures - never through runtime type inspection except possibly in very niche use cases like `Union` types.
 
 ## Development practices
+- Always ask the user before relaxing type annotations
 - Prefer clean refactors and a single obvious name over backward-compatibility aliases or duplicate APIs. There is no obligation to preserve synchronicity 0.x naming or shims; keep changes minimal but do not carry legacy aliases “just in case.” If `pytest test/integration/` (and the rest of the suite) still passes, the change is acceptable.
 - Use `uv` for managing dependencies and virtualenvs. For local development in this repo:
   ```bash

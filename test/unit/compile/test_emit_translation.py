@@ -344,25 +344,30 @@ def test_emit_primitives_no_impl_suffix():
 
 
 def test_emit_async_generator_wrapping_helpers():
+    """When yield type needs no translation, helpers are skipped; direct synchronizer delegation."""
     compiled_code = emit_module_level_function(IR_FN_SIMPLE_GEN, TARGET)
-    assert "_wrap_async_gen_str" in compiled_code
-    assert "_wrap_async_gen_str_sync" in compiled_code
-    assert "async def _wrap_async_gen_str(_gen):" in compiled_code
+    # No helper functions needed for identity yield types
+    assert "_wrap_async_gen" not in compiled_code
+    # Direct delegation to synchronizer
+    assert "_synchronizer._run_generator_async(gen)" in compiled_code
+    assert "yield from _synchronizer._run_generator_sync(gen)" in compiled_code
     assert "await _wrapped.asend(_sent)" in compiled_code
     assert "await _wrapped.aclose()" in compiled_code
-    assert "def _wrap_async_gen_str_sync(_gen):" in compiled_code
-    assert "yield from _synchronizer._run_generator_sync(_gen)" in compiled_code
     assert "async def __fn_simple_gen_aio" in compiled_code or "async def __" in compiled_code
     assert '-> "typing.Generator[str, None, None]":' in compiled_code
     assert '-> "typing.AsyncGenerator[str, None]":' in compiled_code
 
 
 def test_emit_tuple_of_generators():
+    """Tuple of generators with identity yield types uses direct synchronizer delegation."""
     compiled_code = emit_module_level_function(IR_FN_TUPLE_GENERATORS, TARGET)
-    assert "_wrap_async_gen_str" in compiled_code
-    assert "_wrap_async_gen_int" in compiled_code
-    assert "_wrap_async_gen_str_sync" in compiled_code
-    assert "_wrap_async_gen_int_sync" in compiled_code
+    # No helper functions needed for identity yield types
+    assert "_wrap_async_gen" not in compiled_code
+    # Direct delegation in tuple construction
+    assert "_synchronizer._run_generator_async(result[0])" in compiled_code
+    assert "_synchronizer._run_generator_async(result[1])" in compiled_code
+    assert "_synchronizer._run_generator_sync(result[0])" in compiled_code
+    assert "_synchronizer._run_generator_sync(result[1])" in compiled_code
     assert (
         'def fn_tuple_generators() -> "tuple[typing.Generator[str, None, None], typing.Generator[int, None, None]]":'
         in compiled_code
@@ -371,10 +376,6 @@ def test_emit_tuple_of_generators():
         "async def __fn_tuple_generators_aio() -> "
         '"tuple[typing.AsyncGenerator[str, None], typing.AsyncGenerator[int, None]]":' in compiled_code
     )
-    assert "self._wrap_async_gen_str_sync" in compiled_code or "_wrap_async_gen_str_sync" in compiled_code
-    assert "self._wrap_async_gen_int_sync" in compiled_code or "_wrap_async_gen_int_sync" in compiled_code
-    assert "self._wrap_async_gen_str" in compiled_code or "_wrap_async_gen_str(" in compiled_code
-    assert "self._wrap_async_gen_int" in compiled_code or "_wrap_async_gen_int(" in compiled_code
 
 
 def test_emit_generator_with_wrapped_yield_type():

@@ -45,10 +45,21 @@ def get_iterator() -> typing.AsyncIterator[int]:
 
 
 @mod.wrap_function
-async def generator_as_iterator() -> typing.AsyncIterator[int]:
-    assert threading.current_thread().ident != threading.main_thread().ident
-    yield 1
-    yield 2
+def get_custom_iterator() -> typing.AsyncIterator[int]:
+    class _InlineIterator:
+        def __init__(self) -> None:
+            self._items = iter([10, 20, 30])
+
+        def __aiter__(self) -> typing.Self:
+            return self
+
+        async def __anext__(self) -> int:
+            try:
+                return next(self._items)
+            except StopIteration:
+                raise StopAsyncIteration()
+
+    return _InlineIterator()
 
 
 @mod.wrap_class

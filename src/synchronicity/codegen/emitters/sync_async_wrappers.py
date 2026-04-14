@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import dataclasses
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..type_transformer import TypeTransformer
 
 from ..compile_utils import _build_call_with_wrap, _format_return_annotation, format_parameters_for_emit
 from ..ir import (
@@ -320,13 +324,15 @@ def emit_method_wrapper_pair(
     *,
     runtime_package: str = "synchronicity",
     mat_ctx: MaterializeContext | None = None,
+    return_transformer: TypeTransformer | None = None,
 ) -> tuple[str, str]:
     method_name = mir.method_name
     method_type = mir.method_type
     impl_dotted = _impl_type_dotted(owner.impl_ref)
     short_name = _wrapper_short_name(owner.impl_ref)
     current_target_module = owner.target_module
-    return_transformer = materialize_transformer_ir(mir.return_transformer_ir, runtime_package, ctx=mat_ctx)
+    if return_transformer is None:
+        return_transformer = materialize_transformer_ir(mir.return_transformer_ir, runtime_package, ctx=mat_ctx)
     param_str, call_args_str, unwrap_code = format_parameters_for_emit(
         mir.parameters,
         current_target_module,
@@ -718,10 +724,13 @@ def emit_class_from_ir(
     owner = method_emit_owner(ir, target_module)
     init_mir, iterator_mirs, context_manager_mirs, normal_methods = _partition_class_methods(ir.methods)
 
+    # Pre-materialize return transformers once so helpers and method bodies use the same instances
+    method_transformers: dict[str, TypeTransformer] = {}
     all_helpers_dict: dict[str, str] = {}
     for mir in ir.methods:
-        return_transformer = materialize_transformer_ir(mir.return_transformer_ir, runtime_package, ctx=mat_ctx)
-        all_helpers_dict.update(return_transformer.get_wrapper_helpers(target_module, indent="    "))
+        rt = materialize_transformer_ir(mir.return_transformer_ir, runtime_package, ctx=mat_ctx)
+        method_transformers[mir.method_name] = rt
+        all_helpers_dict.update(rt.get_wrapper_helpers(target_module, indent="    "))
 
     helpers_code = "\n".join(all_helpers_dict.values()) if all_helpers_dict else ""
     helpers_section = f"\n{helpers_code}\n" if helpers_code else ""
@@ -729,7 +738,11 @@ def emit_class_from_ir(
     method_definitions_with_async: list[str] = []
     for mir in normal_methods:
         wrapper_functions_code, sync_method_code = emit_method_wrapper_pair(
-            owner, mir, runtime_package=runtime_package, mat_ctx=mat_ctx
+            owner,
+            mir,
+            runtime_package=runtime_package,
+            mat_ctx=mat_ctx,
+            return_transformer=method_transformers[mir.method_name],
         )
         if wrapper_functions_code:
             method_definitions_with_async.append(f"{wrapper_functions_code}\n\n{sync_method_code}")
@@ -769,9 +782,7 @@ def emit_class_from_ir(
             if surfaces is None:
                 continue
             sync_method_name, async_method_name, use_async_def, stop_iteration_bridge = surfaces
-            method_return_transformer = materialize_transformer_ir(
-                mir.return_transformer_ir, runtime_package, ctx=mat_ctx
-            )
+            method_return_transformer = method_transformers[mir.method_name]
             method_sync_return_str, method_async_return_str = _format_return_annotation(
                 method_return_transformer, target_module
             )
@@ -820,9 +831,7 @@ def emit_class_from_ir(
             if surfaces is None:
                 continue
             sync_method_name, async_method_name = surfaces
-            method_return_transformer = materialize_transformer_ir(
-                mir.return_transformer_ir, runtime_package, ctx=mat_ctx
-            )
+            method_return_transformer = method_transformers[mir.method_name]
             method_sync_return_str, method_async_return_str = _format_return_annotation(
                 method_return_transformer, target_module
             )

@@ -27,7 +27,6 @@ from .ir import (
 from .signature_utils import is_async_generator
 from .transformer_ir import (
     AsyncContextManagerTypeIR,
-    AsyncGeneratorTypeIR,
     AsyncIteratorTypeIR,
     AwaitableTypeIR,
     CoroutineTypeIR,
@@ -197,9 +196,14 @@ def _normalize_return_transformer_ir(
     return_ir: TypeTransformerIR,
     *,
     is_async_gen: bool,
+    func_qualname: str = "",
 ) -> TypeTransformerIR:
     if is_async_gen and isinstance(return_ir, AsyncIteratorTypeIR):
-        return AsyncGeneratorTypeIR(yield_item=return_ir.item, send_type_str=None)
+        raise TypeError(
+            f"Async generator function {func_qualname!r} is declared as returning AsyncIterator, "
+            f"but should use AsyncGenerator. AsyncIterator hides the generator interface "
+            f"(.asend(), .athrow(), .aclose()) from callers."
+        )
     return return_ir
 
 
@@ -250,7 +254,7 @@ def parse_module_level_function_ir(
     )
 
     is_async_gen = is_async_generator(f, return_annotation)
-    return_ir = _normalize_return_transformer_ir(return_ir, is_async_gen=is_async_gen)
+    return_ir = _normalize_return_transformer_ir(return_ir, is_async_gen=is_async_gen, func_qualname=f.__qualname__)
 
     needs_async_wrapper = is_async_gen or isinstance(return_ir, (AwaitableTypeIR, CoroutineTypeIR))
 
@@ -331,7 +335,9 @@ def parse_method_wrapper_ir(
     )
 
     is_async_gen = is_async_generator(method, return_annotation)
-    return_ir = _normalize_return_transformer_ir(return_ir, is_async_gen=is_async_gen)
+    return_ir = _normalize_return_transformer_ir(
+        return_ir, is_async_gen=is_async_gen, func_qualname=method.__qualname__
+    )
 
     is_async = is_async_gen or isinstance(return_ir, (AwaitableTypeIR, CoroutineTypeIR))
 

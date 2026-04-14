@@ -360,7 +360,7 @@ class Synchronizer:
             # Need to run the aclose in the event loop thread
             self._run_function_sync(gen.aclose())
 
-    async def _run_generator_async(self, gen: typing.AsyncGenerator):
+    async def _run_generator_async(self, gen: typing.AsyncGenerator[typing.Any, typing.Any]):
         value: typing.Any = None
         is_exc = False
         try:

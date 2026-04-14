@@ -1,7 +1,6 @@
 """Integration tests for two_way_generator_impl.py support file."""
 
 import asyncio
-import pytest
 import time
 from pathlib import Path
 
@@ -78,10 +77,6 @@ def test_pyright_implementation():
     check_pyright([Path(two_way_generator_impl.__file__)])
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Generated two-way generator module triggers reportRedeclaration for per-function helpers",
-)
 def test_pyright_wrapper():
     import two_way_generator
 

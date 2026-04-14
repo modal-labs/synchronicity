@@ -627,7 +627,9 @@ def test_emit_class_async_generators():
     assert "_run_generator_async" in code
     assert "_sent = yield _item" in code
     assert "await _wrapped.asend(_sent)" in code
-    assert "@staticmethod" in code
+    # No helper functions needed when yield type doesn't need translation
+    assert "@staticmethod" not in code
+    assert "_wrap_async_gen" not in code
 
 
 def test_emit_class_mixed_methods():

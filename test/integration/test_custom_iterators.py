@@ -35,6 +35,9 @@ def test_runtime():
         pass
     assert iterator_1.num_iters == 2
 
+    results = list(custom_iterators.get_custom_iterator())
+    assert results == [10, 20, 30]
+
 
 @pytest.mark.usefixtures("generated_wrappers")
 @pytest.mark.asyncio
@@ -65,6 +68,11 @@ async def test_runtime_async():
     async for i in iterator_1:
         pass
     assert iterator_1.num_iters == 2
+
+    results = []
+    async for i in custom_iterators.get_custom_iterator():
+        results.append(i)
+    assert results == [10, 20, 30]
 
 
 def test_pyright_implementation():
