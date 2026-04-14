@@ -944,12 +944,14 @@ def _format_annotation_str(annotation) -> str:
                 origin_name = str(origin)
 
             # Check if we need a module prefix
+            origin_module = getattr(origin, "__module__", None)
             if origin in (list, dict, tuple, set, frozenset, type):
                 # Built-in types - no prefix needed
                 return f"{origin_name}[{', '.join(formatted_args)}]"
-            elif getattr(origin, "__module__", None) == "typing":
+            elif origin_module in ("typing", "collections.abc"):
+                # typing types and their collections.abc aliases (e.g. Callable)
                 return f"typing.{origin_name}[{', '.join(formatted_args)}]"
-            elif isinstance(origin, type) and origin.__module__ not in ("builtins", "__builtin__"):
+            elif isinstance(origin, type) and origin_module not in ("builtins", "__builtin__"):
                 return f"{origin.__module__}.{origin.__qualname__}[{', '.join(formatted_args)}]"
             else:
                 return f"{origin_name}[{', '.join(formatted_args)}]"
