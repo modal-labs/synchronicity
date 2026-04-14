@@ -11,33 +11,29 @@ def test_runtime():
     import two_way_generator
 
     gen = two_way_generator.echo_generator()
-    first = gen.send(None)
-    assert first == "Ready"
+    assert next(gen) == "Ready"
     assert gen.send("Hello") == "Echo: Hello"
     assert gen.send("World") == "Echo: World"
-    assert gen.send(None) == "Got None"
     gen.close()
 
     async def test_echo_async():
         gen = two_way_generator.echo_generator.aio()
-        assert await gen.asend(None) == "Ready"
+        assert await anext(gen) == "Ready"
         assert await gen.asend("Async") == "Echo: Async"
         await gen.aclose()
 
     asyncio.run(test_echo_async())
 
     gen = two_way_generator.accumulator_generator()
-    assert gen.send(None) == 0
+    assert next(gen) == 0
     assert gen.send(5) == 5
     assert gen.send(10) == 15
-    assert gen.send(None) == 15
     gen.close()
 
     gen = two_way_generator.multiplier_generator(3)
-    assert gen.send(None) == 0
+    assert next(gen) == 0
     assert gen.send(5) == 15
     assert gen.send(7) == 21
-    assert gen.send(None) == 0
     gen.close()
 
 

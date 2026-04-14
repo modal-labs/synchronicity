@@ -20,10 +20,7 @@ async def echo_generator() -> AsyncGenerator[str, str]:
     sent_value = yield "Ready"
 
     while True:
-        if sent_value is None:
-            sent_value = yield "Got None"
-        else:
-            sent_value = yield f"Echo: {sent_value}"
+        sent_value = yield f"Echo: {sent_value}"
 
 
 @wrapper_module.wrap_function
@@ -38,8 +35,7 @@ async def accumulator_generator() -> AsyncGenerator[int, int]:
     sent_value = yield total
 
     while True:
-        if sent_value is not None:
-            total += sent_value
+        total += sent_value
         sent_value = yield total
 
 
@@ -56,10 +52,7 @@ async def multiplier_generator(factor: int) -> AsyncGenerator[int, int]:
     sent_value = yield 0  # Initial value
 
     while True:
-        if sent_value is None:
-            sent_value = yield 0
-        else:
-            sent_value = yield sent_value * factor
+        sent_value = yield sent_value * factor
 
 
 # Global list to track cleanup calls for testing
