@@ -73,6 +73,7 @@ def generated_wrappers():
             "nested_generators_impl",
             "two_way_generator_impl",
             "functions_with_typevars_impl",
+            "overloads_impl",
             "multifile_impl._a",
             "multifile_impl._b",
             "classmethod_staticmethod_impl",

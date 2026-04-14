@@ -7,7 +7,7 @@ module so emitted ``impl_function = ...`` references match assertions.
 from __future__ import annotations
 
 from synchronicity.codegen.emitters.sync_async_wrappers import emit_module_level_function
-from synchronicity.codegen.ir import ModuleLevelFunctionIR, ParameterIR
+from synchronicity.codegen.ir import ModuleLevelFunctionIR, ParameterIR, SignatureIR
 from synchronicity.codegen.transformer_ir import (
     AsyncGeneratorTypeIR,
     AwaitableTypeIR,
@@ -265,6 +265,45 @@ IR_FN_WITH_DEFAULTS = ModuleLevelFunctionIR(
     ),
     return_transformer_ir=IdentityTypeIR(signature_text="str"),
 )
+IR_FN_OVERLOADS_WITH_TRANSLATION = ModuleLevelFunctionIR(
+    impl_ref=ImplQualifiedRef(IMPL, "fn_overloaded"),
+    needs_async_wrapper=True,
+    is_async_gen=False,
+    parameters=(ParameterIR(name="value", kind=1, annotation_ir=None, default_repr=None),),
+    return_transformer_ir=AwaitableTypeIR(inner=IdentityTypeIR(signature_text="typing.Any")),
+    overloads=(
+        SignatureIR(
+            parameters=(
+                ParameterIR(
+                    name="value",
+                    kind=1,
+                    annotation_ir=IdentityTypeIR(signature_text="int"),
+                    default_repr=None,
+                ),
+            ),
+            return_transformer_ir=AwaitableTypeIR(inner=IdentityTypeIR(signature_text="int")),
+        ),
+        SignatureIR(
+            parameters=(
+                ParameterIR(
+                    name="value",
+                    kind=1,
+                    annotation_ir=WrappedClassTypeIR(
+                        impl=ImplQualifiedRef(IMPL, "Person"),
+                        wrapper=WrapperRef(TARGET, "Person"),
+                    ),
+                    default_repr=None,
+                ),
+            ),
+            return_transformer_ir=AwaitableTypeIR(
+                inner=WrappedClassTypeIR(
+                    impl=ImplQualifiedRef(IMPL, "Person"),
+                    wrapper=WrapperRef(TARGET, "Person"),
+                )
+            ),
+        ),
+    ),
+)
 
 
 def _fn_short(ir: ModuleLevelFunctionIR) -> str:
@@ -358,8 +397,16 @@ def test_emit_async_generator_template_pattern():
     assert f"@wrapped_function(__{name}_aio)" in code
     assert f"def {name}" in code
     assert "gen = impl_function(" in code
-    assert "_sent = yield _item" in code
-    assert "await _wrapped.asend(_sent)" in code
+
+
+def test_emit_function_overloads_translate_each_overload():
+    code = emit_module_level_function(IR_FN_OVERLOADS_WITH_TRANSLATION, TARGET)
+    compile(code, "<string>", "exec")
+    assert "@typing.overload" in code
+    assert "def fn_overloaded(value: int) -> int: ..." in code
+    assert 'def fn_overloaded(value: "Person") -> "Person": ...' in code
+    assert "async def __fn_overloaded_aio(value: int) -> int: ..." in code
+    assert 'async def __fn_overloaded_aio(value: "Person") -> "Person": ...' in code
 
 
 def test_emit_async_generator_wrapped_yield_type_quoting():

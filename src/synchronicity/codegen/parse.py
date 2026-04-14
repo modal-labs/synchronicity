@@ -24,6 +24,7 @@ from .ir import (
     ModuleCompilationIR,
     ModuleLevelFunctionIR,
     PropertyWrapperIR,
+    SignatureIR,
 )
 from .signature_utils import is_async_generator
 from .transformer_ir import (
@@ -77,6 +78,10 @@ def _check_impl_type_for_cross_ref(
         cross_module_refs[target_module].add(wrapper_name)
 
 
+def _iter_overload_functions(f: types.FunctionType) -> tuple[types.FunctionType, ...]:
+    return tuple(typing.get_overloads(f))
+
+
 def cross_module_imports_for_module(
     module_name: str,
     module_items: dict,
@@ -85,18 +90,20 @@ def cross_module_imports_for_module(
 
     for obj in module_items.keys():
         if isinstance(obj, types.FunctionType):
-            annotations = _safe_get_annotations(obj)
-            for annotation in annotations.values():
-                _check_annotation_for_cross_refs(annotation, module_name, cross_module_refs)
+            for f in (obj, *_iter_overload_functions(obj)):
+                annotations = _safe_get_annotations(f)
+                for annotation in annotations.values():
+                    _check_annotation_for_cross_refs(annotation, module_name, cross_module_refs)
         elif isinstance(obj, type):
             for base in getattr(obj, "__bases__", ()):
                 _check_impl_type_for_cross_ref(base, module_name, cross_module_refs)
             for method_name, method in inspect.getmembers(obj, predicate=inspect.isfunction):
                 if method_name.startswith("_"):
                     continue
-                annotations = _safe_get_annotations(method)
-                for annotation in annotations.values():
-                    _check_annotation_for_cross_refs(annotation, module_name, cross_module_refs)
+                for f in (method, *_iter_overload_functions(method)):
+                    annotations = _safe_get_annotations(f)
+                    for annotation in annotations.values():
+                        _check_annotation_for_cross_refs(annotation, module_name, cross_module_refs)
 
     return cross_module_refs
 
@@ -119,8 +126,9 @@ def build_module_compilation_ir(
     module_typevars: dict[str, typing.TypeVar | typing.ParamSpec] = {}
 
     for func in functions:
-        annotations = _safe_get_annotations(func)
-        module_typevars.update(_extract_typevars_from_function(func, annotations))
+        for overload_func in (func, *_iter_overload_functions(func)):
+            annotations = _safe_get_annotations(overload_func)
+            module_typevars.update(_extract_typevars_from_function(overload_func, annotations))
 
     for cls in classes:
         bases_to_check = getattr(cls, "__orig_bases__", cls.__bases__)
@@ -134,8 +142,9 @@ def build_module_compilation_ir(
 
         for name, method in inspect.getmembers(cls, predicate=inspect.isfunction):
             if not name.startswith("_"):
-                annotations = _safe_get_annotations(method)
-                module_typevars.update(_extract_typevars_from_function(method, annotations))
+                for overload_method in (method, *_iter_overload_functions(method)):
+                    annotations = _safe_get_annotations(overload_method)
+                    module_typevars.update(_extract_typevars_from_function(overload_method, annotations))
 
     known_impl_types = frozenset(o for o in module.module_items().keys() if isinstance(o, type))
     typevar_specs = typevar_specs_from_collected(
@@ -208,6 +217,87 @@ def _normalize_return_transformer_ir(
     return return_ir
 
 
+def _parse_signature_ir(
+    f: types.FunctionType,
+    *,
+    annotations: dict[str, typing.Any],
+    sig: inspect.Signature,
+    skip_first_param: bool,
+    owner_impl_type: type | None,
+    owner_has_type_parameters: bool,
+    impl_modules: frozenset[str],
+) -> tuple[SignatureIR, bool]:
+    return_annotation = annotations.get("return", sig.return_annotation)
+
+    cm_value_type = _detect_async_context_manager_wrapper(f, return_annotation)
+    if cm_value_type is not None:
+        value_ir = annotation_to_transformer_ir(
+            cm_value_type,
+            owner_impl_type=owner_impl_type,
+            owner_has_type_parameters=owner_has_type_parameters,
+            impl_modules=impl_modules,
+        )
+        return_ir = AsyncContextManagerTypeIR(value=value_ir)
+        parameters = parse_parameters_to_ir(
+            sig,
+            annotations,
+            skip_first_param=skip_first_param,
+            owner_impl_type=owner_impl_type,
+            owner_has_type_parameters=owner_has_type_parameters,
+            impl_modules=impl_modules,
+        )
+        return SignatureIR(parameters=parameters, return_transformer_ir=return_ir), False
+
+    if is_async_generator(f, return_annotation) and return_annotation == inspect.Signature.empty:
+        return_annotation = collections.abc.AsyncGenerator[typing.Any, None]
+    return_annotation = _normalize_async_annotation(f, return_annotation)
+
+    return_ir = annotation_to_transformer_ir(
+        return_annotation,
+        owner_impl_type=owner_impl_type,
+        owner_has_type_parameters=owner_has_type_parameters,
+        impl_modules=impl_modules,
+    )
+    parameters = parse_parameters_to_ir(
+        sig,
+        annotations,
+        skip_first_param=skip_first_param,
+        owner_impl_type=owner_impl_type,
+        owner_has_type_parameters=owner_has_type_parameters,
+        impl_modules=impl_modules,
+    )
+
+    is_async_gen = is_async_generator(f, return_annotation)
+    return_ir = _normalize_return_transformer_ir(return_ir, is_async_gen=is_async_gen, func_qualname=f.__qualname__)
+    return SignatureIR(parameters=parameters, return_transformer_ir=return_ir), is_async_gen
+
+
+def _parse_overload_signature_irs(
+    f: types.FunctionType,
+    *,
+    globals_dict: dict[str, typing.Any] | None,
+    skip_first_param: bool,
+    owner_impl_type: type | None,
+    owner_has_type_parameters: bool,
+    impl_modules: frozenset[str],
+) -> tuple[SignatureIR, ...]:
+    overload_irs: list[SignatureIR] = []
+    for overload_func in _iter_overload_functions(f):
+        annotations = _safe_get_annotations(overload_func, globals_dict)
+        sig = inspect.signature(overload_func)
+        overload_ir, _ = _parse_signature_ir(
+            overload_func,
+            annotations=annotations,
+            sig=sig,
+            skip_first_param=skip_first_param,
+            owner_impl_type=owner_impl_type,
+            owner_has_type_parameters=owner_has_type_parameters,
+            impl_modules=impl_modules,
+        )
+        overload_irs.append(overload_ir)
+    return tuple(overload_irs)
+
+
 def parse_module_level_function_ir(
     f: types.FunctionType,
     target_module: str,
@@ -221,50 +311,35 @@ def parse_module_level_function_ir(
         impl_modules = frozenset({f.__module__})
     annotations = _safe_get_annotations(f, globals_dict)
     sig = inspect.signature(f)
-    return_annotation = annotations.get("return", sig.return_annotation)
-
-    # Detect @asynccontextmanager-wrapped functions before async gen normalization
-    cm_value_type = _detect_async_context_manager_wrapper(f, return_annotation)
-    if cm_value_type is not None:
-        value_ir = annotation_to_transformer_ir(cm_value_type, owner_impl_type=None, impl_modules=impl_modules)
-        return_ir = AsyncContextManagerTypeIR(value=value_ir)
-        parameters = parse_parameters_to_ir(sig, annotations, skip_first_param=False, impl_modules=impl_modules)
-        return ModuleLevelFunctionIR(
-            impl_ref=ImplQualifiedRef(f.__module__, f.__qualname__),
-            needs_async_wrapper=False,
-            is_async_gen=False,
-            parameters=parameters,
-            return_transformer_ir=return_ir,
-        )
-
-    if is_async_generator(f, return_annotation) and return_annotation == inspect.Signature.empty:
-        return_annotation = collections.abc.AsyncGenerator[typing.Any, None]
-    return_annotation = _normalize_async_annotation(f, return_annotation)
-
-    return_ir = annotation_to_transformer_ir(
-        return_annotation,
-        owner_impl_type=None,
-        impl_modules=impl_modules,
-    )
-
-    parameters = parse_parameters_to_ir(
-        sig,
-        annotations,
+    signature_ir, is_async_gen = _parse_signature_ir(
+        f,
+        annotations=annotations,
+        sig=sig,
         skip_first_param=False,
+        owner_impl_type=None,
+        owner_has_type_parameters=False,
+        impl_modules=impl_modules,
+    )
+    overloads = _parse_overload_signature_irs(
+        f,
+        globals_dict=globals_dict,
+        skip_first_param=False,
+        owner_impl_type=None,
+        owner_has_type_parameters=False,
         impl_modules=impl_modules,
     )
 
-    is_async_gen = is_async_generator(f, return_annotation)
-    return_ir = _normalize_return_transformer_ir(return_ir, is_async_gen=is_async_gen, func_qualname=f.__qualname__)
-
-    needs_async_wrapper = is_async_gen or isinstance(return_ir, (AwaitableTypeIR, CoroutineTypeIR))
+    needs_async_wrapper = is_async_gen or isinstance(
+        signature_ir.return_transformer_ir, (AwaitableTypeIR, CoroutineTypeIR)
+    )
 
     return ModuleLevelFunctionIR(
         impl_ref=ImplQualifiedRef(f.__module__, f.__qualname__),
         needs_async_wrapper=needs_async_wrapper,
         is_async_gen=is_async_gen,
-        parameters=parameters,
-        return_transformer_ir=return_ir,
+        parameters=signature_ir.parameters,
+        return_transformer_ir=signature_ir.return_transformer_ir,
+        overloads=overloads,
     )
 
 
@@ -285,34 +360,6 @@ def parse_method_wrapper_ir(
     sig = inspect.signature(method)
     return_annotation = annotations.get("return", sig.return_annotation)
 
-    # Detect @asynccontextmanager-wrapped methods before async gen normalization
-    cm_value_type = _detect_async_context_manager_wrapper(method, return_annotation)
-    if cm_value_type is not None:
-        value_ir = annotation_to_transformer_ir(
-            cm_value_type,
-            owner_impl_type=impl_class,
-            owner_has_type_parameters=owner_has_type_parameters,
-            impl_modules=impl_modules,
-        )
-        return_ir = AsyncContextManagerTypeIR(value=value_ir)
-        skip_first_param = method_type in (MethodBindingKind.INSTANCE, MethodBindingKind.CLASSMETHOD)
-        parameters = parse_parameters_to_ir(
-            sig,
-            annotations,
-            skip_first_param=skip_first_param,
-            owner_impl_type=impl_class,
-            owner_has_type_parameters=owner_has_type_parameters,
-            impl_modules=impl_modules,
-        )
-        return MethodWrapperIR(
-            method_name=method_name,
-            method_type=method_type,
-            parameters=parameters,
-            is_async_gen=False,
-            is_async=False,
-            return_transformer_ir=return_ir,
-        )
-
     # Validate __aiter__ isn't typed as a sync generator/iterator
     if method_name == "__aiter__":
         origin = typing.get_origin(return_annotation)
@@ -325,42 +372,35 @@ def parse_method_wrapper_ir(
                 f"but must return an async iterable (AsyncIterator, AsyncGenerator, etc.)."
             )
 
-    if is_async_generator(method, return_annotation) and return_annotation == inspect.Signature.empty:
-        return_annotation = collections.abc.AsyncGenerator[typing.Any, None]
-    return_annotation = _normalize_async_annotation(method, return_annotation)
-
-    return_ir = annotation_to_transformer_ir(
-        return_annotation,
+    skip_first_param = method_type in (MethodBindingKind.INSTANCE, MethodBindingKind.CLASSMETHOD)
+    signature_ir, is_async_gen = _parse_signature_ir(
+        method,
+        annotations=annotations,
+        sig=sig,
+        skip_first_param=skip_first_param,
         owner_impl_type=impl_class,
         owner_has_type_parameters=owner_has_type_parameters,
         impl_modules=impl_modules,
     )
-
-    skip_first_param = method_type in (MethodBindingKind.INSTANCE, MethodBindingKind.CLASSMETHOD)
-
-    parameters = parse_parameters_to_ir(
-        sig,
-        annotations,
+    overloads = _parse_overload_signature_irs(
+        method,
+        globals_dict=globals_dict,
         skip_first_param=skip_first_param,
         owner_impl_type=impl_class,
         owner_has_type_parameters=owner_has_type_parameters,
         impl_modules=impl_modules,
     )
 
-    is_async_gen = is_async_generator(method, return_annotation)
-    return_ir = _normalize_return_transformer_ir(
-        return_ir, is_async_gen=is_async_gen, func_qualname=method.__qualname__
-    )
-
-    is_async = is_async_gen or isinstance(return_ir, (AwaitableTypeIR, CoroutineTypeIR))
+    is_async = is_async_gen or isinstance(signature_ir.return_transformer_ir, (AwaitableTypeIR, CoroutineTypeIR))
 
     return MethodWrapperIR(
         method_name=method_name,
         method_type=method_type,
-        parameters=parameters,
+        parameters=signature_ir.parameters,
         is_async_gen=is_async_gen,
         is_async=is_async,
-        return_transformer_ir=return_ir,
+        return_transformer_ir=signature_ir.return_transformer_ir,
+        overloads=overloads,
     )
 
 

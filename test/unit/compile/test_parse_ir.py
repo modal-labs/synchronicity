@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+import typing
 from typing import Generic, TypeVar
 
 from synchronicity import Module
@@ -196,3 +197,61 @@ class Holder:
     assert isinstance(ann_ir, WrappedClassTypeIR)
     assert ann_ir.impl == ImplQualifiedRef(Inner.__module__, Inner.__qualname__)
     assert ann_ir.wrapper == WrapperRef("generated.attr_parse", "Inner")
+
+
+def test_parse_module_function_overloads_are_captured_in_ir():
+    m = Module("generated.overload_parse")
+
+    @m.wrap_class
+    class Item:
+        pass
+
+    @typing.overload
+    async def convert(value: int) -> int: ...
+
+    @typing.overload
+    async def convert(value: Item) -> Item: ...
+
+    @m.wrap_function
+    async def convert(value) -> object:
+        return value
+
+    ir = parse_module_level_function_ir(convert, "generated.overload_parse", globals_dict=locals())
+
+    assert len(ir.overloads) == 2
+    int_overload, wrapped_overload = ir.overloads
+    assert isinstance(int_overload.parameters[0].annotation_ir, IdentityTypeIR)
+    assert isinstance(wrapped_overload.parameters[0].annotation_ir, WrappedClassTypeIR)
+    assert isinstance(wrapped_overload.return_transformer_ir, AwaitableTypeIR)
+    assert isinstance(wrapped_overload.return_transformer_ir.inner, WrappedClassTypeIR)
+    assert wrapped_overload.return_transformer_ir.inner.wrapper == WrapperRef("generated.overload_parse", "Item")
+
+
+def test_parse_method_overloads_are_captured_in_ir():
+    m = Module("generated.method_overload_parse")
+
+    @m.wrap_class
+    class Item:
+        pass
+
+    @m.wrap_class
+    class Service:
+        @typing.overload
+        async def convert(self, value: int) -> int: ...
+
+        @typing.overload
+        async def convert(self, value: Item) -> Item: ...
+
+        async def convert(self, value) -> object:
+            return value
+
+    ir = parse_class_wrapper_ir(Service, "generated.method_overload_parse", globals_dict=locals())
+    method_ir = next(method for method in ir.methods if method.method_name == "convert")
+
+    assert len(method_ir.overloads) == 2
+    int_overload, wrapped_overload = method_ir.overloads
+    assert isinstance(int_overload.parameters[0].annotation_ir, IdentityTypeIR)
+    assert isinstance(wrapped_overload.parameters[0].annotation_ir, WrappedClassTypeIR)
+    assert isinstance(wrapped_overload.return_transformer_ir, AwaitableTypeIR)
+    assert isinstance(wrapped_overload.return_transformer_ir.inner, WrappedClassTypeIR)
+    assert wrapped_overload.return_transformer_ir.inner.wrapper == WrapperRef("generated.method_overload_parse", "Item")

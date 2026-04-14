@@ -15,6 +15,7 @@ from ..ir import (
     MethodWrapperIR,
     ModuleCompilationIR,
     ModuleLevelFunctionIR,
+    SignatureIR,
     TypeVarSpecIR,
 )
 from ..transformer_ir import ImplQualifiedRef, WrapperRef
@@ -165,6 +166,89 @@ def _wrapper_registration_lines(class_wrappers: tuple[ClassWrapperIR, ...]) -> l
     return lines
 
 
+def _emit_module_function_overloads(
+    overloads: tuple[SignatureIR, ...],
+    function_name: str,
+    target_module: str,
+    runtime_package: str,
+    *,
+    mat_ctx: MaterializeContext | None,
+    is_async: bool,
+) -> str:
+    blocks: list[str] = []
+    for overload in overloads:
+        param_str, _, _ = format_parameters_for_emit(
+            overload.parameters,
+            target_module,
+            runtime_package,
+            mat_ctx=mat_ctx,
+        )
+        return_transformer = materialize_transformer_ir(overload.return_transformer_ir, runtime_package, ctx=mat_ctx)
+        sync_return_str, async_return_str = _format_return_annotation(return_transformer, target_module)
+        return_str = async_return_str if is_async else sync_return_str
+        async_prefix = "async " if is_async else ""
+        blocks.append(f"@typing.overload\n{async_prefix}def {function_name}({param_str}){return_str}: ...")
+    return "\n".join(blocks)
+
+
+def _method_signature_line(
+    method_name: str,
+    method_type: MethodBindingKind,
+    param_str: str,
+    return_str: str,
+    *,
+    is_async: bool,
+) -> str:
+    async_prefix = "async " if is_async else ""
+    if method_type == MethodBindingKind.INSTANCE:
+        all_params = "self" if not param_str else f"self, {param_str}"
+    elif method_type == MethodBindingKind.CLASSMETHOD:
+        all_params = "cls" if not param_str else f"cls, {param_str}"
+    else:
+        all_params = param_str
+    return f"{async_prefix}def {method_name}({all_params}){return_str}: ..."
+
+
+def _emit_method_overloads(
+    overloads: tuple[SignatureIR, ...],
+    method_name: str,
+    method_type: MethodBindingKind,
+    target_module: str,
+    runtime_package: str,
+    *,
+    mat_ctx: MaterializeContext | None,
+    is_async: bool,
+) -> str:
+    blocks: list[str] = []
+    for overload in overloads:
+        param_str, _, _ = format_parameters_for_emit(
+            overload.parameters,
+            target_module,
+            runtime_package,
+            mat_ctx=mat_ctx,
+        )
+        return_transformer = materialize_transformer_ir(overload.return_transformer_ir, runtime_package, ctx=mat_ctx)
+        sync_return_str, async_return_str = _format_return_annotation(return_transformer, target_module)
+        return_str = async_return_str if is_async else sync_return_str
+        lines = ["    @typing.overload"]
+        if method_type == MethodBindingKind.CLASSMETHOD:
+            lines.append("    @classmethod")
+        elif method_type == MethodBindingKind.STATICMETHOD:
+            lines.append("    @staticmethod")
+        lines.append(
+            "    "
+            + _method_signature_line(
+                method_name,
+                method_type,
+                param_str,
+                return_str,
+                is_async=is_async,
+            )
+        )
+        blocks.append("\n".join(lines))
+    return "\n".join(blocks)
+
+
 def emit_module_level_function(
     ir: ModuleLevelFunctionIR,
     target_module: str,
@@ -220,6 +304,17 @@ def emit_module_level_function(
 
         function_code = f"""def {f}({param_str}){sync_return_str}:
 {function_body}"""
+
+        overload_code = _emit_module_function_overloads(
+            ir.overloads,
+            f,
+            current_target_module,
+            runtime_package,
+            mat_ctx=mat_ctx,
+            is_async=False,
+        )
+        if overload_code:
+            function_code = f"{overload_code}\n{function_code}"
 
         if helpers_code:
             return f"{helpers_code}\n\n{function_code}"
@@ -287,6 +382,16 @@ def emit_module_level_function(
 {aio_unwrap_section}
 {aio_body}
 """
+    aio_overload_code = _emit_module_function_overloads(
+        ir.overloads,
+        aio_function_name,
+        current_target_module,
+        runtime_package,
+        mat_ctx=mat_ctx,
+        is_async=True,
+    )
+    if aio_overload_code:
+        async_wrapper_code = f"{aio_overload_code}\n{async_wrapper_code}"
 
     sync_impl_ref = f"    impl_function = {impl_dotted}"
     sync_unwrap_section = sync_impl_ref
@@ -312,6 +417,16 @@ def {f}({param_str}){sync_return_str}:
 {sync_unwrap_section}
 {sync_function_body}
 """
+    sync_overload_code = _emit_module_function_overloads(
+        ir.overloads,
+        f,
+        current_target_module,
+        runtime_package,
+        mat_ctx=mat_ctx,
+        is_async=False,
+    )
+    if sync_overload_code:
+        sync_function_code = f"{sync_overload_code}\n{sync_function_code}"
 
     if helpers_code:
         return f"{helpers_code}\n\n{async_wrapper_code}{sync_function_code}"
@@ -638,6 +753,19 @@ def emit_method_wrapper_pair(
     else:
         wrapper_functions_code = ""
 
+    if wrapper_functions_code and mir.overloads:
+        async_overload_code = _emit_method_overloads(
+            mir.overloads,
+            aio_method_name,
+            method_type,
+            current_target_module,
+            runtime_package,
+            mat_ctx=mat_ctx,
+            is_async=True,
+        )
+        if async_overload_code:
+            wrapper_functions_code = f"{async_overload_code}\n{wrapper_functions_code}"
+
     if method_type == MethodBindingKind.CLASSMETHOD:
         decorator_func = "wrapped_classmethod"
     elif method_type == MethodBindingKind.STATICMETHOD:
@@ -707,6 +835,18 @@ def emit_method_wrapper_pair(
         sync_method_code = f"    {decorator_line}\n{def_line}\n        {method_body}"
     else:
         sync_method_code = f"{def_line}\n        {method_body}"
+
+    sync_overload_code = _emit_method_overloads(
+        mir.overloads,
+        method_name,
+        method_type,
+        current_target_module,
+        runtime_package,
+        mat_ctx=mat_ctx,
+        is_async=False,
+    )
+    if sync_overload_code:
+        sync_method_code = f"{sync_overload_code}\n{sync_method_code}"
 
     return wrapper_functions_code, sync_method_code
 

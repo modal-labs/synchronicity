@@ -50,6 +50,14 @@ class ParameterIR:
 
 
 @dataclasses.dataclass(frozen=True)
+class SignatureIR:
+    """Callable signature shape shared by overloads and concrete function/method implementations."""
+
+    parameters: tuple[ParameterIR, ...]
+    return_transformer_ir: TypeTransformerIR
+
+
+@dataclasses.dataclass(frozen=True)
 class ModuleCompilationIR:
     """Planned contents of one generated wrapper module (before any text emission)."""
 
@@ -83,6 +91,7 @@ class ModuleLevelFunctionIR:
     is_async_gen: bool
     parameters: tuple[ParameterIR, ...]
     return_transformer_ir: TypeTransformerIR
+    overloads: tuple[SignatureIR, ...] = ()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -95,6 +104,7 @@ class MethodWrapperIR:
     is_async_gen: bool
     is_async: bool
     return_transformer_ir: TypeTransformerIR
+    overloads: tuple[SignatureIR, ...] = ()
 
 
 @dataclasses.dataclass(frozen=True)

@@ -7,7 +7,7 @@ IR literals are explicit dataclasses in this module (same shapes as the parse la
 from __future__ import annotations
 
 from synchronicity.codegen.emitters.sync_async_wrappers import emit_class_from_ir
-from synchronicity.codegen.ir import ClassWrapperIR, MethodBindingKind, MethodWrapperIR, ParameterIR
+from synchronicity.codegen.ir import ClassWrapperIR, MethodBindingKind, MethodWrapperIR, ParameterIR, SignatureIR
 from synchronicity.codegen.transformer_ir import (
     AsyncGeneratorTypeIR,
     AsyncIteratorTypeIR,
@@ -258,6 +258,56 @@ IR_CLASS_AWAITABLE_METHOD = ClassWrapperIR(
             is_async_gen=False,
             is_async=True,
             return_transformer_ir=AwaitableTypeIR(inner=IdentityTypeIR(signature_text="str")),
+        ),
+    ),
+)
+IR_CLASS_OVERLOADED_METHOD = ClassWrapperIR(
+    impl_ref=ImplQualifiedRef(IMPL, "EmitOverloadedMethodClass"),
+    wrapper_ref=WrapperRef(TARGET, "EmitOverloadedMethodClass"),
+    wrapped_bases=(),
+    generic_type_parameters=None,
+    attributes=(),
+    properties=(),
+    methods=(
+        MethodWrapperIR(
+            method_name="resolve",
+            method_type=MethodBindingKind.INSTANCE,
+            parameters=(ParameterIR(name="value", kind=1, annotation_ir=None, default_repr=None),),
+            is_async_gen=False,
+            is_async=True,
+            return_transformer_ir=AwaitableTypeIR(inner=IdentityTypeIR(signature_text="typing.Any")),
+            overloads=(
+                SignatureIR(
+                    parameters=(
+                        ParameterIR(
+                            name="value",
+                            kind=1,
+                            annotation_ir=IdentityTypeIR(signature_text="int"),
+                            default_repr=None,
+                        ),
+                    ),
+                    return_transformer_ir=AwaitableTypeIR(inner=IdentityTypeIR(signature_text="int")),
+                ),
+                SignatureIR(
+                    parameters=(
+                        ParameterIR(
+                            name="value",
+                            kind=1,
+                            annotation_ir=WrappedClassTypeIR(
+                                impl=ImplQualifiedRef(IMPL, "Node"),
+                                wrapper=WrapperRef(TARGET, "Node"),
+                            ),
+                            default_repr=None,
+                        ),
+                    ),
+                    return_transformer_ir=AwaitableTypeIR(
+                        inner=WrappedClassTypeIR(
+                            impl=ImplQualifiedRef(IMPL, "Node"),
+                            wrapper=WrapperRef(TARGET, "Node"),
+                        )
+                    ),
+                ),
+            ),
         ),
     ),
 )
@@ -730,6 +780,16 @@ def test_emit_class_sync_method_returning_awaitable():
     assert "async def __create_awaitable_aio(self, x: int) -> str:" in code
     assert "_run_function_sync" in code
     assert "_run_function_async" in code
+
+
+def test_emit_class_method_overloads_translate_each_overload():
+    code = emit_class_from_ir(IR_CLASS_OVERLOADED_METHOD, TARGET)
+    compile(code, "<string>", "exec")
+    assert "@typing.overload" in code
+    assert "def resolve(self, value: int) -> int: ..." in code
+    assert 'def resolve(self, value: "Node") -> "Node": ...' in code
+    assert "async def __resolve_aio(self, value: int) -> int: ..." in code
+    assert 'async def __resolve_aio(self, value: "Node") -> "Node": ...' in code
 
 
 def test_emit_class_aiter_typed_iter():
