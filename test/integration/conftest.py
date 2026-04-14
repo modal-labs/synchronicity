@@ -79,6 +79,7 @@ def generated_wrappers():
             "custom_iterators_impl",
             "multi_synchronizer_impl",
             "async_context_manager_impl",
+            "property_class_impl",
         ]
 
         for module_name in module_specs:

@@ -25,6 +25,7 @@ from .transformer_ir import (
     ListTypeIR,
     OptionalTypeIR,
     SelfTypeIR,
+    SubscriptedWrappedClassTypeIR,
     SyncGeneratorTypeIR,
     TupleTypeIR,
     TypeTransformerIR,
@@ -284,6 +285,19 @@ def annotation_to_transformer_ir(
             )
         return AsyncContextManagerTypeIR(value=IdentityTypeIR(tt._format_annotation_str(typing.Any)))
 
+    # Subscripted wrapped class, e.g. SomeContainer[WrappedType]
+    if isinstance(origin, type) and _is_wrapped_impl(origin) and args:
+        arg_irs = tuple(
+            annotation_to_transformer_ir(
+                arg,
+                owner_impl_type=owner_impl_type,
+                owner_has_type_parameters=owner_has_type_parameters,
+                impl_modules=impl_modules,
+            )
+            for arg in args
+        )
+        return SubscriptedWrappedClassTypeIR(impl_qualified(origin), _wrapper_ref_from_type(origin), arg_irs)
+
     return IdentityTypeIR(tt._format_annotation_str(annotation))
 
 
@@ -352,6 +366,9 @@ def materialize_transformer_ir(
         return tt.CoroutineTransformer(materialize_transformer_ir(ir.return_type, runtime_package, ctx=ctx))
     if isinstance(ir, AwaitableTypeIR):
         return tt.AwaitableTransformer(materialize_transformer_ir(ir.inner, runtime_package, ctx=ctx))
+    if isinstance(ir, SubscriptedWrappedClassTypeIR):
+        arg_transformers = [materialize_transformer_ir(a, runtime_package, ctx=ctx) for a in ir.type_args]
+        return tt.SubscriptedWrappedClassTransformer(ir.impl, ir.wrapper, arg_transformers)
     if isinstance(ir, AsyncContextManagerTypeIR):
         return tt.AsyncContextManagerTransformer(
             materialize_transformer_ir(ir.value, runtime_package, ctx=ctx),

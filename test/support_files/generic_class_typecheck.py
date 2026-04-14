@@ -2,7 +2,7 @@
 
 from typing import assert_type
 
-from generic_class import FunctionWrapper
+from generic_class import FunctionWrapper, SomeContainer, WrappedType, returning_container
 
 
 def f(a: int) -> float: ...
@@ -22,3 +22,5 @@ async def foo() -> None:
 copy = wrapped_func.clone()
 
 assert_type(copy.call(a=11), float)
+
+assert_type(returning_container(), SomeContainer[WrappedType])

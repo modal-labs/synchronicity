@@ -32,6 +32,7 @@ IR_CLASS_AITER_ASYNC_GEN = ClassWrapperIR(
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
+    properties=(),
     methods=(
         MethodWrapperIR(
             method_name="__aiter__",
@@ -52,6 +53,7 @@ IR_CLASS_AITER_ASYNC_ITER_TYPE = ClassWrapperIR(
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
+    properties=(),
     methods=(
         MethodWrapperIR(
             method_name="__aiter__",
@@ -70,6 +72,7 @@ IR_CLASS_AITER_ASYNC_NO_ANN = ClassWrapperIR(
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
+    properties=(),
     methods=(
         MethodWrapperIR(
             method_name="__aiter__",
@@ -88,6 +91,7 @@ IR_CLASS_AITER_ASYNC_WITH_ANN = ClassWrapperIR(
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
+    properties=(),
     methods=(
         MethodWrapperIR(
             method_name="__aiter__",
@@ -106,6 +110,7 @@ IR_CLASS_AITER_SYNC_NO_ANN = ClassWrapperIR(
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
+    properties=(),
     methods=(
         MethodWrapperIR(
             method_name="__aiter__",
@@ -124,6 +129,7 @@ IR_CLASS_AITER_SYNC_WITH_ANN = ClassWrapperIR(
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
+    properties=(),
     methods=(
         MethodWrapperIR(
             method_name="__aiter__",
@@ -142,6 +148,7 @@ IR_CLASS_ASYNC_GEN = ClassWrapperIR(
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
+    properties=(),
     methods=(
         MethodWrapperIR(
             method_name="__init__",
@@ -191,6 +198,7 @@ IR_CLASS_ASYNC_ITERABLE = ClassWrapperIR(
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
+    properties=(),
     methods=(
         MethodWrapperIR(
             method_name="__aiter__",
@@ -209,6 +217,7 @@ IR_CLASS_ASYNC_ITERATOR = ClassWrapperIR(
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
+    properties=(),
     methods=(
         MethodWrapperIR(
             method_name="__aiter__",
@@ -238,6 +247,7 @@ IR_CLASS_AWAITABLE_METHOD = ClassWrapperIR(
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
+    properties=(),
     methods=(
         MethodWrapperIR(
             method_name="create_awaitable",
@@ -258,6 +268,7 @@ IR_CLASS_COMPLEX = ClassWrapperIR(
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
+    properties=(),
     methods=(
         MethodWrapperIR(
             method_name="__init__",
@@ -314,6 +325,7 @@ IR_CLASS_CONTAINER = ClassWrapperIR(
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
+    properties=(),
     methods=(
         MethodWrapperIR(
             method_name="__init__",
@@ -343,6 +355,7 @@ IR_CLASS_COROUTINE_METHOD = ClassWrapperIR(
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
+    properties=(),
     methods=(
         MethodWrapperIR(
             method_name="create_coroutine",
@@ -363,6 +376,7 @@ IR_CLASS_EMPTY = ClassWrapperIR(
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
+    properties=(),
     methods=(
         MethodWrapperIR(
             method_name="__init__",
@@ -393,6 +407,7 @@ IR_CLASS_MIXED = ClassWrapperIR(
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
+    properties=(),
     methods=(
         MethodWrapperIR(
             method_name="__init__",
@@ -448,6 +463,7 @@ IR_CLASS_NO_INIT = ClassWrapperIR(
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
+    properties=(),
     methods=(
         MethodWrapperIR(
             method_name="method",
@@ -466,6 +482,7 @@ IR_CLASS_SELF = ClassWrapperIR(
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
+    properties=(),
     methods=(
         MethodWrapperIR(
             method_name="accept",
@@ -497,6 +514,7 @@ IR_CLASS_SIMPLE = ClassWrapperIR(
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
+    properties=(),
     methods=(
         MethodWrapperIR(
             method_name="__init__",
@@ -551,6 +569,7 @@ IR_CLASS_VARARGS = ClassWrapperIR(
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
+    properties=(),
     methods=(
         MethodWrapperIR(
             method_name="method_with_posonly",

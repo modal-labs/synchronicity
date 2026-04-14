@@ -159,6 +159,37 @@ class WrappedClassTransformer(TypeTransformer):
         return True
 
 
+class SubscriptedWrappedClassTransformer(TypeTransformer):
+    """Wrapped class subscripted with type args, e.g. ``SomeContainer[WrappedType]``.
+
+    Unwrap/wrap delegates to the base :class:`WrappedClassTransformer`; the type
+    arguments only affect the annotation string.
+    """
+
+    def __init__(
+        self,
+        impl: ImplQualifiedRef,
+        wrapper: WrapperRef,
+        type_arg_transformers: list[TypeTransformer],
+    ):
+        self._inner = WrappedClassTransformer(impl, wrapper)
+        self._type_arg_transformers = type_arg_transformers
+
+    def wrapped_type(self, target_module: str, is_async: bool = True) -> str:
+        base = self._inner.wrapped_type(target_module, is_async)
+        args = ", ".join(t.wrapped_type(target_module, is_async) for t in self._type_arg_transformers)
+        return f"{base}[{args}]"
+
+    def unwrap_expr(self, var_name: str) -> str:
+        return self._inner.unwrap_expr(var_name)
+
+    def wrap_expr(self, target_module: str, var_name: str, is_async: bool = True) -> str:
+        return self._inner.wrap_expr(target_module, var_name, is_async)
+
+    def needs_translation(self) -> bool:
+        return True
+
+
 class TypeVarBoundTransformer(TypeTransformer):
     """Type variable: signature shows *name* (e.g. ``T``); unwrap/wrap follows the bound type transformer."""
 
@@ -912,16 +943,16 @@ def _format_annotation_str(annotation) -> str:
             else:
                 origin_name = str(origin)
 
-            # Check if we need typing prefix
+            # Check if we need a module prefix
             if origin in (list, dict, tuple, set, frozenset, type):
-                # Built-in types
+                # Built-in types - no prefix needed
                 return f"{origin_name}[{', '.join(formatted_args)}]"
-            else:
-                # typing module types
-                origin_str = repr(origin)
-                if "typing." in origin_str:
-                    origin_name = origin_str.split(".")[-1].rstrip("'>")
+            elif getattr(origin, "__module__", None) == "typing":
                 return f"typing.{origin_name}[{', '.join(formatted_args)}]"
+            elif isinstance(origin, type) and origin.__module__ not in ("builtins", "__builtin__"):
+                return f"{origin.__module__}.{origin.__qualname__}[{', '.join(formatted_args)}]"
+            else:
+                return f"{origin_name}[{', '.join(formatted_args)}]"
         else:
             return repr(annotation)
 

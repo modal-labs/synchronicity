@@ -23,6 +23,7 @@ from .ir import (
     MethodWrapperIR,
     ModuleCompilationIR,
     ModuleLevelFunctionIR,
+    PropertyWrapperIR,
 )
 from .signature_utils import is_async_generator
 from .transformer_ir import (
@@ -395,7 +396,9 @@ def parse_class_wrapper_ir(
     if init_method and init_method is not object.__init__:
         source_methods.append(("__init__", init_method, MethodBindingKind.INSTANCE))
 
-    # classmethods and staticmethods (descriptor unwrapping requires cls.__dict__)
+    # classmethods, staticmethods, and properties (descriptor unwrapping requires cls.__dict__)
+    property_names: set[str] = set()
+    property_irs: list[PropertyWrapperIR] = []
     for name, attr in cls.__dict__.items():
         if name.startswith("_"):
             continue
@@ -405,10 +408,60 @@ def parse_class_wrapper_ir(
         elif isinstance(attr, staticmethod):
             source_methods.append((name, attr.__func__, MethodBindingKind.STATICMETHOD))
             classmethod_staticmethod_names.add(name)
+        elif isinstance(attr, property):
+            property_names.add(name)
+            fget = attr.fget
+            if fget is not None and inspect.iscoroutinefunction(fget):
+                raise TypeError(
+                    f"Property {cls.__qualname__}.{name} has an async getter. "
+                    f"Properties must be synchronous; use an async method instead."
+                )
+            # Parse getter return type
+            return_ir: TypeTransformerIR | None = None
+            if fget is not None:
+                getter_annotations = _safe_get_annotations(fget, globals_dict)
+                return_annotation = getter_annotations.get("return", inspect.Signature.empty)
+                if return_annotation != inspect.Signature.empty:
+                    return_ir = annotation_to_transformer_ir(
+                        return_annotation,
+                        owner_impl_type=cls,
+                        owner_has_type_parameters=bool(generic_typevars),
+                        impl_modules=impl_modules,
+                    )
+            # Parse setter value type
+            has_setter = attr.fset is not None
+            setter_value_ir: TypeTransformerIR | None = None
+            if has_setter and attr.fset is not None:
+                setter_annotations = _safe_get_annotations(attr.fset, globals_dict)
+                setter_sig = inspect.signature(attr.fset)
+                setter_params = list(setter_sig.parameters.values())
+                if len(setter_params) >= 2:
+                    value_param = setter_params[1]
+                    setter_annotation = setter_annotations.get(value_param.name, inspect.Signature.empty)
+                    if setter_annotation != inspect.Signature.empty:
+                        setter_value_ir = annotation_to_transformer_ir(
+                            setter_annotation,
+                            owner_impl_type=cls,
+                            owner_has_type_parameters=bool(generic_typevars),
+                            impl_modules=impl_modules,
+                        )
+            property_irs.append(
+                PropertyWrapperIR(
+                    name=name,
+                    return_transformer_ir=return_ir,
+                    has_setter=has_setter,
+                    setter_value_ir=setter_value_ir,
+                )
+            )
 
     # instance methods (only directly defined on cls)
     for name, method in inspect.getmembers(cls, predicate=inspect.isfunction):
-        if not name.startswith("_") and name in cls.__dict__ and name not in classmethod_staticmethod_names:
+        if (
+            not name.startswith("_")
+            and name in cls.__dict__
+            and name not in classmethod_staticmethod_names
+            and name not in property_names
+        ):
             source_methods.append((name, method, MethodBindingKind.INSTANCE))
 
     # async iterator protocol dunders (only directly defined on cls)
@@ -461,5 +514,6 @@ def parse_class_wrapper_ir(
         wrapped_bases=tuple(wrapped_bases),
         generic_type_parameters=generic_type_parameters,
         attributes=tuple(attributes),
+        properties=tuple(property_irs),
         methods=method_irs,
     )

@@ -34,6 +34,7 @@ IR_CLASS_HELPER = ClassWrapperIR(
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
+    properties=(),
     methods=(
         MethodWrapperIR(
             method_name="__init__",
@@ -55,6 +56,7 @@ IR_CLASS_HELPER_SUBCLASS = ClassWrapperIR(
     wrapped_bases=((ImplQualifiedRef(IMPL, "HelperTestClass"), WrapperRef(TARGET, "HelperTestClass")),),
     generic_type_parameters=None,
     attributes=(),
+    properties=(),
     methods=(
         MethodWrapperIR(
             method_name="__init__",
@@ -244,6 +246,7 @@ IR_TR_TESTNODE_CLASS = ClassWrapperIR(
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
+    properties=(),
     methods=(
         MethodWrapperIR(
             method_name="__init__",

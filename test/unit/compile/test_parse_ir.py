@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import pytest
 from typing import Generic, TypeVar
 
 from synchronicity import Module
-from synchronicity.codegen.ir import ModuleCompilationIR
+from synchronicity.codegen.ir import ModuleCompilationIR, PropertyWrapperIR
 from synchronicity.codegen.parse import (
     build_module_compilation_ir,
     parse_class_wrapper_ir,
@@ -90,6 +91,82 @@ def test_parse_class_wrapper_ir_generic_stores_type_parameter_names():
     ir = parse_class_wrapper_ir(G, "generated.generic_parse", globals_dict=globals())
     assert ir.wrapped_bases == ()
     assert ir.generic_type_parameters == ("T",)
+
+
+def test_parse_class_sync_property_readonly():
+    """Sync read-only @property is collected into ClassWrapperIR.properties."""
+
+    ns: dict = {"Module": Module}
+    exec(
+        """
+m = Module("generated.prop_parse")
+@m.wrap_class
+class Cfg:
+    @property
+    def name(self) -> str:
+        return "hello"
+""",
+        ns,
+    )
+    Cfg = ns["Cfg"]
+    ir = parse_class_wrapper_ir(Cfg, "generated.prop_parse", globals_dict=ns)
+    assert len(ir.properties) == 1
+    prop = ir.properties[0]
+    assert isinstance(prop, PropertyWrapperIR)
+    assert prop.name == "name"
+    assert isinstance(prop.return_transformer_ir, IdentityTypeIR)
+    assert prop.return_transformer_ir.signature_text == "str"
+    assert prop.has_setter is False
+    assert prop.setter_value_ir is None
+
+
+def test_parse_class_sync_property_readwrite():
+    """Sync read-write @property captures both getter and setter IR."""
+
+    ns: dict = {"Module": Module}
+    exec(
+        """
+m = Module("generated.prop_rw")
+@m.wrap_class
+class Cfg:
+    @property
+    def count(self) -> int:
+        return 0
+    @count.setter
+    def count(self, value: int) -> None:
+        pass
+""",
+        ns,
+    )
+    Cfg = ns["Cfg"]
+    ir = parse_class_wrapper_ir(Cfg, "generated.prop_rw", globals_dict=ns)
+    assert len(ir.properties) == 1
+    prop = ir.properties[0]
+    assert prop.name == "count"
+    assert prop.has_setter is True
+    assert isinstance(prop.return_transformer_ir, IdentityTypeIR)
+    assert isinstance(prop.setter_value_ir, IdentityTypeIR)
+    assert prop.setter_value_ir.signature_text == "int"
+
+
+def test_parse_class_async_property_raises():
+    """An async getter on a @property must be rejected at parse time."""
+
+    ns: dict = {"Module": Module}
+    exec(
+        """
+m = Module("generated.async_prop")
+@m.wrap_class
+class Bad:
+    @property
+    async def broken(self) -> int:
+        return 1
+""",
+        ns,
+    )
+    Bad = ns["Bad"]
+    with pytest.raises(TypeError, match="async"):
+        parse_class_wrapper_ir(Bad, "generated.async_prop", globals_dict=ns)
 
 
 def test_parse_class_attributes_are_type_ir_not_wrapper_strings():

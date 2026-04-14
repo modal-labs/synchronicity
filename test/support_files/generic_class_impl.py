@@ -18,7 +18,7 @@ class WrappedType:
 
 
 @mod.wrap_class
-class Container(Generic[T]):
+class SomeContainer(Generic[T]):
     """A generic container class."""
 
     def __init__(self, value: T):
@@ -31,6 +31,11 @@ class Container(Generic[T]):
     async def set(self, value: T) -> None:
         assert isinstance(value, WrappedType)
         self.value = value
+
+
+@mod.wrap_function
+def returning_container() -> SomeContainer[WrappedType]:
+    return SomeContainer(WrappedType(1))
 
 
 @mod.wrap_class

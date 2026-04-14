@@ -98,6 +98,16 @@ class MethodWrapperIR:
 
 
 @dataclasses.dataclass(frozen=True)
+class PropertyWrapperIR:
+    """Parsed @property: name, getter return type, and optional setter value type."""
+
+    name: str
+    return_transformer_ir: TypeTransformerIR | None
+    has_setter: bool
+    setter_value_ir: TypeTransformerIR | None
+
+
+@dataclasses.dataclass(frozen=True)
 class ClassWrapperIR:
     """Parsed class: everything needed to emit the wrapper without live ``type`` objects.
 
@@ -123,4 +133,5 @@ class ClassWrapperIR:
     wrapped_bases: tuple[tuple[ImplQualifiedRef, WrapperRef], ...]
     generic_type_parameters: tuple[str, ...] | None
     attributes: tuple[tuple[str, TypeTransformerIR | None], ...]
+    properties: tuple[PropertyWrapperIR, ...]
     methods: tuple[MethodWrapperIR, ...]

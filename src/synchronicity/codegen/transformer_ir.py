@@ -117,6 +117,15 @@ class AsyncContextManagerTypeIR:
     value: TypeTransformerIR
 
 
+@dataclasses.dataclass(frozen=True)
+class SubscriptedWrappedClassTypeIR:
+    """Wrapped class subscripted with type arguments, e.g. ``SomeContainer[WrappedType]``."""
+
+    impl: ImplQualifiedRef
+    wrapper: WrapperRef
+    type_args: tuple[TypeTransformerIR, ...]
+
+
 TypeTransformerIR = typing.Union[
     IdentityTypeIR,
     WrappedClassTypeIR,
@@ -133,4 +142,5 @@ TypeTransformerIR = typing.Union[
     CoroutineTypeIR,
     AwaitableTypeIR,
     AsyncContextManagerTypeIR,
+    SubscriptedWrappedClassTypeIR,
 ]

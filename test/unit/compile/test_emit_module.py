@@ -38,6 +38,7 @@ IR_MODULE_TWO_CLASSES = ModuleCompilationIR(
             wrapped_bases=(),
             generic_type_parameters=None,
             attributes=(),
+            properties=(),
             methods=(
                 MethodWrapperIR(
                     method_name="__init__",
@@ -67,6 +68,7 @@ IR_MODULE_TWO_CLASSES = ModuleCompilationIR(
             wrapped_bases=(),
             generic_type_parameters=None,
             attributes=(),
+            properties=(),
             methods=(
                 MethodWrapperIR(
                     method_name="__init__",

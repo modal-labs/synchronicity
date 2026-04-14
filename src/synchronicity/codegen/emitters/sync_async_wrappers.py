@@ -774,6 +774,56 @@ def emit_class_from_ir(
         self._impl_instance.{attr_name} = value"""
         property_definitions.append(property_code)
 
+    # @property delegation (from @property on impl class)
+    for prop_ir in ir.properties:
+        prop_transformer = None
+        prop_type_str = ""
+        if prop_ir.return_transformer_ir is not None:
+            prop_transformer = materialize_transformer_ir(prop_ir.return_transformer_ir, runtime_package, ctx=mat_ctx)
+            prop_type_str = prop_transformer.wrapped_type(target_module)
+        # Getter: wrap impl value → wrapper value if needed
+        getter_value_expr = f"self._impl_instance.{prop_ir.name}"
+        if prop_transformer is not None and prop_transformer.needs_translation():
+            getter_return_expr = prop_transformer.wrap_expr(target_module, "_impl_val", is_async=False)
+            getter_body = f"_impl_val = {getter_value_expr}\n        return {getter_return_expr}"
+        else:
+            getter_body = f"return {getter_value_expr}"
+        if prop_type_str:
+            getter_code = f"""    @property
+    def {prop_ir.name}(self) -> {prop_type_str}:
+        {getter_body}"""
+        else:
+            getter_code = f"""    @property
+    def {prop_ir.name}(self):
+        {getter_body}"""
+        if prop_ir.has_setter:
+            setter_transformer = None
+            setter_type_str = ""
+            if prop_ir.setter_value_ir is not None:
+                setter_transformer = materialize_transformer_ir(prop_ir.setter_value_ir, runtime_package, ctx=mat_ctx)
+                setter_type_str = setter_transformer.wrapped_type(target_module)
+            # Setter: unwrap wrapper value → impl value if needed
+            if setter_transformer is not None and setter_transformer.needs_translation():
+                setter_assign_expr = setter_transformer.unwrap_expr("value")
+                setter_body = f"self._impl_instance.{prop_ir.name} = {setter_assign_expr}"
+            else:
+                setter_body = f"self._impl_instance.{prop_ir.name} = value"
+            if setter_type_str:
+                setter_code = f"""
+
+    @{prop_ir.name}.setter
+    def {prop_ir.name}(self, value: {setter_type_str}):
+        {setter_body}"""
+            else:
+                setter_code = f"""
+
+    @{prop_ir.name}.setter
+    def {prop_ir.name}(self, value):
+        {setter_body}"""
+            property_definitions.append(getter_code + setter_code)
+        else:
+            property_definitions.append(getter_code)
+
     iterator_methods_section = ""
     if iterator_mirs:
         iterator_blocks: list[str] = []

@@ -8,15 +8,12 @@ from test.integration.test_utils import check_pyright
 def test_runtime():
     import generic_class
 
-    assert hasattr(generic_class, "Container")
-    assert hasattr(generic_class, "FunctionWrapper")
-
-    container_42 = generic_class.Container(generic_class.WrappedType(42))
-    container_43 = generic_class.Container(generic_class.WrappedType(43))
+    container_42 = generic_class.SomeContainer(generic_class.WrappedType(42))
+    container_43 = generic_class.SomeContainer(generic_class.WrappedType(43))
     assert container_42.get().val == 42
     assert container_43.get().val == 43
 
-    container_100 = generic_class.Container(generic_class.WrappedType(100))
+    container_100 = generic_class.SomeContainer(generic_class.WrappedType(100))
     assert container_100.get().val == 100
     container_100.set(generic_class.WrappedType(200))
     assert container_100.get().val == 200
@@ -33,7 +30,7 @@ def test_runtime():
     wrapper2 = generic_class.FunctionWrapper(add2)
     assert wrapper2._impl_instance.f == add2
 
-    container3 = generic_class.Container(generic_class.WrappedType(3))
+    container3 = generic_class.SomeContainer(generic_class.WrappedType(3))
     assert hasattr(container3, "get")
     assert hasattr(container3, "set")
     wrapper3 = generic_class.FunctionWrapper(lambda x: x)
