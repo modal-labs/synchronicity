@@ -313,6 +313,18 @@ def parse_method_wrapper_ir(
             return_transformer_ir=return_ir,
         )
 
+    # Validate __aiter__ isn't typed as a sync generator/iterator
+    if method_name == "__aiter__":
+        origin = typing.get_origin(return_annotation)
+        if origin in (collections.abc.Generator, collections.abc.Iterator) or (
+            inspect.isgeneratorfunction(method) and not inspect.isasyncgenfunction(method)
+        ):
+            raise TypeError(
+                f"{impl_class.__module__}.{impl_class.__qualname__}.__aiter__ "
+                "has a sync generator/iterator return type "
+                f"but must return an async iterable (AsyncIterator, AsyncGenerator, etc.)."
+            )
+
     if is_async_generator(method, return_annotation) and return_annotation == inspect.Signature.empty:
         return_annotation = collections.abc.AsyncGenerator[typing.Any, None]
     return_annotation = _normalize_async_annotation(method, return_annotation)
