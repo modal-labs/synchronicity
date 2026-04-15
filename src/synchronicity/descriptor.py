@@ -124,25 +124,9 @@ class _BoundOnAccessDescriptorSurface(typing.Protocol[Surface_co]):
     def __get__(self, wrapper_instance: typing.Any | None, owner: type) -> Surface_co: ...
 
 
-@overload
 def wrapped_method(
     aio_wrapper: Callable[Concatenate[Any, AIO_P], AIO_R],
-    *,
-    surface_type: type[Surface_co],
-) -> typing.Callable[[Callable[Concatenate[Any, P], R]], _BoundInstanceMethodDescriptorSurface[Surface_co]]: ...
-
-
-@overload
-def wrapped_method(
-    aio_wrapper: Callable[Concatenate[Any, AIO_P], AIO_R],
-) -> typing.Callable[[Callable[Concatenate[Any, P], R]], WrappedMethodDescriptor[P, R, AIO_P, AIO_R]]: ...
-
-
-def wrapped_method(
-    aio_wrapper: Callable[Concatenate[Any, AIO_P], AIO_R],
-    *,
-    surface_type: type[Surface_co] | None = None,
-) -> typing.Callable[[Callable[Concatenate[Any, P], R]], typing.Any]:
+) -> typing.Callable[[Callable[Concatenate[Any, P], R]], WrappedMethodDescriptor[P, R, AIO_P, AIO_R]]:
     """
     Decorator that creates a descriptor for an instance method.
 
@@ -152,7 +136,6 @@ def wrapped_method(
     Returns:
         A decorator that takes the sync wrapper (the method body) and creates a WrappedMethodDescriptor
     """
-    _ = surface_type
 
     def decorator(sync_wrapper: Callable[Concatenate[Any, P], R]) -> WrappedMethodDescriptor[P, R, AIO_P, AIO_R]:
         return WrappedMethodDescriptor(sync_wrapper, aio_wrapper)
@@ -160,20 +143,6 @@ def wrapped_method(
     return decorator
 
 
-@overload
-def wrapped_classmethod(
-    aio_wrapper: Callable[Concatenate[type[T], AIO_P], AIO_R],
-    *,
-    surface_type: type[Surface_co],
-) -> typing.Callable[
-    [
-        Callable[Concatenate[type[T], P], R],
-    ],
-    _BoundOnAccessDescriptorSurface[Surface_co],
-]: ...
-
-
-@overload
 def wrapped_classmethod(
     aio_wrapper: Callable[Concatenate[type[T], AIO_P], AIO_R],
 ) -> typing.Callable[
@@ -181,18 +150,6 @@ def wrapped_classmethod(
         Callable[Concatenate[type[T], P], R],
     ],
     WrappedClassMethodDescriptor[P, R, AIO_P, AIO_R],
-]: ...
-
-
-def wrapped_classmethod(
-    aio_wrapper: Callable[Concatenate[type[T], AIO_P], AIO_R],
-    *,
-    surface_type: type[Surface_co] | None = None,
-) -> typing.Callable[
-    [
-        Callable[Concatenate[type[T], P], R],
-    ],
-    typing.Any,
 ]:
     """
     Decorator that creates a descriptor for a classmethod.
@@ -204,7 +161,6 @@ def wrapped_classmethod(
         A decorator that takes the sync wrapper (the method body or a @classmethod descriptor)
         and creates a WrappedClassMethodDescriptor
     """
-    _ = surface_type
 
     def decorator(
         sync_wrapper: Callable[Concatenate[type[T], P], R],
@@ -215,25 +171,9 @@ def wrapped_classmethod(
     return decorator
 
 
-@overload
 def wrapped_staticmethod(
     aio_wrapper: Callable[AIO_P, AIO_R],
-    *,
-    surface_type: type[Surface_co],
-) -> typing.Callable[[Callable[P, R]], _BoundOnAccessDescriptorSurface[Surface_co]]: ...
-
-
-@overload
-def wrapped_staticmethod(
-    aio_wrapper: Callable[AIO_P, AIO_R],
-) -> typing.Callable[[Callable[P, R]], WrappedStaticMethodDescriptor[P, R, AIO_P, AIO_R]]: ...
-
-
-def wrapped_staticmethod(
-    aio_wrapper: Callable[AIO_P, AIO_R],
-    *,
-    surface_type: type[Surface_co] | None = None,
-) -> typing.Callable[[Callable[P, R]], typing.Any]:
+) -> typing.Callable[[Callable[P, R]], WrappedStaticMethodDescriptor[P, R, AIO_P, AIO_R]]:
     """
     Decorator that creates a descriptor for a staticmethod.
 
@@ -244,12 +184,76 @@ def wrapped_staticmethod(
         A decorator that takes the sync wrapper (the method body or a @staticmethod descriptor)
         and creates a WrappedStaticMethodDescriptor
     """
-    _ = surface_type
 
     def decorator(
         sync_wrapper: Callable[P, R],
     ) -> WrappedStaticMethodDescriptor[P, R, AIO_P, AIO_R]:
         # Handle both raw functions and @staticmethod-wrapped functions
+        return WrappedStaticMethodDescriptor(sync_wrapper, aio_wrapper)
+
+    return decorator
+
+
+def wrapped_overloaded_function(
+    aio_wrapper: Callable[AIO_P, AIO_R],
+    *,
+    surface_type: type[Surface_co],
+) -> typing.Callable[[Callable[P, R]], Surface_co]:
+    _ = surface_type
+
+    def decorator(
+        sync_wrapper: Callable[P, R],
+    ) -> typing.Any:
+        return FunctionWithAio(sync_wrapper, aio_wrapper)
+
+    return decorator
+
+
+def wrapped_overloaded_method(
+    aio_wrapper: Callable[Concatenate[Any, AIO_P], AIO_R],
+    *,
+    surface_type: type[Surface_co],
+) -> typing.Callable[[Callable[Concatenate[Any, P], R]], _BoundInstanceMethodDescriptorSurface[Surface_co]]:
+    _ = surface_type
+
+    def decorator(
+        sync_wrapper: Callable[Concatenate[Any, P], R],
+    ) -> typing.Any:
+        return WrappedMethodDescriptor(sync_wrapper, aio_wrapper)
+
+    return decorator
+
+
+def wrapped_overloaded_classmethod(
+    aio_wrapper: Callable[Concatenate[type[T], AIO_P], AIO_R],
+    *,
+    surface_type: type[Surface_co],
+) -> typing.Callable[
+    [
+        Callable[Concatenate[type[T], P], R],
+    ],
+    _BoundOnAccessDescriptorSurface[Surface_co],
+]:
+    _ = surface_type
+
+    def decorator(
+        sync_wrapper: Callable[Concatenate[type[T], P], R],
+    ) -> typing.Any:
+        return WrappedClassMethodDescriptor(sync_wrapper, aio_wrapper)
+
+    return decorator
+
+
+def wrapped_overloaded_staticmethod(
+    aio_wrapper: Callable[AIO_P, AIO_R],
+    *,
+    surface_type: type[Surface_co],
+) -> typing.Callable[[Callable[P, R]], _BoundOnAccessDescriptorSurface[Surface_co]]:
+    _ = surface_type
+
+    def decorator(
+        sync_wrapper: Callable[P, R],
+    ) -> typing.Any:
         return WrappedStaticMethodDescriptor(sync_wrapper, aio_wrapper)
 
     return decorator

@@ -402,11 +402,14 @@ def test_emit_async_generator_template_pattern():
 def test_emit_function_overloads_translate_each_overload():
     code = emit_module_level_function(IR_FN_OVERLOADS_WITH_TRANSLATION, TARGET)
     compile(code, "<string>", "exec")
-    assert "@typing.overload" in code
-    assert "def fn_overloaded(value: int) -> int: ..." in code
-    assert 'def fn_overloaded(value: "Person") -> "Person": ...' in code
-    assert "async def __fn_overloaded_aio(value: int) -> int: ..." in code
-    assert 'async def __fn_overloaded_aio(value: "Person") -> "Person": ...' in code
+    assert "class _fn_overloaded_FunctionSurface(typing.Protocol):" in code
+    assert "def __call__(self, value: int) -> int: ..." in code
+    assert 'def __call__(self, value: "Person") -> "Person": ...' in code
+    assert "def aio(self, value: int) -> typing.Coroutine[typing.Any, typing.Any, int]: ..." in code
+    assert 'def aio(self, value: "Person") -> typing.Coroutine[typing.Any, typing.Any, "Person"]: ...' in code
+    assert "@wrapped_overloaded_function(__fn_overloaded_aio, surface_type=_fn_overloaded_FunctionSurface)" in code
+    assert "async def __fn_overloaded_aio(value) -> typing.Any:" in code
+    assert "def fn_overloaded(value) -> typing.Any:" in code
 
 
 def test_emit_async_generator_wrapped_yield_type_quoting():
