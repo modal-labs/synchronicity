@@ -8,6 +8,7 @@ Tests each transformer type for:
 """
 
 import pytest
+import sys
 
 from synchronicity.codegen.transformer_ir import ImplQualifiedRef, WrapperRef
 from synchronicity.codegen.transformer_materialize import (
@@ -23,7 +24,9 @@ from synchronicity.codegen.type_transformer import (
     IdentityTransformer,
     ListTransformer,
     OptionalTransformer,
+    SubscriptedWrappedClassTransformer,
     TupleTransformer,
+    UnionTransformer,
     WrappedClassTransformer,
 )
 
@@ -336,6 +339,93 @@ class TestOptionalTransformer:
         assert result == 42
 
 
+class TestUnionTransformer:
+    """Test UnionTransformer for general Union[T1, T2] types."""
+
+    def test_wrapped_type(self, wrapped_class):
+        transformer = UnionTransformer([IdentityTransformer(int), _make_wrapped_transformer(wrapped_class)])
+        assert transformer.wrapped_type("test_module") == "typing.Union[int, TestClass]"
+
+    def test_needs_translation(self, wrapped_class):
+        transformer = UnionTransformer([IdentityTransformer(int), _make_wrapped_transformer(wrapped_class)])
+        assert transformer.needs_translation() is True
+
+        identity_only = UnionTransformer([IdentityTransformer(int), IdentityTransformer(str)])
+        assert identity_only.needs_translation() is False
+
+    def test_wrap_expr_mixed_union(self, wrapped_class):
+        transformer = UnionTransformer([IdentityTransformer(int), _make_wrapped_transformer(wrapped_class)])
+        result = transformer.wrap_expr("test_module", "value")
+        assert "TestClass._from_impl(_v)" in result
+        assert "isinstance(_v, test.unit.transformers.test_type_transformers.TestUnionTransformer" not in result
+        assert "Unexpected value for union translation" in result
+
+    def test_unwrap_expr_mixed_union(self, wrapped_class):
+        transformer = UnionTransformer([IdentityTransformer(int), _make_wrapped_transformer(wrapped_class)])
+        result = transformer.unwrap_expr("value")
+        assert 'hasattr(_v, "_impl_instance")' in result
+        assert 'getattr(_v, "_impl_instance")' in result
+
+    def test_execution_wrap_expr_returns_wrapper(self, wrapped_class):
+        transformer = UnionTransformer([IdentityTransformer(int), _make_wrapped_transformer(wrapped_class)])
+
+        class TestClass:
+            @staticmethod
+            def _from_impl(impl):
+                return ("wrapped", impl.value)
+
+        impl = wrapped_class(9)
+        expr = transformer.wrap_expr("test_module", "value")
+        module = sys.modules[wrapped_class.__module__]
+        setattr(module, wrapped_class.__name__, wrapped_class)
+        result = eval(expr, {"value": impl, "TestClass": TestClass, "test": __import__("test")})
+        assert result == ("wrapped", 9)
+
+    def test_execution_unwrap_expr_returns_impl(self, wrapped_class):
+        transformer = UnionTransformer([IdentityTransformer(int), _make_wrapped_transformer(wrapped_class)])
+
+        class Wrapper:
+            def __init__(self, impl):
+                self._impl_instance = impl
+
+        impl = wrapped_class(9)
+        wrapper = Wrapper(impl)
+        expr = transformer.unwrap_expr("value")
+        module = sys.modules[wrapped_class.__module__]
+        setattr(module, wrapped_class.__name__, wrapped_class)
+        result = eval(expr, {"value": wrapper, "test": __import__("test")})
+        assert result is impl
+
+    def test_rejects_ambiguous_translated_union(self, wrapped_class):
+        transformer = UnionTransformer(
+            [
+                ListTransformer(_make_wrapped_transformer(wrapped_class)),
+                ListTransformer(IdentityTransformer(int)),
+            ],
+            source_label="pkg.mod.func return",
+        )
+        with pytest.raises(TypeError, match=r"pkg\.mod\.func return: .*list\[test_module\.TestClass\].*list\[int\]"):
+            transformer.wrap_expr("test_module", "value")
+
+    def test_allows_same_wrapped_generic_base(self, wrapped_class):
+        impl_ref = ImplQualifiedRef(module=wrapped_class.__module__, qualname=wrapped_class.__qualname__)
+        wrapper_ref = WrapperRef("test_module", "TestClass")
+        generic_str = SubscriptedWrappedClassTransformer(impl_ref, wrapper_ref, [IdentityTransformer(str)])
+        generic_list_int = SubscriptedWrappedClassTransformer(
+            impl_ref,
+            wrapper_ref,
+            [ListTransformer(IdentityTransformer(int))],
+        )
+
+        transformer = UnionTransformer([generic_str, generic_list_int], source_label="pkg.mod.func return")
+
+        wrap_expr = transformer.wrap_expr("test_module", "value")
+        unwrap_expr = transformer.unwrap_expr("value")
+
+        assert "TestClass._from_impl(_v)" in wrap_expr
+        assert 'getattr(_v, "_impl_instance")' in unwrap_expr
+
+
 class TestGeneratorTransformer:
     """Test GeneratorTransformer for Generator/AsyncGenerator types."""
 
@@ -458,6 +548,11 @@ class TestMaterializeFromAnnotation:
         transformer = _materialize(Optional[wrapped_class])
         assert isinstance(transformer, OptionalTransformer)
         assert isinstance(transformer.inner_transformer, WrappedClassTransformer)
+
+    def test_create_union(self, wrapped_class):
+        transformer = _materialize(int | wrapped_class)
+        assert isinstance(transformer, UnionTransformer)
+        assert len(transformer.item_transformers) == 2
 
     def test_create_async_generator(self):
         from typing import AsyncGenerator

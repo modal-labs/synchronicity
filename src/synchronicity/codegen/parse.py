@@ -227,6 +227,7 @@ def _parse_signature_ir(
     owner_has_type_parameters: bool,
     impl_modules: frozenset[str],
 ) -> tuple[SignatureIR, bool]:
+    source_label_prefix = f"{f.__module__}.{f.__qualname__}"
     return_annotation = annotations.get("return", sig.return_annotation)
 
     cm_value_type = _detect_async_context_manager_wrapper(f, return_annotation)
@@ -236,6 +237,7 @@ def _parse_signature_ir(
             owner_impl_type=owner_impl_type,
             owner_has_type_parameters=owner_has_type_parameters,
             impl_modules=impl_modules,
+            source_label=f"{source_label_prefix} return",
         )
         return_ir = AsyncContextManagerTypeIR(value=value_ir)
         parameters = parse_parameters_to_ir(
@@ -245,6 +247,7 @@ def _parse_signature_ir(
             owner_impl_type=owner_impl_type,
             owner_has_type_parameters=owner_has_type_parameters,
             impl_modules=impl_modules,
+            source_label_prefix=source_label_prefix,
         )
         return SignatureIR(parameters=parameters, return_transformer_ir=return_ir), False
 
@@ -257,6 +260,7 @@ def _parse_signature_ir(
         owner_impl_type=owner_impl_type,
         owner_has_type_parameters=owner_has_type_parameters,
         impl_modules=impl_modules,
+        source_label=f"{source_label_prefix} return",
     )
     parameters = parse_parameters_to_ir(
         sig,
@@ -265,6 +269,7 @@ def _parse_signature_ir(
         owner_impl_type=owner_impl_type,
         owner_has_type_parameters=owner_has_type_parameters,
         impl_modules=impl_modules,
+        source_label_prefix=source_label_prefix,
     )
 
     is_async_gen = is_async_generator(f, return_annotation)
@@ -479,6 +484,7 @@ def parse_class_wrapper_ir(
                         owner_impl_type=cls,
                         owner_has_type_parameters=bool(generic_typevars),
                         impl_modules=impl_modules,
+                        source_label=f"{cls.__module__}.{cls.__qualname__}.{name} return",
                     )
             # Parse setter value type
             has_setter = attr.fset is not None
@@ -496,6 +502,7 @@ def parse_class_wrapper_ir(
                             owner_impl_type=cls,
                             owner_has_type_parameters=bool(generic_typevars),
                             impl_modules=impl_modules,
+                            source_label=f"{cls.__module__}.{cls.__qualname__}.{name} parameter {value_param.name!r}",
                         )
             property_irs.append(
                 PropertyWrapperIR(
@@ -537,6 +544,7 @@ def parse_class_wrapper_ir(
                 owner_impl_type=cls,
                 owner_has_type_parameters=bool(generic_typevars),
                 impl_modules=impl_modules,
+                source_label=f"{cls.__module__}.{cls.__qualname__} attribute {name!r}",
             )
             attributes.append((name, annotation_ir))
 

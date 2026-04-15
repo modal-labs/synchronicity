@@ -17,6 +17,7 @@ from synchronicity.codegen.transformer_ir import (
     AwaitableTypeIR,
     IdentityTypeIR,
     ImplQualifiedRef,
+    UnionTypeIR,
     WrappedClassTypeIR,
     WrapperRef,
 )
@@ -255,3 +256,25 @@ def test_parse_method_overloads_are_captured_in_ir():
     assert isinstance(wrapped_overload.return_transformer_ir, AwaitableTypeIR)
     assert isinstance(wrapped_overload.return_transformer_ir.inner, WrappedClassTypeIR)
     assert wrapped_overload.return_transformer_ir.inner.wrapper == WrapperRef("generated.method_overload_parse", "Item")
+
+
+def test_parse_non_optional_unions_are_captured_in_ir():
+    m = Module("generated.union_parse")
+
+    @m.wrap_class
+    class Item:
+        pass
+
+    @m.wrap_function
+    async def convert(value: int | Item) -> int | Item:
+        return value
+
+    ir = parse_module_level_function_ir(convert, "generated.union_parse", globals_dict=locals())
+
+    assert isinstance(ir.parameters[0].annotation_ir, UnionTypeIR)
+    assert isinstance(ir.parameters[0].annotation_ir.items[0], IdentityTypeIR)
+    assert isinstance(ir.parameters[0].annotation_ir.items[1], WrappedClassTypeIR)
+    assert isinstance(ir.return_transformer_ir, AwaitableTypeIR)
+    assert isinstance(ir.return_transformer_ir.inner, UnionTypeIR)
+    assert isinstance(ir.return_transformer_ir.inner.items[0], IdentityTypeIR)
+    assert isinstance(ir.return_transformer_ir.inner.items[1], WrappedClassTypeIR)

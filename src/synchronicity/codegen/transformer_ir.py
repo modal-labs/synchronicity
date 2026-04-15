@@ -82,6 +82,12 @@ class OptionalTypeIR:
 
 
 @dataclasses.dataclass(frozen=True)
+class UnionTypeIR:
+    items: tuple[TypeTransformerIR, ...]
+    source_label: str | None = None
+
+
+@dataclasses.dataclass(frozen=True)
 class AsyncGeneratorTypeIR:
     yield_item: TypeTransformerIR
     send_type_str: str | None
@@ -135,6 +141,7 @@ TypeTransformerIR = typing.Union[
     DictTypeIR,
     TupleTypeIR,
     OptionalTypeIR,
+    UnionTypeIR,
     AsyncGeneratorTypeIR,
     SyncGeneratorTypeIR,
     AsyncIteratorTypeIR,

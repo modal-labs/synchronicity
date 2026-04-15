@@ -6,6 +6,7 @@ import collections.abc
 import contextlib
 import dataclasses
 import inspect
+import types
 import typing
 
 from synchronicity.module import _IMPL_WRAPPER_LOCATION_ATTR
@@ -30,6 +31,7 @@ from .transformer_ir import (
     TupleTypeIR,
     TypeTransformerIR,
     TypeVarIR,
+    UnionTypeIR,
     WrappedClassTypeIR,
     WrapperRef,
 )
@@ -97,6 +99,7 @@ def annotation_to_transformer_ir(
     owner_impl_type: type | None = None,
     owner_has_type_parameters: bool = False,
     impl_modules: frozenset[str] | None = None,
+    source_label: str | None = None,
 ) -> TypeTransformerIR:
     """Build :class:`transformer_ir.TypeTransformerIR` from a resolved annotation (no runtime transformers)."""
     if annotation == inspect.Signature.empty:
@@ -133,6 +136,7 @@ def annotation_to_transformer_ir(
                     owner_impl_type=owner_impl_type,
                     owner_has_type_parameters=owner_has_type_parameters,
                     impl_modules=impl_modules,
+                    source_label=source_label,
                 )
             )
         return IdentityTypeIR(tt._format_annotation_str(annotation))
@@ -145,12 +149,14 @@ def annotation_to_transformer_ir(
                     owner_impl_type=owner_impl_type,
                     owner_has_type_parameters=owner_has_type_parameters,
                     impl_modules=impl_modules,
+                    source_label=source_label,
                 ),
                 annotation_to_transformer_ir(
                     args[1],
                     owner_impl_type=owner_impl_type,
                     owner_has_type_parameters=owner_has_type_parameters,
                     impl_modules=impl_modules,
+                    source_label=source_label,
                 ),
             )
         return IdentityTypeIR(tt._format_annotation_str(annotation))
@@ -165,6 +171,7 @@ def annotation_to_transformer_ir(
                             owner_impl_type=owner_impl_type,
                             owner_has_type_parameters=owner_has_type_parameters,
                             impl_modules=impl_modules,
+                            source_label=source_label,
                         ),
                     ),
                     variadic=True,
@@ -176,6 +183,7 @@ def annotation_to_transformer_ir(
                         owner_impl_type=owner_impl_type,
                         owner_has_type_parameters=owner_has_type_parameters,
                         impl_modules=impl_modules,
+                        source_label=source_label,
                     )
                     for arg in args
                 ),
@@ -183,7 +191,7 @@ def annotation_to_transformer_ir(
             )
         return IdentityTypeIR(tt._format_annotation_str(annotation))
 
-    if origin is typing.Union:
+    if origin in (typing.Union, types.UnionType):
         non_none_args = [arg for arg in args if arg is not type(None)]
         if len(non_none_args) == 1 and type(None) in args:
             return OptionalTypeIR(
@@ -192,9 +200,22 @@ def annotation_to_transformer_ir(
                     owner_impl_type=owner_impl_type,
                     owner_has_type_parameters=owner_has_type_parameters,
                     impl_modules=impl_modules,
+                    source_label=source_label,
                 )
             )
-        return IdentityTypeIR(tt._format_annotation_str(annotation))
+        return UnionTypeIR(
+            tuple(
+                annotation_to_transformer_ir(
+                    arg,
+                    owner_impl_type=owner_impl_type,
+                    owner_has_type_parameters=owner_has_type_parameters,
+                    impl_modules=impl_modules,
+                    source_label=source_label,
+                )
+                for arg in args
+            ),
+            source_label=source_label,
+        )
 
     if origin is collections.abc.Generator or origin is collections.abc.Iterator:
         if args:
@@ -204,6 +225,7 @@ def annotation_to_transformer_ir(
                     owner_impl_type=owner_impl_type,
                     owner_has_type_parameters=owner_has_type_parameters,
                     impl_modules=impl_modules,
+                    source_label=source_label,
                 )
             )
         return IdentityTypeIR(tt._format_annotation_str(annotation))
@@ -216,6 +238,7 @@ def annotation_to_transformer_ir(
                     owner_impl_type=owner_impl_type,
                     owner_has_type_parameters=owner_has_type_parameters,
                     impl_modules=impl_modules,
+                    source_label=source_label,
                 )
             )
         return AsyncIteratorTypeIR(IdentityTypeIR(tt._format_annotation_str(typing.Any)))
@@ -228,6 +251,7 @@ def annotation_to_transformer_ir(
                     owner_impl_type=owner_impl_type,
                     owner_has_type_parameters=owner_has_type_parameters,
                     impl_modules=impl_modules,
+                    source_label=source_label,
                 )
             )
         return AsyncIterableTypeIR(IdentityTypeIR(tt._format_annotation_str(typing.Any)))
@@ -244,6 +268,7 @@ def annotation_to_transformer_ir(
                     owner_impl_type=owner_impl_type,
                     owner_has_type_parameters=owner_has_type_parameters,
                     impl_modules=impl_modules,
+                    source_label=source_label,
                 ),
                 send_type_str=send_type_str,
             )
@@ -257,6 +282,7 @@ def annotation_to_transformer_ir(
                     owner_impl_type=owner_impl_type,
                     owner_has_type_parameters=owner_has_type_parameters,
                     impl_modules=impl_modules,
+                    source_label=source_label,
                 )
             )
         return CoroutineTypeIR(IdentityTypeIR(tt._format_annotation_str(typing.Any)))
@@ -269,6 +295,7 @@ def annotation_to_transformer_ir(
                     owner_impl_type=owner_impl_type,
                     owner_has_type_parameters=owner_has_type_parameters,
                     impl_modules=impl_modules,
+                    source_label=source_label,
                 )
             )
         return AwaitableTypeIR(IdentityTypeIR(tt._format_annotation_str(typing.Any)))
@@ -281,6 +308,7 @@ def annotation_to_transformer_ir(
                     owner_impl_type=owner_impl_type,
                     owner_has_type_parameters=owner_has_type_parameters,
                     impl_modules=impl_modules,
+                    source_label=source_label,
                 )
             )
         return AsyncContextManagerTypeIR(value=IdentityTypeIR(tt._format_annotation_str(typing.Any)))
@@ -293,6 +321,7 @@ def annotation_to_transformer_ir(
                 owner_impl_type=owner_impl_type,
                 owner_has_type_parameters=owner_has_type_parameters,
                 impl_modules=impl_modules,
+                source_label=source_label,
             )
             for arg in args
         )
@@ -345,6 +374,11 @@ def materialize_transformer_ir(
         return tt.TupleTransformer([materialize_transformer_ir(e, runtime_package, ctx=ctx) for e in ir.elements])
     if isinstance(ir, OptionalTypeIR):
         return tt.OptionalTransformer(materialize_transformer_ir(ir.inner, runtime_package, ctx=ctx))
+    if isinstance(ir, UnionTypeIR):
+        return tt.UnionTransformer(
+            [materialize_transformer_ir(item, runtime_package, ctx=ctx) for item in ir.items],
+            source_label=ir.source_label,
+        )
     if isinstance(ir, AsyncGeneratorTypeIR):
         return tt.AsyncGeneratorTransformer(
             materialize_transformer_ir(ir.yield_item, runtime_package, ctx=ctx),

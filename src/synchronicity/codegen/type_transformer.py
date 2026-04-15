@@ -10,7 +10,9 @@ Transformers compose through nesting for complex types like list[Person].
 
 from __future__ import annotations
 
+import dataclasses
 import inspect
+import re
 import typing
 import uuid
 from abc import ABC, abstractmethod
@@ -454,6 +456,344 @@ class OptionalTransformer(TypeTransformer):
     ) -> dict[str, str]:
         """Recursively collect helpers from inner transformer."""
         return self.inner_transformer.get_wrapper_helpers(target_module, indent)
+
+
+@dataclasses.dataclass(frozen=True)
+class _UnionArmRuntimeSpec:
+    discriminator_key: tuple[str, ...] | None
+    runtime_action_key: tuple[str, ...] | None
+    unwrap_guard_expr: str | None
+    wrap_guard_expr: str | None
+    translated: bool
+    unwrap_value_expr: str
+    wrap_value_expr: str
+
+
+def _impl_ref_dotted(impl_ref: ImplQualifiedRef) -> str:
+    q = impl_ref.qualname
+    if ".<locals>." in q or q.startswith("<locals>."):
+        return f"{impl_ref.module}.{q.rpartition('.')[2]}"
+    return f"{impl_ref.module}.{q}"
+
+
+def _identity_runtime_expr(signature_text: str) -> str | None:
+    if signature_text in {"None", "int", "str", "bool", "float", "bytes", "complex"}:
+        return signature_text
+    if signature_text.startswith("typing."):
+        return None
+    if "[" in signature_text or "]" in signature_text or " " in signature_text or "|" in signature_text:
+        return None
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_\.]*", signature_text):
+        return None
+    return signature_text
+
+
+def _runtime_action_key(transformer: TypeTransformer) -> tuple[str, ...] | None:
+    if isinstance(transformer, IdentityStrTransformer):
+        return ("identity", transformer._signature_text)
+
+    if isinstance(transformer, IdentityTransformer):
+        return ("identity", _format_annotation_str(transformer.annotation))
+
+    if isinstance(transformer, WrappedClassTransformer):
+        return ("wrapped_impl", transformer.impl_ref.module, transformer.impl_ref.qualname)
+
+    if isinstance(transformer, SubscriptedWrappedClassTransformer):
+        inner = transformer._inner
+        return ("wrapped_impl", inner.impl_ref.module, inner.impl_ref.qualname)
+
+    if isinstance(transformer, TypeVarBoundTransformer):
+        return _runtime_action_key(transformer._bound)
+
+    if isinstance(transformer, SelfTransformer):
+        return ("wrapped_impl", transformer._impl.impl_ref.module, transformer._impl.impl_ref.qualname)
+
+    if isinstance(transformer, ListTransformer):
+        if not transformer.needs_translation():
+            return ("identity", "list")
+        item_key = _runtime_action_key(transformer.item_transformer)
+        if item_key is None:
+            return None
+        return ("list", *item_key)
+
+    if isinstance(transformer, DictTransformer):
+        if not transformer.needs_translation():
+            return ("identity", "dict")
+        key_key = _runtime_action_key(transformer.key_transformer)
+        value_key = _runtime_action_key(transformer.value_transformer)
+        if key_key is None or value_key is None:
+            return None
+        return ("dict", "key", *key_key, "value", *value_key)
+
+    if isinstance(transformer, TupleTransformer):
+        if not transformer.needs_translation():
+            return ("identity", "tuple")
+        if len(transformer.item_transformers) == 1:
+            item_key = _runtime_action_key(transformer.item_transformers[0])
+            if item_key is None:
+                return None
+            return ("tuple", "variadic", *item_key)
+        parts: list[str] = ["tuple", "fixed"]
+        for item_transformer in transformer.item_transformers:
+            item_key = _runtime_action_key(item_transformer)
+            if item_key is None:
+                return None
+            parts.extend(["item", *item_key])
+        return tuple(parts)
+
+    if isinstance(transformer, OptionalTransformer):
+        inner_key = _runtime_action_key(transformer.inner_transformer)
+        if inner_key is None:
+            return None
+        return ("optional", *inner_key)
+
+    return None
+
+
+def _union_arm_runtime_spec(
+    transformer: TypeTransformer,
+    target_module: str,
+    *,
+    is_async: bool,
+) -> _UnionArmRuntimeSpec:
+    if isinstance(transformer, (IdentityStrTransformer, IdentityTransformer)):
+        runtime_expr = _identity_runtime_expr(transformer.wrapped_type(target_module, is_async))
+        if runtime_expr == "None":
+            return _UnionArmRuntimeSpec(
+                discriminator_key=("none",),
+                runtime_action_key=_runtime_action_key(transformer),
+                unwrap_guard_expr="_v is None",
+                wrap_guard_expr="_v is None",
+                translated=False,
+                unwrap_value_expr="_v",
+                wrap_value_expr="_v",
+            )
+        if runtime_expr is not None:
+            return _UnionArmRuntimeSpec(
+                discriminator_key=("identity", runtime_expr),
+                runtime_action_key=_runtime_action_key(transformer),
+                unwrap_guard_expr=f"isinstance(_v, {runtime_expr})",
+                wrap_guard_expr=f"isinstance(_v, {runtime_expr})",
+                translated=False,
+                unwrap_value_expr="_v",
+                wrap_value_expr="_v",
+            )
+        return _UnionArmRuntimeSpec(
+            discriminator_key=None,
+            runtime_action_key=_runtime_action_key(transformer),
+            unwrap_guard_expr=None,
+            wrap_guard_expr=None,
+            translated=False,
+            unwrap_value_expr="_v",
+            wrap_value_expr="_v",
+        )
+
+    if isinstance(transformer, WrappedClassTransformer):
+        impl_expr = _impl_ref_dotted(transformer.impl_ref)
+        return _UnionArmRuntimeSpec(
+            discriminator_key=("impl", transformer.impl_ref.module, transformer.impl_ref.qualname),
+            runtime_action_key=_runtime_action_key(transformer),
+            unwrap_guard_expr=(
+                f'hasattr(_v, "_impl_instance") and ' f'isinstance(getattr(_v, "_impl_instance"), {impl_expr})'
+            ),
+            wrap_guard_expr=f"isinstance(_v, {impl_expr})",
+            translated=True,
+            unwrap_value_expr='getattr(_v, "_impl_instance")',
+            wrap_value_expr=transformer.wrap_expr(target_module, "_v", is_async),
+        )
+
+    if isinstance(transformer, SubscriptedWrappedClassTransformer):
+        inner = transformer._inner
+        impl_expr = _impl_ref_dotted(inner.impl_ref)
+        return _UnionArmRuntimeSpec(
+            discriminator_key=("impl", inner.impl_ref.module, inner.impl_ref.qualname),
+            runtime_action_key=_runtime_action_key(transformer),
+            unwrap_guard_expr=(
+                f'hasattr(_v, "_impl_instance") and ' f'isinstance(getattr(_v, "_impl_instance"), {impl_expr})'
+            ),
+            wrap_guard_expr=f"isinstance(_v, {impl_expr})",
+            translated=True,
+            unwrap_value_expr='getattr(_v, "_impl_instance")',
+            wrap_value_expr=transformer.wrap_expr(target_module, "_v", is_async),
+        )
+
+    if isinstance(transformer, TypeVarBoundTransformer):
+        spec = _union_arm_runtime_spec(transformer._bound, target_module, is_async=is_async)
+        return _UnionArmRuntimeSpec(
+            discriminator_key=spec.discriminator_key,
+            runtime_action_key=_runtime_action_key(transformer),
+            unwrap_guard_expr=spec.unwrap_guard_expr,
+            wrap_guard_expr=spec.wrap_guard_expr,
+            translated=True,
+            unwrap_value_expr=spec.unwrap_value_expr,
+            wrap_value_expr=transformer.wrap_expr(target_module, "_v", is_async),
+        )
+
+    if isinstance(transformer, SelfTransformer):
+        impl_expr = _impl_ref_dotted(transformer._impl.impl_ref)
+        return _UnionArmRuntimeSpec(
+            discriminator_key=("impl", transformer._impl.impl_ref.module, transformer._impl.impl_ref.qualname),
+            runtime_action_key=_runtime_action_key(transformer),
+            unwrap_guard_expr=(
+                f'hasattr(_v, "_impl_instance") and ' f'isinstance(getattr(_v, "_impl_instance"), {impl_expr})'
+            ),
+            wrap_guard_expr=f"isinstance(_v, {impl_expr})",
+            translated=True,
+            unwrap_value_expr='getattr(_v, "_impl_instance")',
+            wrap_value_expr=transformer.wrap_expr(target_module, "_v", is_async),
+        )
+
+    if isinstance(transformer, ListTransformer):
+        return _UnionArmRuntimeSpec(
+            discriminator_key=("list",),
+            runtime_action_key=_runtime_action_key(transformer),
+            unwrap_guard_expr="isinstance(_v, list)",
+            wrap_guard_expr="isinstance(_v, list)",
+            translated=transformer.needs_translation(),
+            unwrap_value_expr=transformer.unwrap_expr("_v"),
+            wrap_value_expr=transformer.wrap_expr(target_module, "_v", is_async),
+        )
+
+    if isinstance(transformer, DictTransformer):
+        return _UnionArmRuntimeSpec(
+            discriminator_key=("dict",),
+            runtime_action_key=_runtime_action_key(transformer),
+            unwrap_guard_expr="isinstance(_v, dict)",
+            wrap_guard_expr="isinstance(_v, dict)",
+            translated=transformer.needs_translation(),
+            unwrap_value_expr=transformer.unwrap_expr("_v"),
+            wrap_value_expr=transformer.wrap_expr(target_module, "_v", is_async),
+        )
+
+    if isinstance(transformer, TupleTransformer):
+        return _UnionArmRuntimeSpec(
+            discriminator_key=("tuple",),
+            runtime_action_key=_runtime_action_key(transformer),
+            unwrap_guard_expr="isinstance(_v, tuple)",
+            wrap_guard_expr="isinstance(_v, tuple)",
+            translated=transformer.needs_translation(),
+            unwrap_value_expr=transformer.unwrap_expr("_v"),
+            wrap_value_expr=transformer.wrap_expr(target_module, "_v", is_async),
+        )
+
+    raise TypeError(f"Union translation does not support runtime discrimination for {type(transformer).__name__}")
+
+
+class UnionTransformer(TypeTransformer):
+    """Transformer for top-level ``Union[...]`` values with runtime-discriminable branches."""
+
+    def __init__(self, item_transformers: list[TypeTransformer], source_label: str | None = None):
+        self.item_transformers = item_transformers
+        self.source_label = source_label
+
+    def wrapped_type(self, target_module: str, is_async: bool = True) -> str:
+        item_types = [t.wrapped_type(target_module, is_async) for t in self.item_transformers]
+        return f"typing.Union[{', '.join(item_types)}]"
+
+    def _error_prefix(self) -> str:
+        if self.source_label:
+            return f"{self.source_label}: "
+        return ""
+
+    def _arm_type_label(self, transformer: TypeTransformer) -> str:
+        return transformer.wrapped_type("", is_async=True)
+
+    def _runtime_specs(self, target_module: str, *, is_async: bool) -> list[_UnionArmRuntimeSpec]:
+        specs = [_union_arm_runtime_spec(t, target_module, is_async=is_async) for t in self.item_transformers]
+        if not any(spec.translated for spec in specs):
+            return specs
+
+        seen: dict[tuple[str, ...], _UnionArmRuntimeSpec] = {}
+        seen_labels: dict[tuple[str, ...], str] = {}
+        for spec, transformer in zip(specs, self.item_transformers, strict=False):
+            label = self._arm_type_label(transformer)
+            if spec.discriminator_key is None:
+                if spec.translated:
+                    raise TypeError(
+                        self._error_prefix()
+                        + "Union translation requires runtime-discriminable translated arms; "
+                        + f"unsupported union member {label!r}"
+                    )
+                continue
+            prev = seen.get(spec.discriminator_key)
+            if prev is not None and (prev.translated or spec.translated):
+                if (
+                    prev.translated
+                    and spec.translated
+                    and prev.runtime_action_key is not None
+                    and prev.runtime_action_key == spec.runtime_action_key
+                ):
+                    continue
+                previous_label = seen_labels[spec.discriminator_key]
+                raise TypeError(
+                    self._error_prefix()
+                    + "Union translation cannot disambiguate multiple arms with the same runtime shape "
+                    + f"{previous_label!r} and {label!r}"
+                )
+            seen[spec.discriminator_key] = spec
+            seen_labels[spec.discriminator_key] = label
+        return specs
+
+    def _branch_expr(self, target_module: str, var_name: str, *, is_async: bool, for_wrap: bool) -> str:
+        specs = self._runtime_specs(target_module, is_async=is_async)
+        if not any(spec.translated for spec in specs):
+            return var_name
+
+        none_specs = [spec for spec in specs if spec.discriminator_key == ("none",)]
+        translated_specs = [spec for spec in specs if spec.translated and spec.discriminator_key != ("none",)]
+        identity_known_specs = [
+            spec for spec in specs if not spec.translated and spec.discriminator_key not in {None, ("none",)}
+        ]
+        has_identity_fallback = any(not spec.translated and spec.discriminator_key is None for spec in specs)
+
+        cases: list[tuple[str, str]] = []
+        if none_specs:
+            none_spec = none_specs[0]
+            cases.append(
+                (
+                    none_spec.wrap_guard_expr if for_wrap else none_spec.unwrap_guard_expr,  # type: ignore[arg-type]
+                    none_spec.wrap_value_expr if for_wrap else none_spec.unwrap_value_expr,
+                )
+            )
+        for spec in translated_specs:
+            guard = spec.wrap_guard_expr if for_wrap else spec.unwrap_guard_expr
+            value_expr = spec.wrap_value_expr if for_wrap else spec.unwrap_value_expr
+            assert guard is not None
+            cases.append((guard, value_expr))
+        for spec in identity_known_specs:
+            guard = spec.wrap_guard_expr if for_wrap else spec.unwrap_guard_expr
+            value_expr = spec.wrap_value_expr if for_wrap else spec.unwrap_value_expr
+            assert guard is not None
+            cases.append((guard, value_expr))
+
+        fallback_expr = (
+            "_v"
+            if has_identity_fallback
+            else '(_ for _ in ()).throw(TypeError(f"Unexpected value for union translation: {type(_v)!r}"))'
+        )
+        expr = fallback_expr
+        for guard, value_expr in reversed(cases):
+            expr = f"({value_expr} if {guard} else {expr})"
+        return f"((lambda _v: {expr})({var_name}))"
+
+    def unwrap_expr(self, var_name: str) -> str:
+        return self._branch_expr("", var_name, is_async=True, for_wrap=False)
+
+    def wrap_expr(self, target_module: str, var_name: str, is_async: bool = True) -> str:
+        return self._branch_expr(target_module, var_name, is_async=is_async, for_wrap=True)
+
+    def needs_translation(self) -> bool:
+        return any(t.needs_translation() for t in self.item_transformers)
+
+    def get_wrapper_helpers(
+        self,
+        target_module: str,
+        indent: str = "    ",
+    ) -> dict[str, str]:
+        helpers: dict[str, str] = {}
+        for transformer in self.item_transformers:
+            helpers.update(transformer.get_wrapper_helpers(target_module, indent))
+        return helpers
 
 
 class AsyncGeneratorTransformer(TypeTransformer):
