@@ -32,6 +32,21 @@ async def duplicate(value: int | str) -> int | str:
     return value * 2
 
 
+@typing.overload
+async def maybe_wrap(value: int, wrap: typing.Literal[False]) -> int: ...
+
+
+@typing.overload
+async def maybe_wrap(value: int, wrap: typing.Literal[True]) -> Record: ...
+
+
+@wrapper_module.wrap_function
+async def maybe_wrap(value: int, wrap: bool) -> int | Record:
+    if wrap:
+        return Record(value)
+    return value
+
+
 @wrapper_module.wrap_class
 class Resolver:
     def __init__(self, offset: int):

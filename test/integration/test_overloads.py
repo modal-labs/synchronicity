@@ -11,9 +11,18 @@ from test.integration.test_utils import check_pyright
 
 def test_runtime():
     import overloads
+    import overloads_impl
 
     assert overloads.duplicate(4) == 8
     assert overloads.duplicate("ab") == "abab"
+
+    maybe_unwrapped = overloads.maybe_wrap(4, False)
+    assert maybe_unwrapped == 4
+
+    maybe_wrapped = overloads.maybe_wrap(4, True)
+    assert isinstance(maybe_wrapped, overloads.Record)
+    assert not isinstance(maybe_wrapped, overloads_impl.Record)
+    assert maybe_wrapped.value == 4
 
     record = overloads.Record(6)
     assert record.value == 6
@@ -25,6 +34,14 @@ def test_runtime():
     async def check_async() -> None:
         assert await overloads.duplicate.aio(4) == 8
         assert await overloads.duplicate.aio("ab") == "abab"
+
+        async_unwrapped = await overloads.maybe_wrap.aio(4, False)
+        assert async_unwrapped == 4
+
+        async_wrapped = await overloads.maybe_wrap.aio(4, True)
+        assert isinstance(async_wrapped, overloads.Record)
+        assert not isinstance(async_wrapped, overloads_impl.Record)
+        assert async_wrapped.value == 4
 
         assert await resolver.resolve.aio(2) == 7
         assert await resolver.resolve.aio("name") == "name:5"
@@ -43,6 +60,18 @@ def test_generated_wrapper_contains_overloads():
     assert "def aio(self, value: int) -> typing.Coroutine[typing.Any, typing.Any, int]: ..." in source
     assert "def aio(self, value: str) -> typing.Coroutine[typing.Any, typing.Any, str]: ..." in source
     assert "@wrapped_overloaded_function(__duplicate_aio, surface_type=_duplicate_FunctionSurface)" in source
+    assert "class _maybe_wrap_FunctionSurface(typing.Protocol):" in source
+    assert "def __call__(self, value: int, wrap: typing.Literal[False]) -> int: ..." in source
+    assert 'def __call__(self, value: int, wrap: typing.Literal[True]) -> "Record": ...' in source
+    assert (
+        "def aio(self, value: int, wrap: typing.Literal[False]) -> "
+        "typing.Coroutine[typing.Any, typing.Any, int]: ..."
+    ) in source
+    assert (
+        "def aio(self, value: int, wrap: typing.Literal[True]) -> "
+        'typing.Coroutine[typing.Any, typing.Any, "Record"]: ...'
+    ) in source
+    assert "@wrapped_overloaded_function(__maybe_wrap_aio, surface_type=_maybe_wrap_FunctionSurface)" in source
     assert "class _Resolver_resolve_MethodSurface(typing.Protocol):" in source
     assert "def __call__(self, value: int) -> int: ..." in source
     assert "def __call__(self, value: str) -> str: ..." in source
