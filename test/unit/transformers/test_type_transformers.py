@@ -423,6 +423,8 @@ class TestUnionTransformer:
         unwrap_expr = transformer.unwrap_expr("value")
 
         assert "TestClass._from_impl(_v)" in wrap_expr
+        assert wrap_expr.count("TestClass._from_impl(_v)") == 1
+        assert unwrap_expr.count('hasattr(_v, "_impl_instance")') == 1
         assert 'getattr(_v, "_impl_instance")' in unwrap_expr
 
 

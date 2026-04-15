@@ -703,6 +703,7 @@ class UnionTransformer(TypeTransformer):
         if not any(spec.translated for spec in specs):
             return specs
 
+        unique_specs: list[_UnionArmRuntimeSpec] = []
         seen: dict[tuple[str, ...], _UnionArmRuntimeSpec] = {}
         seen_labels: dict[tuple[str, ...], str] = {}
         for spec, transformer in zip(specs, self.item_transformers, strict=False):
@@ -714,25 +715,24 @@ class UnionTransformer(TypeTransformer):
                         + "Union translation requires runtime-discriminable translated arms; "
                         + f"unsupported union member {label!r}"
                     )
+                unique_specs.append(spec)
                 continue
             prev = seen.get(spec.discriminator_key)
-            if prev is not None and (prev.translated or spec.translated):
-                if (
-                    prev.translated
-                    and spec.translated
-                    and prev.runtime_action_key is not None
-                    and prev.runtime_action_key == spec.runtime_action_key
-                ):
+            if prev is not None:
+                if prev.runtime_action_key is not None and prev.runtime_action_key == spec.runtime_action_key:
                     continue
-                previous_label = seen_labels[spec.discriminator_key]
-                raise TypeError(
-                    self._error_prefix()
-                    + "Union translation cannot disambiguate multiple arms with the same runtime shape "
-                    + f"{previous_label!r} and {label!r}"
-                )
+                if prev.translated or spec.translated:
+                    previous_label = seen_labels[spec.discriminator_key]
+                    raise TypeError(
+                        self._error_prefix()
+                        + "Union translation cannot disambiguate multiple arms with the same runtime shape "
+                        + f"{previous_label!r} and {label!r}"
+                    )
+                continue
             seen[spec.discriminator_key] = spec
             seen_labels[spec.discriminator_key] = label
-        return specs
+            unique_specs.append(spec)
+        return unique_specs
 
     def _branch_expr(self, target_module: str, var_name: str, *, is_async: bool, for_wrap: bool) -> str:
         specs = self._runtime_specs(target_module, is_async=is_async)
