@@ -21,12 +21,12 @@
   - For an **unbounded** type variable, a plausible policy is to treat values as **opaque** at the wrapper/impl bridge: do not unwrap/wrap even if a concrete substitution could have been a wrapped type, because the implementation contract is not allowed to depend on wrapped-class structure—only on the opaque type parameter.
   - Still worth spelling out edge cases (e.g. users instantiating `G[Wrapper]` where `T` is unbounded), deciding what we guarantee, and **documenting** the chosen behavior either way.
 
-- [ ] **Support a different kind of generation manifest**
-  - [ ] One idea is to just put Modules and their specs in a separate file from implementation (should already be possible but needs to be confirmed)
-  - [ ] One idea is to piggyback on `__all__`
-
 - [ ] Transfer docstrings to generated wrappers
 - [ ] Backport some of the traceback stripping (if needed?)
+- [ ] **Unify async-generator wrapper surface semantics**
+  - Raw async-generator wrappers currently require calling `.aio()` on the wrapper method/function before they become async-iterable
+  - This is inconsistent with wrappers for callables returning `AsyncGenerator[...]`, where the wrapper result is already directly async-iterable
+  - Migrate toward a single, more consistent async-generator surface model
 - [ ] **Improve error messages in code generation**
   - Better diagnostics when type annotations are missing
   - Clear error messages for unsupported type constructs
@@ -73,3 +73,10 @@ If we make the code generator include the library code itself (the synchronizer 
 This isn't trivial with the current structure where we use things like synchronicity.Module in library code
 to mark what entities to generate code for (this import would fail), and would require some restructuring - for example pre-generation of the code that contains Module, or a separate set of manifest files that determine what
 to emit in codegen.
+
+### Support a different kind of generation manifest**
+1. One idea is to just put Modules and their specs in a separate file from implementation (should already be possible but needs to be confirmed).
+2. One idea is to piggyback on `__all__`
+
+Moving away from decorators as a manifest has one big disadvantage - the decorators ensure statically that *when an implementation type is instantiated, even if that is in a private scope* we know that the type's potential wrappers will have been registered by nature of the type being imported (since the decorator executes at the same time as the type creation). This is critical to get
+type "upgrades" to work, i.e. wrapping a returned object in a subtype of the declared return value.

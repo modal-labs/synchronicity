@@ -486,6 +486,9 @@ def emit_function_surface_protocol(
     helpers_code = "\n".join(helpers_dict.values()) if helpers_dict else ""
 
     if ir.is_async_gen:
+        # TODO: Migrate away from raw async-generator wrappers requiring `.aio()`.
+        # This is inconsistent with wrappers for callables returning AsyncGenerator,
+        # where the wrapper result is already directly async-iterable.
         aio_body = f"impl_function = {impl_dotted}"
         if unwrap_code:
             aio_body += "\n" + unwrap_code
@@ -623,6 +626,9 @@ def emit_method_surface_protocol(
     aio_body: str
     if mir.method_type == MethodBindingKind.INSTANCE:
         if mir.is_async_gen:
+            # TODO: Migrate away from raw async-generator method wrappers requiring `.aio()`.
+            # This is inconsistent with wrappers for methods returning AsyncGenerator,
+            # where the wrapper result is already directly async-iterable.
             wrap_expr = return_transformer.wrap_expr(current_target_module, "gen").replace(
                 "self.", "self._wrapper_instance."
             )
