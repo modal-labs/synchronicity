@@ -19,7 +19,7 @@ def test_vendor_runtime_writes_expected_files(tmp_path: Path) -> None:
     for name in ("module.py", "types.py", "descriptor.py", "synchronizer.py", "__init__.py"):
         assert (dest / name).is_file()
     text = (dest / "__init__.py").read_text(encoding="utf-8")
-    assert "FunctionWithAio" in text
+    assert "FunctionWithAio" not in text
     assert "Module" in text
 
 

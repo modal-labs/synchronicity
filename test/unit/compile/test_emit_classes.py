@@ -663,7 +663,7 @@ def test_emit_class_basic():
     compile(code, "<string>", "exec")
     assert f"class {_impl_short(ir)}:" in code
     assert "_impl_instance" in code
-    assert "@wrapped_method(" in code
+    assert "@wrapped_surface_method(" in code
     assert "def get_value(self" in code
     assert "def set_value(self" in code
     assert "def add_to_value(self" in code
@@ -672,10 +672,11 @@ def test_emit_class_basic():
 
 def test_emit_class_method_descriptors():
     code = emit_class_from_ir(IR_CLASS_SIMPLE, TARGET)
-    assert "MethodSurface" not in code
-    assert "@wrapped_method(__add_to_value_aio)" in code
-    assert "async def __add_to_value_aio(self, amount: int) -> int" in code
+    assert "class _EmitSimpleClass_add_to_value_MethodSurface:" in code
+    assert "@wrapped_surface_method(_EmitSimpleClass_add_to_value_MethodSurface)" in code
+    assert "async def aio(self, amount: int) -> int:" in code
     assert "def add_to_value(self, amount: int) -> int" in code
+    assert "return self._sync_impl(amount)" in code
 
 
 def test_emit_class_complex_types():
@@ -705,7 +706,7 @@ def test_emit_class_async_generators():
 def test_emit_class_mixed_methods():
     code = emit_class_from_ir(IR_CLASS_MIXED, TARGET)
     compile(code, "<string>", "exec")
-    assert "@wrapped_method(" in code
+    assert "@wrapped_surface_method(" in code
     assert "def process_sync(self" in code
     assert "def process_generator(self" in code
 
@@ -767,20 +768,20 @@ def test_emit_class_constructor_with_wrapped_param():
 
 def test_emit_class_sync_method_returning_coroutine():
     code = emit_class_from_ir(IR_CLASS_COROUTINE_METHOD, TARGET)
-    assert "MethodSurface" not in code
-    assert "@wrapped_method(__create_coroutine_aio)" in code
+    assert "class _EmitCoroutineMethodClass_create_coroutine_MethodSurface:" in code
+    assert "@wrapped_surface_method(_EmitCoroutineMethodClass_create_coroutine_MethodSurface)" in code
     assert "def create_coroutine(self, x: int) -> str:" in code
-    assert "async def __create_coroutine_aio(self, x: int) -> str:" in code
+    assert "async def aio(self, x: int) -> str:" in code
     assert "_run_function_sync" in code
     assert "_run_function_async" in code
 
 
 def test_emit_class_sync_method_returning_awaitable():
     code = emit_class_from_ir(IR_CLASS_AWAITABLE_METHOD, TARGET)
-    assert "MethodSurface" not in code
-    assert "@wrapped_method(__create_awaitable_aio)" in code
+    assert "class _EmitAwaitableMethodClass_create_awaitable_MethodSurface:" in code
+    assert "@wrapped_surface_method(_EmitAwaitableMethodClass_create_awaitable_MethodSurface)" in code
     assert "def create_awaitable(self, x: int) -> str:" in code
-    assert "async def __create_awaitable_aio(self, x: int) -> str:" in code
+    assert "async def aio(self, x: int) -> str:" in code
     assert "_run_function_sync" in code
     assert "_run_function_async" in code
 
@@ -791,11 +792,11 @@ def test_emit_class_method_overloads_translate_each_overload():
     assert "class _EmitOverloadedMethodClass_resolve_MethodSurface:" in code
     assert "def __call__(self, value: int) -> int: ..." in code
     assert 'def __call__(self, value: "Node") -> "Node": ...' in code
-    assert "def aio(self, value: int) -> typing.Coroutine[typing.Any, typing.Any, int]: ..." in code
-    assert 'def aio(self, value: "Node") -> typing.Coroutine[typing.Any, typing.Any, "Node"]: ...' in code
+    assert "async def aio(self, value: int) -> int: ..." in code
+    assert 'async def aio(self, value: "Node") -> "Node": ...' in code
     assert "def __call__(self, value) -> typing.Any:" in code
     assert "return self._sync_impl(value)" in code
-    assert "def aio(self, value) -> typing.Coroutine[typing.Any, typing.Any, typing.Any]:" in code
+    assert "async def aio(self, value) -> typing.Any:" in code
     assert "@wrapped_overloaded_method(_EmitOverloadedMethodClass_resolve_MethodSurface)" in code
     assert "impl_method = test.unit.compile.test_emit_classes.EmitOverloadedMethodClass.resolve" in code
     assert "def resolve(self, value) -> typing.Any:" in code

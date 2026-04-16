@@ -356,7 +356,7 @@ def test_emit_async_generator_wrapping_helpers():
     assert "yield from _synchronizer._run_generator_sync(gen)" in compiled_code
     assert "await _wrapped.asend(_sent)" in compiled_code
     assert "await _wrapped.aclose()" in compiled_code
-    assert "async def __fn_simple_gen_aio" in compiled_code or "async def __" in compiled_code
+    assert "async def aio(self)" in compiled_code
     assert '-> "typing.Generator[str, None, None]":' in compiled_code
     assert '-> "typing.AsyncGenerator[str, None]":' in compiled_code
 
@@ -376,7 +376,7 @@ def test_emit_tuple_of_generators():
         in compiled_code
     )
     assert (
-        "async def __fn_tuple_generators_aio() -> "
+        "async def aio(self) -> "
         '"tuple[typing.AsyncGenerator[str, None], typing.AsyncGenerator[int, None]]":' in compiled_code
     )
 

@@ -18,13 +18,11 @@ Includes the runtime used by generated wrappers plus `Module` for implementation
 The `synchronicity` CLI / codegen package is still installed separately at build time.
 """
 
-from .descriptor import FunctionWithAio
 from .module import DEFAULT_SYNCHRONIZER_NAME, Module
 from .synchronizer import Synchronizer, classproperty, get_synchronizer
 
 __all__ = [
     "DEFAULT_SYNCHRONIZER_NAME",
-    "FunctionWithAio",
     "Module",
     "Synchronizer",
     "classproperty",
