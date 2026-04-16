@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import re
+import textwrap
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -276,6 +277,15 @@ def _bound_surface_method_signature_line(
     return f"def {method_name}({all_params}){return_str}: ..."
 
 
+def _bound_surface_method_definition_line(
+    method_name: str,
+    param_str: str,
+    return_str: str,
+) -> str:
+    all_params = "self" if not param_str else f"self, {param_str}"
+    return f"def {method_name}({all_params}){return_str}:"
+
+
 def _strip_return_annotation(return_str: str) -> str:
     if not return_str:
         return ""
@@ -283,6 +293,19 @@ def _strip_return_annotation(return_str: str) -> str:
     if return_str.startswith(prefix):
         return return_str[len(prefix) :]
     return return_str
+
+
+def _surface_aio_return_str(async_return_str: str, *, is_async_gen: bool) -> str:
+    async_return_type = _strip_return_annotation(async_return_str)
+    if not async_return_type:
+        return ""
+    if is_async_gen:
+        return f" -> {async_return_type}"
+    return f" -> typing.Coroutine[typing.Any, typing.Any, {async_return_type}]"
+
+
+def _indent_block(block: str, indent: str = "    ") -> str:
+    return "\n".join(f"{indent}{line}" if line else "" for line in block.split("\n"))
 
 
 def _rewrite_surface_annotation_text(text: str, self_type_name: str | None) -> str:
@@ -438,20 +461,91 @@ def emit_function_surface_protocol(
         runtime_package,
         mat_ctx=mat_ctx,
     )
-    protocol_name = _function_surface_protocol_name(ir.impl_ref.qualname.rpartition(".")[2])
-    if generic_parameters:
-        header = f"class {protocol_name}(typing.Protocol[{', '.join(generic_parameters)}]):"
+    surface_name = _function_surface_protocol_name(ir.impl_ref.qualname.rpartition(".")[2])
+    return_transformer = materialize_transformer_ir(ir.return_transformer_ir, runtime_package, ctx=mat_ctx)
+    param_str, call_args_str, unwrap_code = format_parameters_for_emit(
+        ir.parameters,
+        target_module,
+        runtime_package,
+        unwrap_indent="        ",
+        mat_ctx=mat_ctx,
+    )
+    sync_return_str, async_return_str = _format_return_annotation(return_transformer, target_module)
+    aio_return_str = _surface_aio_return_str(async_return_str, is_async_gen=ir.is_async_gen)
+    impl_name = ir.impl_ref.qualname.rpartition(".")[2]
+    impl_dotted = f"{ir.impl_ref.module}.{impl_name}"
+
+    helpers_dict = return_transformer.get_wrapper_helpers(target_module, indent="    ")
+    if isinstance(return_transformer, (AwaitableTransformer, CoroutineTransformer)):
+        helpers_dict.update(return_transformer.return_transformer.get_wrapper_helpers(target_module, indent="    "))
+    helpers_code = "\n".join(helpers_dict.values()) if helpers_dict else ""
+
+    if ir.is_async_gen:
+        aio_body = f"impl_function = {impl_dotted}"
+        if unwrap_code:
+            aio_body += "\n" + unwrap_code
+        aio_body += "\n" + (
+            f"gen = impl_function({call_args_str})\n"
+            f"_wrapped = {return_transformer.wrap_expr(target_module, 'gen')}\n"
+            f"_sent = None\n"
+            f"try:\n"
+            f"    while True:\n"
+            f"        try:\n"
+            f"            _item = await _wrapped.asend(_sent)\n"
+            f"            _sent = yield _item\n"
+            f"        except StopAsyncIteration:\n"
+            f"            break\n"
+            f"finally:\n"
+            f"    await _wrapped.aclose()"
+        )
     else:
-        header = f"class {protocol_name}(typing.Protocol):"
+        aio_body = f"impl_function = {impl_dotted}"
+        if unwrap_code:
+            aio_body += "\n" + unwrap_code
+        aio_body += "\n" + _build_call_with_wrap(
+            f"impl_function({call_args_str})",
+            return_transformer,
+            target_module,
+            indent="",
+            is_async=True,
+            is_function=False,
+        )
+
+    if generic_parameters:
+        header = f"class {surface_name}(typing.Generic[{', '.join(generic_parameters)}]):"
+    else:
+        header = f"class {surface_name}:"
 
     body_lines: list[str] = []
-    for param_str, sync_return_str, _aio_return_str in variants:
+    body_lines.extend(
+        [
+            "    def __init__(self, sync_impl: typing.Callable[..., typing.Any]):",
+            "        self._sync_impl = sync_impl",
+            "",
+        ]
+    )
+    for overload_param_str, overload_sync_return_str, _overload_aio_return_str in variants:
         body_lines.append("    @typing.overload")
-        body_lines.append("    " + _bound_surface_method_signature_line("__call__", param_str, sync_return_str))
+        body_lines.append(
+            "    " + _bound_surface_method_signature_line("__call__", overload_param_str, overload_sync_return_str)
+        )
     body_lines.append("")
-    for param_str, _sync_return_str, aio_return_str in variants:
+    for overload_param_str, _overload_sync_return_str, overload_aio_return_str in variants:
         body_lines.append("    @typing.overload")
-        body_lines.append("    " + _bound_surface_method_signature_line("aio", param_str, aio_return_str))
+        body_lines.append(
+            "    " + _bound_surface_method_signature_line("aio", overload_param_str, overload_aio_return_str)
+        )
+    body_lines.append("")
+    body_lines.append("    " + _bound_surface_method_definition_line("__call__", param_str, sync_return_str))
+    body_lines.append(f"        return self._sync_impl({call_args_str})")
+    body_lines.append("")
+    body_lines.append("    " + _bound_surface_method_definition_line("aio", param_str, aio_return_str))
+    body_lines.append("        async def _aio_impl():")
+    body_lines.append(_indent_block(textwrap.dedent(aio_body).rstrip(), "            "))
+    body_lines.append("        return _aio_impl()")
+    if helpers_code:
+        body_lines.append("")
+        body_lines.append(helpers_code)
     return f"{header}\n" + "\n".join(body_lines)
 
 
@@ -487,26 +581,192 @@ def emit_method_surface_protocol(
         runtime_package,
         mat_ctx=mat_ctx,
     )
-    protocol_name = _method_surface_protocol_name(owner, mir.method_name)
-    if generic_parameters:
-        header = f"class {protocol_name}(typing.Protocol[{', '.join(generic_parameters)}]):"
+    surface_name = _method_surface_protocol_name(owner, mir.method_name)
+    current_target_module = owner.target_module
+    return_transformer = materialize_transformer_ir(mir.return_transformer_ir, runtime_package, ctx=mat_ctx)
+    param_str, call_args_str, unwrap_code = format_parameters_for_emit(
+        mir.parameters,
+        current_target_module,
+        runtime_package,
+        unwrap_indent="        ",
+        mat_ctx=mat_ctx,
+    )
+    sync_return_str, async_return_str = _format_return_annotation(return_transformer, current_target_module)
+    aio_return_str = _surface_aio_return_str(async_return_str, is_async_gen=mir.is_async_gen)
+    impl_dotted = _impl_type_dotted(owner.impl_ref)
+    short_name = _wrapper_short_name(owner.impl_ref)
+    call_expr_prefix = _method_impl_call_expr(
+        mir.method_type,
+        impl_dotted,
+        mir.method_name,
+        call_args_str,
+    )
+
+    helpers_dict = return_transformer.get_wrapper_helpers(current_target_module, indent="    ")
+    if isinstance(return_transformer, (AwaitableTransformer, CoroutineTransformer)):
+        helpers_dict.update(
+            return_transformer.return_transformer.get_wrapper_helpers(current_target_module, indent="    ")
+        )
+    helpers_code = "\n".join(helpers_dict.values()) if helpers_dict else ""
+
+    aio_body: str
+    if mir.method_type == MethodBindingKind.INSTANCE:
+        if mir.is_async_gen:
+            wrap_expr = return_transformer.wrap_expr(current_target_module, "gen").replace(
+                "self.", "self._wrapper_instance."
+            )
+            aio_body = f"impl_method = {impl_dotted}.{mir.method_name}"
+            if unwrap_code:
+                aio_body += "\n" + unwrap_code
+            aio_body += "\n" + (
+                f"gen = {call_expr_prefix}\n"
+                f"_wrapped = {wrap_expr}\n"
+                f"_sent = None\n"
+                f"try:\n"
+                f"    while True:\n"
+                f"        try:\n"
+                f"            _item = await _wrapped.asend(_sent)\n"
+                f"            _sent = yield _item\n"
+                f"        except StopAsyncIteration:\n"
+                f"            break\n"
+                f"finally:\n"
+                f"    await _wrapped.aclose()"
+            )
+        else:
+            aio_body = _build_call_with_wrap(
+                call_expr_prefix,
+                return_transformer,
+                current_target_module,
+                indent="",
+                is_async=True,
+                method_type=mir.method_type,
+                method_owner_impl_ref=owner.impl_ref,
+            )
+            aio_prelude = f"impl_method = {impl_dotted}.{mir.method_name}"
+            if unwrap_code:
+                aio_prelude += "\n" + unwrap_code
+            aio_body = (aio_prelude + "\n" + aio_body).replace("wrapper_instance", "self._wrapper_instance")
+    elif mir.method_type == MethodBindingKind.CLASSMETHOD:
+        if mir.is_async_gen:
+            wrap_expr = return_transformer.wrap_expr(current_target_module, "gen").replace(
+                "self.", "self._wrapper_class."
+            )
+            aio_body = ""
+            if unwrap_code:
+                aio_body = unwrap_code + "\n"
+            aio_body += (
+                f"gen = {call_expr_prefix}\n"
+                f"_wrapped = {wrap_expr}\n"
+                f"_sent = None\n"
+                f"try:\n"
+                f"    while True:\n"
+                f"        try:\n"
+                f"            _item = await _wrapped.asend(_sent)\n"
+                f"            _sent = yield _item\n"
+                f"        except StopAsyncIteration:\n"
+                f"            break\n"
+                f"finally:\n"
+                f"    await _wrapped.aclose()"
+            )
+        else:
+            aio_body = _build_call_with_wrap(
+                call_expr_prefix,
+                return_transformer,
+                current_target_module,
+                indent="",
+                is_async=True,
+                method_type=mir.method_type,
+                method_owner_impl_ref=owner.impl_ref,
+            )
+            if unwrap_code:
+                aio_body = unwrap_code + "\n" + aio_body
+        aio_body = aio_body.replace("wrapper_class", "self._wrapper_class").replace("cls.", "self._wrapper_class.")
     else:
-        header = f"class {protocol_name}(typing.Protocol):"
+        if mir.is_async_gen:
+            wrap_expr_raw = return_transformer.wrap_expr(current_target_module, "gen")
+            wrap_expr = (
+                wrap_expr_raw.replace("self.", f"{short_name}()._").replace("_(", "(")
+                if "self." in wrap_expr_raw
+                else wrap_expr_raw
+            )
+            aio_body = ""
+            if unwrap_code:
+                aio_body = unwrap_code + "\n"
+            aio_body += (
+                f"gen = {call_expr_prefix}\n"
+                f"_wrapped = {wrap_expr}\n"
+                f"_sent = None\n"
+                f"try:\n"
+                f"    while True:\n"
+                f"        try:\n"
+                f"            _item = await _wrapped.asend(_sent)\n"
+                f"            _sent = yield _item\n"
+                f"        except StopAsyncIteration:\n"
+                f"            break\n"
+                f"finally:\n"
+                f"    await _wrapped.aclose()"
+            )
+        else:
+            aio_body = _build_call_with_wrap(
+                call_expr_prefix,
+                return_transformer,
+                current_target_module,
+                indent="",
+                is_async=True,
+                method_type=mir.method_type,
+                method_owner_impl_ref=owner.impl_ref,
+            )
+            if unwrap_code:
+                aio_body = unwrap_code + "\n" + aio_body
+
+    if generic_parameters:
+        header = f"class {surface_name}(typing.Generic[{', '.join(generic_parameters)}]):"
+    else:
+        header = f"class {surface_name}:"
 
     body_lines: list[str] = []
-    if mir.overloads:
-        for param_str, sync_return_str, _aio_return_str in variants:
-            body_lines.append("    @typing.overload")
-            body_lines.append("    " + _bound_surface_method_signature_line("__call__", param_str, sync_return_str))
+    wrapper_instance_type = "typing.Any" if mir.method_type == MethodBindingKind.INSTANCE else "typing.Any | None"
+    body_lines.extend(
+        [
+            "    def __init__(",
+            "        self,",
+            "        sync_impl: typing.Callable[..., typing.Any],",
+            f"        wrapper_instance: {wrapper_instance_type},",
+            "        wrapper_class: type,",
+            "        _from_impl: typing.Callable[[typing.Any], typing.Any],",
+            "    ):",
+            "        self._sync_impl = sync_impl",
+            "        self._wrapper_instance = wrapper_instance",
+            "        self._wrapper_class = wrapper_class",
+            "        self._surface_from_impl = _from_impl",
+            "",
+            "    def _from_impl(self, impl_instance: typing.Any) -> typing.Any:",
+            "        return self._surface_from_impl(impl_instance)",
+            "",
+        ]
+    )
+    for overload_param_str, overload_sync_return_str, _overload_aio_return_str in variants:
+        body_lines.append("    @typing.overload")
+        body_lines.append(
+            "    " + _bound_surface_method_signature_line("__call__", overload_param_str, overload_sync_return_str)
+        )
+    body_lines.append("")
+    for overload_param_str, _overload_sync_return_str, overload_aio_return_str in variants:
+        body_lines.append("    @typing.overload")
+        body_lines.append(
+            "    " + _bound_surface_method_signature_line("aio", overload_param_str, overload_aio_return_str)
+        )
+    body_lines.append("")
+    body_lines.append("    " + _bound_surface_method_definition_line("__call__", param_str, sync_return_str))
+    body_lines.append(f"        return self._sync_impl({call_args_str})")
+    body_lines.append("")
+    body_lines.append("    " + _bound_surface_method_definition_line("aio", param_str, aio_return_str))
+    body_lines.append("        async def _aio_impl():")
+    body_lines.append(_indent_block(textwrap.dedent(aio_body).rstrip(), "            "))
+    body_lines.append("        return _aio_impl()")
+    if helpers_code:
         body_lines.append("")
-        for param_str, _sync_return_str, aio_return_str in variants:
-            body_lines.append("    @typing.overload")
-            body_lines.append("    " + _bound_surface_method_signature_line("aio", param_str, aio_return_str))
-    else:
-        param_str, sync_return_str, aio_return_str = variants[0]
-        body_lines.append("    " + _bound_surface_method_signature_line("__call__", param_str, sync_return_str))
-        body_lines.append("")
-        body_lines.append("    " + _bound_surface_method_signature_line("aio", param_str, aio_return_str))
+        body_lines.append(helpers_code)
 
     return f"{header}\n" + "\n".join(body_lines)
 
@@ -701,20 +961,23 @@ def emit_module_level_function(
             is_function=True,
         )
 
-    decorator_name = "wrapped_overloaded_function" if uses_surface_protocol else "wrapped_function"
     if uses_surface_protocol:
         decorator_line = (
-            f"@{decorator_name}({aio_function_name}, "
-            f"surface_type={_function_surface_type_expr(ir, current_target_module, runtime_package, mat_ctx=mat_ctx)})"
+            f"@wrapped_overloaded_function("
+            f"{_function_surface_type_expr(ir, current_target_module, runtime_package, mat_ctx=mat_ctx)})"
         )
     else:
-        decorator_line = f"@{decorator_name}({aio_function_name})"
+        decorator_line = f"@wrapped_function({aio_function_name})"
 
     sync_function_code = f"""{decorator_line}
 def {f}({param_str}){sync_return_str}:
 {sync_unwrap_section}
 {sync_function_body}
 """
+    if uses_surface_protocol:
+        surface_code = emit_function_surface_protocol(ir, current_target_module, runtime_package, mat_ctx=mat_ctx)
+        return f"{surface_code}\n\n{sync_function_code}"
+
     if not uses_surface_protocol:
         sync_overload_code = _emit_module_function_overloads(
             ir.overloads,
@@ -991,7 +1254,9 @@ def emit_method_wrapper_pair(
 
     aio_method_name = f"__{method_name}_aio"
 
-    if method_type == MethodBindingKind.INSTANCE:
+    if mir.overloads:
+        wrapper_functions_code = ""
+    elif method_type == MethodBindingKind.INSTANCE:
         if aio_body is not None:
             aio_body_with_self = aio_body.replace("wrapper_instance", "self")
             aio_body_lines = aio_body_with_self.split("\n")
@@ -1067,7 +1332,30 @@ def emit_method_wrapper_pair(
     else:
         decorator_func = "wrapped_overloaded_method" if mir.overloads else "wrapped_method"
 
-    if aio_body is not None:
+    if mir.overloads:
+        assert method_surface_type_expr is not None
+        if method_type == MethodBindingKind.CLASSMETHOD:
+            decorator_line = f"@wrapped_overloaded_classmethod({method_surface_type_expr})\n    @classmethod"
+        elif method_type == MethodBindingKind.STATICMETHOD:
+            decorator_line = f"@wrapped_overloaded_staticmethod({method_surface_type_expr})\n    @staticmethod"
+        else:
+            decorator_line = f"@wrapped_overloaded_method({method_surface_type_expr})"
+        if method_type == MethodBindingKind.INSTANCE:
+            method_body_lines = sync_method_body.replace("wrapper_instance", "self").split("\n")
+            method_body = "\n".join(
+                "        " + line.lstrip() if line.strip() else "" for line in method_body_lines
+            ).strip()
+        elif method_type == MethodBindingKind.CLASSMETHOD:
+            method_body_lines = sync_method_body.replace("wrapper_class", "cls").split("\n")
+            method_body = "\n".join(
+                "        " + line.lstrip() if line.strip() else "" for line in method_body_lines
+            ).strip()
+        else:
+            method_body_lines = sync_method_body.split("\n")
+            method_body = "\n".join(
+                "        " + line.lstrip() if line.strip() else "" for line in method_body_lines
+            ).strip()
+    elif aio_body is not None:
         if method_type == MethodBindingKind.CLASSMETHOD:
             if method_surface_type_expr is not None:
                 decorator_line = (

@@ -788,15 +788,16 @@ def test_emit_class_sync_method_returning_awaitable():
 def test_emit_class_method_overloads_translate_each_overload():
     code = emit_class_from_ir(IR_CLASS_OVERLOADED_METHOD, TARGET)
     compile(code, "<string>", "exec")
-    assert "class _EmitOverloadedMethodClass_resolve_MethodSurface(typing.Protocol):" in code
+    assert "class _EmitOverloadedMethodClass_resolve_MethodSurface:" in code
     assert "def __call__(self, value: int) -> int: ..." in code
     assert 'def __call__(self, value: "Node") -> "Node": ...' in code
     assert "def aio(self, value: int) -> typing.Coroutine[typing.Any, typing.Any, int]: ..." in code
     assert 'def aio(self, value: "Node") -> typing.Coroutine[typing.Any, typing.Any, "Node"]: ...' in code
-    assert (
-        "@wrapped_overloaded_method(__resolve_aio, " "surface_type=_EmitOverloadedMethodClass_resolve_MethodSurface)"
-    ) in code
-    assert "async def __resolve_aio(self, value) -> typing.Any:" in code
+    assert "def __call__(self, value) -> typing.Any:" in code
+    assert "return self._sync_impl(value)" in code
+    assert "def aio(self, value) -> typing.Coroutine[typing.Any, typing.Any, typing.Any]:" in code
+    assert "@wrapped_overloaded_method(_EmitOverloadedMethodClass_resolve_MethodSurface)" in code
+    assert "impl_method = test.unit.compile.test_emit_classes.EmitOverloadedMethodClass.resolve" in code
     assert "def resolve(self, value) -> typing.Any:" in code
 
 

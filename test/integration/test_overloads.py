@@ -54,13 +54,20 @@ def test_generated_wrapper_contains_overloads():
 
     source = Path(overloads.__file__).read_text()
 
-    assert "class _duplicate_FunctionSurface(typing.Protocol):" in source
+    assert "class _duplicate_FunctionSurface:" in source
     assert "def __call__(self, value: int) -> int: ..." in source
     assert "def __call__(self, value: str) -> str: ..." in source
     assert "def aio(self, value: int) -> typing.Coroutine[typing.Any, typing.Any, int]: ..." in source
     assert "def aio(self, value: str) -> typing.Coroutine[typing.Any, typing.Any, str]: ..." in source
-    assert "@wrapped_overloaded_function(__duplicate_aio, surface_type=_duplicate_FunctionSurface)" in source
-    assert "class _maybe_wrap_FunctionSurface(typing.Protocol):" in source
+    assert "return self._sync_impl(value)" in source
+    assert "def __call__(self, value: typing.Union[int, str]) -> typing.Union[int, str]:" in source
+    assert (
+        "def aio(self, value: typing.Union[int, str]) -> "
+        "typing.Coroutine[typing.Any, typing.Any, typing.Union[int, str]]:"
+    ) in source
+    assert "@wrapped_overloaded_function(_duplicate_FunctionSurface)" in source
+    assert "impl_function = overloads_impl.duplicate" in source
+    assert "class _maybe_wrap_FunctionSurface:" in source
     assert "def __call__(self, value: int, wrap: typing.Literal[False]) -> int: ..." in source
     assert 'def __call__(self, value: int, wrap: typing.Literal[True]) -> "Record": ...' in source
     assert (
@@ -71,13 +78,14 @@ def test_generated_wrapper_contains_overloads():
         "def aio(self, value: int, wrap: typing.Literal[True]) -> "
         'typing.Coroutine[typing.Any, typing.Any, "Record"]: ...'
     ) in source
-    assert "@wrapped_overloaded_function(__maybe_wrap_aio, surface_type=_maybe_wrap_FunctionSurface)" in source
-    assert "class _Resolver_resolve_MethodSurface(typing.Protocol):" in source
+    assert "@wrapped_overloaded_function(_maybe_wrap_FunctionSurface)" in source
+    assert "class _Resolver_resolve_MethodSurface:" in source
     assert "def __call__(self, value: int) -> int: ..." in source
     assert "def __call__(self, value: str) -> str: ..." in source
     assert "def aio(self, value: int) -> typing.Coroutine[typing.Any, typing.Any, int]: ..." in source
     assert "def aio(self, value: str) -> typing.Coroutine[typing.Any, typing.Any, str]: ..." in source
-    assert "@wrapped_overloaded_method(__resolve_aio, surface_type=_Resolver_resolve_MethodSurface)" in source
+    assert "@wrapped_overloaded_method(_Resolver_resolve_MethodSurface)" in source
+    assert "impl_method = overloads_impl.Resolver.resolve" in source
 
 
 def test_pyright_implementation():
