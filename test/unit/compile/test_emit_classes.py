@@ -797,7 +797,7 @@ def test_emit_class_method_overloads_translate_each_overload():
     assert "def __call__(self, value) -> typing.Any:" in code
     assert "return self._sync_impl(value)" in code
     assert "async def aio(self, value) -> typing.Any:" in code
-    assert "@wrapped_overloaded_method(_EmitOverloadedMethodClass_resolve_MethodSurface)" in code
+    assert "@wrapped_surface_method(_EmitOverloadedMethodClass_resolve_MethodSurface)" in code
     assert "impl_method = test.unit.compile.test_emit_classes.EmitOverloadedMethodClass.resolve" in code
     assert "def resolve(self, value) -> typing.Any:" in code
 

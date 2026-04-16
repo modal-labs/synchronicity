@@ -68,5 +68,5 @@ class Sandbox:
     async def __aenter__(self) -> typing.Self:
         return self
 
-    async def __aexit__(self, *args, **kwargs):
+    async def __aexit__(self, *args, **kwargs) -> None:
         await self.detach()

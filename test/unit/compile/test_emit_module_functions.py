@@ -413,7 +413,7 @@ def test_emit_function_overloads_translate_each_overload():
     assert "def __call__(self, value) -> typing.Any:" in code
     assert "return self._sync_impl(value)" in code
     assert "async def aio(self, value) -> typing.Any:" in code
-    assert "@wrapped_overloaded_function(_fn_overloaded_FunctionSurface)" in code
+    assert "@wrapped_surface_function(_fn_overloaded_FunctionSurface)" in code
     assert "impl_function = test.unit.compile.test_emit_module_functions.fn_overloaded" in code
     assert "def fn_overloaded(value) -> typing.Any:" in code
 

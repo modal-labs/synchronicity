@@ -155,12 +155,8 @@ def _method_impl_call_expr(
 def _runtime_import_header(runtime_package: str) -> str:
     return f"""import {runtime_package}.types
 from {runtime_package}.descriptor import (
-    wrapped_overloaded_classmethod,
-    wrapped_overloaded_function,
-    wrapped_overloaded_method,
-    wrapped_overloaded_staticmethod,
-    wrapped_surface_function,
     wrapped_surface_classmethod,
+    wrapped_surface_function,
     wrapped_surface_method,
     wrapped_surface_staticmethod,
 )
@@ -932,9 +928,8 @@ def emit_module_level_function(
             is_function=True,
         )
 
-    surface_decorator = "wrapped_overloaded_function" if ir.overloads else "wrapped_surface_function"
     decorator_line = (
-        f"@{surface_decorator}("
+        f"@wrapped_surface_function("
         f"{_function_surface_type_expr(ir, current_target_module, runtime_package, mat_ctx=mat_ctx)})"
     )
 
@@ -1275,59 +1270,14 @@ def emit_method_wrapper_pair(
     else:
         wrapper_functions_code = ""
 
-    if method_type == MethodBindingKind.CLASSMETHOD:
-        decorator_func = "wrapped_overloaded_classmethod" if mir.overloads else "wrapped_classmethod"
-    elif method_type == MethodBindingKind.STATICMETHOD:
-        decorator_func = "wrapped_overloaded_staticmethod" if mir.overloads else "wrapped_staticmethod"
-    else:
-        decorator_func = "wrapped_overloaded_method" if mir.overloads else "wrapped_method"
-
     if uses_surface_wrapper:
         assert method_surface_type_expr is not None
         if method_type == MethodBindingKind.CLASSMETHOD:
-            surface_decorator = "wrapped_overloaded_classmethod" if mir.overloads else "wrapped_surface_classmethod"
-            decorator_line = f"@{surface_decorator}({method_surface_type_expr})\n    @classmethod"
+            decorator_line = f"@wrapped_surface_classmethod({method_surface_type_expr})\n    @classmethod"
         elif method_type == MethodBindingKind.STATICMETHOD:
-            surface_decorator = "wrapped_overloaded_staticmethod" if mir.overloads else "wrapped_surface_staticmethod"
-            decorator_line = f"@{surface_decorator}({method_surface_type_expr})\n    @staticmethod"
+            decorator_line = f"@wrapped_surface_staticmethod({method_surface_type_expr})\n    @staticmethod"
         else:
-            surface_decorator = "wrapped_overloaded_method" if mir.overloads else "wrapped_surface_method"
-            decorator_line = f"@{surface_decorator}({method_surface_type_expr})"
-        if method_type == MethodBindingKind.INSTANCE:
-            method_body_lines = sync_method_body.replace("wrapper_instance", "self").split("\n")
-            method_body = "\n".join(
-                "        " + line.lstrip() if line.strip() else "" for line in method_body_lines
-            ).strip()
-        elif method_type == MethodBindingKind.CLASSMETHOD:
-            method_body_lines = sync_method_body.replace("wrapper_class", "cls").split("\n")
-            method_body = "\n".join(
-                "        " + line.lstrip() if line.strip() else "" for line in method_body_lines
-            ).strip()
-        else:
-            method_body_lines = sync_method_body.split("\n")
-            method_body = "\n".join(
-                "        " + line.lstrip() if line.strip() else "" for line in method_body_lines
-            ).strip()
-    elif aio_body is not None:
-        if method_type == MethodBindingKind.CLASSMETHOD:
-            if method_surface_type_expr is not None:
-                decorator_line = (
-                    f"@{decorator_func}({aio_method_name}, surface_type={method_surface_type_expr})\n    @classmethod"
-                )
-            else:
-                decorator_line = f"@{decorator_func}({aio_method_name})\n    @classmethod"
-        elif method_type == MethodBindingKind.STATICMETHOD:
-            if method_surface_type_expr is not None:
-                decorator_line = (
-                    f"@{decorator_func}({aio_method_name}, surface_type={method_surface_type_expr})\n    @staticmethod"
-                )
-            else:
-                decorator_line = f"@{decorator_func}({aio_method_name})\n    @staticmethod"
-        else:
-            if method_surface_type_expr is not None:
-                decorator_line = f"@{decorator_func}({aio_method_name}, surface_type={method_surface_type_expr})"
-            else:
-                decorator_line = f"@{decorator_func}({aio_method_name})"
+            decorator_line = f"@wrapped_surface_method({method_surface_type_expr})"
         if method_type == MethodBindingKind.INSTANCE:
             method_body_lines = sync_method_body.replace("wrapper_instance", "self").split("\n")
             method_body = "\n".join(

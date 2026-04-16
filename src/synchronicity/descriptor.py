@@ -76,12 +76,6 @@ def wrapped_surface_function(
     return decorator
 
 
-def wrapped_overloaded_function(
-    surface_factory: Callable[..., Surface_co],
-) -> typing.Callable[[Callable[P, R]], Surface_co]:
-    return wrapped_surface_function(surface_factory)
-
-
 def wrapped_surface_method(
     surface_factory: Callable[..., Surface_co],
 ) -> typing.Callable[[Callable[Concatenate[Any, P], R]], _BoundInstanceMethodDescriptorSurface[Surface_co]]:
@@ -91,12 +85,6 @@ def wrapped_surface_method(
         return SurfaceMethodDescriptor(sync_wrapper, surface_factory)
 
     return decorator
-
-
-def wrapped_overloaded_method(
-    surface_factory: Callable[..., Surface_co],
-) -> typing.Callable[[Callable[Concatenate[Any, P], R]], _BoundInstanceMethodDescriptorSurface[Surface_co]]:
-    return wrapped_surface_method(surface_factory)
 
 
 def wrapped_surface_classmethod(
@@ -115,17 +103,6 @@ def wrapped_surface_classmethod(
     return decorator
 
 
-def wrapped_overloaded_classmethod(
-    surface_factory: Callable[..., Surface_co],
-) -> typing.Callable[
-    [
-        Callable[Concatenate[type[T], P], R],
-    ],
-    _BoundOnAccessDescriptorSurface[Surface_co],
-]:
-    return wrapped_surface_classmethod(surface_factory)
-
-
 def wrapped_surface_staticmethod(
     surface_factory: Callable[..., Surface_co],
 ) -> typing.Callable[[Callable[P, R]], _BoundOnAccessDescriptorSurface[Surface_co]]:
@@ -135,9 +112,3 @@ def wrapped_surface_staticmethod(
         return SurfaceOnAccessDescriptor(sync_wrapper, surface_factory)
 
     return decorator
-
-
-def wrapped_overloaded_staticmethod(
-    surface_factory: Callable[..., Surface_co],
-) -> typing.Callable[[Callable[P, R]], _BoundOnAccessDescriptorSurface[Surface_co]]:
-    return wrapped_surface_staticmethod(surface_factory)
