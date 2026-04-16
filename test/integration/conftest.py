@@ -44,6 +44,10 @@ def generated_wrappers():
         support_files_path / "mylib" / "_weather_impl.py",
         generated_dir / "mylib" / "_weather_impl.py",
     )
+    shutil.copytree(
+        support_files_path / "sandboxlib",
+        generated_dir / "sandboxlib",
+    )
 
     # Set up environment with support_files on PYTHONPATH
     import os
@@ -82,6 +86,7 @@ def generated_wrappers():
             "multi_synchronizer_impl",
             "async_context_manager_impl",
             "property_class_impl",
+            "sandboxlib._sandbox",
         ]
 
         for module_name in module_specs:
