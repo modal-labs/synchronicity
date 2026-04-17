@@ -1,5 +1,6 @@
 """Shared utility functions for integration tests."""
 
+import contextlib
 import os
 import pytest
 import re
@@ -114,3 +115,21 @@ def check_pyright_with_xfail(script_module: str):
         error_did_match = re.search(reduced_spaces, actual_error, flags=re.S)
         if not error_did_match:
             pytest.fail(f"expected error {error_string!r}, found {actual_error!r}")
+
+
+def close_synchronizers(*names: str) -> None:
+    """Close the named synchronizers after a runtime integration test."""
+    from synchronicity.synchronizer import get_synchronizer
+
+    target_names = names or ("default_synchronizer",)
+    for name in target_names:
+        get_synchronizer(name)._close_loop()
+
+
+@contextlib.contextmanager
+def closing_synchronizers(*names: str):
+    """Wrap a runtime test body and close the synchronizers it starts."""
+    try:
+        yield
+    finally:
+        close_synchronizers(*names)

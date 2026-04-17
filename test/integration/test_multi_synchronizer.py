@@ -2,28 +2,29 @@
 
 from pathlib import Path
 
-from test.integration.test_utils import check_pyright
+from test.integration.test_utils import check_pyright, closing_synchronizers
 
 
 def test_runtime():
-    import multi_sync.a
-    import multi_sync.b
+    with closing_synchronizers("synchronizer_alpha", "synchronizer_beta"):
+        import multi_sync.a
+        import multi_sync.b
 
-    from synchronicity.synchronizer import get_synchronizer
+        from synchronicity.synchronizer import get_synchronizer
 
-    tid_a, lid_a = multi_sync.a.thread_and_loop_a()
-    tid_b, lid_b = multi_sync.b.thread_and_loop_b()
+        tid_a, lid_a = multi_sync.a.thread_and_loop_a()
+        tid_b, lid_b = multi_sync.b.thread_and_loop_b()
 
-    assert tid_a != tid_b
-    assert lid_a != lid_b
+        assert tid_a != tid_b
+        assert lid_a != lid_b
 
-    sync_a = get_synchronizer("synchronizer_alpha")
-    sync_b = get_synchronizer("synchronizer_beta")
-    assert sync_a._thread is not None and sync_b._thread is not None
-    assert sync_a._thread.ident == tid_a
-    assert sync_b._thread.ident == tid_b
-    assert sync_a._loop is not None and sync_b._loop is not None
-    assert sync_a._loop is not sync_b._loop
+        sync_a = get_synchronizer("synchronizer_alpha")
+        sync_b = get_synchronizer("synchronizer_beta")
+        assert sync_a._thread is not None and sync_b._thread is not None
+        assert sync_a._thread.ident == tid_a
+        assert sync_b._thread.ident == tid_b
+        assert sync_a._loop is not None and sync_b._loop is not None
+        assert sync_a._loop is not sync_b._loop
 
 
 def test_pyright_implementation():
