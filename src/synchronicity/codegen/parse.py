@@ -62,7 +62,7 @@ def _manual_class_attribute_access_kind(obj: object) -> ManualClassAttributeAcce
 
 
 def _manual_wrapper_impl_ref(module: Module, obj: object) -> ImplQualifiedRef:
-    ref = module.manual_wrapper_ref(obj)
+    ref = module._manual_wrapper_ref(obj)
     if ref is None:
         raise TypeError(f"Manual wrapper object {obj!r} is missing manual wrapper reference metadata")
     return ImplQualifiedRef(module=ref.module, qualname=ref.qualname)
@@ -149,7 +149,7 @@ def build_module_compilation_ir(
     module: Module,
 ) -> ModuleCompilationIR:
     """Step 1–2 for a single output module: layout, cross-refs, and collected type variables."""
-    module_items = module.module_items()
+    module_items = module._module_items()
     impl_modules = {o.__module__ for o in module_items.keys()}
     manual_wrapper_ids = module._manual_wrapper_ids
     cross = cross_module_imports_for_module(

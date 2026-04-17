@@ -138,15 +138,15 @@ class Module:
         """Get object identities registered for manual forwarding in this module."""
         return frozenset(self._manual_wrappers)
 
-    def is_manual_wrapper(self, obj: object) -> bool:
+    def _is_manual_wrapper(self, obj: object) -> bool:
         """Return whether ``obj`` is registered for manual forwarding in this module."""
         return id(obj) in self._manual_wrappers
 
-    def manual_wrapper_ref(self, obj: object) -> ManualWrapperRef | None:
+    def _manual_wrapper_ref(self, obj: object) -> ManualWrapperRef | None:
         """Get the implementation reference for a manually forwarded object, if any."""
         return self._manual_wrappers.get(id(obj))
 
-    def module_items(self) -> dict[object, RegistrationInfo]:
+    def _module_items(self) -> dict[object, RegistrationInfo]:
         """Get all registered classes and functions with their target module and name.
 
         Returns:
@@ -173,11 +173,11 @@ class Module:
         def decorator(fn: F) -> F:
             name = getattr(fn, "__name__", None)
             if not isinstance(name, str):
-                ref = self.manual_wrapper_ref(fn)
+                ref = self._manual_wrapper_ref(fn)
                 if ref is None:
                     raise TypeError(
                         "wrap_function() expects a function or a @module.manual_wrapper()-registered "
-                        "surface with an underlying implementation reference"
+                        "with-aio helper with an underlying implementation reference"
                     )
                 name = ref.qualname.rpartition(".")[2]
             self._wrapped_functions[fn] = RegistrationInfo(
@@ -198,7 +198,7 @@ class Module:
             )
             self._wrapped_classes[impl_cls] = registration
 
-            if self.is_manual_wrapper(impl_cls):
+            if self._is_manual_wrapper(impl_cls):
                 return impl_cls
 
             wrapper_location = (self._target_module, impl_cls.__name__)

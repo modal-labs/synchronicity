@@ -100,16 +100,13 @@ That creates `src/mylib/weather.py`. Your users import the public API with `from
 If a generated module or wrapper class should expose an entry without generating a synchronicity wrapper for it, register it as usual and mark the inserted object with `Module.manual_wrapper()`.
 
 ```python
-from mylib.synchronicity import MethodSurfaceBase, Module
-from mylib.synchronicity.descriptor import wrapped_surface_function, wrapped_surface_method
+from mylib.synchronicity import FunctionWithAio, MethodWithAio, Module
+from mylib.synchronicity.descriptor import function_with_aio, method_with_aio
 
 mod = Module("mylib.api")
 
 
-class _ManualFunctionSurface:
-    def __init__(self, sync_impl):
-        self._sync_impl = sync_impl
-
+class _ManualFunctionWithAio(FunctionWithAio):
     def __call__(self, value: int) -> str:
         return self._sync_impl(value)
 
@@ -119,12 +116,12 @@ class _ManualFunctionSurface:
 
 @mod.wrap_function()
 @mod.manual_wrapper()
-@wrapped_surface_function(_ManualFunctionSurface)
+@function_with_aio(_ManualFunctionWithAio)
 def manual_function(value: int) -> str:
     return f"sync:{value}"
 
 
-class _ManualMethodSurface(MethodSurfaceBase):
+class _ManualMethodWithAio(MethodWithAio):
     async def aio(self, value: int) -> str:
         return f"aio:{value}"
 
@@ -132,7 +129,7 @@ class _ManualMethodSurface(MethodSurfaceBase):
 @mod.wrap_class()
 class Client:
     @mod.manual_wrapper()
-    @wrapped_surface_method(_ManualMethodSurface)
+    @method_with_aio(_ManualMethodWithAio)
     def manual_method(self, value: int) -> str:
         return f"sync:{value}"
 ```

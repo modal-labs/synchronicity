@@ -240,7 +240,7 @@ def _run_wrappers(args: argparse.Namespace) -> None:
                 module_objects.append(attr)
                 print(
                     f"  Found Module: {attr.target_module} (synchronizer={attr.synchronizer_name!r}) "
-                    f"with {len(attr.module_items())} items",
+                    f"with {len(attr._module_items())} items",
                     file=sys.stderr,
                 )
 
@@ -257,7 +257,7 @@ def _run_wrappers(args: argparse.Namespace) -> None:
         print("  @wrapper_module.wrap_function()", file=sys.stderr)
         sys.exit(1)
 
-    total_items = sum(len(m.module_items()) for m in module_objects)
+    total_items = sum(len(m._module_items()) for m in module_objects)
     print(f"\nTotal registered items: {total_items}", file=sys.stderr)
 
     print("Compiling wrappers...", file=sys.stderr)

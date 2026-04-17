@@ -2,18 +2,13 @@
 
 from __future__ import annotations
 
-import typing
-
-from synchronicity import MethodSurfaceBase, Module
-from synchronicity.descriptor import wrapped_surface_function, wrapped_surface_method
+from synchronicity import FunctionWithAio, MethodWithAio, Module
+from synchronicity.descriptor import function_with_aio, method_with_aio
 
 wrapper_module = Module("manual_nowrap")
 
 
-class _ManualFunctionSurface:
-    def __init__(self, sync_impl: typing.Callable[..., typing.Any]):
-        self._sync_impl = sync_impl
-
+class _ManualFunctionWithAio(FunctionWithAio):
     def __call__(self, value: int) -> str:
         return self._sync_impl(value)
 
@@ -23,12 +18,12 @@ class _ManualFunctionSurface:
 
 @wrapper_module.wrap_function()
 @wrapper_module.manual_wrapper()
-@wrapped_surface_function(_ManualFunctionSurface)
+@function_with_aio(_ManualFunctionWithAio)
 def manual_function(value: int) -> str:
     return f"manual-function-sync:{value}"
 
 
-class _ManualMethodSurface(MethodSurfaceBase):
+class _ManualMethodWithAio(MethodWithAio):
     def __call__(self, value: int) -> str:
         return self._sync_impl(value)
 
@@ -43,7 +38,7 @@ class ManualBox:
         self.prefix = prefix
 
     @wrapper_module.manual_wrapper()
-    @wrapped_surface_method(_ManualMethodSurface)
+    @method_with_aio(_ManualMethodWithAio)
     def manual_method(self, value: int) -> str:
         impl_instance = getattr(self, "_impl_instance", self)
         return f"{impl_instance.prefix}:manual-method-sync:{value}"

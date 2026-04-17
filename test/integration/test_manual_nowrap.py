@@ -42,13 +42,13 @@ def test_generated_wrapper_contains_manual_reexports():
     source = Path(manual_nowrap.__file__).read_text()
 
     assert "from synchronicity.descriptor import (" in source
-    assert "MethodSurfaceBase," in source
+    assert "MethodWithAio," in source
     assert "manual_function = manual_nowrap_impl.manual_function" in source
     assert "DirectBox = manual_nowrap_impl.DirectBox" in source
     assert "manual_method = manual_nowrap_impl.ManualBox.manual_method" in source
-    assert "class _manual_function_FunctionSurface:" not in source
-    assert "class _ManualBox_manual_method_MethodSurface:" not in source
-    assert "class _ManualBox_auto_method_MethodSurface(MethodSurfaceBase):" in source
+    assert "class _manual_function_FunctionWithAio:" not in source
+    assert "class _ManualBox_manual_method_MethodWithAio:" not in source
+    assert "class _ManualBox_auto_method_MethodWithAio(MethodWithAio):" in source
 
 
 def test_pyright_implementation():

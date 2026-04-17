@@ -26,7 +26,7 @@ from synchronicity.codegen.transformer_ir import (
     WrappedClassTypeIR,
     WrapperRef,
 )
-from synchronicity.descriptor import wrapped_surface_function, wrapped_surface_method
+from synchronicity.descriptor import function_with_aio, method_with_aio
 
 
 def test_parse_module_level_function_ir_async_is_awaitable_ir():
@@ -75,6 +75,15 @@ def test_wrap_decorators_require_factory_call() -> None:
 
     with pytest.raises(TypeError):
         m.wrap_class(type("Service", (), {}))
+
+
+def test_module_public_members_are_minimal() -> None:
+    public_names = {
+        name
+        for name in Module.__dict__
+        if not name.startswith("_") and not (name.startswith("__") and name.endswith("__"))
+    }
+    assert public_names == {"target_module", "synchronizer_name", "manual_wrapper", "wrap_function", "wrap_class"}
 
 
 def test_parse_class_wrapper_ir_inheritance_stores_impl_refs_not_wrapper_names():
@@ -299,7 +308,7 @@ def test_parse_non_optional_unions_are_captured_in_ir():
 def test_build_module_compilation_ir_collects_manual_reexports_separately():
     m = Module("generated.manual_exports")
 
-    class _Surface:
+    class _FunctionWithAio:
         def __init__(self, sync_impl: typing.Callable[..., typing.Any]):
             self._sync_impl = sync_impl
 
@@ -308,7 +317,7 @@ def test_build_module_compilation_ir_collects_manual_reexports_separately():
 
     @m.wrap_function()
     @m.manual_wrapper()
-    @wrapped_surface_function(_Surface)
+    @function_with_aio(_FunctionWithAio)
     def forwarded() -> str:
         return "ok"
 
@@ -333,10 +342,10 @@ def test_build_module_compilation_ir_collects_manual_reexports_separately():
     }
 
 
-def test_parse_class_wrapper_ir_collects_manual_surface_methods():
+def test_parse_class_wrapper_ir_collects_manual_with_aio_methods():
     m = Module("generated.manual_method_parse")
 
-    class _Surface:
+    class _MethodWithAio:
         def __init__(
             self,
             sync_impl: typing.Callable[..., typing.Any],
@@ -355,7 +364,7 @@ def test_parse_class_wrapper_ir_collects_manual_surface_methods():
     @m.wrap_class()
     class Service:
         @m.manual_wrapper()
-        @wrapped_surface_method(_Surface)
+        @method_with_aio(_MethodWithAio)
         def manual(self, value: int) -> int:
             return value
 

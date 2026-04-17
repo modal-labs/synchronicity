@@ -122,7 +122,7 @@ def _partition_class_methods(
     return init_mir, tuple(iterator), tuple(context_manager), tuple(normal)
 
 
-def _async_iterator_dunder_surfaces(
+def _async_iterator_dunder_pair(
     impl_dunder: str,
 ) -> tuple[str, str, bool, bool] | None:
     """Map impl ``__aiter__`` / ``__anext__`` to wrapper sync name, async name, ``async def`` flag, bridge."""
@@ -133,7 +133,7 @@ def _async_iterator_dunder_surfaces(
     return None
 
 
-def _async_context_manager_dunder_surfaces(
+def _async_context_manager_dunder_pair(
     impl_dunder: str,
 ) -> tuple[str, str] | None:
     """Map impl ``__aenter__`` / ``__aexit__`` to wrapper sync name, async name."""
@@ -161,11 +161,11 @@ def _method_impl_call_expr(
 def _runtime_import_header(runtime_package: str) -> str:
     return f"""import {runtime_package}.types
 from {runtime_package}.descriptor import (
-    MethodSurfaceBase,
-    wrapped_surface_classmethod,
-    wrapped_surface_function,
-    wrapped_surface_method,
-    wrapped_surface_staticmethod,
+    MethodWithAio,
+    classmethod_with_aio,
+    function_with_aio,
+    method_with_aio,
+    staticmethod_with_aio,
 )
 from {runtime_package}.synchronizer import get_synchronizer, _wrapped_from_impl
 """
@@ -267,15 +267,15 @@ def _emit_method_overloads(
     return "\n".join(blocks)
 
 
-def _method_surface_protocol_name(owner: MethodEmitOwner, method_name: str) -> str:
-    return f"_{_wrapper_short_name(owner.impl_ref)}_{method_name}_MethodSurface"
+def _method_with_aio_protocol_name(owner: MethodEmitOwner, method_name: str) -> str:
+    return f"_{_wrapper_short_name(owner.impl_ref)}_{method_name}_MethodWithAio"
 
 
-def _method_surface_self_type_name(owner: MethodEmitOwner, method_name: str) -> str:
+def _method_with_aio_self_type_name(owner: MethodEmitOwner, method_name: str) -> str:
     return f"_{_wrapper_short_name(owner.impl_ref)}_{method_name}_SelfType"
 
 
-def _bound_surface_method_signature_line(
+def _bound_with_aio_method_signature_line(
     method_name: str,
     param_str: str,
     return_str: str,
@@ -287,7 +287,7 @@ def _bound_surface_method_signature_line(
     return f"{prefix} {method_name}({all_params}){return_str}: ..."
 
 
-def _bound_surface_method_definition_line(
+def _bound_with_aio_method_definition_line(
     method_name: str,
     param_str: str,
     return_str: str,
@@ -299,7 +299,7 @@ def _bound_surface_method_definition_line(
     return f"{prefix} {method_name}({all_params}){return_str}:"
 
 
-def _surface_call_args_str(parameters: tuple) -> str:
+def _with_aio_call_args_str(parameters: tuple) -> str:
     call_args: list[str] = []
     for param_ir in parameters:
         name = param_ir.name
@@ -324,7 +324,7 @@ def _strip_return_annotation(return_str: str) -> str:
     return return_str
 
 
-def _surface_aio_return_str(async_return_str: str) -> str:
+def _with_aio_return_str(async_return_str: str) -> str:
     async_return_type = _strip_return_annotation(async_return_str)
     if not async_return_type:
         return ""
@@ -335,7 +335,7 @@ def _indent_block(block: str, indent: str = "    ") -> str:
     return "\n".join(f"{indent}{line}" if line else "" for line in block.split("\n"))
 
 
-def _rewrite_surface_annotation_text(text: str, self_type_name: str | None) -> str:
+def _rewrite_with_aio_annotation_text(text: str, self_type_name: str | None) -> str:
     if self_type_name is None:
         return text
     return text.replace('"typing.Self"', self_type_name).replace("typing.Self", self_type_name)
@@ -373,7 +373,7 @@ def _used_type_parameters(
     return tuple(used)
 
 
-def _method_surface_signature_variants(
+def _method_with_aio_signature_variants(
     owner: MethodEmitOwner,
     mir: MethodWrapperIR,
     runtime_package: str,
@@ -396,7 +396,7 @@ def _method_surface_signature_variants(
         all_signature_text += param_str + sync_return_str + async_return_str
 
     needs_self_type = "typing.Self" in all_signature_text
-    self_type_name = _method_surface_self_type_name(owner, mir.method_name) if needs_self_type else None
+    self_type_name = _method_with_aio_self_type_name(owner, mir.method_name) if needs_self_type else None
     used_type_parameters = list(
         _used_type_parameters(
             _candidate_type_parameters(
@@ -409,25 +409,25 @@ def _method_surface_signature_variants(
     if self_type_name is not None:
         used_type_parameters.append(self_type_name)
 
-    surface_variants: list[tuple[str, str, str]] = []
+    with_aio_variants: list[tuple[str, str, str]] = []
     for param_str, sync_return_str, async_return_str in rendered:
-        rewritten_param_str = _rewrite_surface_annotation_text(param_str, self_type_name)
-        rewritten_sync_return_str = _rewrite_surface_annotation_text(sync_return_str, self_type_name)
-        rewritten_async_return_type = _rewrite_surface_annotation_text(
+        rewritten_param_str = _rewrite_with_aio_annotation_text(param_str, self_type_name)
+        rewritten_sync_return_str = _rewrite_with_aio_annotation_text(sync_return_str, self_type_name)
+        rewritten_async_return_type = _rewrite_with_aio_annotation_text(
             _strip_return_annotation(async_return_str),
             self_type_name,
         )
         aio_return_str = f" -> {rewritten_async_return_type}" if rewritten_async_return_type else ""
-        surface_variants.append((rewritten_param_str, rewritten_sync_return_str, aio_return_str))
+        with_aio_variants.append((rewritten_param_str, rewritten_sync_return_str, aio_return_str))
 
-    return surface_variants, tuple(used_type_parameters), needs_self_type
-
-
-def _function_surface_protocol_name(function_name: str) -> str:
-    return f"_{function_name}_FunctionSurface"
+    return with_aio_variants, tuple(used_type_parameters), needs_self_type
 
 
-def _function_surface_signature_variants(
+def _function_with_aio_protocol_name(function_name: str) -> str:
+    return f"_{function_name}_FunctionWithAio"
+
+
+def _function_with_aio_signature_variants(
     ir: ModuleLevelFunctionIR,
     target_module: str,
     runtime_package: str,
@@ -454,29 +454,29 @@ def _function_surface_signature_variants(
         all_signature_text,
     )
 
-    surface_variants: list[tuple[str, str, str]] = []
+    with_aio_variants: list[tuple[str, str, str]] = []
     for param_str, sync_return_str, async_return_str in rendered:
         async_return_type = _strip_return_annotation(async_return_str)
         aio_return_str = f" -> {async_return_type}" if async_return_type else ""
-        surface_variants.append((param_str, sync_return_str, aio_return_str))
+        with_aio_variants.append((param_str, sync_return_str, aio_return_str))
 
-    return surface_variants, used_type_parameters
+    return with_aio_variants, used_type_parameters
 
 
-def emit_function_surface_protocol(
+def emit_function_with_aio_protocol(
     ir: ModuleLevelFunctionIR,
     target_module: str,
     runtime_package: str,
     *,
     mat_ctx: MaterializeContext | None,
 ) -> str:
-    variants, generic_parameters = _function_surface_signature_variants(
+    variants, generic_parameters = _function_with_aio_signature_variants(
         ir,
         target_module,
         runtime_package,
         mat_ctx=mat_ctx,
     )
-    surface_name = _function_surface_protocol_name(ir.impl_ref.qualname.rpartition(".")[2])
+    with_aio_name = _function_with_aio_protocol_name(ir.impl_ref.qualname.rpartition(".")[2])
     return_transformer = materialize_transformer_ir(ir.return_transformer_ir, runtime_package, ctx=mat_ctx)
     param_str, call_args_str, unwrap_code = format_parameters_for_emit(
         ir.parameters,
@@ -485,9 +485,9 @@ def emit_function_surface_protocol(
         unwrap_indent="",
         mat_ctx=mat_ctx,
     )
-    surface_call_args_str = _surface_call_args_str(ir.parameters)
+    with_aio_call_args_str = _with_aio_call_args_str(ir.parameters)
     sync_return_str, async_return_str = _format_return_annotation(return_transformer, target_module)
-    aio_return_str = _surface_aio_return_str(async_return_str)
+    aio_return_str = _with_aio_return_str(async_return_str)
     impl_name = ir.impl_ref.qualname.rpartition(".")[2]
     impl_dotted = f"{ir.impl_ref.module}.{impl_name}"
 
@@ -531,9 +531,9 @@ def emit_function_surface_protocol(
         )
 
     if generic_parameters:
-        header = f"class {surface_name}(typing.Generic[{', '.join(generic_parameters)}]):"
+        header = f"class {with_aio_name}(typing.Generic[{', '.join(generic_parameters)}]):"
     else:
-        header = f"class {surface_name}:"
+        header = f"class {with_aio_name}:"
 
     body_lines: list[str] = []
     body_lines.extend(
@@ -547,14 +547,14 @@ def emit_function_surface_protocol(
         for overload_param_str, overload_sync_return_str, _overload_aio_return_str in variants:
             body_lines.append("    @typing.overload")
             body_lines.append(
-                "    " + _bound_surface_method_signature_line("__call__", overload_param_str, overload_sync_return_str)
+                "    " + _bound_with_aio_method_signature_line("__call__", overload_param_str, overload_sync_return_str)
             )
         body_lines.append("")
         for overload_param_str, _overload_sync_return_str, overload_aio_return_str in variants:
             body_lines.append("    @typing.overload")
             body_lines.append(
                 "    "
-                + _bound_surface_method_signature_line(
+                + _bound_with_aio_method_signature_line(
                     "aio",
                     overload_param_str,
                     overload_aio_return_str,
@@ -562,10 +562,10 @@ def emit_function_surface_protocol(
                 )
             )
     body_lines.append("")
-    body_lines.append("    " + _bound_surface_method_definition_line("__call__", param_str, sync_return_str))
-    body_lines.append(f"        return self._sync_impl({surface_call_args_str})")
+    body_lines.append("    " + _bound_with_aio_method_definition_line("__call__", param_str, sync_return_str))
+    body_lines.append(f"        return self._sync_impl({with_aio_call_args_str})")
     body_lines.append("")
-    body_lines.append("    " + _bound_surface_method_definition_line("aio", param_str, aio_return_str, is_async=True))
+    body_lines.append("    " + _bound_with_aio_method_definition_line("aio", param_str, aio_return_str, is_async=True))
     body_lines.append(_indent_block(textwrap.dedent(aio_body).rstrip(), "        "))
     if helpers_code:
         body_lines.append("")
@@ -573,40 +573,40 @@ def emit_function_surface_protocol(
     return f"{header}\n" + "\n".join(body_lines)
 
 
-def _function_surface_type_expr(
+def _function_with_aio_type_expr(
     ir: ModuleLevelFunctionIR,
     target_module: str,
     runtime_package: str,
     *,
     mat_ctx: MaterializeContext | None,
 ) -> str:
-    _variants, generic_parameters = _function_surface_signature_variants(
+    _variants, generic_parameters = _function_with_aio_signature_variants(
         ir,
         target_module,
         runtime_package,
         mat_ctx=mat_ctx,
     )
-    protocol_name = _function_surface_protocol_name(ir.impl_ref.qualname.rpartition(".")[2])
+    protocol_name = _function_with_aio_protocol_name(ir.impl_ref.qualname.rpartition(".")[2])
     if not generic_parameters:
         return protocol_name
     return f"{protocol_name}[{', '.join(generic_parameters)}]"
 
 
-def emit_method_surface_protocol(
+def emit_method_with_aio_protocol(
     owner: MethodEmitOwner,
     mir: MethodWrapperIR,
     runtime_package: str,
     *,
     mat_ctx: MaterializeContext | None,
 ) -> str:
-    variants, generic_parameters, _needs_self_type = _method_surface_signature_variants(
+    variants, generic_parameters, _needs_self_type = _method_with_aio_signature_variants(
         owner,
         mir,
         runtime_package,
         mat_ctx=mat_ctx,
     )
-    supported_generic_parameters = _supported_method_surface_parameters(owner, mir.method_name, generic_parameters)
-    surface_name = _method_surface_protocol_name(owner, mir.method_name)
+    supported_generic_parameters = _supported_method_with_aio_parameters(owner, mir.method_name, generic_parameters)
+    with_aio_name = _method_with_aio_protocol_name(owner, mir.method_name)
     current_target_module = owner.target_module
     return_transformer = materialize_transformer_ir(mir.return_transformer_ir, runtime_package, ctx=mat_ctx)
     param_str, call_args_str, unwrap_code = format_parameters_for_emit(
@@ -616,9 +616,9 @@ def emit_method_surface_protocol(
         unwrap_indent="",
         mat_ctx=mat_ctx,
     )
-    surface_call_args_str = _surface_call_args_str(mir.parameters)
+    with_aio_call_args_str = _with_aio_call_args_str(mir.parameters)
     sync_return_str, async_return_str = _format_return_annotation(return_transformer, current_target_module)
-    aio_return_str = _surface_aio_return_str(async_return_str)
+    aio_return_str = _with_aio_return_str(async_return_str)
     impl_dotted = _impl_type_dotted(owner.impl_ref)
     call_expr_prefix = _method_impl_call_expr(
         mir.method_type,
@@ -741,23 +741,23 @@ def emit_method_surface_protocol(
                 aio_body = unwrap_code + "\n" + aio_body
 
     if supported_generic_parameters:
-        header = f"class {surface_name}(MethodSurfaceBase, typing.Generic[{', '.join(supported_generic_parameters)}]):"
+        header = f"class {with_aio_name}(MethodWithAio, typing.Generic[{', '.join(supported_generic_parameters)}]):"
     else:
-        header = f"class {surface_name}(MethodSurfaceBase):"
+        header = f"class {with_aio_name}(MethodWithAio):"
 
     body_lines: list[str] = []
     if mir.overloads:
         for overload_param_str, overload_sync_return_str, _overload_aio_return_str in variants:
             body_lines.append("    @typing.overload")
             body_lines.append(
-                "    " + _bound_surface_method_signature_line("__call__", overload_param_str, overload_sync_return_str)
+                "    " + _bound_with_aio_method_signature_line("__call__", overload_param_str, overload_sync_return_str)
             )
         body_lines.append("")
         for overload_param_str, _overload_sync_return_str, overload_aio_return_str in variants:
             body_lines.append("    @typing.overload")
             body_lines.append(
                 "    "
-                + _bound_surface_method_signature_line(
+                + _bound_with_aio_method_signature_line(
                     "aio",
                     overload_param_str,
                     overload_aio_return_str,
@@ -765,10 +765,10 @@ def emit_method_surface_protocol(
                 )
             )
         body_lines.append("")
-    body_lines.append("    " + _bound_surface_method_definition_line("__call__", param_str, sync_return_str))
-    body_lines.append(f"        return self._sync_impl({surface_call_args_str})")
+    body_lines.append("    " + _bound_with_aio_method_definition_line("__call__", param_str, sync_return_str))
+    body_lines.append(f"        return self._sync_impl({with_aio_call_args_str})")
     body_lines.append("")
-    body_lines.append("    " + _bound_surface_method_definition_line("aio", param_str, aio_return_str, is_async=True))
+    body_lines.append("    " + _bound_with_aio_method_definition_line("aio", param_str, aio_return_str, is_async=True))
     body_lines.append(_indent_block(textwrap.dedent(aio_body).rstrip(), "        "))
     if helpers_code:
         body_lines.append("")
@@ -777,39 +777,39 @@ def emit_method_surface_protocol(
     return f"{header}\n" + "\n".join(body_lines)
 
 
-def _method_surface_type_data(
+def _method_with_aio_type_data(
     owner: MethodEmitOwner,
     mir: MethodWrapperIR,
     runtime_package: str,
     *,
     mat_ctx: MaterializeContext | None,
 ) -> tuple[str, bool]:
-    _variants, generic_parameters, needs_self_type = _method_surface_signature_variants(
+    _variants, generic_parameters, needs_self_type = _method_with_aio_signature_variants(
         owner,
         mir,
         runtime_package,
         mat_ctx=mat_ctx,
     )
-    protocol_name = _method_surface_protocol_name(owner, mir.method_name)
-    supported_parameters = _supported_method_surface_parameters(owner, mir.method_name, generic_parameters)
+    protocol_name = _method_with_aio_protocol_name(owner, mir.method_name)
+    supported_parameters = _supported_method_with_aio_parameters(owner, mir.method_name, generic_parameters)
     if not supported_parameters:
         return protocol_name, bool(generic_parameters)
     args: list[str] = []
     for parameter in supported_parameters:
-        if needs_self_type and parameter == _method_surface_self_type_name(owner, mir.method_name):
+        if needs_self_type and parameter == _method_with_aio_self_type_name(owner, mir.method_name):
             args.append("typing.Self")
         else:
             args.append(parameter)
     return f"{protocol_name}[{', '.join(args)}]", len(supported_parameters) != len(generic_parameters)
 
 
-def _supported_method_surface_parameters(
+def _supported_method_with_aio_parameters(
     owner: MethodEmitOwner,
     method_name: str,
     generic_parameters: tuple[str, ...],
 ) -> tuple[str, ...]:
     owner_type_parameters = set(owner.generic_type_parameters or ())
-    self_type_name = _method_surface_self_type_name(owner, method_name)
+    self_type_name = _method_with_aio_self_type_name(owner, method_name)
     return tuple(
         parameter
         for parameter in generic_parameters
@@ -932,8 +932,8 @@ def emit_module_level_function(
         )
 
     decorator_line = (
-        f"@wrapped_surface_function("
-        f"{_function_surface_type_expr(ir, current_target_module, runtime_package, mat_ctx=mat_ctx)})"
+        f"@function_with_aio("
+        f"{_function_with_aio_type_expr(ir, current_target_module, runtime_package, mat_ctx=mat_ctx)})"
     )
 
     sync_function_code = f"""{decorator_line}
@@ -941,10 +941,10 @@ def {f}({param_str}){sync_return_str}:
 {sync_unwrap_section}
 {sync_function_body}
 """
-    surface_code = emit_function_surface_protocol(ir, current_target_module, runtime_package, mat_ctx=mat_ctx)
+    with_aio_code = emit_function_with_aio_protocol(ir, current_target_module, runtime_package, mat_ctx=mat_ctx)
     if helpers_code:
-        return f"{helpers_code}\n\n{surface_code}\n\n{sync_function_code}"
-    return f"{surface_code}\n\n{sync_function_code}"
+        return f"{helpers_code}\n\n{with_aio_code}\n\n{sync_function_code}"
+    return f"{with_aio_code}\n\n{sync_function_code}"
 
 
 def emit_method_wrapper_pair(
@@ -979,11 +979,11 @@ def emit_method_wrapper_pair(
     is_async_gen = mir.is_async_gen
     is_async = mir.is_async
     sync_return_str, async_return_str = _format_return_annotation(return_transformer, current_target_module)
-    uses_surface_wrapper = is_async
-    method_surface_type_expr: str | None = None
+    uses_with_aio_wrapper = is_async
+    method_with_aio_type_expr: str | None = None
     needs_type_checking_stub = False
-    if uses_surface_wrapper:
-        method_surface_type_expr, needs_type_checking_stub = _method_surface_type_data(
+    if uses_with_aio_wrapper:
+        method_with_aio_type_expr, needs_type_checking_stub = _method_with_aio_type_data(
             owner,
             mir,
             runtime_package,
@@ -1208,7 +1208,7 @@ def emit_method_wrapper_pair(
 
     aio_method_name = f"__{method_name}_aio"
 
-    if uses_surface_wrapper:
+    if uses_with_aio_wrapper:
         wrapper_functions_code = ""
     elif method_type == MethodBindingKind.INSTANCE:
         if aio_body is not None:
@@ -1279,14 +1279,14 @@ def emit_method_wrapper_pair(
     else:
         wrapper_functions_code = ""
 
-    if uses_surface_wrapper:
-        assert method_surface_type_expr is not None
+    if uses_with_aio_wrapper:
+        assert method_with_aio_type_expr is not None
         if method_type == MethodBindingKind.CLASSMETHOD:
-            decorator_line = f"@wrapped_surface_classmethod({method_surface_type_expr})\n    @classmethod"
+            decorator_line = f"@classmethod_with_aio({method_with_aio_type_expr})\n    @classmethod"
         elif method_type == MethodBindingKind.STATICMETHOD:
-            decorator_line = f"@wrapped_surface_staticmethod({method_surface_type_expr})\n    @staticmethod"
+            decorator_line = f"@staticmethod_with_aio({method_with_aio_type_expr})\n    @staticmethod"
         else:
-            decorator_line = f"@wrapped_surface_method({method_surface_type_expr})"
+            decorator_line = f"@method_with_aio({method_with_aio_type_expr})"
         if method_type == MethodBindingKind.INSTANCE:
             method_body_lines = sync_method_body.replace("wrapper_instance", "self").split("\n")
             method_body = "\n".join(
@@ -1340,10 +1340,10 @@ def emit_method_wrapper_pair(
 
     if decorator_line:
         runtime_method_code = f"    {decorator_line}\n{def_line}\n        {method_body}"
-        if needs_type_checking_stub and method_surface_type_expr is not None:
+        if needs_type_checking_stub and method_with_aio_type_expr is not None:
             sync_method_code = (
                 "    if typing.TYPE_CHECKING:\n"
-                f"        {method_name}: {method_surface_type_expr}\n"
+                f"        {method_name}: {method_with_aio_type_expr}\n"
                 "    else:\n"
                 f"{_indent_block(runtime_method_code, '        ')}"
             )
@@ -1379,12 +1379,12 @@ def emit_class_from_ir(
     helpers_code = "\n".join(all_helpers_dict.values()) if all_helpers_dict else ""
     helpers_section = f"\n{helpers_code}\n" if helpers_code else ""
 
-    method_surface_protocols: list[str] = []
+    method_with_aio_types: list[str] = []
     for mir in normal_methods:
         if not mir.is_async:
             continue
-        method_surface_protocols.append(
-            emit_method_surface_protocol(
+        method_with_aio_types.append(
+            emit_method_with_aio_protocol(
                 owner,
                 mir,
                 runtime_package,
@@ -1485,10 +1485,10 @@ def emit_class_from_ir(
     if iterator_mirs:
         iterator_blocks: list[str] = []
         for mir in iterator_mirs:
-            surfaces = _async_iterator_dunder_surfaces(mir.method_name)
-            if surfaces is None:
+            dunder_pair = _async_iterator_dunder_pair(mir.method_name)
+            if dunder_pair is None:
                 continue
-            sync_method_name, async_method_name, use_async_def, stop_iteration_bridge = surfaces
+            sync_method_name, async_method_name, use_async_def, stop_iteration_bridge = dunder_pair
             method_return_transformer = method_transformers[mir.method_name]
             method_sync_return_str, method_async_return_str = _format_return_annotation(
                 method_return_transformer, target_module
@@ -1534,10 +1534,10 @@ def emit_class_from_ir(
     if context_manager_mirs:
         cm_blocks: list[str] = []
         for mir in context_manager_mirs:
-            surfaces = _async_context_manager_dunder_surfaces(mir.method_name)
-            if surfaces is None:
+            dunder_pair = _async_context_manager_dunder_pair(mir.method_name)
+            if dunder_pair is None:
                 continue
-            sync_method_name, async_method_name = surfaces
+            sync_method_name, async_method_name = dunder_pair
             method_return_transformer = method_transformers[mir.method_name]
             method_sync_return_str, method_async_return_str = _format_return_annotation(
                 method_return_transformer, target_module
@@ -1670,8 +1670,8 @@ def emit_class_from_ir(
 
 {sections_combined}"""
 
-    if method_surface_protocols:
-        return "\n\n".join([*method_surface_protocols, wrapper_class_code])
+    if method_with_aio_types:
+        return "\n\n".join([*method_with_aio_types, wrapper_class_code])
     return wrapper_class_code
 
 
