@@ -672,11 +672,13 @@ def test_emit_class_basic():
 
 def test_emit_class_method_descriptors():
     code = emit_class_from_ir(IR_CLASS_SIMPLE, TARGET)
-    assert "class _EmitSimpleClass_add_to_value_MethodSurface:" in code
+    assert "class _EmitSimpleClass_add_to_value_MethodSurface(MethodSurfaceBase):" in code
     assert "@wrapped_surface_method(_EmitSimpleClass_add_to_value_MethodSurface)" in code
     assert "async def aio(self, amount: int) -> int:" in code
     assert "def add_to_value(self, amount: int) -> int" in code
     assert "return self._sync_impl(amount)" in code
+    assert "self._surface_from_impl = _from_impl" not in code
+    assert "def _from_impl(self, impl_instance: typing.Any) -> typing.Any:" not in code
 
 
 def test_emit_class_complex_types():
@@ -768,7 +770,7 @@ def test_emit_class_constructor_with_wrapped_param():
 
 def test_emit_class_sync_method_returning_coroutine():
     code = emit_class_from_ir(IR_CLASS_COROUTINE_METHOD, TARGET)
-    assert "class _EmitCoroutineMethodClass_create_coroutine_MethodSurface:" in code
+    assert "class _EmitCoroutineMethodClass_create_coroutine_MethodSurface(MethodSurfaceBase):" in code
     assert "@wrapped_surface_method(_EmitCoroutineMethodClass_create_coroutine_MethodSurface)" in code
     assert "def create_coroutine(self, x: int) -> str:" in code
     assert "async def aio(self, x: int) -> str:" in code
@@ -778,7 +780,7 @@ def test_emit_class_sync_method_returning_coroutine():
 
 def test_emit_class_sync_method_returning_awaitable():
     code = emit_class_from_ir(IR_CLASS_AWAITABLE_METHOD, TARGET)
-    assert "class _EmitAwaitableMethodClass_create_awaitable_MethodSurface:" in code
+    assert "class _EmitAwaitableMethodClass_create_awaitable_MethodSurface(MethodSurfaceBase):" in code
     assert "@wrapped_surface_method(_EmitAwaitableMethodClass_create_awaitable_MethodSurface)" in code
     assert "def create_awaitable(self, x: int) -> str:" in code
     assert "async def aio(self, x: int) -> str:" in code
@@ -789,7 +791,7 @@ def test_emit_class_sync_method_returning_awaitable():
 def test_emit_class_method_overloads_translate_each_overload():
     code = emit_class_from_ir(IR_CLASS_OVERLOADED_METHOD, TARGET)
     compile(code, "<string>", "exec")
-    assert "class _EmitOverloadedMethodClass_resolve_MethodSurface:" in code
+    assert "class _EmitOverloadedMethodClass_resolve_MethodSurface(MethodSurfaceBase):" in code
     assert "def __call__(self, value: int) -> int: ..." in code
     assert 'def __call__(self, value: "Node") -> "Node": ...' in code
     assert "async def aio(self, value: int) -> int: ..." in code

@@ -9,7 +9,7 @@ from synchronicity import Module
 wrapper_module = Module("overloads")
 
 
-@wrapper_module.wrap_class
+@wrapper_module.wrap_class()
 class Record:
     value: int
 
@@ -25,7 +25,7 @@ async def duplicate(value: int) -> int: ...
 async def duplicate(value: str) -> str: ...
 
 
-@wrapper_module.wrap_function
+@wrapper_module.wrap_function()
 async def duplicate(value: int | str) -> int | str:
     if isinstance(value, str):
         return value * 2
@@ -40,14 +40,14 @@ async def maybe_wrap(value: int, wrap: typing.Literal[False]) -> int: ...
 async def maybe_wrap(value: int, wrap: typing.Literal[True]) -> Record: ...
 
 
-@wrapper_module.wrap_function
+@wrapper_module.wrap_function()
 async def maybe_wrap(value: int, wrap: bool) -> int | Record:
     if wrap:
         return Record(value)
     return value
 
 
-@wrapper_module.wrap_class
+@wrapper_module.wrap_class()
 class Resolver:
     def __init__(self, offset: int):
         self.offset = offset

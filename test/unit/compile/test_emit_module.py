@@ -7,6 +7,9 @@ import re
 from synchronicity.codegen.emitters.sync_async_wrappers import SyncAsyncWrapperEmitter
 from synchronicity.codegen.ir import (
     ClassWrapperIR,
+    ManualClassAttributeAccessKind,
+    ManualClassAttributeIR,
+    ManualReexportIR,
     MethodBindingKind,
     MethodWrapperIR,
     ModuleCompilationIR,
@@ -135,3 +138,59 @@ def test_emit_module_two_classes_separated_by_blank_lines():
         "_synchronizer.register_wrapper_class(test.unit.compile.test_emit_module.EmitModuleClassB, EmitModuleClassB)"
         in generated_code
     )
+
+
+def test_emit_module_manual_reexports_and_class_attributes():
+    ir = ModuleCompilationIR(
+        target_module="test_module",
+        synchronizer_name="default_synchronizer",
+        impl_modules=frozenset({IMPL}),
+        cross_module_imports={},
+        typevar_specs=(),
+        class_wrappers=(
+            ClassWrapperIR(
+                impl_ref=ImplQualifiedRef(IMPL, "EmitModuleClassA"),
+                wrapper_ref=WrapperRef(TARGET, "EmitModuleClassA"),
+                wrapped_bases=(),
+                generic_type_parameters=None,
+                attributes=(),
+                properties=(),
+                methods=(
+                    MethodWrapperIR(
+                        method_name="__init__",
+                        method_type=MethodBindingKind.INSTANCE,
+                        parameters=(),
+                        is_async_gen=False,
+                        is_async=False,
+                        return_transformer_ir=IdentityTypeIR(signature_text=""),
+                    ),
+                ),
+                manual_attributes=(
+                    ManualClassAttributeIR(
+                        name="manual_method",
+                        access_kind=ManualClassAttributeAccessKind.ATTRIBUTE,
+                    ),
+                    ManualClassAttributeIR(
+                        name="manual_descriptor",
+                        access_kind=ManualClassAttributeAccessKind.RAW_CLASS_DICT,
+                    ),
+                ),
+            ),
+        ),
+        module_functions_ir=(),
+        manual_reexports=(
+            ManualReexportIR(
+                impl_ref=ImplQualifiedRef(IMPL, "forwarded"),
+                export_name="forwarded",
+            ),
+        ),
+    )
+
+    generated_code = SyncAsyncWrapperEmitter().emit_module(ir)
+
+    assert "manual_method = test.unit.compile.test_emit_module.EmitModuleClassA.manual_method" in generated_code
+    assert (
+        "manual_descriptor = test.unit.compile.test_emit_module.EmitModuleClassA.__dict__['manual_descriptor']"
+        in generated_code
+    )
+    assert "forwarded = test.unit.compile.test_emit_module.forwarded" in generated_code

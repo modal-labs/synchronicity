@@ -84,6 +84,7 @@ def generated_wrappers():
             "classmethod_staticmethod_impl",
             "custom_iterators_impl",
             "multi_synchronizer_impl",
+            "manual_nowrap_impl",
             "async_context_manager_impl",
             "property_class_impl",
             "sandboxlib._sandbox",

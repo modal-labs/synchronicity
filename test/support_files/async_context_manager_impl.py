@@ -7,7 +7,7 @@ import synchronicity
 mod = synchronicity.Module("async_context_manager")
 
 
-@mod.wrap_class
+@mod.wrap_class()
 class AsyncResource:
     """A class implementing the async context manager protocol directly."""
 
@@ -33,7 +33,7 @@ class AsyncResource:
         self.state = "exited"
 
 
-@mod.wrap_class
+@mod.wrap_class()
 class Connection:
     """A wrapped type yielded from context managers to test impl→wrapper translation."""
 
@@ -43,7 +43,7 @@ class Connection:
         self.value = value
 
 
-@mod.wrap_function
+@mod.wrap_function()
 @asynccontextmanager
 async def managed_value() -> typing.AsyncGenerator[Connection, None]:
     """A module-level context manager created via @asynccontextmanager."""
@@ -51,7 +51,7 @@ async def managed_value() -> typing.AsyncGenerator[Connection, None]:
     yield Connection(42)
 
 
-@mod.wrap_class
+@mod.wrap_class()
 class ServiceWithContextMethod:
     """A class with a method that returns a context manager."""
 

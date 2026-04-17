@@ -7,6 +7,30 @@ R = TypeVar("R")
 Surface_co = TypeVar("Surface_co", covariant=True)
 
 
+class MethodSurfaceBase:
+    """Shared runtime base for generated and custom method-surface classes."""
+
+    _sync_impl: Callable[..., typing.Any]
+    _wrapper_instance: typing.Any
+    _wrapper_class: type
+    _surface_from_impl: Callable[[typing.Any], typing.Any]
+
+    def __init__(
+        self,
+        sync_impl: Callable[..., typing.Any],
+        wrapper_instance: typing.Any,
+        wrapper_class: type,
+        _from_impl: Callable[[typing.Any], typing.Any],
+    ):
+        self._sync_impl = sync_impl
+        self._wrapper_instance = wrapper_instance
+        self._wrapper_class = wrapper_class
+        self._surface_from_impl = _from_impl
+
+    def _from_impl(self, impl_instance: typing.Any) -> typing.Any:
+        return self._surface_from_impl(impl_instance)
+
+
 class _BoundInstanceMethodDescriptorSurface(typing.Protocol[Surface_co]):
     @overload
     def __get__(self, wrapper_instance: None, owner: type) -> typing.Self: ...
@@ -22,6 +46,7 @@ class _BoundOnAccessDescriptorSurface(typing.Protocol[Surface_co]):
 class SurfaceMethodDescriptor(typing.Generic[Surface_co]):
     """Descriptor that materializes a generated surface object for instance methods."""
 
+    _synchronicity_raw_class_dict = False
     sync_wrapper: Callable[..., typing.Any]
     surface_factory: Callable[..., Surface_co]
 
@@ -49,6 +74,7 @@ class SurfaceMethodDescriptor(typing.Generic[Surface_co]):
 class SurfaceOnAccessDescriptor(typing.Generic[Surface_co]):
     """Descriptor that materializes a generated surface object on each access."""
 
+    _synchronicity_raw_class_dict = True
     sync_wrapper: Callable[..., typing.Any]
     surface_factory: Callable[..., Surface_co]
 

@@ -594,7 +594,7 @@ def _union_arm_runtime_spec(
             discriminator_key=("impl", transformer.impl_ref.module, transformer.impl_ref.qualname),
             runtime_action_key=_runtime_action_key(transformer),
             unwrap_guard_expr=(
-                f'hasattr(_v, "_impl_instance") and ' f'isinstance(getattr(_v, "_impl_instance"), {impl_expr})'
+                f'hasattr(_v, "_impl_instance") and isinstance(getattr(_v, "_impl_instance"), {impl_expr})'
             ),
             wrap_guard_expr=f"isinstance(_v, {impl_expr})",
             translated=True,
@@ -609,7 +609,7 @@ def _union_arm_runtime_spec(
             discriminator_key=("impl", inner.impl_ref.module, inner.impl_ref.qualname),
             runtime_action_key=_runtime_action_key(transformer),
             unwrap_guard_expr=(
-                f'hasattr(_v, "_impl_instance") and ' f'isinstance(getattr(_v, "_impl_instance"), {impl_expr})'
+                f'hasattr(_v, "_impl_instance") and isinstance(getattr(_v, "_impl_instance"), {impl_expr})'
             ),
             wrap_guard_expr=f"isinstance(_v, {impl_expr})",
             translated=True,
@@ -635,7 +635,7 @@ def _union_arm_runtime_spec(
             discriminator_key=("impl", transformer._impl.impl_ref.module, transformer._impl.impl_ref.qualname),
             runtime_action_key=_runtime_action_key(transformer),
             unwrap_guard_expr=(
-                f'hasattr(_v, "_impl_instance") and ' f'isinstance(getattr(_v, "_impl_instance"), {impl_expr})'
+                f'hasattr(_v, "_impl_instance") and isinstance(getattr(_v, "_impl_instance"), {impl_expr})'
             ),
             wrap_guard_expr=f"isinstance(_v, {impl_expr})",
             translated=True,
@@ -1009,8 +1009,7 @@ class AsyncIteratorTransformer(TypeTransformer):
 
         helper_name = self._get_helper_name(target_module)
         return (
-            f"{self._runtime_package}.types.SyncOrAsyncIterator({var_name}, "
-            f"_synchronizer, item_wrapper={helper_name})"
+            f"{self._runtime_package}.types.SyncOrAsyncIterator({var_name}, _synchronizer, item_wrapper={helper_name})"
         )
 
     def needs_translation(self) -> bool:
@@ -1079,8 +1078,7 @@ class AsyncIterableTransformer(TypeTransformer):
         )
         helper_name = f"_wrap_async_iterable_item_{helper_suffix}"
         return (
-            f"{self._runtime_package}.types.SyncOrAsyncIterable({var_name}, "
-            f"_synchronizer, item_wrapper={helper_name})"
+            f"{self._runtime_package}.types.SyncOrAsyncIterable({var_name}, _synchronizer, item_wrapper={helper_name})"
         )
 
     def needs_translation(self) -> bool:

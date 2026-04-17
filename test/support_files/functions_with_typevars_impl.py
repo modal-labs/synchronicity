@@ -7,12 +7,12 @@ T = typing.TypeVar("T", bound="SomeClass")
 mod = synchronicity.Module("functions_with_typevars")
 
 
-@mod.wrap_class
+@mod.wrap_class()
 class SomeClass:
     pass
 
 
-@mod.wrap_class
+@mod.wrap_class()
 class Container:
     """A class with methods that use TypeVars."""
 

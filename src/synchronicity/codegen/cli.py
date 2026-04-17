@@ -254,7 +254,7 @@ def _run_wrappers(args: argparse.Namespace) -> None:
             file=sys.stderr,
         )
         print("  wrapper_module = Module('my_module')", file=sys.stderr)
-        print("  @wrapper_module.wrap_function", file=sys.stderr)
+        print("  @wrapper_module.wrap_function()", file=sys.stderr)
         sys.exit(1)
 
     total_items = sum(len(m.module_items()) for m in module_objects)

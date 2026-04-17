@@ -63,12 +63,12 @@ from mylib.synchronicity import Module
 wrapper_module = Module("mylib.weather")
 
 
-@wrapper_module.wrap_function
+@wrapper_module.wrap_function()
 async def get_temperature(city: str) -> float:
     ...
 
 
-@wrapper_module.wrap_class
+@wrapper_module.wrap_class()
 class WeatherClient:
     default_city: str
 
@@ -79,7 +79,7 @@ class WeatherClient:
         ...
 
 
-@wrapper_module.wrap_function
+@wrapper_module.wrap_function()
 async def stream_temperature_readings() -> collections.abc.AsyncGenerator[float, None]:
     """Async generator of sample readings (°C)."""
     yield 17.5
@@ -94,6 +94,57 @@ synchronicity wrappers -m mylib._weather_impl --runtime-package mylib.synchronic
 ```
 
 That creates `src/mylib/weather.py`. Your users import the public API with `from mylib.weather import get_temperature, WeatherClient, stream_temperature_readings` (with `src` on your `PYTHONPATH` or installed as a package). By default, `Module` uses the synchronizer name `default_synchronizer` (see `synchronicity.DEFAULT_SYNCHRONIZER_NAME`); pass a second argument to `Module(...)` if you need multiple isolated synchronizer instances.
+
+## Including unwrapped entries
+
+If a generated module or wrapper class should expose an entry without generating a synchronicity wrapper for it, register it as usual and mark the inserted object with `Module.manual_wrapper()`.
+
+```python
+from mylib.synchronicity import MethodSurfaceBase, Module
+from mylib.synchronicity.descriptor import wrapped_surface_function, wrapped_surface_method
+
+mod = Module("mylib.api")
+
+
+class _ManualFunctionSurface:
+    def __init__(self, sync_impl):
+        self._sync_impl = sync_impl
+
+    def __call__(self, value: int) -> str:
+        return self._sync_impl(value)
+
+    async def aio(self, value: int) -> str:
+        return f"aio:{value}"
+
+
+@mod.wrap_function()
+@mod.manual_wrapper()
+@wrapped_surface_function(_ManualFunctionSurface)
+def manual_function(value: int) -> str:
+    return f"sync:{value}"
+
+
+class _ManualMethodSurface(MethodSurfaceBase):
+    async def aio(self, value: int) -> str:
+        return f"aio:{value}"
+
+
+@mod.wrap_class()
+class Client:
+    @mod.manual_wrapper()
+    @wrapped_surface_method(_ManualMethodSurface)
+    def manual_method(self, value: int) -> str:
+        return f"sync:{value}"
+```
+
+The generated code re-exports these entries directly instead of parsing signatures and emitting a new wrapper body. At module scope that becomes a simple alias like `manual_function = mylib._impl.manual_function`; inside wrapped classes, the marked attribute is copied into the emitted wrapper class unchanged. The same pattern also works for re-exporting a whole class directly:
+
+```python
+@mod.wrap_class()
+@mod.manual_wrapper()
+class ExistingPublicType:
+    ...
+```
 
 ## Vendoring (recommended for published libraries)
 
@@ -309,7 +360,7 @@ class UnwrappedBase:
         return True
 
 
-@mod.wrap_class
+@mod.wrap_class()
 class WrappedBase(UnwrappedBase):
     async def wrapped_method(self) -> list[int]:
         return []

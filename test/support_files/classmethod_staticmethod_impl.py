@@ -7,7 +7,7 @@ from synchronicity import Module
 wrapper_module = Module("classmethod_staticmethod")
 
 
-@wrapper_module.wrap_class
+@wrapper_module.wrap_class()
 class TestClass:
     def __init__(self, value: int):
         self.value = value

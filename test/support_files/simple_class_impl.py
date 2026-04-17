@@ -7,7 +7,7 @@ from synchronicity import Module
 wrapper_module = Module("simple_class")
 
 
-@wrapper_module.wrap_class
+@wrapper_module.wrap_class()
 class Counter:
     """A simple counter class."""
 

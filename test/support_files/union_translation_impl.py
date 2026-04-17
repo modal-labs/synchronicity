@@ -7,7 +7,7 @@ from synchronicity import Module
 wrapper_module = Module("union_translation")
 
 
-@wrapper_module.wrap_class
+@wrapper_module.wrap_class()
 class Box:
     value: int
 
@@ -15,14 +15,14 @@ class Box:
         self.value = value
 
 
-@wrapper_module.wrap_function
+@wrapper_module.wrap_function()
 async def maybe_box(value: int, wrap: bool) -> int | Box:
     if wrap:
         return Box(value)
     return value
 
 
-@wrapper_module.wrap_function
+@wrapper_module.wrap_function()
 async def extract_value(value: int | Box) -> int:
     if isinstance(value, Box):
         return value.value

@@ -10,7 +10,7 @@ sandbox_module = Module("sandboxlib.sandbox")
 T = typing.TypeVar("T", str, bytes)
 
 
-@sandbox_module.wrap_class
+@sandbox_module.wrap_class()
 class StreamReader(typing.Generic[T]):
     _value: T
 
@@ -27,7 +27,7 @@ class StreamReader(typing.Generic[T]):
         yield self._value
 
 
-@sandbox_module.wrap_class
+@sandbox_module.wrap_class()
 class ContainerProcess(typing.Generic[T]):
     returncode: Optional[int] = None
 
@@ -43,7 +43,7 @@ class ContainerProcess(typing.Generic[T]):
         return StreamReader(self._stdout_val)
 
 
-@sandbox_module.wrap_class
+@sandbox_module.wrap_class()
 class Sandbox:
     @property
     def stdout(self) -> StreamReader[str]:

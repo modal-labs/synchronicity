@@ -12,7 +12,7 @@ from synchronicity import Module
 wrapper_module = Module("nested_generators")
 
 
-@wrapper_module.wrap_function
+@wrapper_module.wrap_function()
 async def nested_async_generator(
     i: int,
 ) -> tuple[typing.AsyncGenerator[str, None], typing.AsyncGenerator[int, None]]:

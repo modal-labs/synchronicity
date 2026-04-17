@@ -68,6 +68,7 @@ class ModuleCompilationIR:
     typevar_specs: tuple[TypeVarSpecIR, ...]
     class_wrappers: tuple[ClassWrapperIR, ...]
     module_functions_ir: tuple[ModuleLevelFunctionIR, ...]
+    manual_reexports: tuple[ManualReexportIR, ...] = ()
 
     @property
     def has_wrapped_classes(self) -> bool:
@@ -95,6 +96,14 @@ class ModuleLevelFunctionIR:
 
 
 @dataclasses.dataclass(frozen=True)
+class ManualReexportIR:
+    """A module-level name that should be re-exported directly from the impl module."""
+
+    impl_ref: ImplQualifiedRef
+    export_name: str
+
+
+@dataclasses.dataclass(frozen=True)
 class MethodWrapperIR:
     """Parsed method: parameters + return type as transformer IR (owner context is separate)."""
 
@@ -115,6 +124,21 @@ class PropertyWrapperIR:
     return_transformer_ir: TypeTransformerIR | None
     has_setter: bool
     setter_value_ir: TypeTransformerIR | None
+
+
+class ManualClassAttributeAccessKind(str, enum.Enum):
+    """How to reference a manual class attribute in emitted wrapper code."""
+
+    ATTRIBUTE = "attribute"
+    RAW_CLASS_DICT = "raw_class_dict"
+
+
+@dataclasses.dataclass(frozen=True)
+class ManualClassAttributeIR:
+    """A class attribute that should be copied into the generated wrapper class unchanged."""
+
+    name: str
+    access_kind: ManualClassAttributeAccessKind
 
 
 @dataclasses.dataclass(frozen=True)
@@ -145,3 +169,4 @@ class ClassWrapperIR:
     attributes: tuple[tuple[str, TypeTransformerIR | None], ...]
     properties: tuple[PropertyWrapperIR, ...]
     methods: tuple[MethodWrapperIR, ...]
+    manual_attributes: tuple[ManualClassAttributeIR, ...] = ()

@@ -8,7 +8,7 @@ from synchronicity import Module
 wrapper_module = Module("two_way_generator")
 
 
-@wrapper_module.wrap_function
+@wrapper_module.wrap_function()
 async def echo_generator() -> AsyncGenerator[str, str]:
     """A two-way generator that echoes back what you send to it.
 
@@ -23,7 +23,7 @@ async def echo_generator() -> AsyncGenerator[str, str]:
         sent_value = yield f"Echo: {sent_value}"
 
 
-@wrapper_module.wrap_function
+@wrapper_module.wrap_function()
 async def accumulator_generator() -> AsyncGenerator[int, int]:
     """A two-way generator that accumulates sent values.
 
@@ -39,7 +39,7 @@ async def accumulator_generator() -> AsyncGenerator[int, int]:
         sent_value = yield total
 
 
-@wrapper_module.wrap_function
+@wrapper_module.wrap_function()
 async def multiplier_generator(factor: int) -> AsyncGenerator[int, int]:
     """A two-way generator that multiplies sent values by a factor.
 
@@ -59,7 +59,7 @@ async def multiplier_generator(factor: int) -> AsyncGenerator[int, int]:
 cleanup_tracker = []
 
 
-@wrapper_module.wrap_function
+@wrapper_module.wrap_function()
 async def generator_with_cleanup() -> AsyncGenerator[str, None]:
     """A generator that tracks cleanup via aclose().
 

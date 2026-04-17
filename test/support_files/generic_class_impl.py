@@ -9,7 +9,7 @@ T = TypeVar("T", bound="WrappedType")
 mod = synchronicity.Module("generic_class")
 
 
-@mod.wrap_class
+@mod.wrap_class()
 class WrappedType:
     val: int
 
@@ -17,7 +17,7 @@ class WrappedType:
         self.val = val
 
 
-@mod.wrap_class
+@mod.wrap_class()
 class SomeContainer(Generic[T]):
     """A generic container class."""
 
@@ -33,12 +33,12 @@ class SomeContainer(Generic[T]):
         self.value = value
 
 
-@mod.wrap_function
+@mod.wrap_function()
 def returning_container() -> SomeContainer[WrappedType]:
     return SomeContainer(WrappedType(1))
 
 
-@mod.wrap_class
+@mod.wrap_class()
 class FunctionWrapper(Generic[P, R]):
     """A wrapper around a callable."""
 

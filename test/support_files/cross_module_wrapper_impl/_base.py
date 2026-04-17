@@ -10,11 +10,11 @@ if typing.TYPE_CHECKING:
 wrapper_module = Module("cross_wrapper.base")
 
 
-@wrapper_module.wrap_class
+@wrapper_module.wrap_class()
 class Foo: ...
 
 
-@wrapper_module.wrap_function
+@wrapper_module.wrap_function()
 def foo_getter() -> Foo:
     from ._sub import bar
 

@@ -5,16 +5,51 @@ for wrapper code generation. It has zero runtime overhead - it simply tracks
 what should be wrapped during the build step.
 """
 
-import types
+import dataclasses
 import typing
 from typing import Callable, Optional
 
-T = typing.TypeVar("T", bound=typing.Union[type, Callable])
-F = typing.TypeVar("F", bound=types.FunctionType)
+F = typing.TypeVar("F")
 C = typing.TypeVar("C", bound=type)
+D = typing.TypeVar("D")
 
 DEFAULT_SYNCHRONIZER_NAME = "default_synchronizer"
 _IMPL_WRAPPER_LOCATION_ATTR = "__synchronicity_wrapper_location__"
+
+
+@dataclasses.dataclass(frozen=True)
+class RegistrationInfo:
+    target_module: str
+    name: str
+
+
+@dataclasses.dataclass(frozen=True)
+class ManualWrapperRef:
+    module: str
+    qualname: str
+
+
+def _impl_ref_from_object(obj: object | None) -> ManualWrapperRef | None:
+    if obj is None:
+        return None
+    module = getattr(obj, "__module__", None)
+    qualname = getattr(obj, "__qualname__", None)
+    if isinstance(module, str) and isinstance(qualname, str):
+        return ManualWrapperRef(module=module, qualname=qualname)
+    return None
+
+
+def _resolve_manual_wrapper_ref(obj: object) -> ManualWrapperRef | None:
+    for target in (
+        getattr(obj, "sync_wrapper", None),
+        getattr(obj, "_sync_impl", None),
+        obj.__func__ if isinstance(obj, (classmethod, staticmethod)) else None,
+        obj,
+    ):
+        ref = _impl_ref_from_object(target)
+        if ref is not None:
+            return ref
+    return None
 
 
 class Module:
@@ -30,11 +65,11 @@ class Module:
 
         wrapper_module = Module("my_lib")
 
-        @wrapper_module.wrap_function
+        @wrapper_module.wrap_function()
         async def my_function():
             return "hello"
 
-        @wrapper_module.wrap_class
+        @wrapper_module.wrap_class()
         class MyClass:
             async def my_method(self):
                 return "world"
@@ -74,8 +109,9 @@ class Module:
         self._target_module: str = target_module
         self._synchronizer_name: str = synchronizer_name
         # Instance-level registries - each Module tracks its own wrapped items
-        self._wrapped_classes: dict[type, tuple[str, str]] = {}
-        self._wrapped_functions: dict[types.FunctionType, tuple[str, str]] = {}
+        self._wrapped_classes: dict[type, RegistrationInfo] = {}
+        self._wrapped_functions: dict[object, RegistrationInfo] = {}
+        self._manual_wrappers: dict[int, ManualWrapperRef | None] = {}
 
     @property
     def target_module(self) -> str:
@@ -88,63 +124,92 @@ class Module:
         return self._synchronizer_name
 
     @property
-    def _registered_classes(self) -> dict[type, tuple[str, str]]:
+    def _registered_classes(self) -> dict[type, RegistrationInfo]:
         """Get registered classes for this module."""
         return self._wrapped_classes
 
     @property
-    def _registered_functions(self) -> dict[types.FunctionType, tuple[str, str]]:
+    def _registered_functions(self) -> dict[object, RegistrationInfo]:
         """Get registered functions for this module."""
         return self._wrapped_functions
 
-    def module_items(self) -> dict[typing.Union[type, types.FunctionType], tuple[str, str]]:
+    @property
+    def _manual_wrapper_ids(self) -> frozenset[int]:
+        """Get object identities registered for manual forwarding in this module."""
+        return frozenset(self._manual_wrappers)
+
+    def is_manual_wrapper(self, obj: object) -> bool:
+        """Return whether ``obj`` is registered for manual forwarding in this module."""
+        return id(obj) in self._manual_wrappers
+
+    def manual_wrapper_ref(self, obj: object) -> ManualWrapperRef | None:
+        """Get the implementation reference for a manually forwarded object, if any."""
+        return self._manual_wrappers.get(id(obj))
+
+    def module_items(self) -> dict[object, RegistrationInfo]:
         """Get all registered classes and functions with their target module and name.
 
         Returns:
-            Dict mapping registered items (classes or functions) to tuples of
-            (target_module, name) for code generation.
+            Dict mapping registered items (classes or functions) to registration
+            metadata for code generation.
         """
         result = {}
         result.update(self._registered_classes)
         result.update(self._registered_functions)
         return result
 
-    def wrap_function(self, f: F) -> F:
-        """Decorator to mark a function for wrapper generation.
+    def manual_wrapper(self) -> Callable[[D], D]:
+        """Decorator to mark an entity for direct forwarding instead of wrapper generation."""
 
-        This decorator registers the function for wrapper code generation but
-        returns it unchanged. It has zero runtime overhead.
+        def decorator(obj: D) -> D:
+            self._manual_wrappers[id(obj)] = _resolve_manual_wrapper_ref(obj)
+            return obj
 
-        Args:
-            f: The function to register for wrapper generation.
+        return decorator
 
-        Returns:
-            The original function, unchanged.
-        """
-        self._wrapped_functions[f] = (self._target_module, f.__name__)
-        return f
+    def wrap_function(self) -> Callable[[F], F]:
+        """Decorator to mark a function for wrapper generation."""
 
-    def wrap_class(self, cls: C) -> C:
-        """Decorator to mark a class for wrapper generation.
-
-        This decorator registers the class for wrapper code generation, records
-        where its generated wrapper class will live at runtime, and returns it
-        unchanged.
-
-        Args:
-            cls: The class to register for wrapper generation.
-
-        Returns:
-            The original class, unchanged.
-        """
-        wrapper_location = (self._target_module, cls.__name__)
-        existing_location = cls.__dict__.get(_IMPL_WRAPPER_LOCATION_ATTR)
-        if existing_location is not None and existing_location != wrapper_location:
-            raise RuntimeError(
-                f"Implementation class {cls!r} already has wrapper location {existing_location!r}, "
-                f"cannot replace it with {wrapper_location!r}"
+        def decorator(fn: F) -> F:
+            name = getattr(fn, "__name__", None)
+            if not isinstance(name, str):
+                ref = self.manual_wrapper_ref(fn)
+                if ref is None:
+                    raise TypeError(
+                        "wrap_function() expects a function or a @module.manual_wrapper()-registered "
+                        "surface with an underlying implementation reference"
+                    )
+                name = ref.qualname.rpartition(".")[2]
+            self._wrapped_functions[fn] = RegistrationInfo(
+                target_module=self._target_module,
+                name=name,
             )
+            return fn
 
-        setattr(cls, _IMPL_WRAPPER_LOCATION_ATTR, wrapper_location)
-        self._wrapped_classes[cls] = wrapper_location
-        return cls
+        return decorator
+
+    def wrap_class(self) -> Callable[[C], C]:
+        """Decorator to mark a class for wrapper generation."""
+
+        def decorator(impl_cls: C) -> C:
+            registration = RegistrationInfo(
+                target_module=self._target_module,
+                name=impl_cls.__name__,
+            )
+            self._wrapped_classes[impl_cls] = registration
+
+            if self.is_manual_wrapper(impl_cls):
+                return impl_cls
+
+            wrapper_location = (self._target_module, impl_cls.__name__)
+            existing_location = impl_cls.__dict__.get(_IMPL_WRAPPER_LOCATION_ATTR)
+            if existing_location is not None and existing_location != wrapper_location:
+                raise RuntimeError(
+                    f"Implementation class {impl_cls!r} already has wrapper location {existing_location!r}, "
+                    f"cannot replace it with {wrapper_location!r}"
+                )
+
+            setattr(impl_cls, _IMPL_WRAPPER_LOCATION_ATTR, wrapper_location)
+            return impl_cls
+
+        return decorator

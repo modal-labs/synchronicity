@@ -10,7 +10,7 @@ if typing.TYPE_CHECKING:
 wrapper_module = Module("multifile.b")
 
 
-@wrapper_module.wrap_class
+@wrapper_module.wrap_class()
 class B:
     """B test class."""
 
@@ -21,7 +21,7 @@ class B:
         return self.name
 
 
-@wrapper_module.wrap_function
+@wrapper_module.wrap_function()
 async def get_a() -> "multifile_impl._a.A":
     """Create and return an A instance."""
     from ._a import A

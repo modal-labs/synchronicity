@@ -21,14 +21,14 @@ async def check_event_loop():
     assert current_loop is not None, "Should be running in an event loop"
 
 
-@wrapper_module.wrap_function
+@wrapper_module.wrap_function()
 async def async_function(value: int) -> int:
     """Test function that checks event loop."""
     await check_event_loop()
     return value * 2
 
 
-@wrapper_module.wrap_function
+@wrapper_module.wrap_function()
 async def async_generator(n: int) -> typing.AsyncGenerator[int, None]:
     """Test generator that checks event loop."""
     for i in range(n):
@@ -36,7 +36,7 @@ async def async_generator(n: int) -> typing.AsyncGenerator[int, None]:
         yield i
 
 
-@wrapper_module.wrap_class
+@wrapper_module.wrap_class()
 class EventLoopChecker:
     """Test class with methods that check event loop."""
 

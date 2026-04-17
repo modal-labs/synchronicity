@@ -7,7 +7,12 @@ import typing
 from typing import Generic, TypeVar
 
 from synchronicity import Module
-from synchronicity.codegen.ir import ModuleCompilationIR, PropertyWrapperIR
+from synchronicity.codegen.ir import (
+    ManualClassAttributeAccessKind,
+    ManualReexportIR,
+    ModuleCompilationIR,
+    PropertyWrapperIR,
+)
 from synchronicity.codegen.parse import (
     build_module_compilation_ir,
     parse_class_wrapper_ir,
@@ -21,6 +26,7 @@ from synchronicity.codegen.transformer_ir import (
     WrappedClassTypeIR,
     WrapperRef,
 )
+from synchronicity.descriptor import wrapped_surface_function, wrapped_surface_method
 
 
 def test_parse_module_level_function_ir_async_is_awaitable_ir():
@@ -39,12 +45,12 @@ def test_parse_module_level_function_ir_async_is_awaitable_ir():
 def test_build_module_compilation_ir_uses_qualified_refs():
     m = Module("generated.example")
 
-    @m.wrap_class
+    @m.wrap_class()
     class Service:
         async def run(self) -> None:
             pass
 
-    @m.wrap_function
+    @m.wrap_function()
     async def top_level() -> None:
         pass
 
@@ -61,15 +67,25 @@ def test_build_module_compilation_ir_uses_qualified_refs():
     assert ir.has_wrapped_classes is True
 
 
+def test_wrap_decorators_require_factory_call() -> None:
+    m = Module("generated.decorator_factory_only")
+
+    with pytest.raises(TypeError):
+        m.wrap_function(lambda: None)
+
+    with pytest.raises(TypeError):
+        m.wrap_class(type("Service", (), {}))
+
+
 def test_parse_class_wrapper_ir_inheritance_stores_impl_refs_not_wrapper_names():
     m = Module("generated.inherit_parse")
 
-    @m.wrap_class
+    @m.wrap_class()
     class Base:
         async def base_m(self) -> None:
             pass
 
-    @m.wrap_class
+    @m.wrap_class()
     class Sub(Base):
         async def sub_m(self) -> None:
             pass
@@ -85,7 +101,7 @@ def test_parse_class_wrapper_ir_generic_stores_type_parameter_names():
     m = Module("generated.generic_parse")
     T = TypeVar("T")
 
-    @m.wrap_class
+    @m.wrap_class()
     class G(Generic[T]):
         async def get(self) -> T:
             raise NotImplementedError
@@ -102,7 +118,7 @@ def test_parse_class_sync_property_readonly():
     exec(
         """
 m = Module("generated.prop_parse")
-@m.wrap_class
+@m.wrap_class()
 class Cfg:
     @property
     def name(self) -> str:
@@ -129,7 +145,7 @@ def test_parse_class_sync_property_readwrite():
     exec(
         """
 m = Module("generated.prop_rw")
-@m.wrap_class
+@m.wrap_class()
 class Cfg:
     @property
     def count(self) -> int:
@@ -158,7 +174,7 @@ def test_parse_class_async_property_raises():
     exec(
         """
 m = Module("generated.async_prop")
-@m.wrap_class
+@m.wrap_class()
 class Bad:
     @property
     async def broken(self) -> int:
@@ -181,10 +197,10 @@ def test_parse_class_attributes_are_type_ir_not_wrapper_strings():
     exec(
         """
 m = Module("generated.attr_parse")
-@m.wrap_class
+@m.wrap_class()
 class Inner:
     pass
-@m.wrap_class
+@m.wrap_class()
 class Holder:
     inner: Inner
 """,
@@ -203,7 +219,7 @@ class Holder:
 def test_parse_module_function_overloads_are_captured_in_ir():
     m = Module("generated.overload_parse")
 
-    @m.wrap_class
+    @m.wrap_class()
     class Item:
         pass
 
@@ -213,7 +229,7 @@ def test_parse_module_function_overloads_are_captured_in_ir():
     @typing.overload
     async def convert(value: Item) -> Item: ...
 
-    @m.wrap_function
+    @m.wrap_function()
     async def convert(value) -> object:
         return value
 
@@ -231,11 +247,11 @@ def test_parse_module_function_overloads_are_captured_in_ir():
 def test_parse_method_overloads_are_captured_in_ir():
     m = Module("generated.method_overload_parse")
 
-    @m.wrap_class
+    @m.wrap_class()
     class Item:
         pass
 
-    @m.wrap_class
+    @m.wrap_class()
     class Service:
         @typing.overload
         async def convert(self, value: int) -> int: ...
@@ -261,11 +277,11 @@ def test_parse_method_overloads_are_captured_in_ir():
 def test_parse_non_optional_unions_are_captured_in_ir():
     m = Module("generated.union_parse")
 
-    @m.wrap_class
+    @m.wrap_class()
     class Item:
         pass
 
-    @m.wrap_function
+    @m.wrap_function()
     async def convert(value: int | Item) -> int | Item:
         return value
 
@@ -278,3 +294,85 @@ def test_parse_non_optional_unions_are_captured_in_ir():
     assert isinstance(ir.return_transformer_ir.inner, UnionTypeIR)
     assert isinstance(ir.return_transformer_ir.inner.items[0], IdentityTypeIR)
     assert isinstance(ir.return_transformer_ir.inner.items[1], WrappedClassTypeIR)
+
+
+def test_build_module_compilation_ir_collects_manual_reexports_separately():
+    m = Module("generated.manual_exports")
+
+    class _Surface:
+        def __init__(self, sync_impl: typing.Callable[..., typing.Any]):
+            self._sync_impl = sync_impl
+
+        def __call__(self) -> str:
+            return self._sync_impl()
+
+    @m.wrap_function()
+    @m.manual_wrapper()
+    @wrapped_surface_function(_Surface)
+    def forwarded() -> str:
+        return "ok"
+
+    @m.wrap_class()
+    @m.manual_wrapper()
+    class ForwardedType:
+        pass
+
+    ir = build_module_compilation_ir(m)
+
+    assert ir.module_functions_ir == ()
+    assert ir.class_wrappers == ()
+    assert set(ir.manual_reexports) == {
+        ManualReexportIR(
+            impl_ref=ImplQualifiedRef(forwarded._sync_impl.__module__, forwarded._sync_impl.__qualname__),
+            export_name="forwarded",
+        ),
+        ManualReexportIR(
+            impl_ref=ImplQualifiedRef(ForwardedType.__module__, ForwardedType.__qualname__),
+            export_name="ForwardedType",
+        ),
+    }
+
+
+def test_parse_class_wrapper_ir_collects_manual_surface_methods():
+    m = Module("generated.manual_method_parse")
+
+    class _Surface:
+        def __init__(
+            self,
+            sync_impl: typing.Callable[..., typing.Any],
+            wrapper_instance: typing.Any,
+            wrapper_class: type,
+            _from_impl: typing.Callable[[typing.Any], typing.Any],
+        ):
+            self._sync_impl = sync_impl
+
+        def __call__(self, value: int) -> int:
+            return self._sync_impl(value)
+
+        async def aio(self, value: int) -> int:
+            return value
+
+    @m.wrap_class()
+    class Service:
+        @m.manual_wrapper()
+        @wrapped_surface_method(_Surface)
+        def manual(self, value: int) -> int:
+            return value
+
+        async def generated(self, value: int) -> int:
+            return value
+
+    ir = parse_class_wrapper_ir(
+        Service,
+        "generated.manual_method_parse",
+        globals_dict=locals(),
+        manual_wrapper_ids=m._manual_wrapper_ids,
+    )
+
+    assert tuple(method.method_name for method in ir.methods) == ("generated",)
+    assert ir.manual_attributes == (
+        ir.manual_attributes[0].__class__(
+            name="manual",
+            access_kind=ManualClassAttributeAccessKind.ATTRIBUTE,
+        ),
+    )

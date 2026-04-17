@@ -12,12 +12,12 @@ from mylib.synchronicity import Module
 wrapper_module = Module("mylib.weather")
 
 
-@wrapper_module.wrap_function
+@wrapper_module.wrap_function()
 async def get_temperature(city: str) -> float:
     return 20.0 if city == "Stockholm" else 0.0
 
 
-@wrapper_module.wrap_class
+@wrapper_module.wrap_class()
 class WeatherClient:
     default_city: str
 
@@ -28,7 +28,7 @@ class WeatherClient:
         return 21.0
 
 
-@wrapper_module.wrap_function
+@wrapper_module.wrap_function()
 async def stream_temperature_readings() -> collections.abc.AsyncGenerator[float, None]:
     """Async generator of sample readings (°C)."""
     yield 17.5

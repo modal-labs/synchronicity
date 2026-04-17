@@ -5,7 +5,7 @@ from synchronicity import Module
 lib = Module("class_with_self_references")
 
 
-@lib.wrap_class
+@lib.wrap_class()
 class SomeClass:
     def accept_self(self, s: typing.Self) -> typing.Self:
         assert type(s) is type(self)
@@ -16,6 +16,6 @@ class SomeClass:
         return self
 
 
-@lib.wrap_class
+@lib.wrap_class()
 class SomeSubclass(SomeClass):
     """Empty subclass: inherited Self-typed methods should use the subclass as Self."""

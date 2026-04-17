@@ -8,7 +8,10 @@ import sys
 import types
 import typing
 
-from synchronicity.module import _IMPL_WRAPPER_LOCATION_ATTR, Module
+from synchronicity.module import (
+    _IMPL_WRAPPER_LOCATION_ATTR,
+    Module,
+)
 
 from .compile_utils import (
     _extract_typevars_from_function,
@@ -19,6 +22,9 @@ from .compile_utils import (
 from .ir import (
     ClassWrapperIR,
     ImplQualifiedRef,
+    ManualClassAttributeAccessKind,
+    ManualClassAttributeIR,
+    ManualReexportIR,
     MethodBindingKind,
     MethodWrapperIR,
     ModuleCompilationIR,
@@ -41,6 +47,25 @@ from .typevar_codegen import typevar_specs_from_collected
 
 def _get_wrapper_location(t: type) -> tuple[str, str] | None:
     return getattr(t, _IMPL_WRAPPER_LOCATION_ATTR, None)
+
+
+def _is_manual_wrapper(obj: object, *, manual_wrapper_ids: frozenset[int]) -> bool:
+    return id(obj) in manual_wrapper_ids
+
+
+def _manual_class_attribute_access_kind(obj: object) -> ManualClassAttributeAccessKind:
+    if isinstance(obj, (classmethod, staticmethod, property)):
+        return ManualClassAttributeAccessKind.RAW_CLASS_DICT
+    if getattr(obj, "_synchronicity_raw_class_dict", False):
+        return ManualClassAttributeAccessKind.RAW_CLASS_DICT
+    return ManualClassAttributeAccessKind.ATTRIBUTE
+
+
+def _manual_wrapper_impl_ref(module: Module, obj: object) -> ImplQualifiedRef:
+    ref = module.manual_wrapper_ref(obj)
+    if ref is None:
+        raise TypeError(f"Manual wrapper object {obj!r} is missing manual wrapper reference metadata")
+    return ImplQualifiedRef(module=ref.module, qualname=ref.qualname)
 
 
 def _check_annotation_for_cross_refs(
@@ -85,10 +110,14 @@ def _iter_overload_functions(f: types.FunctionType) -> tuple[types.FunctionType,
 def cross_module_imports_for_module(
     module_name: str,
     module_items: dict,
+    *,
+    manual_wrapper_ids: frozenset[int] = frozenset(),
 ) -> dict[str, set[str]]:
     cross_module_refs: dict[str, set[str]] = {}
 
-    for obj in module_items.keys():
+    for obj, _registration in module_items.items():
+        if _is_manual_wrapper(obj, manual_wrapper_ids=manual_wrapper_ids):
+            continue
         if isinstance(obj, types.FunctionType):
             for f in (obj, *_iter_overload_functions(obj)):
                 annotations = _safe_get_annotations(f)
@@ -97,8 +126,16 @@ def cross_module_imports_for_module(
         elif isinstance(obj, type):
             for base in getattr(obj, "__bases__", ()):
                 _check_impl_type_for_cross_ref(base, module_name, cross_module_refs)
-            for method_name, method in inspect.getmembers(obj, predicate=inspect.isfunction):
+            for method_name, attr in obj.__dict__.items():
                 if method_name.startswith("_"):
+                    continue
+                if _is_manual_wrapper(attr, manual_wrapper_ids=manual_wrapper_ids):
+                    continue
+                if isinstance(attr, classmethod | staticmethod):
+                    method = attr.__func__
+                elif inspect.isfunction(attr):
+                    method = attr
+                else:
                     continue
                 for f in (method, *_iter_overload_functions(method)):
                     annotations = _safe_get_annotations(f)
@@ -112,12 +149,27 @@ def build_module_compilation_ir(
     module: Module,
 ) -> ModuleCompilationIR:
     """Step 1–2 for a single output module: layout, cross-refs, and collected type variables."""
-    impl_modules = {o.__module__ for o in module.module_items().keys()}
-    cross = cross_module_imports_for_module(module.target_module, module.module_items())
+    module_items = module.module_items()
+    impl_modules = {o.__module__ for o in module_items.keys()}
+    manual_wrapper_ids = module._manual_wrapper_ids
+    cross = cross_module_imports_for_module(
+        module.target_module,
+        module_items,
+        manual_wrapper_ids=manual_wrapper_ids,
+    )
 
     classes: list[type] = []
     functions: list[types.FunctionType] = []
-    for o in module.module_items().keys():
+    manual_reexports: list[ManualReexportIR] = []
+    for o, registration in module_items.items():
+        if _is_manual_wrapper(o, manual_wrapper_ids=manual_wrapper_ids):
+            manual_reexports.append(
+                ManualReexportIR(
+                    impl_ref=_manual_wrapper_impl_ref(module, o),
+                    export_name=registration.name,
+                )
+            )
+            continue
         if isinstance(o, type):
             classes.append(o)
         elif isinstance(o, types.FunctionType):
@@ -140,13 +192,20 @@ def build_module_compilation_ir(
                     if isinstance(arg, typing.TypeVar) or isinstance(arg, typing.ParamSpec):
                         module_typevars[arg.__name__] = arg
 
-        for name, method in inspect.getmembers(cls, predicate=inspect.isfunction):
-            if not name.startswith("_"):
-                for overload_method in (method, *_iter_overload_functions(method)):
-                    annotations = _safe_get_annotations(overload_method)
-                    module_typevars.update(_extract_typevars_from_function(overload_method, annotations))
+        for name, attr in cls.__dict__.items():
+            if name.startswith("_") or _is_manual_wrapper(attr, manual_wrapper_ids=manual_wrapper_ids):
+                continue
+            if isinstance(attr, classmethod | staticmethod):
+                method = attr.__func__
+            elif inspect.isfunction(attr):
+                method = attr
+            else:
+                continue
+            for overload_method in (method, *_iter_overload_functions(method)):
+                annotations = _safe_get_annotations(overload_method)
+                module_typevars.update(_extract_typevars_from_function(overload_method, annotations))
 
-    known_impl_types = frozenset(o for o in module.module_items().keys() if isinstance(o, type))
+    known_impl_types = frozenset(classes)
     typevar_specs = typevar_specs_from_collected(
         module_typevars,
         known_impl_types,
@@ -156,7 +215,15 @@ def build_module_compilation_ir(
     cross_frozen = {k: frozenset(v) for k, v in cross.items()}
 
     impl_mods = frozenset(impl_modules)
-    class_wrappers = tuple(parse_class_wrapper_ir(c, module.target_module, impl_modules=impl_mods) for c in classes)
+    class_wrappers = tuple(
+        parse_class_wrapper_ir(
+            c,
+            module.target_module,
+            impl_modules=impl_mods,
+            manual_wrapper_ids=manual_wrapper_ids,
+        )
+        for c in classes
+    )
     module_functions_ir_list: list[ModuleLevelFunctionIR] = []
     for f in functions:
         g = sys.modules[f.__module__].__dict__ if f.__module__ in sys.modules else None
@@ -173,6 +240,7 @@ def build_module_compilation_ir(
         typevar_specs=typevar_specs,
         class_wrappers=class_wrappers,
         module_functions_ir=module_functions_ir,
+        manual_reexports=tuple(manual_reexports),
     )
 
 
@@ -416,6 +484,7 @@ def parse_class_wrapper_ir(
     globals_dict: dict[str, typing.Any] | None = None,
     runtime_package: str = "synchronicity",
     impl_modules: frozenset[str] | None = None,
+    manual_wrapper_ids: frozenset[int] = frozenset(),
 ) -> ClassWrapperIR:
     """Collect :class:`ClassWrapperIR` from a live implementation class (parse-time only)."""
     if impl_modules is None:
@@ -455,9 +524,20 @@ def parse_class_wrapper_ir(
 
     # classmethods, staticmethods, and properties (descriptor unwrapping requires cls.__dict__)
     property_names: set[str] = set()
+    manual_attribute_names: set[str] = set()
     property_irs: list[PropertyWrapperIR] = []
+    manual_attributes: list[ManualClassAttributeIR] = []
     for name, attr in cls.__dict__.items():
         if name.startswith("_"):
+            continue
+        if _is_manual_wrapper(attr, manual_wrapper_ids=manual_wrapper_ids):
+            manual_attribute_names.add(name)
+            manual_attributes.append(
+                ManualClassAttributeIR(
+                    name=name,
+                    access_kind=_manual_class_attribute_access_kind(attr),
+                )
+            )
             continue
         if isinstance(attr, classmethod):
             source_methods.append((name, attr.__func__, MethodBindingKind.CLASSMETHOD))
@@ -520,6 +600,7 @@ def parse_class_wrapper_ir(
             and name in cls.__dict__
             and name not in classmethod_staticmethod_names
             and name not in property_names
+            and name not in manual_attribute_names
         ):
             source_methods.append((name, method, MethodBindingKind.INSTANCE))
 
@@ -576,4 +657,5 @@ def parse_class_wrapper_ir(
         attributes=tuple(attributes),
         properties=tuple(property_irs),
         methods=method_irs,
+        manual_attributes=tuple(manual_attributes),
     )

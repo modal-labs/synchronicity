@@ -13,6 +13,8 @@ if TYPE_CHECKING:
 from ..compile_utils import _build_call_with_wrap, _format_return_annotation, format_parameters_for_emit
 from ..ir import (
     ClassWrapperIR,
+    ManualClassAttributeAccessKind,
+    ManualReexportIR,
     MethodBindingKind,
     MethodWrapperIR,
     ModuleCompilationIR,
@@ -65,6 +67,10 @@ def _impl_type_dotted(impl_ref: ImplQualifiedRef) -> str:
     if ".<locals>." in q or q.startswith("<locals>."):
         return f"{impl_ref.module}.{q.rpartition('.')[2]}"
     return f"{impl_ref.module}.{q}"
+
+
+def _impl_value_dotted(impl_ref: ImplQualifiedRef) -> str:
+    return _impl_type_dotted(impl_ref)
 
 
 def method_emit_owner(class_ir: ClassWrapperIR, target_module: str) -> MethodEmitOwner:
@@ -155,6 +161,7 @@ def _method_impl_call_expr(
 def _runtime_import_header(runtime_package: str) -> str:
     return f"""import {runtime_package}.types
 from {runtime_package}.descriptor import (
+    MethodSurfaceBase,
     wrapped_surface_classmethod,
     wrapped_surface_function,
     wrapped_surface_method,
@@ -171,6 +178,10 @@ def _wrapper_registration_lines(class_wrappers: tuple[ClassWrapperIR, ...]) -> l
         wshort = _wrapper_short_name(ir.impl_ref)
         lines.append(f"_synchronizer.register_wrapper_class({impl_dot}, {wshort})")
     return lines
+
+
+def emit_manual_reexport(ir: ManualReexportIR) -> str:
+    return f"{ir.export_name} = {_impl_value_dotted(ir.impl_ref)}"
 
 
 def _emit_module_function_overloads(
@@ -594,6 +605,7 @@ def emit_method_surface_protocol(
         runtime_package,
         mat_ctx=mat_ctx,
     )
+    supported_generic_parameters = _supported_method_surface_parameters(owner, mir.method_name, generic_parameters)
     surface_name = _method_surface_protocol_name(owner, mir.method_name)
     current_target_module = owner.target_module
     return_transformer = materialize_transformer_ir(mir.return_transformer_ir, runtime_package, ctx=mat_ctx)
@@ -608,7 +620,6 @@ def emit_method_surface_protocol(
     sync_return_str, async_return_str = _format_return_annotation(return_transformer, current_target_module)
     aio_return_str = _surface_aio_return_str(async_return_str)
     impl_dotted = _impl_type_dotted(owner.impl_ref)
-    short_name = _wrapper_short_name(owner.impl_ref)
     call_expr_prefix = _method_impl_call_expr(
         mir.method_type,
         impl_dotted,
@@ -629,9 +640,7 @@ def emit_method_surface_protocol(
             # TODO: Migrate away from raw async-generator method wrappers requiring `.aio()`.
             # This is inconsistent with wrappers for methods returning AsyncGenerator,
             # where the wrapper result is already directly async-iterable.
-            wrap_expr = return_transformer.wrap_expr(current_target_module, "gen").replace(
-                "self.", "self._wrapper_instance."
-            )
+            wrap_expr = return_transformer.wrap_expr(current_target_module, "gen")
             aio_body = f"impl_method = {impl_dotted}.{mir.method_name}"
             if unwrap_code:
                 aio_body += "\n" + unwrap_code
@@ -666,9 +675,7 @@ def emit_method_surface_protocol(
             aio_body = (aio_prelude + "\n" + aio_body).replace("wrapper_instance", "self._wrapper_instance")
     elif mir.method_type == MethodBindingKind.CLASSMETHOD:
         if mir.is_async_gen:
-            wrap_expr = return_transformer.wrap_expr(current_target_module, "gen").replace(
-                "self.", "self._wrapper_class."
-            )
+            wrap_expr = return_transformer.wrap_expr(current_target_module, "gen")
             aio_body = ""
             if unwrap_code:
                 aio_body = unwrap_code + "\n"
@@ -702,12 +709,7 @@ def emit_method_surface_protocol(
         aio_body = aio_body.replace("wrapper_class", "self._wrapper_class").replace("cls.", "self._wrapper_class.")
     else:
         if mir.is_async_gen:
-            wrap_expr_raw = return_transformer.wrap_expr(current_target_module, "gen")
-            wrap_expr = (
-                wrap_expr_raw.replace("self.", f"{short_name}()._").replace("_(", "(")
-                if "self." in wrap_expr_raw
-                else wrap_expr_raw
-            )
+            wrap_expr = return_transformer.wrap_expr(current_target_module, "gen")
             aio_body = ""
             if unwrap_code:
                 aio_body = unwrap_code + "\n"
@@ -738,32 +740,12 @@ def emit_method_surface_protocol(
             if unwrap_code:
                 aio_body = unwrap_code + "\n" + aio_body
 
-    if generic_parameters:
-        header = f"class {surface_name}(typing.Generic[{', '.join(generic_parameters)}]):"
+    if supported_generic_parameters:
+        header = f"class {surface_name}(MethodSurfaceBase, typing.Generic[{', '.join(supported_generic_parameters)}]):"
     else:
-        header = f"class {surface_name}:"
+        header = f"class {surface_name}(MethodSurfaceBase):"
 
     body_lines: list[str] = []
-    wrapper_instance_type = "typing.Any" if mir.method_type == MethodBindingKind.INSTANCE else "typing.Any | None"
-    body_lines.extend(
-        [
-            "    def __init__(",
-            "        self,",
-            "        sync_impl: typing.Callable[..., typing.Any],",
-            f"        wrapper_instance: {wrapper_instance_type},",
-            "        wrapper_class: type,",
-            "        _from_impl: typing.Callable[[typing.Any], typing.Any],",
-            "    ):",
-            "        self._sync_impl = sync_impl",
-            "        self._wrapper_instance = wrapper_instance",
-            "        self._wrapper_class = wrapper_class",
-            "        self._surface_from_impl = _from_impl",
-            "",
-            "    def _from_impl(self, impl_instance: typing.Any) -> typing.Any:",
-            "        return self._surface_from_impl(impl_instance)",
-            "",
-        ]
-    )
     if mir.overloads:
         for overload_param_str, overload_sync_return_str, _overload_aio_return_str in variants:
             body_lines.append("    @typing.overload")
@@ -782,7 +764,7 @@ def emit_method_surface_protocol(
                     is_async=True,
                 )
             )
-    body_lines.append("")
+        body_lines.append("")
     body_lines.append("    " + _bound_surface_method_definition_line("__call__", param_str, sync_return_str))
     body_lines.append(f"        return self._sync_impl({surface_call_args_str})")
     body_lines.append("")
@@ -795,13 +777,13 @@ def emit_method_surface_protocol(
     return f"{header}\n" + "\n".join(body_lines)
 
 
-def _method_surface_type_expr(
+def _method_surface_type_data(
     owner: MethodEmitOwner,
     mir: MethodWrapperIR,
     runtime_package: str,
     *,
     mat_ctx: MaterializeContext | None,
-) -> str:
+) -> tuple[str, bool]:
     _variants, generic_parameters, needs_self_type = _method_surface_signature_variants(
         owner,
         mir,
@@ -809,15 +791,30 @@ def _method_surface_type_expr(
         mat_ctx=mat_ctx,
     )
     protocol_name = _method_surface_protocol_name(owner, mir.method_name)
-    if not generic_parameters:
-        return protocol_name
+    supported_parameters = _supported_method_surface_parameters(owner, mir.method_name, generic_parameters)
+    if not supported_parameters:
+        return protocol_name, bool(generic_parameters)
     args: list[str] = []
-    for parameter in generic_parameters:
+    for parameter in supported_parameters:
         if needs_self_type and parameter == _method_surface_self_type_name(owner, mir.method_name):
             args.append("typing.Self")
         else:
             args.append(parameter)
-    return f"{protocol_name}[{', '.join(args)}]"
+    return f"{protocol_name}[{', '.join(args)}]", len(supported_parameters) != len(generic_parameters)
+
+
+def _supported_method_surface_parameters(
+    owner: MethodEmitOwner,
+    method_name: str,
+    generic_parameters: tuple[str, ...],
+) -> tuple[str, ...]:
+    owner_type_parameters = set(owner.generic_type_parameters or ())
+    self_type_name = _method_surface_self_type_name(owner, method_name)
+    return tuple(
+        parameter
+        for parameter in generic_parameters
+        if parameter in owner_type_parameters or parameter == self_type_name
+    )
 
 
 def emit_module_level_function(
@@ -983,9 +980,15 @@ def emit_method_wrapper_pair(
     is_async = mir.is_async
     sync_return_str, async_return_str = _format_return_annotation(return_transformer, current_target_module)
     uses_surface_wrapper = is_async
-    method_surface_type_expr = (
-        _method_surface_type_expr(owner, mir, runtime_package, mat_ctx=mat_ctx) if uses_surface_wrapper else None
-    )
+    method_surface_type_expr: str | None = None
+    needs_type_checking_stub = False
+    if uses_surface_wrapper:
+        method_surface_type_expr, needs_type_checking_stub = _method_surface_type_data(
+            owner,
+            mir,
+            runtime_package,
+            mat_ctx=mat_ctx,
+        )
 
     aio_body = None
     sync_method_body = ""
@@ -1336,7 +1339,16 @@ def emit_method_wrapper_pair(
         def_line = f"    def {method_name}({instance_param_str}){sync_return_str}:"
 
     if decorator_line:
-        sync_method_code = f"    {decorator_line}\n{def_line}\n        {method_body}"
+        runtime_method_code = f"    {decorator_line}\n{def_line}\n        {method_body}"
+        if needs_type_checking_stub and method_surface_type_expr is not None:
+            sync_method_code = (
+                "    if typing.TYPE_CHECKING:\n"
+                f"        {method_name}: {method_surface_type_expr}\n"
+                "    else:\n"
+                f"{_indent_block(runtime_method_code, '        ')}"
+            )
+        else:
+            sync_method_code = runtime_method_code
     else:
         sync_method_code = f"{def_line}\n        {method_body}"
 
@@ -1627,6 +1639,15 @@ def emit_class_from_ir(
 
     properties_section = "\n\n".join(property_definitions) if property_definitions else ""
     methods_section = "\n\n".join(method_definitions_with_async) if method_definitions_with_async else ""
+    manual_attributes_section = "\n".join(
+        f"    {manual_attr.name} = "
+        + (
+            f"{impl_dot}.{manual_attr.name}"
+            if manual_attr.access_kind == ManualClassAttributeAccessKind.ATTRIBUTE
+            else f"{impl_dot}.__dict__[{manual_attr.name!r}]"
+        )
+        for manual_attr in ir.manual_attributes
+    )
 
     sections = [init_method]
     if from_impl_method:
@@ -1639,6 +1660,8 @@ def emit_class_from_ir(
         sections.append(context_manager_methods_section)
     if methods_section:
         sections.append(methods_section)
+    if manual_attributes_section:
+        sections.append(manual_attributes_section)
 
     sections_combined = "\n\n".join(sections)
 
@@ -1709,6 +1732,10 @@ class SyncAsyncWrapperEmitter:
                 mat_ctx=module_mat_ctx,
             )
             compiled_code.append(code)
+            compiled_code.append("")
+
+        for reexport_ir in ir.manual_reexports:
+            compiled_code.append(emit_manual_reexport(reexport_ir))
             compiled_code.append("")
 
         return "\n".join(compiled_code)

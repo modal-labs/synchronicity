@@ -3,7 +3,7 @@ import synchronicity
 m = synchronicity.Module("class_with_inheritance")
 
 
-@m.wrap_class
+@m.wrap_class()
 class WrappedType:
     pass
 
@@ -18,7 +18,7 @@ class UnwrappedBase:
         return True
 
 
-@m.wrap_class
+@m.wrap_class()
 class WrappedBase(UnwrappedBase):
     b: str
 
@@ -31,7 +31,7 @@ class WrappedBase(UnwrappedBase):
         return []
 
 
-@m.wrap_class
+@m.wrap_class()
 class WrappedSub(WrappedBase):
     c: float
 
@@ -43,6 +43,6 @@ class WrappedSub(WrappedBase):
         return {}
 
 
-@m.wrap_class
+@m.wrap_class()
 class ClassWithoutOwnMethods(WrappedBase):
     pass

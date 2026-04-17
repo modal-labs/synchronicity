@@ -5,7 +5,7 @@ from synchronicity import Module
 wrapper_module = Module("property_class")
 
 
-@wrapper_module.wrap_class
+@wrapper_module.wrap_class()
 class Tag:
     """A simple wrapped type used as a property value."""
 
@@ -15,7 +15,7 @@ class Tag:
         self.label = label
 
 
-@wrapper_module.wrap_class
+@wrapper_module.wrap_class()
 class Settings:
     """A class with sync properties."""
 

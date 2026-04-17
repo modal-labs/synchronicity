@@ -6,14 +6,14 @@ import synchronicity
 mod = synchronicity.Module("custom_iterators")
 
 
-@mod.wrap_class
+@mod.wrap_class()
 class CustomAsyncIterable:
     # iterables are supposed to be callable multiple times
     def __aiter__(self) -> typing.AsyncIterator[int]:
         return CustomAsyncIterator([1, 2, 3])
 
 
-@mod.wrap_class
+@mod.wrap_class()
 class CustomAsyncIterator:
     num_iters: int
 
@@ -34,17 +34,17 @@ class CustomAsyncIterator:
         raise StopAsyncIteration()
 
 
-@mod.wrap_function
+@mod.wrap_function()
 def get_iterable() -> typing.AsyncIterable[int]:
     return CustomAsyncIterable()
 
 
-@mod.wrap_function
+@mod.wrap_function()
 def get_iterator() -> typing.AsyncIterator[int]:
     return CustomAsyncIterator([1, 2, 3])
 
 
-@mod.wrap_function
+@mod.wrap_function()
 def get_custom_iterator() -> typing.AsyncIterator[int]:
     class _InlineIterator:
         def __init__(self) -> None:
@@ -62,7 +62,7 @@ def get_custom_iterator() -> typing.AsyncIterator[int]:
     return _InlineIterator()
 
 
-@mod.wrap_class
+@mod.wrap_class()
 class IterableClassUsingGenerator:
     async def __aiter__(self):
         assert threading.current_thread().ident != threading.main_thread().ident
@@ -70,7 +70,7 @@ class IterableClassUsingGenerator:
         yield 2
 
 
-@mod.wrap_class
+@mod.wrap_class()
 class IterableClassUsingGeneratorTyped:
     async def __aiter__(self) -> typing.AsyncGenerator[int, None]:
         assert threading.current_thread().ident != threading.main_thread().ident
