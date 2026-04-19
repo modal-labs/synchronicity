@@ -13,6 +13,8 @@ from synchronicity.codegen.ir import (
     MethodBindingKind,
     MethodWrapperIR,
     ModuleCompilationIR,
+    ModuleImportRefIR,
+    ModuleLevelFunctionIR,
     ParameterIR,
 )
 from synchronicity.codegen.transformer_ir import (
@@ -48,7 +50,7 @@ IR_MODULE_TWO_CLASSES = ModuleCompilationIR(
                     method_type=MethodBindingKind.INSTANCE,
                     parameters=(
                         ParameterIR(
-                            name="value", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_repr=None
+                            name="value", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_expr=None
                         ),
                     ),
                     is_async_gen=False,
@@ -81,7 +83,7 @@ IR_MODULE_TWO_CLASSES = ModuleCompilationIR(
                             name="data",
                             kind=1,
                             annotation_ir=ListTypeIR(item=IdentityTypeIR(signature_text="str")),
-                            default_repr=None,
+                            default_expr=None,
                         ),
                     ),
                     is_async_gen=False,
@@ -98,13 +100,13 @@ IR_MODULE_TWO_CLASSES = ModuleCompilationIR(
                             annotation_ir=DictTypeIR(
                                 key=IdentityTypeIR(signature_text="str"), value=IdentityTypeIR(signature_text="int")
                             ),
-                            default_repr=None,
+                            default_expr=None,
                         ),
                         ParameterIR(
                             name="optional_filter",
                             kind=1,
                             annotation_ir=OptionalTypeIR(inner=IdentityTypeIR(signature_text="str")),
-                            default_repr="None",
+                            default_expr="None",
                         ),
                     ),
                     is_async_gen=False,
@@ -194,3 +196,37 @@ def test_emit_module_manual_reexports_and_class_attributes():
         in generated_code
     )
     assert "forwarded = test.unit.compile.test_emit_module.forwarded" in generated_code
+
+
+def test_emit_module_imports_default_expression_module_refs():
+    ir = ModuleCompilationIR(
+        target_module="test_module",
+        synchronizer_name="default_synchronizer",
+        impl_modules=frozenset({IMPL}),
+        cross_module_imports={},
+        typevar_specs=(),
+        class_wrappers=(),
+        module_functions_ir=(
+            ModuleLevelFunctionIR(
+                impl_ref=ImplQualifiedRef(IMPL, "read_pipe"),
+                needs_async_wrapper=False,
+                is_async_gen=False,
+                parameters=(
+                    ParameterIR(
+                        name="pipe",
+                        kind=1,
+                        annotation_ir=IdentityTypeIR(signature_text="int"),
+                        default_expr="subprocess.PIPE",
+                        default_import_refs=(ModuleImportRefIR(module="subprocess", name="subprocess"),),
+                    ),
+                ),
+                return_transformer_ir=IdentityTypeIR(signature_text="int"),
+            ),
+        ),
+    )
+
+    generated_code = SyncAsyncWrapperEmitter().emit_module(ir)
+
+    assert "import subprocess" in generated_code
+    assert "def read_pipe(pipe: int = subprocess.PIPE) -> int:" in generated_code
+    assert "from subprocess import PIPE" not in generated_code

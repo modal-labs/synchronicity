@@ -158,7 +158,7 @@ IR_CLASS_ASYNC_GEN = ClassWrapperIR(
                     name="items",
                     kind=1,
                     annotation_ir=ListTypeIR(item=IdentityTypeIR(signature_text="str")),
-                    default_repr=None,
+                    default_expr=None,
                 ),
             ),
             is_async_gen=False,
@@ -180,7 +180,7 @@ IR_CLASS_ASYNC_GEN = ClassWrapperIR(
             method_type=MethodBindingKind.INSTANCE,
             parameters=(
                 ParameterIR(
-                    name="prefix", kind=1, annotation_ir=IdentityTypeIR(signature_text="str"), default_repr=None
+                    name="prefix", kind=1, annotation_ir=IdentityTypeIR(signature_text="str"), default_expr=None
                 ),
             ),
             is_async_gen=True,
@@ -256,19 +256,19 @@ IR_CLASS_METHOD_WITH_DEFAULTS = ClassWrapperIR(
                     name="name",
                     kind=1,
                     annotation_ir=IdentityTypeIR(signature_text="str"),
-                    default_repr="'hello'",
+                    default_expr="'hello'",
                 ),
                 ParameterIR(
                     name="enabled",
                     kind=1,
                     annotation_ir=IdentityTypeIR(signature_text="bool"),
-                    default_repr="True",
+                    default_expr="True",
                 ),
                 ParameterIR(
                     name="payload",
                     kind=1,
                     annotation_ir=IdentityTypeIR(signature_text="bytes"),
-                    default_repr="b'data'",
+                    default_expr="b'data'",
                 ),
             ),
             is_async_gen=False,
@@ -290,7 +290,7 @@ IR_CLASS_AWAITABLE_METHOD = ClassWrapperIR(
             method_name="create_awaitable",
             method_type=MethodBindingKind.INSTANCE,
             parameters=(
-                ParameterIR(name="x", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_repr=None),
+                ParameterIR(name="x", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_expr=None),
             ),
             is_async_gen=False,
             is_async=True,
@@ -309,7 +309,7 @@ IR_CLASS_OVERLOADED_METHOD = ClassWrapperIR(
         MethodWrapperIR(
             method_name="resolve",
             method_type=MethodBindingKind.INSTANCE,
-            parameters=(ParameterIR(name="value", kind=1, annotation_ir=None, default_repr=None),),
+            parameters=(ParameterIR(name="value", kind=1, annotation_ir=None, default_expr=None),),
             is_async_gen=False,
             is_async=True,
             return_transformer_ir=AwaitableTypeIR(inner=IdentityTypeIR(signature_text="typing.Any")),
@@ -320,7 +320,7 @@ IR_CLASS_OVERLOADED_METHOD = ClassWrapperIR(
                             name="value",
                             kind=1,
                             annotation_ir=IdentityTypeIR(signature_text="int"),
-                            default_repr=None,
+                            default_expr=None,
                         ),
                     ),
                     return_transformer_ir=AwaitableTypeIR(inner=IdentityTypeIR(signature_text="int")),
@@ -334,7 +334,7 @@ IR_CLASS_OVERLOADED_METHOD = ClassWrapperIR(
                                 impl=ImplQualifiedRef(IMPL, "Node"),
                                 wrapper=WrapperRef(TARGET, "Node"),
                             ),
-                            default_repr=None,
+                            default_expr=None,
                         ),
                     ),
                     return_transformer_ir=AwaitableTypeIR(
@@ -365,7 +365,7 @@ IR_CLASS_COMPLEX = ClassWrapperIR(
                     name="data",
                     kind=1,
                     annotation_ir=ListTypeIR(item=IdentityTypeIR(signature_text="str")),
-                    default_repr=None,
+                    default_expr=None,
                 ),
             ),
             is_async_gen=False,
@@ -390,13 +390,13 @@ IR_CLASS_COMPLEX = ClassWrapperIR(
                     annotation_ir=DictTypeIR(
                         key=IdentityTypeIR(signature_text="str"), value=IdentityTypeIR(signature_text="int")
                     ),
-                    default_repr=None,
+                    default_expr=None,
                 ),
                 ParameterIR(
                     name="optional_filter",
                     kind=1,
                     annotation_ir=OptionalTypeIR(inner=IdentityTypeIR(signature_text="str")),
-                    default_repr="None",
+                    default_expr="None",
                 ),
             ),
             is_async_gen=False,
@@ -424,10 +424,10 @@ IR_CLASS_CONTAINER = ClassWrapperIR(
                     annotation_ir=WrappedClassTypeIR(
                         impl=ImplQualifiedRef(IMPL, "EmitNode"), wrapper=WrapperRef(TARGET, "Node")
                     ),
-                    default_repr=None,
+                    default_expr=None,
                 ),
-                ParameterIR(name="name", kind=1, annotation_ir=IdentityTypeIR(signature_text="str"), default_repr=None),
-                ParameterIR(name="count", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_repr="5"),
+                ParameterIR(name="name", kind=1, annotation_ir=IdentityTypeIR(signature_text="str"), default_expr=None),
+                ParameterIR(name="count", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_expr="5"),
             ),
             is_async_gen=False,
             is_async=False,
@@ -448,7 +448,7 @@ IR_CLASS_COROUTINE_METHOD = ClassWrapperIR(
             method_name="create_coroutine",
             method_type=MethodBindingKind.INSTANCE,
             parameters=(
-                ParameterIR(name="x", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_repr=None),
+                ParameterIR(name="x", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_expr=None),
             ),
             is_async_gen=False,
             is_async=True,
@@ -470,7 +470,7 @@ IR_CLASS_EMPTY = ClassWrapperIR(
             method_type=MethodBindingKind.INSTANCE,
             parameters=(
                 ParameterIR(
-                    name="value", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_repr=None
+                    name="value", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_expr=None
                 ),
             ),
             is_async_gen=False,
@@ -504,7 +504,7 @@ IR_CLASS_MIXED = ClassWrapperIR(
                     name="data",
                     kind=1,
                     annotation_ir=ListTypeIR(item=IdentityTypeIR(signature_text="str")),
-                    default_repr=None,
+                    default_expr=None,
                 ),
             ),
             is_async_gen=False,
@@ -525,7 +525,7 @@ IR_CLASS_MIXED = ClassWrapperIR(
             method_name="process_sync",
             method_type=MethodBindingKind.INSTANCE,
             parameters=(
-                ParameterIR(name="item", kind=1, annotation_ir=IdentityTypeIR(signature_text="str"), default_repr=None),
+                ParameterIR(name="item", kind=1, annotation_ir=IdentityTypeIR(signature_text="str"), default_expr=None),
             ),
             is_async_gen=False,
             is_async=True,
@@ -535,7 +535,7 @@ IR_CLASS_MIXED = ClassWrapperIR(
             method_name="sync_method",
             method_type=MethodBindingKind.INSTANCE,
             parameters=(
-                ParameterIR(name="item", kind=1, annotation_ir=IdentityTypeIR(signature_text="str"), default_repr=None),
+                ParameterIR(name="item", kind=1, annotation_ir=IdentityTypeIR(signature_text="str"), default_expr=None),
             ),
             is_async_gen=False,
             is_async=False,
@@ -582,7 +582,7 @@ IR_CLASS_SELF = ClassWrapperIR(
                         owner_impl=ImplQualifiedRef(IMPL, "EmitSelfMethodClass"),
                         wrapper=WrapperRef(TARGET, "EmitSelfMethodClass"),
                     ),
-                    default_repr=None,
+                    default_expr=None,
                 ),
             ),
             is_async_gen=False,
@@ -608,7 +608,7 @@ IR_CLASS_SIMPLE = ClassWrapperIR(
             method_type=MethodBindingKind.INSTANCE,
             parameters=(
                 ParameterIR(
-                    name="value", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_repr=None
+                    name="value", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_expr=None
                 ),
             ),
             is_async_gen=False,
@@ -620,7 +620,7 @@ IR_CLASS_SIMPLE = ClassWrapperIR(
             method_type=MethodBindingKind.INSTANCE,
             parameters=(
                 ParameterIR(
-                    name="amount", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_repr=None
+                    name="amount", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_expr=None
                 ),
             ),
             is_async_gen=False,
@@ -640,7 +640,7 @@ IR_CLASS_SIMPLE = ClassWrapperIR(
             method_type=MethodBindingKind.INSTANCE,
             parameters=(
                 ParameterIR(
-                    name="new_value", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_repr=None
+                    name="new_value", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_expr=None
                 ),
             ),
             is_async_gen=False,
@@ -662,10 +662,10 @@ IR_CLASS_VARARGS = ClassWrapperIR(
             method_name="method_with_posonly",
             method_type=MethodBindingKind.INSTANCE,
             parameters=(
-                ParameterIR(name="x", kind=0, annotation_ir=None, default_repr=None),
-                ParameterIR(name="y", kind=0, annotation_ir=None, default_repr=None),
-                ParameterIR(name="z", kind=1, annotation_ir=None, default_repr=None),
-                ParameterIR(name="w", kind=1, annotation_ir=None, default_repr="10"),
+                ParameterIR(name="x", kind=0, annotation_ir=None, default_expr=None),
+                ParameterIR(name="y", kind=0, annotation_ir=None, default_expr=None),
+                ParameterIR(name="z", kind=1, annotation_ir=None, default_expr=None),
+                ParameterIR(name="w", kind=1, annotation_ir=None, default_expr="10"),
             ),
             is_async_gen=False,
             is_async=True,
@@ -675,11 +675,11 @@ IR_CLASS_VARARGS = ClassWrapperIR(
             method_name="method_with_varargs",
             method_type=MethodBindingKind.INSTANCE,
             parameters=(
-                ParameterIR(name="a", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_repr=None),
-                ParameterIR(name="args", kind=2, annotation_ir=IdentityTypeIR(signature_text="str"), default_repr=None),
-                ParameterIR(name="b", kind=3, annotation_ir=None, default_repr=None),
+                ParameterIR(name="a", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_expr=None),
+                ParameterIR(name="args", kind=2, annotation_ir=IdentityTypeIR(signature_text="str"), default_expr=None),
+                ParameterIR(name="b", kind=3, annotation_ir=None, default_expr=None),
                 ParameterIR(
-                    name="kwargs", kind=4, annotation_ir=IdentityTypeIR(signature_text="float"), default_repr=None
+                    name="kwargs", kind=4, annotation_ir=IdentityTypeIR(signature_text="float"), default_expr=None
                 ),
             ),
             is_async_gen=False,

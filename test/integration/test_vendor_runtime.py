@@ -75,25 +75,18 @@ def test_cli_vendor_invocation(tmp_path: Path) -> None:
     assert bad.returncode != 0
 
 
-def test_cli_wrappers_reports_unsupported_default_repr(tmp_path: Path) -> None:
+def test_cli_wrappers_reports_unsupported_default_expr(tmp_path: Path) -> None:
     module_file = tmp_path / "bad_defaults_impl.py"
     module_file.write_text(
         """
+import time
+
 from synchronicity import Module
 
 wrapper_module = Module("bad_defaults")
 
-
-class NeedsImport:
-    def __repr__(self) -> str:
-        return "pathlib.Path('demo')"
-
-
-BAD_DEFAULT = NeedsImport()
-
-
 @wrapper_module.wrap_function()
-async def bad_default(value: object = BAD_DEFAULT) -> object:
+async def bad_default(value: float = time.time()) -> float:
     return value
 """.strip()
         + "\n"
@@ -125,4 +118,4 @@ async def bad_default(value: object = BAD_DEFAULT) -> object:
     assert result.returncode != 0
     assert "Error:" in result.stderr
     assert "parameter 'value'" in result.stderr
-    assert "not executable in generated wrapper module scope" in result.stderr
+    assert "unsupported default expression" in result.stderr

@@ -2,15 +2,22 @@
 
 from __future__ import annotations
 
+import ast
 import pytest
+import subprocess
+import sys
+import time
 import typing
+from inspect import Signature
 from typing import Generic, TypeVar
 
 from synchronicity import Module
+from synchronicity.codegen.default_expressions import resolve_parameter_default_expressions
 from synchronicity.codegen.ir import (
     ManualClassAttributeAccessKind,
     ManualReexportIR,
     ModuleCompilationIR,
+    ModuleImportRefIR,
     PropertyWrapperIR,
 )
 from synchronicity.codegen.parse import (
@@ -29,6 +36,42 @@ from synchronicity.codegen.transformer_ir import (
 )
 from synchronicity.descriptor import function_with_aio, method_with_aio
 
+PARSE_DEFAULT_GREETING = "hello"
+
+
+def parse_builtin_default(value: object = "hello") -> None:
+    return None
+
+
+def parse_multiline_default(
+    value: tuple[int, int] = (
+        1,
+        2,
+    ),
+) -> None:
+    return None
+
+
+def parse_positional_keyword_defaults(a, /, b: int = 10, *, c: str = "hello", d: bool = False) -> None:
+    return None
+
+
+def parse_impl_module_default(value: str = PARSE_DEFAULT_GREETING) -> None:
+    return None
+
+
+def parse_qualified_import_default(pipe: int = subprocess.PIPE) -> None:
+    return None
+
+
+def parse_unstable_default(value: float = time.time()) -> None:
+    return None
+
+
+class ParseDefaultService:
+    async def configure(self, greeting: str = "hello", *, retries: int = 3) -> None:
+        return None
+
 
 def test_parse_module_level_function_ir_async_is_awaitable_ir():
     async def impl() -> int:
@@ -43,88 +86,94 @@ def test_parse_module_level_function_ir_async_is_awaitable_ir():
     assert ir.impl_ref == ImplQualifiedRef(impl.__module__, impl.__qualname__)
 
 
-@pytest.mark.parametrize(
-    "default_value",
-    [
-        None,
-        True,
-        42,
-        1.5,
-        "hello",
-        b"bytes",
-        (1, "two"),
-        [1, 2],
-        {"a": 1},
-        {1, 2},
-        frozenset({1, 2}),
-        range(0, 3),
-        slice(1, 2, 3),
-        Ellipsis,
-    ],
-)
-def test_parse_module_level_function_ir_preserves_supported_default_values(default_value):
-    def impl(value: object = default_value) -> None:
-        return None
+def test_resolve_parameter_default_expressions_preserves_exact_source_slices():
+    resolved = resolve_parameter_default_expressions(
+        parse_multiline_default,
+        Signature.from_callable(parse_multiline_default),
+        impl_module=sys.modules[__name__],
+        source_label_prefix=f"{__name__}.parse_multiline_default",
+    )
 
-    ir = parse_module_level_function_ir(impl, "out_mod", globals_dict=locals())
-
-    assert ir.parameters[0].default_repr == repr(default_value)
+    assert resolved["value"].expression == "(\n        1,\n        2,\n    )"
+    assert resolved["value"].import_refs == ()
 
 
 def test_parse_module_level_function_ir_preserves_positional_and_keyword_only_defaults():
-    def impl(a, /, b: int = 10, *, c: str = "hello", d: bool = False) -> None:
-        return None
+    ir = parse_module_level_function_ir(parse_positional_keyword_defaults, "out_mod", globals_dict=globals())
 
-    ir = parse_module_level_function_ir(impl, "out_mod", globals_dict=locals())
-
-    assert tuple(param.default_repr for param in ir.parameters) == (None, "10", "'hello'", "False")
+    assert tuple(param.default_expr for param in ir.parameters) == (None, "10", '"hello"', "False")
+    assert tuple(param.default_import_refs for param in ir.parameters) == ((), (), (), ())
 
 
 def test_parse_method_wrapper_ir_preserves_default_values():
-    class Service:
-        async def configure(self, greeting: str = "hello", *, retries: int = 3) -> None:
+    ir = parse_method_wrapper_ir(
+        ParseDefaultService.configure,
+        "configure",
+        ParseDefaultService,
+        globals_dict=globals(),
+    )
+
+    assert tuple(param.default_expr for param in ir.parameters) == ('"hello"', "3")
+    assert tuple(param.default_import_refs for param in ir.parameters) == ((), ())
+
+
+def test_parse_module_level_function_ir_preserves_builtin_source_default():
+    ir = parse_module_level_function_ir(parse_builtin_default, "out_mod", globals_dict=globals())
+
+    assert ir.parameters[0].default_expr == '"hello"'
+    assert ir.parameters[0].default_import_refs == ()
+
+
+def test_parse_module_level_function_ir_prefixes_impl_module_for_module_constants():
+    ir = parse_module_level_function_ir(parse_impl_module_default, "out_mod", globals_dict=globals())
+
+    assert ir.parameters[0].default_expr == f"{__name__}.PARSE_DEFAULT_GREETING"
+    assert ir.parameters[0].default_import_refs == ()
+
+
+def test_parse_module_level_function_ir_keeps_qualified_module_defaults_with_import_refs():
+    ir = parse_module_level_function_ir(parse_qualified_import_default, "out_mod", globals_dict=globals())
+
+    assert ir.parameters[0].default_expr == "subprocess.PIPE"
+    assert ir.parameters[0].default_import_refs == (ModuleImportRefIR(module="subprocess", name="subprocess"),)
+
+
+def test_parse_module_level_function_ir_rejects_missing_source(monkeypatch):
+    monkeypatch.setattr(
+        "synchronicity.codegen.default_expressions.inspect.getsource",
+        lambda _func: (_ for _ in ()).throw(OSError("no source")),
+    )
+
+    with pytest.raises(TypeError, match=r"Could not recover source"):
+        parse_module_level_function_ir(parse_builtin_default, "out_mod", globals_dict=globals())
+
+
+def test_parse_module_level_function_ir_rejects_unextractable_source_segment(monkeypatch):
+    original_get_source_segment = ast.get_source_segment
+
+    def patched_get_source_segment(source, node, *, padded=False):
+        if isinstance(node, ast.Constant) and node.value == "hello":
             return None
+        return original_get_source_segment(source, node, padded=padded)
 
-    ir = parse_method_wrapper_ir(Service.configure, "configure", Service, globals_dict=locals())
+    monkeypatch.setattr("synchronicity.codegen.default_expressions.ast.get_source_segment", patched_get_source_segment)
 
-    assert tuple(param.default_repr for param in ir.parameters) == ("'hello'", "3")
+    with pytest.raises(TypeError, match=r"parameter 'value'.*could not be extracted from source"):
+        parse_module_level_function_ir(parse_builtin_default, "out_mod", globals_dict=globals())
 
 
-def test_parse_module_level_function_ir_rejects_non_python_default_repr():
-    bad_default = object()
+def test_parse_module_level_function_ir_rejects_unstable_default_value():
+    with pytest.raises(TypeError, match=r"parameter 'value'.*unsupported default expression"):
+        parse_module_level_function_ir(parse_unstable_default, "out_mod", globals_dict=globals())
 
-    def impl(value: object = bad_default) -> None:
+
+def test_parse_module_level_function_ir_rejects_closure_local_defaults():
+    local_default = "hello"
+
+    def impl(value: str = local_default) -> None:
         return None
 
-    with pytest.raises(TypeError, match=r"parameter 'value'.*not valid Python source"):
-        parse_module_level_function_ir(impl, "out_mod", globals_dict=locals())
-
-
-def test_parse_module_level_function_ir_rejects_default_repr_needing_non_builtin_globals():
-    class NeedsImport:
-        def __repr__(self) -> str:
-            return "pathlib.Path('demo')"
-
-    bad_default = NeedsImport()
-
-    def impl(value: object = bad_default) -> None:
-        return None
-
-    with pytest.raises(TypeError, match=r"parameter 'value'.*not executable in generated wrapper module scope"):
-        parse_module_level_function_ir(impl, "out_mod", globals_dict=locals())
-
-
-def test_parse_module_level_function_ir_rejects_non_round_tripping_default_repr():
-    class WrongRepr:
-        def __repr__(self) -> str:
-            return "1"
-
-    bad_default = WrongRepr()
-
-    def impl(value: object = bad_default) -> None:
-        return None
-
-    with pytest.raises(TypeError, match=r"parameter 'value'.*round-trips to int, not WrongRepr"):
+    with pytest.raises(TypeError, match=r"parameter 'value'.*unsupported default expression"):
         parse_module_level_function_ir(impl, "out_mod", globals_dict=locals())
 
 

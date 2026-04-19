@@ -32,7 +32,7 @@ IR_FN_ASYNC_GEN = ModuleLevelFunctionIR(
     is_async_gen=True,
     parameters=(
         ParameterIR(
-            name="items", kind=1, annotation_ir=ListTypeIR(item=IdentityTypeIR(signature_text="str")), default_repr=None
+            name="items", kind=1, annotation_ir=ListTypeIR(item=IdentityTypeIR(signature_text="str")), default_expr=None
         ),
     ),
     return_transformer_ir=AsyncGeneratorTypeIR(yield_item=IdentityTypeIR(signature_text="str"), send_type_str="None"),
@@ -52,7 +52,7 @@ IR_FN_COMPLEX_TYPES = ModuleLevelFunctionIR(
     is_async_gen=False,
     parameters=(
         ParameterIR(
-            name="items", kind=1, annotation_ir=ListTypeIR(item=IdentityTypeIR(signature_text="str")), default_repr=None
+            name="items", kind=1, annotation_ir=ListTypeIR(item=IdentityTypeIR(signature_text="str")), default_expr=None
         ),
         ParameterIR(
             name="config",
@@ -60,13 +60,13 @@ IR_FN_COMPLEX_TYPES = ModuleLevelFunctionIR(
             annotation_ir=DictTypeIR(
                 key=IdentityTypeIR(signature_text="str"), value=IdentityTypeIR(signature_text="int")
             ),
-            default_repr=None,
+            default_expr=None,
         ),
         ParameterIR(
             name="optional_param",
             kind=1,
             annotation_ir=OptionalTypeIR(inner=IdentityTypeIR(signature_text="str")),
-            default_repr="None",
+            default_expr="None",
         ),
     ),
     return_transformer_ir=AwaitableTypeIR(
@@ -79,21 +79,21 @@ IR_FN_CREATE_AWAITABLE = ModuleLevelFunctionIR(
     impl_ref=ImplQualifiedRef(IMPL, "fn_create_awaitable"),
     needs_async_wrapper=True,
     is_async_gen=False,
-    parameters=(ParameterIR(name="x", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_repr=None),),
+    parameters=(ParameterIR(name="x", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_expr=None),),
     return_transformer_ir=AwaitableTypeIR(inner=IdentityTypeIR(signature_text="str")),
 )
 IR_FN_CREATE_AWAITABLE_BARE = ModuleLevelFunctionIR(
     impl_ref=ImplQualifiedRef(IMPL, "fn_create_awaitable_bare"),
     needs_async_wrapper=True,
     is_async_gen=False,
-    parameters=(ParameterIR(name="x", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_repr=None),),
+    parameters=(ParameterIR(name="x", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_expr=None),),
     return_transformer_ir=AwaitableTypeIR(inner=IdentityTypeIR(signature_text="typing.Any")),
 )
 IR_FN_CREATE_COROUTINE = ModuleLevelFunctionIR(
     impl_ref=ImplQualifiedRef(IMPL, "fn_create_coroutine"),
     needs_async_wrapper=True,
     is_async_gen=False,
-    parameters=(ParameterIR(name="x", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_repr=None),),
+    parameters=(ParameterIR(name="x", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_expr=None),),
     return_transformer_ir=CoroutineTypeIR(return_type=IdentityTypeIR(signature_text="str")),
 )
 IR_FN_CREATE_PEOPLE = ModuleLevelFunctionIR(
@@ -102,7 +102,7 @@ IR_FN_CREATE_PEOPLE = ModuleLevelFunctionIR(
     is_async_gen=False,
     parameters=(
         ParameterIR(
-            name="names", kind=1, annotation_ir=ListTypeIR(item=IdentityTypeIR(signature_text="str")), default_repr=None
+            name="names", kind=1, annotation_ir=ListTypeIR(item=IdentityTypeIR(signature_text="str")), default_expr=None
         ),
     ),
     return_transformer_ir=ListTypeIR(
@@ -114,7 +114,7 @@ IR_FN_CREATE_PERSON = ModuleLevelFunctionIR(
     needs_async_wrapper=False,
     is_async_gen=False,
     parameters=(
-        ParameterIR(name="name", kind=1, annotation_ir=IdentityTypeIR(signature_text="str"), default_repr=None),
+        ParameterIR(name="name", kind=1, annotation_ir=IdentityTypeIR(signature_text="str"), default_expr=None),
     ),
     return_transformer_ir=WrappedClassTypeIR(
         impl=ImplQualifiedRef(IMPL, "Person"), wrapper=WrapperRef(TARGET, "Person")
@@ -126,7 +126,7 @@ IR_FN_GENERIC_TYPES = ModuleLevelFunctionIR(
     is_async_gen=False,
     parameters=(
         ParameterIR(
-            name="items", kind=1, annotation_ir=ListTypeIR(item=IdentityTypeIR(signature_text="str")), default_repr=None
+            name="items", kind=1, annotation_ir=ListTypeIR(item=IdentityTypeIR(signature_text="str")), default_expr=None
         ),
         ParameterIR(
             name="mapping",
@@ -134,13 +134,13 @@ IR_FN_GENERIC_TYPES = ModuleLevelFunctionIR(
             annotation_ir=DictTypeIR(
                 key=IdentityTypeIR(signature_text="str"), value=IdentityTypeIR(signature_text="int")
             ),
-            default_repr=None,
+            default_expr=None,
         ),
         ParameterIR(
             name="optional_set",
             kind=1,
             annotation_ir=IdentityTypeIR(signature_text="typing.UnionType[set[int], None]"),
-            default_repr="None",
+            default_expr="None",
         ),
     ),
     return_transformer_ir=AwaitableTypeIR(
@@ -160,7 +160,7 @@ IR_FN_GREET = ModuleLevelFunctionIR(
             annotation_ir=WrappedClassTypeIR(
                 impl=ImplQualifiedRef(IMPL, "Person"), wrapper=WrapperRef(TARGET, "Person")
             ),
-            default_repr=None,
+            default_expr=None,
         ),
     ),
     return_transformer_ir=IdentityTypeIR(signature_text="str"),
@@ -170,8 +170,8 @@ IR_FN_NO_ANNOTATION = ModuleLevelFunctionIR(
     needs_async_wrapper=True,
     is_async_gen=False,
     parameters=(
-        ParameterIR(name="x", kind=1, annotation_ir=None, default_repr=None),
-        ParameterIR(name="y", kind=1, annotation_ir=None, default_repr="42"),
+        ParameterIR(name="x", kind=1, annotation_ir=None, default_expr=None),
+        ParameterIR(name="y", kind=1, annotation_ir=None, default_expr="42"),
     ),
     return_transformer_ir=AwaitableTypeIR(inner=IdentityTypeIR(signature_text="typing.Any")),
 )
@@ -180,8 +180,8 @@ IR_FN_NO_TYPES = ModuleLevelFunctionIR(
     needs_async_wrapper=False,
     is_async_gen=False,
     parameters=(
-        ParameterIR(name="x", kind=1, annotation_ir=None, default_repr=None),
-        ParameterIR(name="y", kind=1, annotation_ir=None, default_repr=None),
+        ParameterIR(name="x", kind=1, annotation_ir=None, default_expr=None),
+        ParameterIR(name="y", kind=1, annotation_ir=None, default_expr=None),
     ),
     return_transformer_ir=IdentityTypeIR(signature_text=""),
 )
@@ -190,10 +190,10 @@ IR_FN_POSONLY = ModuleLevelFunctionIR(
     needs_async_wrapper=False,
     is_async_gen=False,
     parameters=(
-        ParameterIR(name="a", kind=0, annotation_ir=None, default_repr=None),
-        ParameterIR(name="b", kind=0, annotation_ir=None, default_repr=None),
-        ParameterIR(name="c", kind=1, annotation_ir=None, default_repr=None),
-        ParameterIR(name="d", kind=1, annotation_ir=None, default_repr="10"),
+        ParameterIR(name="a", kind=0, annotation_ir=None, default_expr=None),
+        ParameterIR(name="b", kind=0, annotation_ir=None, default_expr=None),
+        ParameterIR(name="c", kind=1, annotation_ir=None, default_expr=None),
+        ParameterIR(name="d", kind=1, annotation_ir=None, default_expr="10"),
     ),
     return_transformer_ir=IdentityTypeIR(signature_text="int"),
 )
@@ -201,7 +201,7 @@ IR_FN_SIMPLE_TYPES = ModuleLevelFunctionIR(
     impl_ref=ImplQualifiedRef(IMPL, "fn_simple_types"),
     needs_async_wrapper=True,
     is_async_gen=False,
-    parameters=(ParameterIR(name="x", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_repr=None),),
+    parameters=(ParameterIR(name="x", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_expr=None),),
     return_transformer_ir=AwaitableTypeIR(inner=IdentityTypeIR(signature_text="str")),
 )
 IR_FN_STREAM_BATCHES = ModuleLevelFunctionIR(
@@ -209,7 +209,7 @@ IR_FN_STREAM_BATCHES = ModuleLevelFunctionIR(
     needs_async_wrapper=True,
     is_async_gen=True,
     parameters=(
-        ParameterIR(name="batch_size", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_repr=None),
+        ParameterIR(name="batch_size", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_expr=None),
     ),
     return_transformer_ir=AsyncGeneratorTypeIR(
         yield_item=ListTypeIR(
@@ -223,7 +223,7 @@ IR_FN_STREAM_PEOPLE = ModuleLevelFunctionIR(
     needs_async_wrapper=True,
     is_async_gen=True,
     parameters=(
-        ParameterIR(name="count", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_repr=None),
+        ParameterIR(name="count", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_expr=None),
     ),
     return_transformer_ir=AsyncGeneratorTypeIR(
         yield_item=WrappedClassTypeIR(impl=ImplQualifiedRef(IMPL, "Person"), wrapper=WrapperRef(TARGET, "Person")),
@@ -235,8 +235,8 @@ IR_FN_SYNC_ADD = ModuleLevelFunctionIR(
     needs_async_wrapper=False,
     is_async_gen=False,
     parameters=(
-        ParameterIR(name="a", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_repr=None),
-        ParameterIR(name="b", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_repr=None),
+        ParameterIR(name="a", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_expr=None),
+        ParameterIR(name="b", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_expr=None),
     ),
     return_transformer_ir=IdentityTypeIR(signature_text="int"),
 )
@@ -245,12 +245,12 @@ IR_FN_VARARGS = ModuleLevelFunctionIR(
     needs_async_wrapper=False,
     is_async_gen=False,
     parameters=(
-        ParameterIR(name="posonly", kind=1, annotation_ir=None, default_repr=None),
-        ParameterIR(name="a", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_repr=None),
-        ParameterIR(name="b", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_repr="10"),
-        ParameterIR(name="extra", kind=2, annotation_ir=IdentityTypeIR(signature_text="int"), default_repr=None),
-        ParameterIR(name="c", kind=3, annotation_ir=None, default_repr=None),
-        ParameterIR(name="extrakwargs", kind=4, annotation_ir=None, default_repr=None),
+        ParameterIR(name="posonly", kind=1, annotation_ir=None, default_expr=None),
+        ParameterIR(name="a", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_expr=None),
+        ParameterIR(name="b", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_expr="10"),
+        ParameterIR(name="extra", kind=2, annotation_ir=IdentityTypeIR(signature_text="int"), default_expr=None),
+        ParameterIR(name="c", kind=3, annotation_ir=None, default_expr=None),
+        ParameterIR(name="extrakwargs", kind=4, annotation_ir=None, default_expr=None),
     ),
     return_transformer_ir=IdentityTypeIR(signature_text="str"),
 )
@@ -259,9 +259,9 @@ IR_FN_WITH_DEFAULTS = ModuleLevelFunctionIR(
     needs_async_wrapper=False,
     is_async_gen=False,
     parameters=(
-        ParameterIR(name="a", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_repr=None),
-        ParameterIR(name="b", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_repr="10"),
-        ParameterIR(name="c", kind=1, annotation_ir=IdentityTypeIR(signature_text="str"), default_repr="'hello'"),
+        ParameterIR(name="a", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_expr=None),
+        ParameterIR(name="b", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_expr="10"),
+        ParameterIR(name="c", kind=1, annotation_ir=IdentityTypeIR(signature_text="str"), default_expr="'hello'"),
     ),
     return_transformer_ir=IdentityTypeIR(signature_text="str"),
 )
@@ -270,53 +270,53 @@ IR_FN_WITH_MANY_DEFAULTS = ModuleLevelFunctionIR(
     needs_async_wrapper=False,
     is_async_gen=False,
     parameters=(
-        ParameterIR(name="required", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_repr=None),
-        ParameterIR(name="text", kind=1, annotation_ir=IdentityTypeIR(signature_text="str"), default_repr="'hello'"),
-        ParameterIR(name="enabled", kind=1, annotation_ir=IdentityTypeIR(signature_text="bool"), default_repr="True"),
+        ParameterIR(name="required", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_expr=None),
+        ParameterIR(name="text", kind=1, annotation_ir=IdentityTypeIR(signature_text="str"), default_expr="'hello'"),
+        ParameterIR(name="enabled", kind=1, annotation_ir=IdentityTypeIR(signature_text="bool"), default_expr="True"),
         ParameterIR(
-            name="payload", kind=1, annotation_ir=IdentityTypeIR(signature_text="bytes"), default_repr="b'data'"
+            name="payload", kind=1, annotation_ir=IdentityTypeIR(signature_text="bytes"), default_expr="b'data'"
         ),
         ParameterIR(
             name="coords",
             kind=1,
             annotation_ir=IdentityTypeIR(signature_text="tuple[int, int]"),
-            default_repr="(1, 2)",
+            default_expr="(1, 2)",
         ),
         ParameterIR(
             name="tags",
             kind=1,
             annotation_ir=IdentityTypeIR(signature_text="list[str]"),
-            default_repr="['a', 'b']",
+            default_expr="['a', 'b']",
         ),
         ParameterIR(
             name="mapping",
             kind=1,
             annotation_ir=IdentityTypeIR(signature_text="dict[str, int]"),
-            default_repr="{'a': 1}",
+            default_expr="{'a': 1}",
         ),
         ParameterIR(
             name="items",
             kind=1,
             annotation_ir=IdentityTypeIR(signature_text="set[int]"),
-            default_repr="{1, 2}",
+            default_expr="{1, 2}",
         ),
         ParameterIR(
             name="frozen",
             kind=1,
             annotation_ir=IdentityTypeIR(signature_text="frozenset[int]"),
-            default_repr="frozenset({1, 2})",
+            default_expr="frozenset({1, 2})",
         ),
         ParameterIR(
             name="window",
             kind=1,
             annotation_ir=IdentityTypeIR(signature_text="slice"),
-            default_repr="slice(1, 2, 3)",
+            default_expr="slice(1, 2, 3)",
         ),
         ParameterIR(
             name="optional",
             kind=3,
             annotation_ir=IdentityTypeIR(signature_text="typing.Any"),
-            default_repr="None",
+            default_expr="None",
         ),
     ),
     return_transformer_ir=IdentityTypeIR(signature_text="str"),
@@ -325,7 +325,7 @@ IR_FN_OVERLOADS_WITH_TRANSLATION = ModuleLevelFunctionIR(
     impl_ref=ImplQualifiedRef(IMPL, "fn_overloaded"),
     needs_async_wrapper=True,
     is_async_gen=False,
-    parameters=(ParameterIR(name="value", kind=1, annotation_ir=None, default_repr=None),),
+    parameters=(ParameterIR(name="value", kind=1, annotation_ir=None, default_expr=None),),
     return_transformer_ir=AwaitableTypeIR(inner=IdentityTypeIR(signature_text="typing.Any")),
     overloads=(
         SignatureIR(
@@ -334,7 +334,7 @@ IR_FN_OVERLOADS_WITH_TRANSLATION = ModuleLevelFunctionIR(
                     name="value",
                     kind=1,
                     annotation_ir=IdentityTypeIR(signature_text="int"),
-                    default_repr=None,
+                    default_expr=None,
                 ),
             ),
             return_transformer_ir=AwaitableTypeIR(inner=IdentityTypeIR(signature_text="int")),
@@ -348,7 +348,7 @@ IR_FN_OVERLOADS_WITH_TRANSLATION = ModuleLevelFunctionIR(
                         impl=ImplQualifiedRef(IMPL, "Person"),
                         wrapper=WrapperRef(TARGET, "Person"),
                     ),
-                    default_repr=None,
+                    default_expr=None,
                 ),
             ),
             return_transformer_ir=AwaitableTypeIR(

@@ -180,6 +180,33 @@ def _wrapper_registration_lines(class_wrappers: tuple[ClassWrapperIR, ...]) -> l
     return lines
 
 
+def _default_import_modules_for_signatures(signatures: tuple[SignatureIR, ...]) -> set[str]:
+    modules: set[str] = set()
+    for signature in signatures:
+        for parameter in signature.parameters:
+            for import_ref in parameter.default_import_refs:
+                modules.add(import_ref.module)
+    return modules
+
+
+def _default_import_modules_for_module(ir: ModuleCompilationIR) -> set[str]:
+    modules: set[str] = set()
+    for class_ir in ir.class_wrappers:
+        for method_ir in class_ir.methods:
+            modules.update(
+                _default_import_modules_for_signatures(
+                    method_ir.overloads or (SignatureIR(method_ir.parameters, method_ir.return_transformer_ir),)
+                )
+            )
+    for function_ir in ir.module_functions_ir:
+        modules.update(
+            _default_import_modules_for_signatures(
+                function_ir.overloads or (SignatureIR(function_ir.parameters, function_ir.return_transformer_ir),)
+            )
+        )
+    return modules
+
+
 def emit_manual_reexport(ir: ManualReexportIR) -> str:
     return f"{ir.export_name} = {_impl_value_dotted(ir.impl_ref)}"
 
@@ -1686,8 +1713,12 @@ class SyncAsyncWrapperEmitter:
         ir: ModuleCompilationIR,
     ) -> str:
         runtime_package = self.runtime_package
-        imports = "\n".join(f"import {mod}" for mod in sorted(ir.impl_modules))
-        cross_module_import_strs = [f"import {m}" for m in sorted(ir.cross_module_imports.keys())]
+        default_import_modules = _default_import_modules_for_module(ir)
+        module_imports = sorted(set(ir.impl_modules) | default_import_modules)
+        imports = "\n".join(f"import {mod}" for mod in module_imports)
+        cross_module_import_strs = [
+            f"import {m}" for m in sorted(set(ir.cross_module_imports.keys()) - set(module_imports))
+        ]
         cross_module_imports_str = "\n".join(cross_module_import_strs) if cross_module_import_strs else ""
 
         header = f"""import typing

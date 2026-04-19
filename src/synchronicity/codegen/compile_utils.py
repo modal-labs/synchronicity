@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import builtins
 import collections.abc
 import inspect
 import sys
 import types
 import typing
 
+from .default_expressions import resolve_parameter_default_expressions
 from .ir import MethodBindingKind, ParameterIR
 from .signature_utils import is_async_generator
 from .transformer_ir import ImplQualifiedRef
@@ -169,51 +169,12 @@ def _extract_typevars_from_function(
     return collected
 
 
-def _default_value_to_repr(value: object, *, source_label: str) -> str:
-    """Return a default repr only if it executes in wrapper-module global scope."""
-
-    default_repr = repr(value)
-    try:
-        code = compile(default_repr, "<default_repr>", "eval")
-    except SyntaxError as exc:
-        raise TypeError(
-            f"{source_label} has unsupported default value {value!r}: "
-            f"repr {default_repr!r} is not valid Python source for generated wrappers"
-        ) from exc
-
-    try:
-        round_tripped = eval(code, {"__builtins__": vars(builtins)}, {})
-    except Exception as exc:
-        raise TypeError(
-            f"{source_label} has unsupported default value {value!r}: "
-            f"repr {default_repr!r} is not executable in generated wrapper module scope"
-        ) from exc
-
-    if type(round_tripped) is not type(value):
-        raise TypeError(
-            f"{source_label} has unsupported default value {value!r}: "
-            f"repr {default_repr!r} round-trips to {type(round_tripped).__name__}, "
-            f"not {type(value).__name__}"
-        )
-
-    try:
-        round_trip_matches = round_tripped == value
-    except Exception:
-        round_trip_matches = False
-
-    if not round_trip_matches and repr(round_tripped) != default_repr:
-        raise TypeError(
-            f"{source_label} has unsupported default value {value!r}: "
-            f"repr {default_repr!r} does not round-trip safely in generated wrappers"
-        )
-
-    return default_repr
-
-
 def parse_parameters_to_ir(
+    func: types.FunctionType,
     sig: inspect.Signature,
     annotations: dict,
     *,
+    impl_module: types.ModuleType,
     skip_first_param: bool = False,
     owner_impl_type: type | None = None,
     owner_has_type_parameters: bool = False,
@@ -222,6 +183,13 @@ def parse_parameters_to_ir(
 ) -> tuple[ParameterIR, ...]:
     """Collect :class:`ParameterIR` from a signature (no emission strings)."""
     from .transformer_materialize import annotation_to_transformer_ir
+
+    resolved_defaults = resolve_parameter_default_expressions(
+        func,
+        sig,
+        impl_module=impl_module,
+        source_label_prefix=source_label_prefix,
+    )
 
     result: list[ParameterIR] = []
     for i, (name, param) in enumerate(sig.parameters.items()):
@@ -240,21 +208,20 @@ def parse_parameters_to_ir(
                 source_label=(f"{source_label_prefix} parameter {name!r}" if source_label_prefix is not None else None),
             )
 
-        default_repr: str | None = None
+        default_expr: str | None = None
+        default_import_refs = ()
         if param.default is not inspect.Parameter.empty:
-            label = (
-                f"{source_label_prefix} parameter {name!r}"
-                if source_label_prefix is not None
-                else f"parameter {name!r}"
-            )
-            default_repr = _default_value_to_repr(param.default, source_label=label)
+            resolved_default = resolved_defaults[name]
+            default_expr = resolved_default.expression
+            default_import_refs = resolved_default.import_refs
 
         result.append(
             ParameterIR(
                 name=name,
                 kind=int(param.kind),
                 annotation_ir=annotation_ir,
-                default_repr=default_repr,
+                default_expr=default_expr,
+                default_import_refs=default_import_refs,
             )
         )
     return tuple(result)
@@ -327,8 +294,8 @@ def format_parameters_for_emit(
                 param_str = name
                 call_args.append(f"{name}={name}")
 
-            if param_ir.default_repr is not None:
-                param_str += f" = {param_ir.default_repr}"
+            if param_ir.default_expr is not None:
+                param_str += f" = {param_ir.default_expr}"
 
             params.append(param_str)
 
@@ -349,8 +316,8 @@ def format_parameters_for_emit(
                 param_str = name
                 call_args.append(name)
 
-            if param_ir.default_repr is not None:
-                param_str += f" = {param_ir.default_repr}"
+            if param_ir.default_expr is not None:
+                param_str += f" = {param_ir.default_expr}"
 
             params.append(param_str)
 

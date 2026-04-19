@@ -1,10 +1,12 @@
 """Simple async function without any class dependencies."""
 
+import subprocess
 import typing
 
 from synchronicity import Module
 
 wrapper_module = Module("simple_function")
+DEFAULT_GREETING = "hello"
 
 
 @wrapper_module.wrap_function()
@@ -14,9 +16,15 @@ async def simple_add(a: int, b: int) -> int:
 
 
 @wrapper_module.wrap_function()
-async def greet(name: str = "hello") -> str:
+async def greet(name: str = DEFAULT_GREETING) -> str:
     """Return a greeting value, exercising emitted default arguments."""
     return name
+
+
+@wrapper_module.wrap_function()
+async def default_pipe(pipe: int = subprocess.PIPE) -> int:
+    """Return a module-qualified default that requires a plain import in the wrapper."""
+    return pipe
 
 
 @wrapper_module.wrap_function()

@@ -290,6 +290,7 @@ def _parse_signature_ir(
     *,
     annotations: dict[str, typing.Any],
     sig: inspect.Signature,
+    impl_module: types.ModuleType,
     skip_first_param: bool,
     owner_impl_type: type | None,
     owner_has_type_parameters: bool,
@@ -309,8 +310,10 @@ def _parse_signature_ir(
         )
         return_ir = AsyncContextManagerTypeIR(value=value_ir)
         parameters = parse_parameters_to_ir(
+            f,
             sig,
             annotations,
+            impl_module=impl_module,
             skip_first_param=skip_first_param,
             owner_impl_type=owner_impl_type,
             owner_has_type_parameters=owner_has_type_parameters,
@@ -331,8 +334,10 @@ def _parse_signature_ir(
         source_label=f"{source_label_prefix} return",
     )
     parameters = parse_parameters_to_ir(
+        f,
         sig,
         annotations,
+        impl_module=impl_module,
         skip_first_param=skip_first_param,
         owner_impl_type=owner_impl_type,
         owner_has_type_parameters=owner_has_type_parameters,
@@ -362,6 +367,7 @@ def _parse_overload_signature_irs(
             overload_func,
             annotations=annotations,
             sig=sig,
+            impl_module=sys.modules[overload_func.__module__],
             skip_first_param=skip_first_param,
             owner_impl_type=owner_impl_type,
             owner_has_type_parameters=owner_has_type_parameters,
@@ -384,10 +390,12 @@ def parse_module_level_function_ir(
         impl_modules = frozenset({f.__module__})
     annotations = _safe_get_annotations(f, globals_dict)
     sig = inspect.signature(f)
+    impl_module = sys.modules[f.__module__]
     signature_ir, is_async_gen = _parse_signature_ir(
         f,
         annotations=annotations,
         sig=sig,
+        impl_module=impl_module,
         skip_first_param=False,
         owner_impl_type=None,
         owner_has_type_parameters=False,
@@ -431,6 +439,7 @@ def parse_method_wrapper_ir(
         impl_modules = frozenset({impl_class.__module__})
     annotations = _safe_get_annotations(method, globals_dict)
     sig = inspect.signature(method)
+    impl_module = sys.modules[method.__module__]
     return_annotation = annotations.get("return", sig.return_annotation)
 
     # Validate __aiter__ isn't typed as a sync generator/iterator
@@ -450,6 +459,7 @@ def parse_method_wrapper_ir(
         method,
         annotations=annotations,
         sig=sig,
+        impl_module=impl_module,
         skip_first_param=skip_first_param,
         owner_impl_type=impl_class,
         owner_has_type_parameters=owner_has_type_parameters,

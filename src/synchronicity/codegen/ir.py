@@ -40,13 +40,22 @@ class TypeVarSpecIR:
 
 
 @dataclasses.dataclass(frozen=True)
+class ModuleImportRefIR:
+    """A plain module import required for emitted default expressions."""
+
+    module: str
+    name: str
+
+
+@dataclasses.dataclass(frozen=True)
 class ParameterIR:
     """One formal parameter: kind + optional type as :class:`TypeTransformerIR` (emit unwraps from this)."""
 
     name: str
     kind: int
     annotation_ir: TypeTransformerIR | None
-    default_repr: str | None
+    default_expr: str | None
+    default_import_refs: tuple[ModuleImportRefIR, ...] = ()
 
 
 @dataclasses.dataclass(frozen=True)

@@ -41,7 +41,7 @@ IR_CLASS_HELPER = ClassWrapperIR(
             method_type=MethodBindingKind.INSTANCE,
             parameters=(
                 ParameterIR(
-                    name="value", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_repr=None
+                    name="value", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_expr=None
                 ),
             ),
             is_async_gen=False,
@@ -63,7 +63,7 @@ IR_CLASS_HELPER_SUBCLASS = ClassWrapperIR(
             method_type=MethodBindingKind.INSTANCE,
             parameters=(
                 ParameterIR(
-                    name="value", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_repr=None
+                    name="value", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_expr=None
                 ),
             ),
             is_async_gen=False,
@@ -122,7 +122,7 @@ IR_TR_CONNECT_NODES = ModuleLevelFunctionIR(
             annotation_ir=WrappedClassTypeIR(
                 impl=ImplQualifiedRef(IMPL, "TestNode"), wrapper=WrapperRef(TARGET, "TestNode")
             ),
-            default_repr=None,
+            default_expr=None,
         ),
         ParameterIR(
             name="child",
@@ -130,7 +130,7 @@ IR_TR_CONNECT_NODES = ModuleLevelFunctionIR(
             annotation_ir=WrappedClassTypeIR(
                 impl=ImplQualifiedRef(IMPL, "TestNode"), wrapper=WrapperRef(TARGET, "TestNode")
             ),
-            default_repr=None,
+            default_expr=None,
         ),
     ),
     return_transformer_ir=AwaitableTypeIR(
@@ -148,7 +148,7 @@ IR_TR_CREATE_NODE = ModuleLevelFunctionIR(
     needs_async_wrapper=True,
     is_async_gen=False,
     parameters=(
-        ParameterIR(name="value", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_repr=None),
+        ParameterIR(name="value", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_expr=None),
     ),
     return_transformer_ir=AwaitableTypeIR(
         inner=WrappedClassTypeIR(impl=ImplQualifiedRef(IMPL, "TestNode"), wrapper=WrapperRef(TARGET, "TestNode"))
@@ -165,7 +165,7 @@ IR_TR_GET_NODE_LIST = ModuleLevelFunctionIR(
             annotation_ir=ListTypeIR(
                 item=WrappedClassTypeIR(impl=ImplQualifiedRef(IMPL, "TestNode"), wrapper=WrapperRef(TARGET, "TestNode"))
             ),
-            default_repr=None,
+            default_expr=None,
         ),
     ),
     return_transformer_ir=AwaitableTypeIR(
@@ -187,7 +187,7 @@ IR_TR_GET_OPTIONAL_NODE = ModuleLevelFunctionIR(
                     impl=ImplQualifiedRef(IMPL, "TestNode"), wrapper=WrapperRef(TARGET, "TestNode")
                 )
             ),
-            default_repr=None,
+            default_expr=None,
         ),
     ),
     return_transformer_ir=AwaitableTypeIR(
@@ -209,7 +209,7 @@ IR_TR_PROCESS_LIST = ModuleLevelFunctionIR(
                     impl=ImplQualifiedRef(IMPL, "CollectionTestNode"), wrapper=WrapperRef(TARGET, "CollectionTestNode")
                 )
             ),
-            default_repr=None,
+            default_expr=None,
         ),
     ),
     return_transformer_ir=AwaitableTypeIR(
@@ -231,7 +231,7 @@ IR_TR_PROCESS_NODE = ModuleLevelFunctionIR(
             annotation_ir=WrappedClassTypeIR(
                 impl=ImplQualifiedRef(IMPL, "UnwrapTestNode"), wrapper=WrapperRef(TARGET, "UnwrapTestNode")
             ),
-            default_repr=None,
+            default_expr=None,
         ),
     ),
     return_transformer_ir=AwaitableTypeIR(
@@ -253,7 +253,7 @@ IR_TR_TESTNODE_CLASS = ClassWrapperIR(
             method_type=MethodBindingKind.INSTANCE,
             parameters=(
                 ParameterIR(
-                    name="value", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_repr=None
+                    name="value", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_expr=None
                 ),
             ),
             is_async_gen=False,
@@ -265,7 +265,7 @@ IR_TR_TESTNODE_CLASS = ClassWrapperIR(
             method_type=MethodBindingKind.INSTANCE,
             parameters=(
                 ParameterIR(
-                    name="child_value", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_repr=None
+                    name="child_value", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_expr=None
                 ),
             ),
             is_async_gen=False,
