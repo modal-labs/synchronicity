@@ -5,3 +5,4 @@ build
 dist
 uv.lock
 /generated/
+playground
