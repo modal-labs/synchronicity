@@ -9,6 +9,8 @@ def test_runtime():
     import simple_function
 
     assert simple_function.simple_add(5, 3) == 8
+    assert simple_function.greet() == "hello"
+    assert simple_function.greet("goodbye") == "goodbye"
     assert list(simple_function.simple_generator()) == [0, 1, 2]
     assert simple_function.returns_awaitable() == "hello"
 

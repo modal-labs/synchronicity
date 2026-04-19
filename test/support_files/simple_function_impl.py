@@ -14,6 +14,12 @@ async def simple_add(a: int, b: int) -> int:
 
 
 @wrapper_module.wrap_function()
+async def greet(name: str = "hello") -> str:
+    """Return a greeting value, exercising emitted default arguments."""
+    return name
+
+
+@wrapper_module.wrap_function()
 async def simple_generator() -> typing.AsyncGenerator[int, None]:
     """Simple async generator."""
     for i in range(3):

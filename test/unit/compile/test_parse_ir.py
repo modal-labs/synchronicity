@@ -16,6 +16,7 @@ from synchronicity.codegen.ir import (
 from synchronicity.codegen.parse import (
     build_module_compilation_ir,
     parse_class_wrapper_ir,
+    parse_method_wrapper_ir,
     parse_module_level_function_ir,
 )
 from synchronicity.codegen.transformer_ir import (
@@ -40,6 +41,91 @@ def test_parse_module_level_function_ir_async_is_awaitable_ir():
     assert isinstance(ir.return_transformer_ir.inner, IdentityTypeIR)
     assert ir.return_transformer_ir.inner.signature_text == "int"
     assert ir.impl_ref == ImplQualifiedRef(impl.__module__, impl.__qualname__)
+
+
+@pytest.mark.parametrize(
+    "default_value",
+    [
+        None,
+        True,
+        42,
+        1.5,
+        "hello",
+        b"bytes",
+        (1, "two"),
+        [1, 2],
+        {"a": 1},
+        {1, 2},
+        frozenset({1, 2}),
+        range(0, 3),
+        slice(1, 2, 3),
+        Ellipsis,
+    ],
+)
+def test_parse_module_level_function_ir_preserves_supported_default_values(default_value):
+    def impl(value: object = default_value) -> None:
+        return None
+
+    ir = parse_module_level_function_ir(impl, "out_mod", globals_dict=locals())
+
+    assert ir.parameters[0].default_repr == repr(default_value)
+
+
+def test_parse_module_level_function_ir_preserves_positional_and_keyword_only_defaults():
+    def impl(a, /, b: int = 10, *, c: str = "hello", d: bool = False) -> None:
+        return None
+
+    ir = parse_module_level_function_ir(impl, "out_mod", globals_dict=locals())
+
+    assert tuple(param.default_repr for param in ir.parameters) == (None, "10", "'hello'", "False")
+
+
+def test_parse_method_wrapper_ir_preserves_default_values():
+    class Service:
+        async def configure(self, greeting: str = "hello", *, retries: int = 3) -> None:
+            return None
+
+    ir = parse_method_wrapper_ir(Service.configure, "configure", Service, globals_dict=locals())
+
+    assert tuple(param.default_repr for param in ir.parameters) == ("'hello'", "3")
+
+
+def test_parse_module_level_function_ir_rejects_non_python_default_repr():
+    bad_default = object()
+
+    def impl(value: object = bad_default) -> None:
+        return None
+
+    with pytest.raises(TypeError, match=r"parameter 'value'.*not valid Python source"):
+        parse_module_level_function_ir(impl, "out_mod", globals_dict=locals())
+
+
+def test_parse_module_level_function_ir_rejects_default_repr_needing_non_builtin_globals():
+    class NeedsImport:
+        def __repr__(self) -> str:
+            return "pathlib.Path('demo')"
+
+    bad_default = NeedsImport()
+
+    def impl(value: object = bad_default) -> None:
+        return None
+
+    with pytest.raises(TypeError, match=r"parameter 'value'.*not executable in generated wrapper module scope"):
+        parse_module_level_function_ir(impl, "out_mod", globals_dict=locals())
+
+
+def test_parse_module_level_function_ir_rejects_non_round_tripping_default_repr():
+    class WrongRepr:
+        def __repr__(self) -> str:
+            return "1"
+
+    bad_default = WrongRepr()
+
+    def impl(value: object = bad_default) -> None:
+        return None
+
+    with pytest.raises(TypeError, match=r"parameter 'value'.*round-trips to int, not WrongRepr"):
+        parse_module_level_function_ir(impl, "out_mod", globals_dict=locals())
 
 
 def test_build_module_compilation_ir_uses_qualified_refs():

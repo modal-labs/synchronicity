@@ -240,6 +240,43 @@ IR_CLASS_ASYNC_ITERATOR = ClassWrapperIR(
         ),
     ),
 )
+IR_CLASS_METHOD_WITH_DEFAULTS = ClassWrapperIR(
+    impl_ref=ImplQualifiedRef(IMPL, "EmitMethodDefaults"),
+    wrapper_ref=WrapperRef(TARGET, "EmitMethodDefaults"),
+    wrapped_bases=(),
+    generic_type_parameters=None,
+    attributes=(),
+    properties=(),
+    methods=(
+        MethodWrapperIR(
+            method_name="configure",
+            method_type=MethodBindingKind.INSTANCE,
+            parameters=(
+                ParameterIR(
+                    name="name",
+                    kind=1,
+                    annotation_ir=IdentityTypeIR(signature_text="str"),
+                    default_repr="'hello'",
+                ),
+                ParameterIR(
+                    name="enabled",
+                    kind=1,
+                    annotation_ir=IdentityTypeIR(signature_text="bool"),
+                    default_repr="True",
+                ),
+                ParameterIR(
+                    name="payload",
+                    kind=1,
+                    annotation_ir=IdentityTypeIR(signature_text="bytes"),
+                    default_repr="b'data'",
+                ),
+            ),
+            is_async_gen=False,
+            is_async=False,
+            return_transformer_ir=IdentityTypeIR(signature_text="str"),
+        ),
+    ),
+)
 
 IR_CLASS_AWAITABLE_METHOD = ClassWrapperIR(
     impl_ref=ImplQualifiedRef(IMPL, "EmitAwaitableMethodClass"),
@@ -756,6 +793,12 @@ def test_emit_class_method_with_varargs():
     assert "b=b" in code
     assert "**kwargs" in code
     assert "impl_method(self._impl_instance, a, *args, b=b, **kwargs)" in code
+
+
+def test_emit_class_method_various_builtin_default_values():
+    code = emit_class_from_ir(IR_CLASS_METHOD_WITH_DEFAULTS, TARGET)
+    compile(code, "<string>", "exec")
+    assert "def configure(self, name: str = 'hello', enabled: bool = True, payload: bytes = b'data') -> str:" in code
 
 
 def test_emit_class_constructor_with_wrapped_param():

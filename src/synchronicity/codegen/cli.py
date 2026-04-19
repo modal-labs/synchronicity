@@ -262,10 +262,14 @@ def _run_wrappers(args: argparse.Namespace) -> None:
 
     print("Compiling wrappers...", file=sys.stderr)
 
-    modules = compile_modules(
-        module_objects,
-        runtime_package=args.runtime_package,
-    )
+    try:
+        modules = compile_modules(
+            module_objects,
+            runtime_package=args.runtime_package,
+        )
+    except (TypeError, ValueError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
     if not modules:
         print("No modules generated", file=sys.stderr)

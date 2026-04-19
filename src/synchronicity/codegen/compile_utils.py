@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 import collections.abc
 import inspect
 import sys
@@ -168,6 +169,47 @@ def _extract_typevars_from_function(
     return collected
 
 
+def _default_value_to_repr(value: object, *, source_label: str) -> str:
+    """Return a default repr only if it executes in wrapper-module global scope."""
+
+    default_repr = repr(value)
+    try:
+        code = compile(default_repr, "<default_repr>", "eval")
+    except SyntaxError as exc:
+        raise TypeError(
+            f"{source_label} has unsupported default value {value!r}: "
+            f"repr {default_repr!r} is not valid Python source for generated wrappers"
+        ) from exc
+
+    try:
+        round_tripped = eval(code, {"__builtins__": vars(builtins)}, {})
+    except Exception as exc:
+        raise TypeError(
+            f"{source_label} has unsupported default value {value!r}: "
+            f"repr {default_repr!r} is not executable in generated wrapper module scope"
+        ) from exc
+
+    if type(round_tripped) is not type(value):
+        raise TypeError(
+            f"{source_label} has unsupported default value {value!r}: "
+            f"repr {default_repr!r} round-trips to {type(round_tripped).__name__}, "
+            f"not {type(value).__name__}"
+        )
+
+    try:
+        round_trip_matches = round_tripped == value
+    except Exception:
+        round_trip_matches = False
+
+    if not round_trip_matches and repr(round_tripped) != default_repr:
+        raise TypeError(
+            f"{source_label} has unsupported default value {value!r}: "
+            f"repr {default_repr!r} does not round-trip safely in generated wrappers"
+        )
+
+    return default_repr
+
+
 def parse_parameters_to_ir(
     sig: inspect.Signature,
     annotations: dict,
@@ -200,7 +242,12 @@ def parse_parameters_to_ir(
 
         default_repr: str | None = None
         if param.default is not inspect.Parameter.empty:
-            default_repr = repr(param.default)
+            label = (
+                f"{source_label_prefix} parameter {name!r}"
+                if source_label_prefix is not None
+                else f"parameter {name!r}"
+            )
+            default_repr = _default_value_to_repr(param.default, source_label=label)
 
         result.append(
             ParameterIR(

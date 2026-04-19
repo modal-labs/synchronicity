@@ -5,6 +5,9 @@ runtime / pyright (impl, wrapper, usage) layout used by scenario integration tes
 """
 
 import importlib
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 from synchronicity.codegen.compile import compile_modules
@@ -40,9 +43,6 @@ def test_compile_modules_respects_runtime_package(generated_wrappers) -> None:
 
 
 def test_cli_vendor_invocation(tmp_path: Path) -> None:
-    import subprocess
-    import sys
-
     ok = subprocess.run(
         [
             sys.executable,
@@ -73,3 +73,56 @@ def test_cli_vendor_invocation(tmp_path: Path) -> None:
         text=True,
     )
     assert bad.returncode != 0
+
+
+def test_cli_wrappers_reports_unsupported_default_repr(tmp_path: Path) -> None:
+    module_file = tmp_path / "bad_defaults_impl.py"
+    module_file.write_text(
+        """
+from synchronicity import Module
+
+wrapper_module = Module("bad_defaults")
+
+
+class NeedsImport:
+    def __repr__(self) -> str:
+        return "pathlib.Path('demo')"
+
+
+BAD_DEFAULT = NeedsImport()
+
+
+@wrapper_module.wrap_function()
+async def bad_default(value: object = BAD_DEFAULT) -> object:
+    return value
+""".strip()
+        + "\n"
+    )
+
+    project_root = Path(__file__).parent.parent.parent
+    env = os.environ.copy()
+    pythonpath_parts = [str(tmp_path), str(project_root)]
+    if "PYTHONPATH" in env:
+        pythonpath_parts.append(env["PYTHONPATH"])
+    env["PYTHONPATH"] = os.pathsep.join(pythonpath_parts)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "synchronicity.codegen",
+            "wrappers",
+            "-m",
+            "bad_defaults_impl",
+            "--stdout",
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=str(project_root),
+    )
+
+    assert result.returncode != 0
+    assert "Error:" in result.stderr
+    assert "parameter 'value'" in result.stderr
+    assert "not executable in generated wrapper module scope" in result.stderr

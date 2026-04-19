@@ -265,6 +265,62 @@ IR_FN_WITH_DEFAULTS = ModuleLevelFunctionIR(
     ),
     return_transformer_ir=IdentityTypeIR(signature_text="str"),
 )
+IR_FN_WITH_MANY_DEFAULTS = ModuleLevelFunctionIR(
+    impl_ref=ImplQualifiedRef(IMPL, "fn_with_many_defaults"),
+    needs_async_wrapper=False,
+    is_async_gen=False,
+    parameters=(
+        ParameterIR(name="required", kind=1, annotation_ir=IdentityTypeIR(signature_text="int"), default_repr=None),
+        ParameterIR(name="text", kind=1, annotation_ir=IdentityTypeIR(signature_text="str"), default_repr="'hello'"),
+        ParameterIR(name="enabled", kind=1, annotation_ir=IdentityTypeIR(signature_text="bool"), default_repr="True"),
+        ParameterIR(
+            name="payload", kind=1, annotation_ir=IdentityTypeIR(signature_text="bytes"), default_repr="b'data'"
+        ),
+        ParameterIR(
+            name="coords",
+            kind=1,
+            annotation_ir=IdentityTypeIR(signature_text="tuple[int, int]"),
+            default_repr="(1, 2)",
+        ),
+        ParameterIR(
+            name="tags",
+            kind=1,
+            annotation_ir=IdentityTypeIR(signature_text="list[str]"),
+            default_repr="['a', 'b']",
+        ),
+        ParameterIR(
+            name="mapping",
+            kind=1,
+            annotation_ir=IdentityTypeIR(signature_text="dict[str, int]"),
+            default_repr="{'a': 1}",
+        ),
+        ParameterIR(
+            name="items",
+            kind=1,
+            annotation_ir=IdentityTypeIR(signature_text="set[int]"),
+            default_repr="{1, 2}",
+        ),
+        ParameterIR(
+            name="frozen",
+            kind=1,
+            annotation_ir=IdentityTypeIR(signature_text="frozenset[int]"),
+            default_repr="frozenset({1, 2})",
+        ),
+        ParameterIR(
+            name="window",
+            kind=1,
+            annotation_ir=IdentityTypeIR(signature_text="slice"),
+            default_repr="slice(1, 2, 3)",
+        ),
+        ParameterIR(
+            name="optional",
+            kind=3,
+            annotation_ir=IdentityTypeIR(signature_text="typing.Any"),
+            default_repr="None",
+        ),
+    ),
+    return_transformer_ir=IdentityTypeIR(signature_text="str"),
+)
 IR_FN_OVERLOADS_WITH_TRANSLATION = ModuleLevelFunctionIR(
     impl_ref=ImplQualifiedRef(IMPL, "fn_overloaded"),
     needs_async_wrapper=True,
@@ -495,6 +551,21 @@ def test_emit_sync_function_default_args():
     assert "b: int = 10" in code
     assert "c: str = 'hello'" in code
     assert "return impl_function(a, b, c)" in code
+
+
+def test_emit_sync_function_various_builtin_default_values():
+    code = emit_module_level_function(IR_FN_WITH_MANY_DEFAULTS, TARGET)
+    compile(code, "<string>", "exec")
+    assert "text: str = 'hello'" in code
+    assert "enabled: bool = True" in code
+    assert "payload: bytes = b'data'" in code
+    assert "coords: tuple[int, int] = (1, 2)" in code
+    assert "tags: list[str] = ['a', 'b']" in code
+    assert "mapping: dict[str, int] = {'a': 1}" in code
+    assert "items: set[int] = {1, 2}" in code
+    assert "frozen: frozenset[int] = frozenset({1, 2})" in code
+    assert "window: slice = slice(1, 2, 3)" in code
+    assert "optional: typing.Any = None" in code
 
 
 def test_emit_function_varargs():
