@@ -102,6 +102,7 @@ class ModuleLevelFunctionIR:
     parameters: tuple[ParameterIR, ...]
     return_transformer_ir: TypeTransformerIR
     overloads: tuple[SignatureIR, ...] = ()
+    docstring: str | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -123,6 +124,7 @@ class MethodWrapperIR:
     is_async: bool
     return_transformer_ir: TypeTransformerIR
     overloads: tuple[SignatureIR, ...] = ()
+    docstring: str | None = None
 
 
 @dataclasses.dataclass(frozen=True)

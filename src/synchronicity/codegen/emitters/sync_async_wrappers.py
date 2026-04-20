@@ -362,6 +362,25 @@ def _indent_block(block: str, indent: str = "    ") -> str:
     return "\n".join(f"{indent}{line}" if line else "" for line in block.split("\n"))
 
 
+def _emit_docstring_statement(docstring: str | None, *, indent: str) -> str:
+    if docstring is None:
+        return ""
+    delimiter = '"""'
+    if delimiter in docstring and "'''" not in docstring:
+        delimiter = "'''"
+    escaped_docstring = docstring.replace("\\", "\\\\").replace(delimiter, f"\\{delimiter}")
+    return f"{indent}{delimiter}{escaped_docstring}{delimiter}"
+
+
+def _prepend_docstring(body: str, docstring: str | None, *, indent: str) -> str:
+    if docstring is None:
+        return body
+    docstring_line = _emit_docstring_statement(docstring, indent=indent)
+    if not body:
+        return docstring_line
+    return f"{docstring_line}\n{body}"
+
+
 def _rewrite_with_aio_annotation_text(text: str, self_type_name: str | None) -> str:
     if self_type_name is None:
         return text
@@ -563,6 +582,8 @@ def emit_function_with_aio_protocol(
         header = f"class {with_aio_name}:"
 
     body_lines: list[str] = []
+    if ir.docstring is not None:
+        body_lines.extend([_emit_docstring_statement(ir.docstring, indent="    "), ""])
     body_lines.extend(
         [
             "    def __init__(self, sync_impl: typing.Callable[..., typing.Any]):",
@@ -590,9 +611,13 @@ def emit_function_with_aio_protocol(
             )
     body_lines.append("")
     body_lines.append("    " + _bound_with_aio_method_definition_line("__call__", param_str, sync_return_str))
+    if ir.docstring is not None:
+        body_lines.append(_emit_docstring_statement(ir.docstring, indent="        "))
     body_lines.append(f"        return self._sync_impl({with_aio_call_args_str})")
     body_lines.append("")
     body_lines.append("    " + _bound_with_aio_method_definition_line("aio", param_str, aio_return_str, is_async=True))
+    if ir.docstring is not None:
+        body_lines.append(_emit_docstring_statement(ir.docstring, indent="        "))
     body_lines.append(_indent_block(textwrap.dedent(aio_body).rstrip(), "        "))
     if helpers_code:
         body_lines.append("")
@@ -773,6 +798,8 @@ def emit_method_with_aio_protocol(
         header = f"class {with_aio_name}(MethodWithAio):"
 
     body_lines: list[str] = []
+    if mir.docstring is not None:
+        body_lines.extend([_emit_docstring_statement(mir.docstring, indent="    "), ""])
     if mir.overloads:
         for overload_param_str, overload_sync_return_str, _overload_aio_return_str in variants:
             body_lines.append("    @typing.overload")
@@ -793,9 +820,13 @@ def emit_method_with_aio_protocol(
             )
         body_lines.append("")
     body_lines.append("    " + _bound_with_aio_method_definition_line("__call__", param_str, sync_return_str))
+    if mir.docstring is not None:
+        body_lines.append(_emit_docstring_statement(mir.docstring, indent="        "))
     body_lines.append(f"        return self._sync_impl({with_aio_call_args_str})")
     body_lines.append("")
     body_lines.append("    " + _bound_with_aio_method_definition_line("aio", param_str, aio_return_str, is_async=True))
+    if mir.docstring is not None:
+        body_lines.append(_emit_docstring_statement(mir.docstring, indent="        "))
     body_lines.append(_indent_block(textwrap.dedent(aio_body).rstrip(), "        "))
     if helpers_code:
         body_lines.append("")
@@ -896,6 +927,7 @@ def emit_module_level_function(
             function_body = f"{impl_ref}\n{unwrap_code}\n{function_body}"
         else:
             function_body = f"{impl_ref}\n{function_body}"
+        function_body = _prepend_docstring(function_body, ir.docstring, indent="    ")
 
         function_code = f"""def {f}({param_str}){sync_return_str}:
 {function_body}"""
@@ -965,8 +997,7 @@ def emit_module_level_function(
 
     sync_function_code = f"""{decorator_line}
 def {f}({param_str}){sync_return_str}:
-{sync_unwrap_section}
-{sync_function_body}
+{_prepend_docstring(f"{sync_unwrap_section}\n{sync_function_body}", ir.docstring, indent="    ")}
 """
     with_aio_code = emit_function_with_aio_protocol(ir, current_target_module, runtime_package, mat_ctx=mat_ctx)
     if helpers_code:
@@ -1251,6 +1282,7 @@ def emit_method_wrapper_pair(
                 )
                 for line in aio_body_lines
             )
+            aio_body_indented = _prepend_docstring(aio_body_indented, mir.docstring, indent="        ")
             aio_wrapper_method = (
                 f"    async def {aio_method_name}(self, {param_str}){async_return_str}:\n{aio_body_indented}"
             )
@@ -1272,6 +1304,7 @@ def emit_method_wrapper_pair(
                 )
                 for line in aio_body_lines
             )
+            aio_body_indented = _prepend_docstring(aio_body_indented, mir.docstring, indent="        ")
             aio_wrapper_method = (
                 f"    @classmethod\n"
                 f"    async def {aio_method_name}(cls, {param_str}){async_return_str}:\n"
@@ -1294,6 +1327,7 @@ def emit_method_wrapper_pair(
                 )
                 for line in aio_body_lines
             )
+            aio_body_indented = _prepend_docstring(aio_body_indented, mir.docstring, indent="        ")
             aio_wrapper_method = (
                 f"    @staticmethod\n"
                 f"    async def {aio_method_name}({param_str}){async_return_str}:\n"
@@ -1316,38 +1350,26 @@ def emit_method_wrapper_pair(
             decorator_line = f"@method_with_aio({method_with_aio_type_expr})"
         if method_type == MethodBindingKind.INSTANCE:
             method_body_lines = sync_method_body.replace("wrapper_instance", "self").split("\n")
-            method_body = "\n".join(
-                "        " + line.lstrip() if line.strip() else "" for line in method_body_lines
-            ).strip()
+            method_body = "\n".join(line.lstrip() if line.strip() else "" for line in method_body_lines).strip()
         elif method_type == MethodBindingKind.CLASSMETHOD:
             method_body_lines = sync_method_body.replace("wrapper_class", "cls").split("\n")
-            method_body = "\n".join(
-                "        " + line.lstrip() if line.strip() else "" for line in method_body_lines
-            ).strip()
+            method_body = "\n".join(line.lstrip() if line.strip() else "" for line in method_body_lines).strip()
         else:
             method_body_lines = sync_method_body.split("\n")
-            method_body = "\n".join(
-                "        " + line.lstrip() if line.strip() else "" for line in method_body_lines
-            ).strip()
+            method_body = "\n".join(line.lstrip() if line.strip() else "" for line in method_body_lines).strip()
     else:
         if method_type == MethodBindingKind.INSTANCE:
             decorator_line = ""
             method_body_lines = sync_method_body.replace("wrapper_instance", "self").split("\n")
-            method_body = "\n".join(
-                "        " + line.lstrip() if line.strip() else "" for line in method_body_lines
-            ).strip()
+            method_body = "\n".join(line.lstrip() if line.strip() else "" for line in method_body_lines).strip()
         elif method_type == MethodBindingKind.CLASSMETHOD:
             decorator_line = "@classmethod"
             method_body_lines = sync_method_body.replace("wrapper_class", "cls").split("\n")
-            method_body = "\n".join(
-                "        " + line.lstrip() if line.strip() else "" for line in method_body_lines
-            ).strip()
+            method_body = "\n".join(line.lstrip() if line.strip() else "" for line in method_body_lines).strip()
         else:
             decorator_line = "@staticmethod"
             method_body_lines = sync_method_body.split("\n")
-            method_body = "\n".join(
-                "        " + line.lstrip() if line.strip() else "" for line in method_body_lines
-            ).strip()
+            method_body = "\n".join(line.lstrip() if line.strip() else "" for line in method_body_lines).strip()
 
     if method_type in (MethodBindingKind.CLASSMETHOD, MethodBindingKind.STATICMETHOD):
         if method_type == MethodBindingKind.CLASSMETHOD:
@@ -1364,9 +1386,11 @@ def emit_method_wrapper_pair(
         else:
             instance_param_str = "self"
         def_line = f"    def {method_name}({instance_param_str}){sync_return_str}:"
+    method_body = _prepend_docstring(method_body, mir.docstring, indent="")
+    indented_method_body = _indent_block(method_body, "        ")
 
     if decorator_line:
-        runtime_method_code = f"    {decorator_line}\n{def_line}\n        {method_body}"
+        runtime_method_code = f"    {decorator_line}\n{def_line}\n{indented_method_body}"
         if needs_type_checking_stub and method_with_aio_type_expr is not None:
             sync_method_code = (
                 "    if typing.TYPE_CHECKING:\n"
@@ -1377,7 +1401,7 @@ def emit_method_wrapper_pair(
         else:
             sync_method_code = runtime_method_code
     else:
-        sync_method_code = f"{def_line}\n        {method_body}"
+        sync_method_code = f"{def_line}\n{indented_method_body}"
 
     return wrapper_functions_code, sync_method_code
 
@@ -1531,6 +1555,7 @@ def emit_class_from_ir(
                 method_type=MethodBindingKind.INSTANCE,
                 method_owner_impl_ref=ir.impl_ref,
             )
+            sync_body = _prepend_docstring(sync_body, mir.docstring, indent=sync_indent)
             if stop_iteration_bridge:
                 sync_method = f"""    def {sync_method_name}(self){method_sync_return_str}:
         try:
@@ -1551,6 +1576,7 @@ def emit_class_from_ir(
                 method_type=MethodBindingKind.INSTANCE,
                 method_owner_impl_ref=ir.impl_ref,
             )
+            async_body = _prepend_docstring(async_body, mir.docstring, indent="        ")
             async_def_keyword = "async def" if use_async_def else "def"
             async_method = f"""    {async_def_keyword} {async_method_name}(self){method_async_return_str}:
 {async_body}"""
@@ -1594,13 +1620,12 @@ def emit_class_from_ir(
                 method_type=MethodBindingKind.INSTANCE,
                 method_owner_impl_ref=ir.impl_ref,
             )
+            sync_method_body = sync_body
             if cm_unwrap_code:
-                sync_method = f"""    def {sync_method_name}({sync_param_str}){method_sync_return_str}:
-{cm_unwrap_code}
-{sync_body}"""
-            else:
-                sync_method = f"""    def {sync_method_name}({sync_param_str}){method_sync_return_str}:
-{sync_body}"""
+                sync_method_body = f"{cm_unwrap_code}\n{sync_body}"
+            sync_method_body = _prepend_docstring(sync_method_body, mir.docstring, indent="        ")
+            sync_method = f"""    def {sync_method_name}({sync_param_str}){method_sync_return_str}:
+{sync_method_body}"""
             cm_blocks.append(sync_method)
 
             # Async version
@@ -1613,13 +1638,12 @@ def emit_class_from_ir(
                 method_type=MethodBindingKind.INSTANCE,
                 method_owner_impl_ref=ir.impl_ref,
             )
+            async_method_body = async_body
             if cm_unwrap_code:
-                async_method = f"""    async def {async_method_name}({sync_param_str}){method_async_return_str}:
-{cm_unwrap_code}
-{async_body}"""
-            else:
-                async_method = f"""    async def {async_method_name}({sync_param_str}){method_async_return_str}:
-{async_body}"""
+                async_method_body = f"{cm_unwrap_code}\n{async_body}"
+            async_method_body = _prepend_docstring(async_method_body, mir.docstring, indent="        ")
+            async_method = f"""    async def {async_method_name}({sync_param_str}){method_async_return_str}:
+{async_method_body}"""
             cm_blocks.append(async_method)
         context_manager_methods_section = "\n\n".join(cm_blocks)
 

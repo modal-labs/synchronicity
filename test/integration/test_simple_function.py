@@ -25,6 +25,20 @@ def test_generated_wrapper_preserves_source_based_defaults():
     assert "import subprocess" in wrapper_source
     assert "def greet(name: str = simple_function_impl.DEFAULT_GREETING) -> str:" in wrapper_source
     assert "def default_pipe(pipe: int = subprocess.PIPE) -> int:" in wrapper_source
+    assert '"""Add two numbers asynchronously."""' in wrapper_source
+    assert '"""Simple async generator."""' in wrapper_source
+    assert '"""Return an awaitable result.\n\nThis docstring should stay multiline.\n"""' in wrapper_source
+
+
+def test_generated_wrapper_preserves_docstrings():
+    import simple_function
+    import simple_function_impl
+
+    assert simple_function.simple_add.__doc__ == simple_function_impl.simple_add.__doc__
+    assert simple_function.simple_generator.__doc__ == simple_function_impl.simple_generator.__doc__
+    assert simple_function.simple_generator.aio.__doc__ == simple_function_impl.simple_generator.__doc__
+    assert simple_function.returns_awaitable.__doc__ == simple_function_impl.returns_awaitable.__doc__
+    assert simple_function.returns_awaitable.aio.__doc__ == simple_function_impl.returns_awaitable.__doc__
 
 
 def test_pyright_implementation():

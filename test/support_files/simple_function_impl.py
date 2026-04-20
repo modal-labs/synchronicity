@@ -36,6 +36,11 @@ async def simple_generator() -> typing.AsyncGenerator[int, None]:
 
 @wrapper_module.wrap_function()
 def returns_awaitable() -> typing.Awaitable[str]:
+    """Return an awaitable result.
+
+    This docstring should stay multiline.
+    """
+
     async def return_str():
         return "hello"
 

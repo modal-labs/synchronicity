@@ -421,6 +421,7 @@ def parse_module_level_function_ir(
         parameters=signature_ir.parameters,
         return_transformer_ir=signature_ir.return_transformer_ir,
         overloads=overloads,
+        docstring=f.__doc__,
     )
 
 
@@ -484,6 +485,7 @@ def parse_method_wrapper_ir(
         is_async=is_async,
         return_transformer_ir=signature_ir.return_transformer_ir,
         overloads=overloads,
+        docstring=method.__doc__,
     )
 
 

@@ -8,6 +8,7 @@ from test.integration.test_utils import check_pyright
 
 def test_runtime():
     import simple_class
+    import simple_class_impl
 
     counter = simple_class.Counter(10)
     assert counter.count == 10
@@ -21,6 +22,11 @@ def test_runtime():
 
     assert counter.sync_method() == 11
     assert not hasattr(counter.sync_method, "aio")
+    assert counter.increment.__doc__ == simple_class_impl.Counter.increment.__doc__
+    assert counter.increment.aio.__doc__ == simple_class_impl.Counter.increment.__doc__
+    assert counter.get_multiples.__doc__ == simple_class_impl.Counter.get_multiples.__doc__
+    assert counter.get_multiples.aio.__doc__ == simple_class_impl.Counter.get_multiples.__doc__
+    assert counter.sync_method.__doc__ == simple_class_impl.Counter.sync_method.__doc__
 
     counter2 = simple_class.Counter(5)
 

@@ -27,4 +27,5 @@ class Counter:
             yield self.count * i
 
     def sync_method(self) -> int:
+        """Return the current count without changing it."""
         return self.count
