@@ -698,6 +698,7 @@ def test_emit_class_basic():
     ir = IR_CLASS_SIMPLE
     code = emit_class_from_ir(ir, TARGET)
     compile(code, "<string>", "exec")
+    assert f"# Proxy type for the underlying implementation type {IMPL}.{_impl_short(ir)}." in code
     assert f"class {_impl_short(ir)}:" in code
     assert "_impl_instance" in code
     assert "@method_with_aio(" in code
