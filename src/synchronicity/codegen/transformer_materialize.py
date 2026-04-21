@@ -93,6 +93,51 @@ def resolve_typevar_bound_to_wrapped_impl(
     return None
 
 
+def annotation_import_modules(annotation: object) -> frozenset[str]:
+    """Return non-builtin modules that the emitted annotation text will reference."""
+    if annotation in (inspect.Signature.empty, None, type(None)):
+        return frozenset()
+    if isinstance(annotation, (typing.TypeVar, typing.ParamSpec)):
+        return frozenset()
+    if isinstance(annotation, list):
+        modules: set[str] = set()
+        for item in annotation:
+            modules.update(annotation_import_modules(item))
+        return frozenset(modules)
+
+    origin = typing.get_origin(annotation)
+    args = typing.get_args(annotation)
+    modules: set[str] = set()
+
+    if origin is not None:
+        origin_module = getattr(origin, "__module__", None)
+        if isinstance(origin, type) and origin_module not in (
+            None,
+            "builtins",
+            "__builtin__",
+            "typing",
+            "collections.abc",
+        ):
+            modules.add(origin_module)
+        for arg in args:
+            modules.update(annotation_import_modules(arg))
+        return frozenset(modules)
+
+    if isinstance(annotation, type):
+        annotation_module = getattr(annotation, "__module__", None)
+        if annotation_module not in (None, "builtins", "__builtin__", "typing"):
+            modules.add(annotation_module)
+
+    return frozenset(modules)
+
+
+def _identity_ir_from_annotation(annotation: object) -> IdentityTypeIR:
+    return IdentityTypeIR(
+        signature_text=tt._format_annotation_str(annotation),
+        import_modules=tuple(sorted(annotation_import_modules(annotation))),
+    )
+
+
 def annotation_to_transformer_ir(
     annotation: object,
     *,
@@ -105,7 +150,7 @@ def annotation_to_transformer_ir(
     if annotation == inspect.Signature.empty:
         return IdentityTypeIR("")
     if annotation is None:
-        return IdentityTypeIR(tt._format_annotation_str(None))
+        return _identity_ir_from_annotation(None)
 
     if hasattr(annotation, "__forward_arg__"):
         forward_str = annotation.__forward_arg__  # type: ignore
@@ -126,7 +171,7 @@ def annotation_to_transformer_ir(
     if origin is None:
         if tt._is_self_annotation(annotation) and owner_impl_type is not None and _is_wrapped_impl(owner_impl_type):
             return SelfTypeIR(impl_qualified(owner_impl_type), _wrapper_ref_from_type(owner_impl_type))
-        return IdentityTypeIR(tt._format_annotation_str(annotation))
+        return _identity_ir_from_annotation(annotation)
 
     if origin is list:
         if args:
@@ -139,7 +184,7 @@ def annotation_to_transformer_ir(
                     source_label=source_label,
                 )
             )
-        return IdentityTypeIR(tt._format_annotation_str(annotation))
+        return _identity_ir_from_annotation(annotation)
 
     if origin is dict:
         if len(args) >= 2:
@@ -159,7 +204,7 @@ def annotation_to_transformer_ir(
                     source_label=source_label,
                 ),
             )
-        return IdentityTypeIR(tt._format_annotation_str(annotation))
+        return _identity_ir_from_annotation(annotation)
 
     if origin is tuple:
         if args:
@@ -189,7 +234,7 @@ def annotation_to_transformer_ir(
                 ),
                 variadic=False,
             )
-        return IdentityTypeIR(tt._format_annotation_str(annotation))
+        return _identity_ir_from_annotation(annotation)
 
     if origin in (typing.Union, types.UnionType):
         non_none_args = [arg for arg in args if arg is not type(None)]
@@ -228,7 +273,7 @@ def annotation_to_transformer_ir(
                     source_label=source_label,
                 )
             )
-        return IdentityTypeIR(tt._format_annotation_str(annotation))
+        return _identity_ir_from_annotation(annotation)
 
     if origin is collections.abc.AsyncIterator:
         if args:
@@ -241,7 +286,7 @@ def annotation_to_transformer_ir(
                     source_label=source_label,
                 )
             )
-        return AsyncIteratorTypeIR(IdentityTypeIR(tt._format_annotation_str(typing.Any)))
+        return AsyncIteratorTypeIR(_identity_ir_from_annotation(typing.Any))
 
     if origin is collections.abc.AsyncIterable:
         if args:
@@ -254,13 +299,15 @@ def annotation_to_transformer_ir(
                     source_label=source_label,
                 )
             )
-        return AsyncIterableTypeIR(IdentityTypeIR(tt._format_annotation_str(typing.Any)))
+        return AsyncIterableTypeIR(_identity_ir_from_annotation(typing.Any))
 
     if origin is collections.abc.AsyncGenerator:
         if len(args) >= 1:
             send_type_str = "None"
+            send_type_import_modules: tuple[str, ...] = ()
             if len(args) > 1:
                 send_type_str = tt._format_annotation_str(args[1])
+                send_type_import_modules = tuple(sorted(annotation_import_modules(args[1])))
             yield_arg = args[0]
             return AsyncGeneratorTypeIR(
                 annotation_to_transformer_ir(
@@ -271,8 +318,9 @@ def annotation_to_transformer_ir(
                     source_label=source_label,
                 ),
                 send_type_str=send_type_str,
+                send_type_import_modules=send_type_import_modules,
             )
-        return IdentityTypeIR(tt._format_annotation_str(annotation))
+        return _identity_ir_from_annotation(annotation)
 
     if origin is collections.abc.Coroutine:
         if args and len(args) >= 3:
@@ -285,7 +333,7 @@ def annotation_to_transformer_ir(
                     source_label=source_label,
                 )
             )
-        return CoroutineTypeIR(IdentityTypeIR(tt._format_annotation_str(typing.Any)))
+        return CoroutineTypeIR(_identity_ir_from_annotation(typing.Any))
 
     if origin is collections.abc.Awaitable:
         if args:
@@ -298,7 +346,7 @@ def annotation_to_transformer_ir(
                     source_label=source_label,
                 )
             )
-        return AwaitableTypeIR(IdentityTypeIR(tt._format_annotation_str(typing.Any)))
+        return AwaitableTypeIR(_identity_ir_from_annotation(typing.Any))
 
     if origin is contextlib.AbstractAsyncContextManager:
         if args:
@@ -311,7 +359,7 @@ def annotation_to_transformer_ir(
                     source_label=source_label,
                 )
             )
-        return AsyncContextManagerTypeIR(value=IdentityTypeIR(tt._format_annotation_str(typing.Any)))
+        return AsyncContextManagerTypeIR(value=_identity_ir_from_annotation(typing.Any))
 
     # Subscripted wrapped class, e.g. SomeContainer[WrappedType]
     if isinstance(origin, type) and _is_wrapped_impl(origin) and args:
@@ -327,7 +375,7 @@ def annotation_to_transformer_ir(
         )
         return SubscriptedWrappedClassTypeIR(impl_qualified(origin), _wrapper_ref_from_type(origin), arg_irs)
 
-    return IdentityTypeIR(tt._format_annotation_str(annotation))
+    return _identity_ir_from_annotation(annotation)
 
 
 def _materialize_typevar_ir(

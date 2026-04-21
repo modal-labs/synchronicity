@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import datetime
 import pytest
 import subprocess
 import sys
@@ -62,6 +63,10 @@ def parse_impl_module_default(value: str = PARSE_DEFAULT_GREETING) -> None:
 
 def parse_qualified_import_default(pipe: int = subprocess.PIPE) -> None:
     return None
+
+
+def parse_datetime_annotation(value: datetime.datetime) -> datetime.datetime:
+    return value
 
 
 def parse_unstable_default(value: float = time.time()) -> None:
@@ -136,6 +141,19 @@ def test_parse_module_level_function_ir_keeps_qualified_module_defaults_with_imp
 
     assert ir.parameters[0].default_expr == "subprocess.PIPE"
     assert ir.parameters[0].default_import_refs == (ModuleImportRefIR(module="subprocess", name="subprocess"),)
+
+
+def test_parse_module_level_function_ir_keeps_annotation_import_modules():
+    ir = parse_module_level_function_ir(parse_datetime_annotation, "out_mod", globals_dict=globals())
+
+    assert ir.parameters[0].annotation_ir == IdentityTypeIR(
+        signature_text="datetime.datetime",
+        import_modules=("datetime",),
+    )
+    assert ir.return_transformer_ir == IdentityTypeIR(
+        signature_text="datetime.datetime",
+        import_modules=("datetime",),
+    )
 
 
 def test_parse_module_level_function_ir_rejects_missing_source(monkeypatch):

@@ -1,5 +1,6 @@
 """Integration tests for simple_function_impl.py support file."""
 
+import datetime
 import subprocess
 from pathlib import Path
 
@@ -13,6 +14,9 @@ def test_runtime():
     assert simple_function.greet() == "hello"
     assert simple_function.greet("goodbye") == "goodbye"
     assert simple_function.default_pipe() == subprocess.PIPE
+    assert simple_function.round_trip_timestamp(datetime.datetime(2024, 1, 2, 3, 4, 5)) == datetime.datetime(
+        2024, 1, 2, 3, 4, 5
+    )
     assert list(simple_function.simple_generator()) == [0, 1, 2]
     assert simple_function.returns_awaitable() == "hello"
 
@@ -23,8 +27,10 @@ def test_generated_wrapper_preserves_source_based_defaults():
     wrapper_source = Path(simple_function.__file__).read_text()
 
     assert "import subprocess" in wrapper_source
+    assert "import datetime" in wrapper_source
     assert "def greet(name: str = simple_function_impl.DEFAULT_GREETING) -> str:" in wrapper_source
     assert "def default_pipe(pipe: int = subprocess.PIPE) -> int:" in wrapper_source
+    assert "def round_trip_timestamp(value: datetime.datetime) -> datetime.datetime:" in wrapper_source
     assert '"""Add two numbers asynchronously."""' in wrapper_source
     assert '"""Simple async generator."""' in wrapper_source
     assert '"""Return an awaitable result.\n\nThis docstring should stay multiline.\n"""' in wrapper_source

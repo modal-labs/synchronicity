@@ -244,3 +244,41 @@ def test_emit_module_imports_default_expression_module_refs():
     assert "import subprocess" in generated_code
     assert "def read_pipe(pipe: int = subprocess.PIPE) -> int:" in generated_code
     assert "from subprocess import PIPE" not in generated_code
+
+
+def test_emit_module_imports_annotation_module_refs():
+    ir = ModuleCompilationIR(
+        target_module="test_module",
+        synchronizer_name="default_synchronizer",
+        impl_modules=frozenset({IMPL}),
+        cross_module_imports={},
+        typevar_specs=(),
+        class_wrappers=(),
+        module_functions_ir=(
+            ModuleLevelFunctionIR(
+                impl_ref=ImplQualifiedRef(IMPL, "round_trip_timestamp"),
+                needs_async_wrapper=False,
+                is_async_gen=False,
+                parameters=(
+                    ParameterIR(
+                        name="value",
+                        kind=1,
+                        annotation_ir=IdentityTypeIR(
+                            signature_text="datetime.datetime",
+                            import_modules=("datetime",),
+                        ),
+                        default_expr=None,
+                    ),
+                ),
+                return_transformer_ir=IdentityTypeIR(
+                    signature_text="datetime.datetime",
+                    import_modules=("datetime",),
+                ),
+            ),
+        ),
+    )
+
+    generated_code = SyncAsyncWrapperEmitter().emit_module(ir)
+
+    assert "import datetime" in generated_code
+    assert "def round_trip_timestamp(value: datetime.datetime) -> datetime.datetime:" in generated_code

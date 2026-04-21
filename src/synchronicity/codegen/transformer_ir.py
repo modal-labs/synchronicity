@@ -11,6 +11,11 @@ import dataclasses
 import typing
 
 
+class ImportAwareTypeIR:
+    def required_import_modules(self) -> frozenset[str]:
+        return frozenset()
+
+
 @dataclasses.dataclass(frozen=True)
 class ImplQualifiedRef:
     """``__module__`` + ``__qualname__`` of an implementation class (or type)."""
@@ -28,14 +33,18 @@ class WrapperRef:
 
 
 @dataclasses.dataclass(frozen=True)
-class IdentityTypeIR:
+class IdentityTypeIR(ImportAwareTypeIR):
     """Non-wrapped annotation; ``signature_text`` is the type as it should appear in source."""
 
     signature_text: str
+    import_modules: tuple[str, ...] = ()
+
+    def required_import_modules(self) -> frozenset[str]:
+        return frozenset(self.import_modules)
 
 
 @dataclasses.dataclass(frozen=True)
-class WrappedClassTypeIR:
+class WrappedClassTypeIR(ImportAwareTypeIR):
     """Registered wrapped class with resolved wrapper location."""
 
     impl: ImplQualifiedRef
@@ -43,14 +52,14 @@ class WrappedClassTypeIR:
 
 
 @dataclasses.dataclass(frozen=True)
-class TypeVarIR:
+class TypeVarIR(ImportAwareTypeIR):
     """Reference to a module-level ``typing.TypeVar`` by name (bound / translation from :class:`~ir.TypeVarSpecIR`)."""
 
     name: str
 
 
 @dataclasses.dataclass(frozen=True)
-class SelfTypeIR:
+class SelfTypeIR(ImportAwareTypeIR):
     """``typing.Self`` tied to a wrapped owner class."""
 
     owner_impl: ImplQualifiedRef
@@ -58,78 +67,118 @@ class SelfTypeIR:
 
 
 @dataclasses.dataclass(frozen=True)
-class ListTypeIR:
+class ListTypeIR(ImportAwareTypeIR):
     item: TypeTransformerIR
+
+    def required_import_modules(self) -> frozenset[str]:
+        return self.item.required_import_modules()
 
 
 @dataclasses.dataclass(frozen=True)
-class DictTypeIR:
+class DictTypeIR(ImportAwareTypeIR):
     key: TypeTransformerIR
     value: TypeTransformerIR
 
+    def required_import_modules(self) -> frozenset[str]:
+        return _merge_required_import_modules(self.key, self.value)
+
 
 @dataclasses.dataclass(frozen=True)
-class TupleTypeIR:
+class TupleTypeIR(ImportAwareTypeIR):
     """Fixed ``tuple[T1, T2]`` or variadic ``tuple[T, ...]`` (``variadic=True``, single element)."""
 
     elements: tuple[TypeTransformerIR, ...]
     variadic: bool
 
+    def required_import_modules(self) -> frozenset[str]:
+        return _merge_required_import_modules(*self.elements)
+
 
 @dataclasses.dataclass(frozen=True)
-class OptionalTypeIR:
+class OptionalTypeIR(ImportAwareTypeIR):
     inner: TypeTransformerIR
 
+    def required_import_modules(self) -> frozenset[str]:
+        return self.inner.required_import_modules()
+
 
 @dataclasses.dataclass(frozen=True)
-class UnionTypeIR:
+class UnionTypeIR(ImportAwareTypeIR):
     items: tuple[TypeTransformerIR, ...]
     source_label: str | None = None
 
+    def required_import_modules(self) -> frozenset[str]:
+        return _merge_required_import_modules(*self.items)
+
 
 @dataclasses.dataclass(frozen=True)
-class AsyncGeneratorTypeIR:
+class AsyncGeneratorTypeIR(ImportAwareTypeIR):
     yield_item: TypeTransformerIR
     send_type_str: str | None
+    send_type_import_modules: tuple[str, ...] = ()
+
+    def required_import_modules(self) -> frozenset[str]:
+        return self.yield_item.required_import_modules() | frozenset(self.send_type_import_modules)
 
 
 @dataclasses.dataclass(frozen=True)
-class SyncGeneratorTypeIR:
+class SyncGeneratorTypeIR(ImportAwareTypeIR):
     yield_item: TypeTransformerIR
 
+    def required_import_modules(self) -> frozenset[str]:
+        return self.yield_item.required_import_modules()
+
 
 @dataclasses.dataclass(frozen=True)
-class AsyncIteratorTypeIR:
+class AsyncIteratorTypeIR(ImportAwareTypeIR):
     item: TypeTransformerIR
 
+    def required_import_modules(self) -> frozenset[str]:
+        return self.item.required_import_modules()
+
 
 @dataclasses.dataclass(frozen=True)
-class AsyncIterableTypeIR:
+class AsyncIterableTypeIR(ImportAwareTypeIR):
     item: TypeTransformerIR
 
+    def required_import_modules(self) -> frozenset[str]:
+        return self.item.required_import_modules()
+
 
 @dataclasses.dataclass(frozen=True)
-class CoroutineTypeIR:
+class CoroutineTypeIR(ImportAwareTypeIR):
     return_type: TypeTransformerIR
 
+    def required_import_modules(self) -> frozenset[str]:
+        return self.return_type.required_import_modules()
+
 
 @dataclasses.dataclass(frozen=True)
-class AwaitableTypeIR:
+class AwaitableTypeIR(ImportAwareTypeIR):
     inner: TypeTransformerIR
 
+    def required_import_modules(self) -> frozenset[str]:
+        return self.inner.required_import_modules()
+
 
 @dataclasses.dataclass(frozen=True)
-class AsyncContextManagerTypeIR:
+class AsyncContextManagerTypeIR(ImportAwareTypeIR):
     value: TypeTransformerIR
 
+    def required_import_modules(self) -> frozenset[str]:
+        return self.value.required_import_modules()
+
 
 @dataclasses.dataclass(frozen=True)
-class SubscriptedWrappedClassTypeIR:
+class SubscriptedWrappedClassTypeIR(ImportAwareTypeIR):
     """Wrapped class subscripted with type arguments, e.g. ``SomeContainer[WrappedType]``."""
 
     impl: ImplQualifiedRef
     wrapper: WrapperRef
     type_args: tuple[TypeTransformerIR, ...]
+
+    def required_import_modules(self) -> frozenset[str]:
+        return _merge_required_import_modules(*self.type_args)
 
 
 TypeTransformerIR = typing.Union[
@@ -151,3 +200,12 @@ TypeTransformerIR = typing.Union[
     AsyncContextManagerTypeIR,
     SubscriptedWrappedClassTypeIR,
 ]
+
+
+def _merge_required_import_modules(*irs: TypeTransformerIR | None) -> frozenset[str]:
+    modules: set[str] = set()
+    for ir in irs:
+        if ir is None:
+            continue
+        modules.update(ir.required_import_modules())
+    return frozenset(modules)

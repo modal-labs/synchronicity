@@ -37,6 +37,10 @@ class TypeVarSpecIR:
     covariant: bool
     contravariant: bool
     bound_translation_ir: TypeTransformerIR | None = None
+    import_modules: tuple[str, ...] = ()
+
+    def required_import_modules(self) -> frozenset[str]:
+        return frozenset(self.import_modules)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -57,6 +61,11 @@ class ParameterIR:
     default_expr: str | None
     default_import_refs: tuple[ModuleImportRefIR, ...] = ()
 
+    def required_import_modules(self) -> frozenset[str]:
+        if self.annotation_ir is None:
+            return frozenset()
+        return self.annotation_ir.required_import_modules()
+
 
 @dataclasses.dataclass(frozen=True)
 class SignatureIR:
@@ -64,6 +73,12 @@ class SignatureIR:
 
     parameters: tuple[ParameterIR, ...]
     return_transformer_ir: TypeTransformerIR
+
+    def required_import_modules(self) -> frozenset[str]:
+        modules: set[str] = set(self.return_transformer_ir.required_import_modules())
+        for parameter in self.parameters:
+            modules.update(parameter.required_import_modules())
+        return frozenset(modules)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -91,6 +106,16 @@ class ModuleCompilationIR:
     def function_refs(self) -> tuple[ImplQualifiedRef, ...]:
         return tuple(f.impl_ref for f in self.module_functions_ir)
 
+    def required_import_modules(self) -> frozenset[str]:
+        modules: set[str] = set()
+        for spec in self.typevar_specs:
+            modules.update(spec.required_import_modules())
+        for class_wrapper in self.class_wrappers:
+            modules.update(class_wrapper.required_import_modules())
+        for function_ir in self.module_functions_ir:
+            modules.update(function_ir.required_import_modules())
+        return frozenset(modules)
+
 
 @dataclasses.dataclass(frozen=True)
 class ModuleLevelFunctionIR:
@@ -103,6 +128,13 @@ class ModuleLevelFunctionIR:
     return_transformer_ir: TypeTransformerIR
     overloads: tuple[SignatureIR, ...] = ()
     docstring: str | None = None
+
+    def required_import_modules(self) -> frozenset[str]:
+        signatures = self.overloads or (SignatureIR(self.parameters, self.return_transformer_ir),)
+        modules: set[str] = set()
+        for signature in signatures:
+            modules.update(signature.required_import_modules())
+        return frozenset(modules)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -126,6 +158,13 @@ class MethodWrapperIR:
     overloads: tuple[SignatureIR, ...] = ()
     docstring: str | None = None
 
+    def required_import_modules(self) -> frozenset[str]:
+        signatures = self.overloads or (SignatureIR(self.parameters, self.return_transformer_ir),)
+        modules: set[str] = set()
+        for signature in signatures:
+            modules.update(signature.required_import_modules())
+        return frozenset(modules)
+
 
 @dataclasses.dataclass(frozen=True)
 class PropertyWrapperIR:
@@ -135,6 +174,14 @@ class PropertyWrapperIR:
     return_transformer_ir: TypeTransformerIR | None
     has_setter: bool
     setter_value_ir: TypeTransformerIR | None
+
+    def required_import_modules(self) -> frozenset[str]:
+        modules: set[str] = set()
+        if self.return_transformer_ir is not None:
+            modules.update(self.return_transformer_ir.required_import_modules())
+        if self.setter_value_ir is not None:
+            modules.update(self.setter_value_ir.required_import_modules())
+        return frozenset(modules)
 
 
 class ManualClassAttributeAccessKind(str, enum.Enum):
@@ -181,3 +228,14 @@ class ClassWrapperIR:
     properties: tuple[PropertyWrapperIR, ...]
     methods: tuple[MethodWrapperIR, ...]
     manual_attributes: tuple[ManualClassAttributeIR, ...] = ()
+
+    def required_import_modules(self) -> frozenset[str]:
+        modules: set[str] = set()
+        for _attribute_name, annotation_ir in self.attributes:
+            if annotation_ir is not None:
+                modules.update(annotation_ir.required_import_modules())
+        for property_ir in self.properties:
+            modules.update(property_ir.required_import_modules())
+        for method_ir in self.methods:
+            modules.update(method_ir.required_import_modules())
+        return frozenset(modules)
