@@ -212,74 +212,6 @@ def _default_import_modules_for_module(ir: ModuleCompilationIR) -> set[str]:
     return modules
 
 
-def _annotation_import_modules_for_transformer_ir(ir) -> set[str]:
-    modules: set[str] = set()
-    if ir is None:
-        return modules
-
-    import_modules = getattr(ir, "import_modules", ())
-    modules.update(import_modules)
-
-    if hasattr(ir, "item"):
-        modules.update(_annotation_import_modules_for_transformer_ir(ir.item))
-    if hasattr(ir, "inner"):
-        modules.update(_annotation_import_modules_for_transformer_ir(ir.inner))
-    if hasattr(ir, "key"):
-        modules.update(_annotation_import_modules_for_transformer_ir(ir.key))
-    if hasattr(ir, "value"):
-        modules.update(_annotation_import_modules_for_transformer_ir(ir.value))
-    if hasattr(ir, "yield_item"):
-        modules.update(_annotation_import_modules_for_transformer_ir(ir.yield_item))
-        modules.update(getattr(ir, "send_type_import_modules", ()))
-    if hasattr(ir, "return_type"):
-        modules.update(_annotation_import_modules_for_transformer_ir(ir.return_type))
-    if hasattr(ir, "elements"):
-        for element in ir.elements:
-            modules.update(_annotation_import_modules_for_transformer_ir(element))
-    if hasattr(ir, "items"):
-        for item in ir.items:
-            modules.update(_annotation_import_modules_for_transformer_ir(item))
-    if hasattr(ir, "type_args"):
-        for type_arg in ir.type_args:
-            modules.update(_annotation_import_modules_for_transformer_ir(type_arg))
-
-    return modules
-
-
-def _annotation_import_modules_for_signatures(signatures: tuple[SignatureIR, ...]) -> set[str]:
-    modules: set[str] = set()
-    for signature in signatures:
-        for parameter in signature.parameters:
-            modules.update(_annotation_import_modules_for_transformer_ir(parameter.annotation_ir))
-        modules.update(_annotation_import_modules_for_transformer_ir(signature.return_transformer_ir))
-    return modules
-
-
-def _annotation_import_modules_for_module(ir: ModuleCompilationIR) -> set[str]:
-    modules: set[str] = set()
-    for spec in ir.typevar_specs:
-        modules.update(spec.import_modules)
-    for class_ir in ir.class_wrappers:
-        for _attr_name, annotation_ir in class_ir.attributes:
-            modules.update(_annotation_import_modules_for_transformer_ir(annotation_ir))
-        for property_ir in class_ir.properties:
-            modules.update(_annotation_import_modules_for_transformer_ir(property_ir.return_transformer_ir))
-            modules.update(_annotation_import_modules_for_transformer_ir(property_ir.setter_value_ir))
-        for method_ir in class_ir.methods:
-            modules.update(
-                _annotation_import_modules_for_signatures(
-                    method_ir.overloads or (SignatureIR(method_ir.parameters, method_ir.return_transformer_ir),)
-                )
-            )
-    for function_ir in ir.module_functions_ir:
-        modules.update(
-            _annotation_import_modules_for_signatures(
-                function_ir.overloads or (SignatureIR(function_ir.parameters, function_ir.return_transformer_ir),)
-            )
-        )
-    return modules
-
-
 def emit_manual_reexport(ir: ManualReexportIR) -> str:
     return f"{ir.export_name} = {_impl_value_dotted(ir.impl_ref)}"
 
@@ -1813,7 +1745,7 @@ class SyncAsyncWrapperEmitter:
     ) -> str:
         runtime_package = self.runtime_package
         default_import_modules = _default_import_modules_for_module(ir)
-        annotation_import_modules = _annotation_import_modules_for_module(ir)
+        annotation_import_modules = set(ir.required_import_modules())
         module_imports = sorted(set(ir.impl_modules) | default_import_modules | annotation_import_modules)
         imports = "\n".join(f"import {mod}" for mod in module_imports)
         cross_module_import_strs = [
