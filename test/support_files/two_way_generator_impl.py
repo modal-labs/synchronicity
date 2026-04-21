@@ -2,7 +2,7 @@
 
 from typing import AsyncGenerator
 
-from synchronicity import Module
+from synchronicity2 import Module
 
 # Create the wrapper module
 wrapper_module = Module("two_way_generator")

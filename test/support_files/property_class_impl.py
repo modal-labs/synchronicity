@@ -1,6 +1,6 @@
 """Class with @property decorators for sync property delegation."""
 
-from synchronicity import Module
+from synchronicity2 import Module
 
 wrapper_module = Module("property_class")
 

@@ -39,7 +39,7 @@ def test_runtime(generated_wrappers):
 
 
 def test_codegen_module_not_imported_at_runtime(generated_wrappers):
-    """Importing generated wrappers does not import synchronicity.codegen."""
+    """Importing generated wrappers does not import synchronicity2.codegen."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmppath = Path(tmpdir)
         check_imports_script = tmppath / "check_imports.py"
@@ -49,11 +49,11 @@ import sys
 from multifile.a import A
 from multifile.b import B
 
-sync_modules = [m for m in sys.modules.keys() if m.startswith('synchronicity')]
+sync_modules = [m for m in sys.modules.keys() if m.startswith('synchronicity2')]
 print("SYNC_MODULES:", ','.join(sorted(sync_modules)))
 
-assert 'synchronicity.codegen' not in sys.modules, "synchronicity.codegen should not be imported at runtime"
-assert 'synchronicity.synchronizer' in sys.modules, "synchronicity.synchronizer should be imported at runtime"
+assert 'synchronicity2.codegen' not in sys.modules, "synchronicity2.codegen should not be imported at runtime"
+assert 'synchronicity2.synchronizer' in sys.modules, "synchronicity2.synchronizer should be imported at runtime"
 
 print("IMPORT_CHECK_SUCCESS")
 """
@@ -85,7 +85,7 @@ print("IMPORT_CHECK_SUCCESS")
 
         assert result_imports.returncode == 0
         assert "IMPORT_CHECK_SUCCESS" in result_imports.stdout
-        assert "synchronicity.codegen" not in result_imports.stdout
+        assert "synchronicity2.codegen" not in result_imports.stdout
 
 
 def test_pyright_implementation():

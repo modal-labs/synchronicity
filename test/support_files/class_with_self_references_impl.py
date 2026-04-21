@@ -1,6 +1,6 @@
 import typing
 
-from synchronicity import Module
+from synchronicity2 import Module
 
 lib = Module("class_with_self_references")
 

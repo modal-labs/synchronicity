@@ -10,12 +10,12 @@ Tests each transformer type for:
 import pytest
 import sys
 
-from synchronicity.codegen.transformer_ir import ImplQualifiedRef, WrapperRef
-from synchronicity.codegen.transformer_materialize import (
+from synchronicity2.codegen.transformer_ir import ImplQualifiedRef, WrapperRef
+from synchronicity2.codegen.transformer_materialize import (
     annotation_to_transformer_ir,
     materialize_transformer_ir,
 )
-from synchronicity.codegen.type_transformer import (
+from synchronicity2.codegen.type_transformer import (
     AsyncGeneratorTransformer,
     AwaitableTransformer,
     CoroutineTransformer,
@@ -43,7 +43,7 @@ def _make_wrapped_transformer(wrapped_class):
 def _materialize(annotation, **kwargs):
     """Annotation → TypeTransformerIR → runtime transformer (same path as codegen)."""
     ir = annotation_to_transformer_ir(annotation, **kwargs)
-    return materialize_transformer_ir(ir, "synchronicity")
+    return materialize_transformer_ir(ir, "synchronicity2")
 
 
 @pytest.fixture
@@ -432,7 +432,7 @@ class TestGeneratorTransformer:
     """Test GeneratorTransformer for Generator/AsyncGenerator types."""
 
     def test_wrapped_type_async_generator(self, wrapped_class):
-        from synchronicity.codegen.type_transformer import AsyncGeneratorTransformer
+        from synchronicity2.codegen.type_transformer import AsyncGeneratorTransformer
 
         yield_transformer = _make_wrapped_transformer(wrapped_class)
         transformer = AsyncGeneratorTransformer(yield_transformer, send_type_str="None")
@@ -442,7 +442,7 @@ class TestGeneratorTransformer:
 
     def test_wrapped_type_async_iterator_no_send(self):
         """AsyncIterator doesn't have send type."""
-        from synchronicity.codegen.type_transformer import AsyncGeneratorTransformer
+        from synchronicity2.codegen.type_transformer import AsyncGeneratorTransformer
 
         yield_transformer = IdentityTransformer(int)
         transformer = AsyncGeneratorTransformer(yield_transformer, send_type_str=None)
@@ -450,7 +450,7 @@ class TestGeneratorTransformer:
         assert transformer.wrapped_type("test_module", is_async=False) == "typing.Generator[int, None, None]"
 
     def test_wrapped_type_sync_generator(self):
-        from synchronicity.codegen.type_transformer import SyncGeneratorTransformer
+        from synchronicity2.codegen.type_transformer import SyncGeneratorTransformer
 
         yield_transformer = IdentityTransformer(str)
         transformer = SyncGeneratorTransformer(yield_transformer)
@@ -458,7 +458,7 @@ class TestGeneratorTransformer:
 
     def test_two_way_generator_with_send_type(self):
         """Test that two-way generators preserve send type in both contexts."""
-        from synchronicity.codegen.type_transformer import AsyncGeneratorTransformer
+        from synchronicity2.codegen.type_transformer import AsyncGeneratorTransformer
 
         yield_transformer = IdentityTransformer(str)
         # Two-way generator: yields str, accepts str via send
@@ -473,7 +473,7 @@ class TestGeneratorTransformer:
 
     def test_two_way_generator_with_int_send_type(self):
         """Test two-way generator with int send type."""
-        from synchronicity.codegen.type_transformer import AsyncGeneratorTransformer
+        from synchronicity2.codegen.type_transformer import AsyncGeneratorTransformer
 
         yield_transformer = IdentityTransformer(int)
         transformer = AsyncGeneratorTransformer(yield_transformer, send_type_str="int")
@@ -484,7 +484,7 @@ class TestGeneratorTransformer:
 
     def test_one_way_generator_send_none(self):
         """Test one-way generator (send type is None, no send support needed)."""
-        from synchronicity.codegen.type_transformer import AsyncGeneratorTransformer
+        from synchronicity2.codegen.type_transformer import AsyncGeneratorTransformer
 
         yield_transformer = IdentityTransformer(str)
         # One-way generator: yields str, doesn't use send
@@ -495,7 +495,7 @@ class TestGeneratorTransformer:
         assert transformer.wrapped_type("test_module", is_async=False) == "typing.Generator[str, None, None]"
 
     def test_needs_translation(self, wrapped_class):
-        from synchronicity.codegen.type_transformer import AsyncGeneratorTransformer, SyncGeneratorTransformer
+        from synchronicity2.codegen.type_transformer import AsyncGeneratorTransformer, SyncGeneratorTransformer
 
         # Async generators ALWAYS need translation (for synchronizer integration)
         transformer1 = AsyncGeneratorTransformer(IdentityTransformer(int))

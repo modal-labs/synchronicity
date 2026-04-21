@@ -1,5 +1,5 @@
 CI/CD badge
-[pypi badge](https://pypi.python.org/pypi/synchronicity)
+[pypi badge](https://pypi.python.org/pypi/synchronicity2)
 
 # Synchronicity
 
@@ -30,8 +30,8 @@ At a high level, you use it like this:
 
 - Write implementation code as normal async Python with no special instrumentation.
 - Specify `Module` objects as a manifest of output Python modules you want to create from your implementation.
-- **Recommended for libraries you ship:** vendor synchronicity into a package such as `mylib.synchronicity` (see below) and pass `--runtime-package mylib.synchronicity` to `synchronicity wrappers` so generated code does not import top-level `synchronicity`. Implementation modules can use `from mylib.synchronicity import Module`; your wheel can stay free of a runtime dependency on the PyPI package.
-- Generate the public API using the `synchronicity` CLI as part of your build or packaging step (the CLI / codegen still come from the PyPI install).
+- **Recommended for libraries you ship:** vendor synchronicity2 into a package such as `mylib.synchronicity` (see below) and pass `--runtime-package mylib.synchronicity` to `synchronicity2 wrappers` so generated code does not import top-level `synchronicity2`. Implementation modules can use `from mylib.synchronicity import Module`; your wheel can stay free of a runtime dependency on the PyPI package.
+- Generate the public API using the `synchronicity2` CLI as part of your build or packaging step (the CLI / codegen still come from the PyPI install).
 - Export the generated module as your user-facing API - complete with both sync and async implementations that delegate to your implementation code. Every function or method gets two call paths:
   - a blocking sync interface like `client.query(...)`
   - an async interface like `await client.query.aio(...)`
@@ -39,17 +39,17 @@ At a high level, you use it like this:
 ## Install
 
 ```bash
-pip install synchronicity
+pip install synchronicity2
 ```
 
 ## Example
 
 `Module` registration is build-time metadata only: the decorators return the original function or class unchanged, without starting a synchronizer or changing how your implementation code runs.
 
-Before you import `Module` from `mylib.synchronicity`, create that package tree once (re-run this when you upgrade synchronicity and want to refresh the copy). It writes `src/mylib/synchronicity/` with `module.py`, `types.py`, `descriptor.py`, `synchronizer.py`, and `__init__.py`—check it into source control next to the rest of `mylib`:
+Before you import `Module` from `mylib.synchronicity`, create that package tree once (re-run this when you upgrade synchronicity2 and want to refresh the copy). It writes `src/mylib/synchronicity/` with `module.py`, `types.py`, `descriptor.py`, `synchronizer.py`, and `__init__.py`—check it into source control next to the rest of `mylib`:
 
 ```bash
-synchronicity vendor mylib.synchronicity -o src/
+synchronicity2 vendor mylib.synchronicity -o src/
 ```
 
 Then write a private async implementation module:
@@ -90,14 +90,14 @@ async def stream_temperature_readings() -> collections.abc.AsyncGenerator[float,
 Then generate a public wrapper module:
 
 ```bash
-synchronicity wrappers -m mylib._weather_impl --runtime-package mylib.synchronicity -o src
+synchronicity2 wrappers -m mylib._weather_impl --runtime-package mylib.synchronicity -o src
 ```
 
-That creates `src/mylib/weather.py`. Your users import the public API with `from mylib.weather import get_temperature, WeatherClient, stream_temperature_readings` (with `src` on your `PYTHONPATH` or installed as a package). By default, `Module` uses the synchronizer name `default_synchronizer` (see `synchronicity.DEFAULT_SYNCHRONIZER_NAME`); pass a second argument to `Module(...)` if you need multiple isolated synchronizer instances.
+That creates `src/mylib/weather.py`. Your users import the public API with `from mylib.weather import get_temperature, WeatherClient, stream_temperature_readings` (with `src` on your `PYTHONPATH` or installed as a package). By default, `Module` uses the synchronizer name `default_synchronizer` (see `synchronicity2.DEFAULT_SYNCHRONIZER_NAME`); pass a second argument to `Module(...)` if you need multiple isolated synchronizer instances.
 
 ## Including unwrapped entries
 
-If a generated module or wrapper class should expose an entry without generating a synchronicity wrapper for it, register it as usual and mark the inserted object with `Module.manual_wrapper()`.
+If a generated module or wrapper class should expose an entry without generating a synchronicity2 wrapper for it, register it as usual and mark the inserted object with `Module.manual_wrapper()`.
 
 ```python
 from mylib.synchronicity import FunctionWithAio, MethodWithAio, Module
@@ -145,12 +145,12 @@ class ExistingPublicType:
 
 ## Vendoring (recommended for published libraries)
 
-Libraries published to PyPI usually should avoid a **runtime** dependency on the `synchronicity` package. Instead, check in a copy of the library pieces your code and generated wrappers need under a package you own (for example `mylib.synchronicity`), and pass `--runtime-package` to `synchronicity wrappers` so imports point at that tree.
+Libraries published to PyPI usually should avoid a **runtime** dependency on the `synchronicity2` package. Instead, check in a copy of the library pieces your code and generated wrappers need under a package you own (for example `mylib.synchronicity`), and pass `--runtime-package` to `synchronicity2 wrappers` so imports point at that tree.
 
 1. **Create or refresh the vendored tree** (paths are created under the output directory):
 
    ```bash
-   synchronicity vendor mylib.synchronicity -o src/
+   synchronicity2 vendor mylib.synchronicity -o src/
    ```
 
    This writes `src/mylib/synchronicity/` with `module.py`, `types.py`, `descriptor.py`, `synchronizer.py`, and `__init__.py`.
@@ -158,12 +158,12 @@ Libraries published to PyPI usually should avoid a **runtime** dependency on the
 2. **Generate wrappers** using the same dotted path (use `-o src` when each `Module(...)` target is a full name like `mylib.weather`):
 
    ```bash
-   synchronicity wrappers -m mylib._weather_impl --runtime-package mylib.synchronicity -o src
+   synchronicity2 wrappers -m mylib._weather_impl --runtime-package mylib.synchronicity -o src
    ```
 
-The vendored `__init__.py` re-exports `Module`, `FunctionWithAio`, `get_synchronizer`, `Synchronizer`, and `classproperty`, so implementation code and stubs can use `from mylib.synchronicity import Module` and names like `mylib.synchronicity.FunctionWithAio` without depending on PyPI `synchronicity` at runtime.
+The vendored `__init__.py` re-exports `Module`, `FunctionWithAio`, `get_synchronizer`, `Synchronizer`, and `classproperty`, so implementation code and stubs can use `from mylib.synchronicity import Module` and names like `mylib.synchronicity.FunctionWithAio` without depending on PyPI `synchronicity2` at runtime.
 
-When working on synchronicity itself, tests use the default `--runtime-package synchronicity` so you do not need a vendor step for every edit.
+When working on synchronicity2 itself, tests use the default `--runtime-package synchronicity2` so you do not need a vendor step for every edit.
 
 ## How generated wrappers behave
 
@@ -226,10 +226,10 @@ asyncio.run(main())
 
 ## CLI usage
 
-The package installs a `synchronicity` CLI with two subcommands: `vendor` (copy runtime into your tree) and `wrappers` (generate public modules from `Module`-registered implementation code).
+The package installs a `synchronicity2` CLI with two subcommands: `vendor` (copy runtime into your tree) and `wrappers` (generate public modules from `Module`-registered implementation code).
 
 ```bash
-synchronicity wrappers -m mylib._impl --runtime-package mylib.synchronicity -o src
+synchronicity2 wrappers -m mylib._impl --runtime-package mylib.synchronicity -o src
 ```
 
 `wrappers` options:
@@ -238,9 +238,9 @@ synchronicity wrappers -m mylib._impl --runtime-package mylib.synchronicity -o s
 - `-o/--output-dir`: root directory for generated files; paths mirror the `Module` target (e.g. `Module("mylib.weather")` with `-o src` writes `src/mylib/weather.py`)
 - `--stdout`: print generated modules to stdout instead of writing files
 - `--ruff`: run `ruff check --fix` and `ruff format` on generated output
-- `--runtime-package`: dotted import path for generated imports of `types` / `descriptor` / `synchronizer` (default: `synchronicity`; use your vendored package when shipping a self-contained wheel)
+- `--runtime-package`: dotted import path for generated imports of `types` / `descriptor` / `synchronizer` (default: `synchronicity2`; use your vendored package when shipping a self-contained wheel)
 
-The same commands work as `python -m synchronicity.codegen wrappers ...` and `python -m synchronicity.codegen vendor ...`.
+The same commands work as `python -m synchronicity2.codegen wrappers ...` and `python -m synchronicity2.codegen vendor ...`.
 
 ## Low-level runtime API
 
@@ -338,7 +338,7 @@ The reason for choosing this path is:
 - Wrapped class instances are proxies around implementation instances, so ordinary implementation attributes are not part of the public wrapper unless exposed intentionally.
 - Sync calls cross a thread boundary into the synchronizer loop, so there is some dispatch overhead compared with calling the raw implementation directly.
 - Generated modules import the implementation modules at runtime, so generation does not make the implementation code disposable.
-- Generated wrapper modules import runtime pieces like `synchronicity.synchronizer` by default, or your vendored path (e.g. `mylib.synchronicity.synchronizer`) when using `--runtime-package`. They do not need `synchronicity.codegen` at runtime.
+- Generated wrapper modules import runtime pieces like `synchronicity2.synchronizer` by default, or your vendored path (e.g. `mylib.synchronicity.synchronizer`) when using `--runtime-package`. They do not need `synchronicity2.codegen` at runtime.
 
 ## Current limitations
 
@@ -390,11 +390,11 @@ Implementation modules should usually not need to import `Synchronizer` directly
 
 ## Repository layout
 
-- `src/synchronicity/module.py`: build-time registration API
-- `src/synchronicity/synchronizer.py`: runtime execution engine
-- `src/synchronicity/descriptor.py`: wrapper code for "dual" functions/methods (.aio enabled callables)
-- `src/synchronicity/types.py`: shared sync-or-async iterable/iterator runtime helpers
-- `src/synchronicity/codegen/`: wrapper (build time) generation logic and CLI
+- `src/synchronicity2/module.py`: build-time registration API
+- `src/synchronicity2/synchronizer.py`: runtime execution engine
+- `src/synchronicity2/descriptor.py`: wrapper code for "dual" functions/methods (.aio enabled callables)
+- `src/synchronicity2/types.py`: shared sync-or-async iterable/iterator runtime helpers
+- `src/synchronicity2/codegen/`: wrapper (build time) generation logic and CLI
 - `test/support_files/`: example impl modules and type check files used by integration tests
 - `generated/`: temporary output directory used in tests and local inspection
 

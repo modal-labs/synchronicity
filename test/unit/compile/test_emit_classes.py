@@ -6,9 +6,9 @@ IR literals are explicit dataclasses in this module (same shapes as the parse la
 
 from __future__ import annotations
 
-from synchronicity.codegen.emitters.sync_async_wrappers import emit_class_from_ir
-from synchronicity.codegen.ir import ClassWrapperIR, MethodBindingKind, MethodWrapperIR, ParameterIR, SignatureIR
-from synchronicity.codegen.transformer_ir import (
+from synchronicity2.codegen.emitters.sync_async_wrappers import emit_class_from_ir
+from synchronicity2.codegen.ir import ClassWrapperIR, MethodBindingKind, MethodWrapperIR, ParameterIR, SignatureIR
+from synchronicity2.codegen.transformer_ir import (
     AsyncGeneratorTypeIR,
     AsyncIteratorTypeIR,
     AwaitableTypeIR,
@@ -850,8 +850,8 @@ def test_emit_class_method_overloads_translate_each_overload():
 
 def test_emit_class_aiter_typed_iter():
     code = emit_class_from_ir(IR_CLASS_ASYNC_ITERABLE, TARGET)
-    assert 'def __iter__(self) -> "synchronicity.types.SyncOrAsyncIterator[str]":' in code
-    assert 'def __aiter__(self) -> "synchronicity.types.SyncOrAsyncIterator[str]":' in code
+    assert 'def __iter__(self) -> "synchronicity2.types.SyncOrAsyncIterator[str]":' in code
+    assert 'def __aiter__(self) -> "synchronicity2.types.SyncOrAsyncIterator[str]":' in code
 
 
 def test_emit_class_anext_typed_next():
@@ -871,8 +871,8 @@ def test_emit_class_preserves_typing_self():
 
 def test_emit_class_aiter_signature_variations():
     code = emit_class_from_ir(IR_CLASS_AITER_SYNC_WITH_ANN, TARGET)
-    assert 'def __iter__(self) -> "synchronicity.types.SyncOrAsyncIterator[str]":' in code
-    assert 'def __aiter__(self) -> "synchronicity.types.SyncOrAsyncIterator[str]":' in code
+    assert 'def __iter__(self) -> "synchronicity2.types.SyncOrAsyncIterator[str]":' in code
+    assert 'def __aiter__(self) -> "synchronicity2.types.SyncOrAsyncIterator[str]":' in code
 
     code = emit_class_from_ir(IR_CLASS_AITER_SYNC_NO_ANN, TARGET)
     assert "def __iter__(self):" in code
@@ -880,8 +880,8 @@ def test_emit_class_aiter_signature_variations():
     assert " -> :" not in code
 
     code = emit_class_from_ir(IR_CLASS_AITER_ASYNC_WITH_ANN, TARGET)
-    assert 'def __iter__(self) -> "synchronicity.types.SyncOrAsyncIterator[int]":' in code
-    assert 'def __aiter__(self) -> "synchronicity.types.SyncOrAsyncIterator[int]":' in code
+    assert 'def __iter__(self) -> "synchronicity2.types.SyncOrAsyncIterator[int]":' in code
+    assert 'def __aiter__(self) -> "synchronicity2.types.SyncOrAsyncIterator[int]":' in code
 
     code = emit_class_from_ir(IR_CLASS_AITER_ASYNC_NO_ANN, TARGET)
     assert "def __iter__(self) -> typing.Any:" in code
@@ -892,8 +892,8 @@ def test_emit_class_aiter_signature_variations():
     assert 'def __aiter__(self) -> "typing.AsyncGenerator[float, None]":' in code
 
     code = emit_class_from_ir(IR_CLASS_AITER_ASYNC_ITER_TYPE, TARGET)
-    assert 'def __iter__(self) -> "synchronicity.types.SyncOrAsyncIterator[bool]":' in code
-    assert 'def __aiter__(self) -> "synchronicity.types.SyncOrAsyncIterator[bool]":' in code
+    assert 'def __iter__(self) -> "synchronicity2.types.SyncOrAsyncIterator[bool]":' in code
+    assert 'def __aiter__(self) -> "synchronicity2.types.SyncOrAsyncIterator[bool]":' in code
 
 
 def test_emit_class_without_explicit_init():

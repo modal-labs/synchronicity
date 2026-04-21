@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from synchronicity import FunctionWithAio, MethodWithAio, Module
-from synchronicity.descriptor import function_with_aio, method_with_aio
+from synchronicity2 import FunctionWithAio, MethodWithAio, Module
+from synchronicity2.descriptor import function_with_aio, method_with_aio
 
 wrapper_module = Module("manual_nowrap")
 

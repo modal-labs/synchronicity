@@ -1,6 +1,6 @@
 import pytest
 
-from synchronicity.synchronizer import Synchronizer
+from synchronicity2.synchronizer import Synchronizer
 
 
 def test_resolve_wrapper_class_requires_wrapper_location():

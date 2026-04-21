@@ -12,22 +12,22 @@ import typing
 from inspect import Signature
 from typing import Generic, TypeVar
 
-from synchronicity import Module
-from synchronicity.codegen.default_expressions import resolve_parameter_default_expressions
-from synchronicity.codegen.ir import (
+from synchronicity2 import Module
+from synchronicity2.codegen.default_expressions import resolve_parameter_default_expressions
+from synchronicity2.codegen.ir import (
     ManualClassAttributeAccessKind,
     ManualReexportIR,
     ModuleCompilationIR,
     ModuleImportRefIR,
     PropertyWrapperIR,
 )
-from synchronicity.codegen.parse import (
+from synchronicity2.codegen.parse import (
     build_module_compilation_ir,
     parse_class_wrapper_ir,
     parse_method_wrapper_ir,
     parse_module_level_function_ir,
 )
-from synchronicity.codegen.transformer_ir import (
+from synchronicity2.codegen.transformer_ir import (
     AwaitableTypeIR,
     IdentityTypeIR,
     ImplQualifiedRef,
@@ -35,7 +35,7 @@ from synchronicity.codegen.transformer_ir import (
     WrappedClassTypeIR,
     WrapperRef,
 )
-from synchronicity.descriptor import function_with_aio, method_with_aio
+from synchronicity2.descriptor import function_with_aio, method_with_aio
 
 PARSE_DEFAULT_GREETING = "hello"
 
@@ -158,7 +158,7 @@ def test_parse_module_level_function_ir_keeps_annotation_import_modules():
 
 def test_parse_module_level_function_ir_rejects_missing_source(monkeypatch):
     monkeypatch.setattr(
-        "synchronicity.codegen.default_expressions.inspect.getsource",
+        "synchronicity2.codegen.default_expressions.inspect.getsource",
         lambda _func: (_ for _ in ()).throw(OSError("no source")),
     )
 
@@ -174,7 +174,7 @@ def test_parse_module_level_function_ir_rejects_unextractable_source_segment(mon
             return None
         return original_get_source_segment(source, node, padded=padded)
 
-    monkeypatch.setattr("synchronicity.codegen.default_expressions.ast.get_source_segment", patched_get_source_segment)
+    monkeypatch.setattr("synchronicity2.codegen.default_expressions.ast.get_source_segment", patched_get_source_segment)
 
     with pytest.raises(TypeError, match=r"parameter 'value'.*could not be extracted from source"):
         parse_module_level_function_ir(parse_builtin_default, "out_mod", globals_dict=globals())

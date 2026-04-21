@@ -2,7 +2,7 @@ import asyncio
 import contextlib
 import time
 
-from synchronicity import Synchronizer
+from synchronicity2 import Synchronizer
 
 s = Synchronizer()
 

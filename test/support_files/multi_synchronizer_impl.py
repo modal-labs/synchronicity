@@ -3,7 +3,7 @@
 import asyncio
 import threading
 
-from synchronicity import Module
+from synchronicity2 import Module
 
 mod_a = Module("multi_sync.a", "synchronizer_alpha")
 mod_b = Module("multi_sync.b", "synchronizer_beta")

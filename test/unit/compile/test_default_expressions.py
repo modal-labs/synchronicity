@@ -10,8 +10,8 @@ import subprocess
 import sys
 import time
 
-from synchronicity.codegen.default_expressions import resolve_parameter_default_expressions
-from synchronicity.codegen.ir import ModuleImportRefIR
+from synchronicity2.codegen.default_expressions import resolve_parameter_default_expressions
+from synchronicity2.codegen.ir import ModuleImportRefIR
 
 DEFAULT_GREETING = "hello"
 
@@ -118,7 +118,7 @@ def test_resolve_qualified_callable_default_with_plain_import_ref():
 
 def test_resolve_rejects_missing_source(monkeypatch):
     monkeypatch.setattr(
-        "synchronicity.codegen.default_expressions.inspect.getsource",
+        "synchronicity2.codegen.default_expressions.inspect.getsource",
         lambda _func: (_ for _ in ()).throw(OSError("missing")),
     )
 
@@ -134,7 +134,7 @@ def test_resolve_rejects_unextractable_source_segment(monkeypatch):
             return None
         return original_get_source_segment(source, node, padded=padded)
 
-    monkeypatch.setattr("synchronicity.codegen.default_expressions.ast.get_source_segment", patched_get_source_segment)
+    monkeypatch.setattr("synchronicity2.codegen.default_expressions.ast.get_source_segment", patched_get_source_segment)
 
     with pytest.raises(TypeError, match=r"default expression could not be extracted from source"):
         _resolve(literal_default)

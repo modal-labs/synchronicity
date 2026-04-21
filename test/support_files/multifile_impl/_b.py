@@ -2,7 +2,7 @@
 
 import typing
 
-from synchronicity import Module
+from synchronicity2 import Module
 
 if typing.TYPE_CHECKING:
     import multifile_impl._a

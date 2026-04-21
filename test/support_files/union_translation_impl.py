@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from synchronicity import Module
+from synchronicity2 import Module
 
 wrapper_module = Module("union_translation")
 

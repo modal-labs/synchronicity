@@ -2,7 +2,7 @@
 
 import typing
 
-from synchronicity import Module
+from synchronicity2 import Module
 
 wrapper_module = Module("class_with_translation")
 

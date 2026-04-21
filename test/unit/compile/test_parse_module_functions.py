@@ -1,4 +1,4 @@
-"""Parse-only tests: live functions → :class:`~synchronicity.codegen.ir.ModuleLevelFunctionIR`.
+"""Parse-only tests: live functions → :class:`~synchronicity2.codegen.ir.ModuleLevelFunctionIR`.
 
 No emission; integration tests cover parse+emit end-to-end.
 """
@@ -8,8 +8,8 @@ from __future__ import annotations
 import typing
 from typing import Awaitable, Coroutine
 
-from synchronicity.codegen.parse import parse_module_level_function_ir
-from synchronicity.codegen.transformer_ir import AwaitableTypeIR, CoroutineTypeIR
+from synchronicity2.codegen.parse import parse_module_level_function_ir
+from synchronicity2.codegen.transformer_ir import AwaitableTypeIR, CoroutineTypeIR
 
 
 def test_parse_sync_function_no_async_wrapper():

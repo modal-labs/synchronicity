@@ -4,7 +4,7 @@ import datetime
 import subprocess
 import typing
 
-from synchronicity import Module
+from synchronicity2 import Module
 
 wrapper_module = Module("simple_function")
 DEFAULT_GREETING = "hello"

@@ -1,9 +1,9 @@
 import threading
 import typing
 
-import synchronicity
+import synchronicity2
 
-mod = synchronicity.Module("custom_iterators")
+mod = synchronicity2.Module("custom_iterators")
 
 
 @mod.wrap_class()

@@ -10,9 +10,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-from synchronicity.codegen.compile import compile_modules
-from synchronicity.codegen.runtime_vendor import vendor_runtime
-from synchronicity.module import Module
+from synchronicity2.codegen.compile import compile_modules
+from synchronicity2.codegen.runtime_vendor import vendor_runtime
+from synchronicity2.module import Module
 
 
 def test_vendor_runtime_writes_expected_files(tmp_path: Path) -> None:
@@ -39,7 +39,7 @@ def test_compile_modules_respects_runtime_package(generated_wrappers) -> None:
     assert f"import {custom}.types" in code
     assert f"from {custom}.descriptor import" in code
     assert f"from {custom}.synchronizer import get_synchronizer" in code
-    assert "import synchronicity.types" not in code
+    assert "import synchronicity2.types" not in code
 
 
 def test_cli_vendor_invocation(tmp_path: Path) -> None:
@@ -47,7 +47,7 @@ def test_cli_vendor_invocation(tmp_path: Path) -> None:
         [
             sys.executable,
             "-m",
-            "synchronicity.codegen",
+            "synchronicity2.codegen",
             "vendor",
             "cli_vendor_test.sync_rt",
             "-o",
@@ -63,7 +63,7 @@ def test_cli_vendor_invocation(tmp_path: Path) -> None:
         [
             sys.executable,
             "-m",
-            "synchronicity.codegen",
+            "synchronicity2.codegen",
             "vendor",
             "not-a-package!",
             "-o",
@@ -81,7 +81,7 @@ def test_cli_wrappers_reports_unsupported_default_expr(tmp_path: Path) -> None:
         """
 import time
 
-from synchronicity import Module
+from synchronicity2 import Module
 
 wrapper_module = Module("bad_defaults")
 
@@ -103,7 +103,7 @@ async def bad_default(value: float = time.time()) -> float:
         [
             sys.executable,
             "-m",
-            "synchronicity.codegen",
+            "synchronicity2.codegen",
             "wrappers",
             "-m",
             "bad_defaults_impl",

@@ -2,9 +2,9 @@ import threading
 import typing
 from contextlib import asynccontextmanager
 
-import synchronicity
+import synchronicity2
 
-mod = synchronicity.Module("async_context_manager")
+mod = synchronicity2.Module("async_context_manager")
 
 
 @mod.wrap_class()

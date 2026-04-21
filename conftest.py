@@ -19,7 +19,7 @@ def _repo_root() -> Path:
 def _ensure_mylib_synchronicity_under_generated(generated: Path) -> None:
     """Populate ``generated/mylib/synchronicity/``."""
     generated.mkdir(parents=True, exist_ok=True)
-    from synchronicity.codegen.runtime_vendor import vendor_runtime
+    from synchronicity2.codegen.runtime_vendor import vendor_runtime
 
     vendor_runtime(target_package=MYLIB_SYNCHRONICITY, output_base=generated)
 
@@ -49,7 +49,7 @@ def _generate_mylib_weather_wrappers(generated: Path) -> None:
         [
             sys.executable,
             "-m",
-            "synchronicity.codegen",
+            "synchronicity2.codegen",
             "wrappers",
             "-m",
             "mylib._weather_impl",

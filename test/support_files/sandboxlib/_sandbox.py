@@ -2,7 +2,7 @@ import asyncio
 import typing
 from typing import Literal, Optional
 
-from synchronicity import Module
+from synchronicity2 import Module
 
 sandbox_module = Module("sandboxlib.sandbox")
 

@@ -1,5 +1,5 @@
 [project]
-name = "synchronicity"
+name = "synchronicity2"
 version = "1.0"
 description = "Export blocking and async library versions from a single async implementation"
 readme = "README.md"
@@ -15,7 +15,7 @@ classifiers = [
 ]
 
 [project.scripts]
-synchronicity = "synchronicity.codegen.cli:main"
+synchronicity2 = "synchronicity2.codegen.cli:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -69,4 +69,3 @@ filterwarnings = [
 
 [tool.pyright]
 extraPaths = ["generated", "test/support_files"]
-

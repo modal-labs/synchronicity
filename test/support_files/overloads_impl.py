@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import typing
 
-from synchronicity import Module
+from synchronicity2 import Module
 
 wrapper_module = Module("overloads")
 

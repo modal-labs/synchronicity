@@ -5,15 +5,15 @@ IR literals live in this module. ``IMPL`` is this module name for emitted refere
 
 from __future__ import annotations
 
-from synchronicity.codegen.emitters.sync_async_wrappers import emit_class_from_ir, emit_module_level_function
-from synchronicity.codegen.ir import (
+from synchronicity2.codegen.emitters.sync_async_wrappers import emit_class_from_ir, emit_module_level_function
+from synchronicity2.codegen.ir import (
     ClassWrapperIR,
     MethodBindingKind,
     MethodWrapperIR,
     ModuleLevelFunctionIR,
     ParameterIR,
 )
-from synchronicity.codegen.transformer_ir import (
+from synchronicity2.codegen.transformer_ir import (
     AsyncGeneratorTypeIR,
     AwaitableTypeIR,
     IdentityTypeIR,

@@ -6,9 +6,9 @@ module so emitted ``impl_function = ...`` references match assertions.
 
 from __future__ import annotations
 
-from synchronicity.codegen.emitters.sync_async_wrappers import emit_module_level_function
-from synchronicity.codegen.ir import ModuleLevelFunctionIR, ParameterIR, SignatureIR
-from synchronicity.codegen.transformer_ir import (
+from synchronicity2.codegen.emitters.sync_async_wrappers import emit_module_level_function
+from synchronicity2.codegen.ir import ModuleLevelFunctionIR, ParameterIR, SignatureIR
+from synchronicity2.codegen.transformer_ir import (
     AsyncGeneratorTypeIR,
     AwaitableTypeIR,
     CoroutineTypeIR,

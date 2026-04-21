@@ -1,6 +1,6 @@
-import synchronicity
+import synchronicity2
 
-m = synchronicity.Module("class_with_inheritance")
+m = synchronicity2.Module("class_with_inheritance")
 
 
 @m.wrap_class()

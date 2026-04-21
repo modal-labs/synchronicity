@@ -10,7 +10,7 @@ def test_runtime():
         import multi_sync.a
         import multi_sync.b
 
-        from synchronicity.synchronizer import get_synchronizer
+        from synchronicity2.synchronizer import get_synchronizer
 
         tid_a, lid_a = multi_sync.a.thread_and_loop_a()
         tid_b, lid_b = multi_sync.b.thread_and_loop_b()

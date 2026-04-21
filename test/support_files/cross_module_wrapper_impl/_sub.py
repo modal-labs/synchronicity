@@ -1,6 +1,6 @@
 """Subclass implementation module for cross-module wrapper resolution."""
 
-from synchronicity import Module
+from synchronicity2 import Module
 
 from ._base import Foo
 

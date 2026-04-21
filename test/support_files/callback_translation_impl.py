@@ -1,11 +1,11 @@
 import typing
 
-import synchronicity
+import synchronicity2
 
 P = typing.ParamSpec("P")
 T = typing.TypeVar("T", bound="Node")
 
-mod = synchronicity.Module("callback_translation")
+mod = synchronicity2.Module("callback_translation")
 
 
 @mod.wrap_class()

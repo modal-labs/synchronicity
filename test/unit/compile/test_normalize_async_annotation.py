@@ -4,7 +4,7 @@ import collections.abc
 import inspect
 import typing
 
-from synchronicity.codegen.compile_utils import _normalize_async_annotation
+from synchronicity2.codegen.compile_utils import _normalize_async_annotation
 
 
 # Test functions

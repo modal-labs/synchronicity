@@ -1,4 +1,4 @@
-from synchronicity import Module
+from synchronicity2 import Module
 
 wrapper_module = Module("same_object_two_types")
 

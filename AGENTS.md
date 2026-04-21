@@ -30,7 +30,6 @@
 - Use type annotations in examples and implementation - code generation depends on them.
 - Avoid introducing runtime dependencies from implementation code onto generated-code helpers unless there is a deliberate design reason.
 - Generated files under `generated/` are typically transient test or inspection artifacts; do not hand-edit them unless the task is specifically about generated output. They can be used to debug the output of integration tests after having run a test.
-- The `oldtests` directory exists temporarily as a way to backport certain tests from synchronicity 0.x - don't maintain or change those tests in the current location - they are expected to fail and are not to be run.
 
 ## Testing and verification
 
@@ -54,4 +53,3 @@
 - `test/integration/`: end-to-end wrapper generation and runtime behavior tests
 - `test/support_files/`: example implementation modules used to generate wrappers in tests
 - `generated/`: local/generated wrapper output used in tests and debugging
-

@@ -1,1 +1,1 @@
-"""Support files for synchronicity tests."""
+"""Support files for synchronicity2 tests."""

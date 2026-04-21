@@ -1,10 +1,10 @@
 import typing
 
-import synchronicity
+import synchronicity2
 
 T = typing.TypeVar("T", bound="SomeClass")
 
-mod = synchronicity.Module("functions_with_typevars")
+mod = synchronicity2.Module("functions_with_typevars")
 
 
 @mod.wrap_class()

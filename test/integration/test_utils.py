@@ -119,7 +119,7 @@ def check_pyright_with_xfail(script_module: str):
 
 def close_synchronizers(*names: str) -> None:
     """Close the named synchronizers after a runtime integration test."""
-    from synchronicity.synchronizer import get_synchronizer
+    from synchronicity2.synchronizer import get_synchronizer
 
     target_names = names or ("default_synchronizer",)
     for name in target_names:

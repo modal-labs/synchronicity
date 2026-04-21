@@ -1,12 +1,12 @@
 from typing import Callable, Generic, ParamSpec, Self, TypeVar
 
-import synchronicity
+import synchronicity2
 
 P = ParamSpec("P")
 R = TypeVar("R")
 T = TypeVar("T", bound="WrappedType")
 
-mod = synchronicity.Module("generic_class")
+mod = synchronicity2.Module("generic_class")
 
 
 @mod.wrap_class()
