@@ -37,6 +37,7 @@ class TypeVarSpecIR:
     covariant: bool
     contravariant: bool
     bound_translation_ir: TypeTransformerIR | None = None
+    import_modules: tuple[str, ...] = ()
 
 
 @dataclasses.dataclass(frozen=True)

@@ -1,5 +1,6 @@
 """Simple async function without any class dependencies."""
 
+import datetime
 import subprocess
 import typing
 
@@ -25,6 +26,12 @@ async def greet(name: str = DEFAULT_GREETING) -> str:
 async def default_pipe(pipe: int = subprocess.PIPE) -> int:
     """Return a module-qualified default that requires a plain import in the wrapper."""
     return pipe
+
+
+@wrapper_module.wrap_function()
+async def round_trip_timestamp(value: datetime.datetime) -> datetime.datetime:
+    """Return a timestamp value, exercising annotation imports."""
+    return value
 
 
 @wrapper_module.wrap_function()

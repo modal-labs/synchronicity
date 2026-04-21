@@ -1,5 +1,6 @@
 """Consumer typing checks for generated simple_function wrappers."""
 
+import datetime
 import subprocess
 from typing import assert_type
 
@@ -14,6 +15,9 @@ assert_type(y, str)
 y = simple_function.default_pipe()
 assert_type(y, int)
 assert y == subprocess.PIPE
+
+y = simple_function.round_trip_timestamp(datetime.datetime.now())
+assert_type(y, datetime.datetime)
 
 y = simple_function.returns_awaitable()
 assert_type(y, str)

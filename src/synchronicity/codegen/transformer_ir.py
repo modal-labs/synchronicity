@@ -32,6 +32,7 @@ class IdentityTypeIR:
     """Non-wrapped annotation; ``signature_text`` is the type as it should appear in source."""
 
     signature_text: str
+    import_modules: tuple[str, ...] = ()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -91,6 +92,7 @@ class UnionTypeIR:
 class AsyncGeneratorTypeIR:
     yield_item: TypeTransformerIR
     send_type_str: str | None
+    send_type_import_modules: tuple[str, ...] = ()
 
 
 @dataclasses.dataclass(frozen=True)

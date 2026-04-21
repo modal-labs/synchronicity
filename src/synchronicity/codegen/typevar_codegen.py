@@ -8,7 +8,7 @@ from synchronicity.module import _IMPL_WRAPPER_LOCATION_ATTR
 
 from .ir import TypeVarSpecIR
 from .transformer_ir import TypeTransformerIR, WrappedClassTypeIR, WrapperRef
-from .transformer_materialize import resolve_typevar_bound_to_wrapped_impl
+from .transformer_materialize import annotation_import_modules, resolve_typevar_bound_to_wrapped_impl
 
 
 def _get_wrapper_location(t: type) -> tuple[str, str] | None:
@@ -85,13 +85,16 @@ def typevar_specs_from_collected(
                     covariant=False,
                     contravariant=False,
                     bound_translation_ir=None,
+                    import_modules=(),
                 )
             )
             continue
 
         constraint_parts: list[str] = []
+        import_modules: set[str] = set()
         if hasattr(tv, "__constraints__") and tv.__constraints__:
             for constraint in tv.__constraints__:
+                import_modules.update(annotation_import_modules(constraint))
                 if isinstance(constraint, type):
                     loc = _get_wrapper_location(constraint)
                     if loc is not None:
@@ -111,6 +114,7 @@ def typevar_specs_from_collected(
 
         bound_value: str | None = None
         if hasattr(tv, "__bound__") and tv.__bound__ is not None:
+            import_modules.update(annotation_import_modules(tv.__bound__))
             bound_value = translate_typevar_bound(
                 tv.__bound__, known_impl_types, target_module, impl_modules=impl_modules
             )
@@ -131,6 +135,7 @@ def typevar_specs_from_collected(
                 covariant=bool(getattr(tv, "__covariant__", False)),
                 contravariant=bool(getattr(tv, "__contravariant__", False)),
                 bound_translation_ir=bound_translation_ir,
+                import_modules=tuple(sorted(import_modules)),
             )
         )
     return tuple(specs)
