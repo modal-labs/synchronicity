@@ -371,11 +371,12 @@ def test_emit_async_function_basic_template():
     code = emit_module_level_function(ir, TARGET)
     compile(code, "<string>", "exec")
     name = _fn_short(ir)
-    assert f"class _{name}_FunctionWithAio:" in code
+    assert f"class _{name}_FunctionWithAio(FunctionWithAio):" in code
     assert f"impl_function = {IMPL}." in code
     assert f"@function_with_aio(_{name}_FunctionWithAio)" in code
     assert f"def {name}" in code
     assert "async def aio(self, x: int) -> str:" in code
+    assert "def __init__(self, sync_impl:" not in code
     assert "_run_function_sync" in code
     assert "_run_function_async" in code
     assert "x: int" in code
@@ -401,7 +402,7 @@ def test_emit_async_function_no_annotations():
     code = emit_module_level_function(ir, TARGET)
     compile(code, "<string>", "exec")
     n = _fn_short(ir)
-    assert f"class _{n}_FunctionWithAio:" in code
+    assert f"class _{n}_FunctionWithAio(FunctionWithAio):" in code
     assert "async def aio(self, x, y = 42) -> typing.Any:" in code
     assert f"def {n}" in code
 
@@ -451,7 +452,7 @@ def test_emit_async_generator_template_pattern():
     ir = IR_FN_ASYNC_GEN
     code = emit_module_level_function(ir, TARGET)
     name = _fn_short(ir)
-    assert f"class _{name}_FunctionWithAio:" in code
+    assert f"class _{name}_FunctionWithAio(FunctionWithAio):" in code
     assert f"@function_with_aio(_{name}_FunctionWithAio)" in code
     assert 'async def aio(self, items: list[str]) -> "typing.AsyncGenerator[str, None]":' in code
     assert f"def {name}" in code
@@ -461,7 +462,7 @@ def test_emit_async_generator_template_pattern():
 def test_emit_function_overloads_translate_each_overload():
     code = emit_module_level_function(IR_FN_OVERLOADS_WITH_TRANSLATION, TARGET)
     compile(code, "<string>", "exec")
-    assert "class _fn_overloaded_FunctionWithAio:" in code
+    assert "class _fn_overloaded_FunctionWithAio(FunctionWithAio):" in code
     assert "def __call__(self, value: int) -> int: ..." in code
     assert 'def __call__(self, value: "Person") -> "Person": ...' in code
     assert "async def aio(self, value: int) -> int: ..." in code
@@ -492,7 +493,7 @@ def test_emit_async_generator_nested_wrapped_yield_quoting():
 
 def test_emit_declared_bare_iterator():
     code = emit_module_level_function(IR_FN_BARE_ITERATOR, TARGET)
-    assert "class _fn_declared_bare_iterator_FunctionWithAio:" in code
+    assert "class _fn_declared_bare_iterator_FunctionWithAio(FunctionWithAio):" in code
     assert 'async def aio(self) -> "typing.AsyncGenerator[typing.Any, None]":' in code
     assert "@function_with_aio" in code
     assert 'def fn_declared_bare_iterator() -> "typing.Generator[typing.Any, None, None]"' in code
@@ -585,7 +586,7 @@ def test_emit_function_positional_only():
 def test_emit_sync_function_returning_coroutine():
     code = emit_module_level_function(IR_FN_CREATE_COROUTINE, TARGET)
     assert "@function_with_aio(_fn_create_coroutine_FunctionWithAio)" in code
-    assert "class _fn_create_coroutine_FunctionWithAio:" in code
+    assert "class _fn_create_coroutine_FunctionWithAio(FunctionWithAio):" in code
     assert "async def aio(self, x: int) -> str:" in code
     assert "def fn_create_coroutine(x: int) -> str" in code
     assert "_run_function_sync" in code
@@ -595,7 +596,7 @@ def test_emit_sync_function_returning_coroutine():
 def test_emit_sync_function_returning_awaitable():
     code = emit_module_level_function(IR_FN_CREATE_AWAITABLE, TARGET)
     assert "@function_with_aio(_fn_create_awaitable_FunctionWithAio)" in code
-    assert "class _fn_create_awaitable_FunctionWithAio:" in code
+    assert "class _fn_create_awaitable_FunctionWithAio(FunctionWithAio):" in code
     assert "async def aio(self, x: int) -> str:" in code
     assert "def fn_create_awaitable(x: int) -> str" in code
     assert "_run_function_sync" in code
@@ -605,7 +606,7 @@ def test_emit_sync_function_returning_awaitable():
 def test_emit_sync_function_returning_bare_awaitable():
     code = emit_module_level_function(IR_FN_CREATE_AWAITABLE_BARE, TARGET)
     assert "@function_with_aio(_fn_create_awaitable_bare_FunctionWithAio)" in code
-    assert "class _fn_create_awaitable_bare_FunctionWithAio:" in code
+    assert "class _fn_create_awaitable_bare_FunctionWithAio(FunctionWithAio):" in code
     assert "async def aio(self, x: int) -> typing.Any:" in code
     assert "def fn_create_awaitable_bare(x: int) -> typing.Any" in code
     assert "_run_function_sync" in code

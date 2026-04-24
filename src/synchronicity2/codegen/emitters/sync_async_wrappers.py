@@ -163,6 +163,7 @@ def _method_impl_call_expr(
 def _runtime_import_header(runtime_package: str) -> str:
     return f"""import {runtime_package}.types
 from {runtime_package}.descriptor import (
+    FunctionWithAio,
     MethodWithAio,
     classmethod_with_aio,
     function_with_aio,
@@ -590,20 +591,13 @@ def emit_function_with_aio_protocol(
         )
 
     if generic_parameters:
-        header = f"class {with_aio_name}(typing.Generic[{', '.join(generic_parameters)}]):"
+        header = f"class {with_aio_name}(FunctionWithAio, typing.Generic[{', '.join(generic_parameters)}]):"
     else:
-        header = f"class {with_aio_name}:"
+        header = f"class {with_aio_name}(FunctionWithAio):"
 
     body_lines: list[str] = []
     if ir.docstring is not None:
         body_lines.extend([_emit_docstring_statement(ir.docstring, indent="    "), ""])
-    body_lines.extend(
-        [
-            "    def __init__(self, sync_impl: typing.Callable[..., typing.Any]):",
-            "        self._sync_impl = sync_impl",
-            "",
-        ]
-    )
     if ir.overloads:
         for overload_param_str, overload_sync_return_str, _overload_aio_return_str in variants:
             body_lines.append("    @typing.overload")
