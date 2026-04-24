@@ -6,6 +6,8 @@ IR literals are explicit dataclasses in this module (same shapes as the parse la
 
 from __future__ import annotations
 
+import dataclasses
+
 from synchronicity2.codegen.emitters.sync_async_wrappers import emit_class_from_ir
 from synchronicity2.codegen.ir import ClassWrapperIR, MethodBindingKind, MethodWrapperIR, ParameterIR, SignatureIR
 from synchronicity2.codegen.transformer_ir import (
@@ -717,6 +719,16 @@ def test_emit_class_method_descriptors():
     assert "return self._sync_impl(amount)" in code
     assert "self._with_aio_from_impl = _from_impl" not in code
     assert "def _from_impl(self, impl_instance: typing.Any) -> typing.Any:" not in code
+
+
+def test_emit_class_method_docstring_skips_with_aio_class_level_copy():
+    method_ir = dataclasses.replace(IR_CLASS_AWAITABLE_METHOD.methods[0], docstring="Method docstring.")
+    ir = dataclasses.replace(IR_CLASS_AWAITABLE_METHOD, methods=(method_ir,))
+    code = emit_class_from_ir(ir, TARGET)
+    assert code.count('"""Method docstring."""') == 3
+    assert (
+        "class _EmitAwaitableMethodClass_create_awaitable_MethodWithAio(MethodWithAio):\n" '    """Method docstring."""'
+    ) not in code
 
 
 def test_emit_class_complex_types():

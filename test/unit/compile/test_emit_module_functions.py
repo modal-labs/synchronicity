@@ -6,6 +6,8 @@ module so emitted ``impl_function = ...`` references match assertions.
 
 from __future__ import annotations
 
+import dataclasses
+
 from synchronicity2.codegen.emitters.sync_async_wrappers import emit_module_level_function
 from synchronicity2.codegen.ir import ModuleLevelFunctionIR, ParameterIR, SignatureIR
 from synchronicity2.codegen.transformer_ir import (
@@ -413,6 +415,15 @@ def test_emit_async_function_template_line_order():
     lines = code.split("\n")
     async_line = next(i for i, line in enumerate(lines) if "async def aio(" in line)
     assert async_line is not None
+
+
+def test_emit_async_function_docstring_skips_with_aio_class_level_copy():
+    ir = dataclasses.replace(IR_FN_CREATE_AWAITABLE, docstring="Awaitable docstring.")
+    code = emit_module_level_function(ir, TARGET)
+    assert code.count('"""Awaitable docstring."""') == 3
+    assert (
+        "class _fn_create_awaitable_FunctionWithAio(FunctionWithAio):\n" '    """Awaitable docstring."""'
+    ) not in code
 
 
 def test_emit_async_function_generic_types():

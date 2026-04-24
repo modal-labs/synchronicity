@@ -596,8 +596,6 @@ def emit_function_with_aio_protocol(
         header = f"class {with_aio_name}(FunctionWithAio):"
 
     body_lines: list[str] = []
-    if ir.docstring is not None:
-        body_lines.extend([_emit_docstring_statement(ir.docstring, indent="    "), ""])
     if ir.overloads:
         for overload_param_str, overload_sync_return_str, _overload_aio_return_str in variants:
             body_lines.append("    @typing.overload")
@@ -805,8 +803,6 @@ def emit_method_with_aio_protocol(
         header = f"class {with_aio_name}(MethodWithAio):"
 
     body_lines: list[str] = []
-    if mir.docstring is not None:
-        body_lines.extend([_emit_docstring_statement(mir.docstring, indent="    "), ""])
     if mir.overloads:
         for overload_param_str, overload_sync_return_str, _overload_aio_return_str in variants:
             body_lines.append("    @typing.overload")
