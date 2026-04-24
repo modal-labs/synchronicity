@@ -1,7 +1,7 @@
 """Unit tests for IR → emitted source (module-level functions).
 
 IR literals below are explicit dataclasses (same shapes as the parse layer). ``IMPL`` is this
-module so emitted ``impl_function = ...`` references match assertions.
+module so emitted implementation qualname references match assertions.
 """
 
 from __future__ import annotations
@@ -374,7 +374,7 @@ def test_emit_async_function_basic_template():
     compile(code, "<string>", "exec")
     name = _fn_short(ir)
     assert f"class _{name}_FunctionWithAio(FunctionWithAio):" in code
-    assert f"impl_function = {IMPL}." in code
+    assert f"_run_function_async({IMPL}.{name}(x))" in code
     assert f"@function_with_aio(_{name}_FunctionWithAio)" in code
     assert f"def {name}" in code
     assert "async def aio(self, x: int) -> str:" in code
@@ -436,7 +436,7 @@ def test_emit_async_function_generic_types():
     assert "= None" in code
     assert "async def aio(" in code
     assert "@function_with_aio" in code
-    assert f"impl_function = {IMPL}." in code
+    assert f"{IMPL}.fn_generic_types(" in code
 
 
 def test_emit_async_generator_function():
@@ -452,7 +452,7 @@ def test_emit_async_generator_function():
     assert "_run_generator_async(gen)" in code
     assert "yield from _synchronizer._run_generator_sync(gen)" in code
     assert "_sent = yield _item" in code
-    assert "gen = impl_function" in code
+    assert f"gen = {IMPL}.fn_async_gen(" in code
     assert "await _wrapped.asend(_sent)" in code
     assert "typing.Generator[str" in code
     assert "typing.AsyncGenerator[str" in code
@@ -467,7 +467,7 @@ def test_emit_async_generator_template_pattern():
     assert f"@function_with_aio(_{name}_FunctionWithAio)" in code
     assert 'async def aio(self, items: list[str]) -> "typing.AsyncGenerator[str, None]":' in code
     assert f"def {name}" in code
-    assert "gen = impl_function(" in code
+    assert f"gen = {IMPL}.fn_async_gen(" in code
 
 
 def test_emit_function_overloads_translate_each_overload():
@@ -482,7 +482,7 @@ def test_emit_function_overloads_translate_each_overload():
     assert "return self._sync_impl(value)" in code
     assert "async def aio(self, value) -> typing.Any:" in code
     assert "@function_with_aio(_fn_overloaded_FunctionWithAio)" in code
-    assert "impl_function = test.unit.compile.test_emit_module_functions.fn_overloaded" in code
+    assert "_run_function_async(test.unit.compile.test_emit_module_functions.fn_overloaded(value))" in code
     assert "def fn_overloaded(value) -> typing.Any:" in code
 
 
@@ -516,7 +516,7 @@ def test_emit_sync_function_basic():
     assert "await impl_function" not in code
     assert "_run_function_sync" not in code
     assert "_run_function_async" not in code
-    assert "return impl_function(a, b)" in code
+    assert "return test.unit.compile.test_emit_module_functions.fn_sync_add(a, b)" in code
     assert "class _simple_add" not in code
     assert "@wrapped_function" not in code
     assert "async def aio" not in code
@@ -526,7 +526,7 @@ def test_emit_sync_function_wrapped_arg():
     code = emit_module_level_function(IR_FN_GREET, TARGET)
     compile(code, "<string>", "exec")
     assert "person_impl = person._impl_instance" in code
-    assert "return impl_function(person_impl)" in code
+    assert "return test.unit.compile.test_emit_module_functions.fn_greet(person_impl)" in code
     assert "_run_function_sync" not in code
     assert "class _greet" not in code
     assert "@wrapped_function" not in code
@@ -535,7 +535,7 @@ def test_emit_sync_function_wrapped_arg():
 def test_emit_sync_function_wrapped_return():
     code = emit_module_level_function(IR_FN_CREATE_PERSON, TARGET)
     compile(code, "<string>", "exec")
-    assert "result = impl_function(name)" in code
+    assert "result = test.unit.compile.test_emit_module_functions.fn_create_person(name)" in code
     assert "return Person._from_impl(result)" in code
     assert "_run_function_sync" not in code
     assert "class _create_person" not in code
@@ -544,7 +544,7 @@ def test_emit_sync_function_wrapped_return():
 def test_emit_sync_function_list_wrapped_return():
     code = emit_module_level_function(IR_FN_CREATE_PEOPLE, TARGET)
     compile(code, "<string>", "exec")
-    assert "result = impl_function(names)" in code
+    assert "result = test.unit.compile.test_emit_module_functions.fn_create_people(names)" in code
     assert "[Person._from_impl(x) for x in result]" in code
     assert "_run_function_sync" not in code
     assert "class _create_people" not in code
@@ -553,7 +553,7 @@ def test_emit_sync_function_list_wrapped_return():
 def test_emit_sync_function_no_annotations():
     code = emit_module_level_function(IR_FN_NO_TYPES, TARGET)
     compile(code, "<string>", "exec")
-    assert "return impl_function(x, y)" in code
+    assert "return test.unit.compile.test_emit_module_functions.fn_no_types(x, y)" in code
     assert "_run_function_sync" not in code
 
 
@@ -562,7 +562,7 @@ def test_emit_sync_function_default_args():
     compile(code, "<string>", "exec")
     assert "b: int = 10" in code
     assert "c: str = 'hello'" in code
-    assert "return impl_function(a, b, c)" in code
+    assert "return test.unit.compile.test_emit_module_functions.fn_with_defaults(a, b, c)" in code
 
 
 def test_emit_sync_function_various_builtin_default_values():
@@ -583,14 +583,17 @@ def test_emit_sync_function_various_builtin_default_values():
 def test_emit_function_varargs():
     code = emit_module_level_function(IR_FN_VARARGS, TARGET)
     assert "def fn_with_varargs(posonly, a: int, b: int = 10, *extra: int, c, **extrakwargs)" in code
-    assert "return impl_function(posonly, a, b, *extra, c=c, **extrakwargs)" in code
+    assert (
+        "return test.unit.compile.test_emit_module_functions.fn_with_varargs(posonly, a, b, *extra, c=c, **extrakwargs)"
+        in code
+    )
     compile(code, "<string>", "exec")
 
 
 def test_emit_function_positional_only():
     code = emit_module_level_function(IR_FN_POSONLY, TARGET)
     assert "def fn_with_posonly(a, b, /, c, d = 10)" in code
-    assert "return impl_function(a, b, c, d)" in code
+    assert "return test.unit.compile.test_emit_module_functions.fn_with_posonly(a, b, c, d)" in code
     compile(code, "<string>", "exec")
 
 

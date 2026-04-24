@@ -152,12 +152,16 @@ def _method_impl_call_expr(
     method_name: str,
     call_args_str: str,
 ) -> str:
-    impl_class_ref = impl_class_dotted
+    callable_expr = f"{impl_class_dotted}.{method_name}"
     if method_type == MethodBindingKind.INSTANCE:
-        return f"impl_method(wrapper_instance._impl_instance, {call_args_str})"
+        args = (
+            f"wrapper_instance._impl_instance, {call_args_str}" if call_args_str else "wrapper_instance._impl_instance"
+        )
+        return f"{callable_expr}({args})"
     if method_type in (MethodBindingKind.CLASSMETHOD, MethodBindingKind.STATICMETHOD):
-        return f"{impl_class_ref}.{method_name}({call_args_str})"
-    return f"impl_method(wrapper_instance._impl_instance, {call_args_str})"
+        return f"{callable_expr}({call_args_str})" if call_args_str else f"{callable_expr}()"
+    args = f"wrapper_instance._impl_instance, {call_args_str}" if call_args_str else "wrapper_instance._impl_instance"
+    return f"{callable_expr}({args})"
 
 
 def _runtime_import_header(runtime_package: str) -> str:
@@ -550,6 +554,7 @@ def emit_function_with_aio_protocol(
     sync_return_str, async_return_str = _format_return_annotation(return_transformer, target_module)
     aio_return_str = _with_aio_return_str(async_return_str)
     impl_dotted = _impl_value_dotted(ir.impl_ref)
+    function_call_expr = f"{impl_dotted}({call_args_str})" if call_args_str else f"{impl_dotted}()"
 
     helpers_dict = return_transformer.get_wrapper_helpers(target_module, indent="    ")
     if isinstance(return_transformer, (AwaitableTransformer, CoroutineTransformer)):
@@ -560,11 +565,11 @@ def emit_function_with_aio_protocol(
         # TODO: Migrate away from raw async-generator wrappers requiring `.aio()`.
         # This is inconsistent with wrappers for callables returning AsyncGenerator,
         # where the wrapper result is already directly async-iterable.
-        aio_body = f"impl_function = {impl_dotted}"
+        aio_body = ""
         if unwrap_code:
-            aio_body += "\n" + unwrap_code
-        aio_body += "\n" + (
-            f"gen = impl_function({call_args_str})\n"
+            aio_body = unwrap_code + "\n"
+        aio_body += (
+            f"gen = {function_call_expr}\n"
             f"_wrapped = {return_transformer.wrap_expr(target_module, 'gen')}\n"
             f"_sent = None\n"
             f"try:\n"
@@ -578,11 +583,11 @@ def emit_function_with_aio_protocol(
             f"    await _wrapped.aclose()"
         )
     else:
-        aio_body = f"impl_function = {impl_dotted}"
+        aio_body = ""
         if unwrap_code:
-            aio_body += "\n" + unwrap_code
-        aio_body += "\n" + _build_call_with_wrap(
-            f"impl_function({call_args_str})",
+            aio_body = unwrap_code + "\n"
+        aio_body += _build_call_with_wrap(
+            function_call_expr,
             return_transformer,
             target_module,
             indent="",
@@ -897,6 +902,7 @@ def emit_module_level_function(
     is_async_gen = ir.is_async_gen
     f = _module_function_name(ir)
     impl_dotted = _impl_value_dotted(ir.impl_ref)
+    function_call_expr = f"{impl_dotted}({call_args_str})" if call_args_str else f"{impl_dotted}()"
 
     if not ir.needs_async_wrapper:
         sync_return_str, _ = _format_return_annotation(return_transformer, current_target_module)
@@ -917,7 +923,7 @@ def emit_module_level_function(
             helpers_code = ""
 
         function_body = _build_call_with_wrap(
-            f"impl_function({call_args_str})",
+            function_call_expr,
             return_transformer,
             current_target_module,
             indent="    ",
@@ -925,11 +931,8 @@ def emit_module_level_function(
             is_function=True,
         )
 
-        impl_ref = f"    impl_function = {impl_dotted}"
         if unwrap_code:
-            function_body = f"{impl_ref}\n{unwrap_code}\n{function_body}"
-        else:
-            function_body = f"{impl_ref}\n{function_body}"
+            function_body = f"{unwrap_code}\n{function_body}"
         function_body = _prepend_docstring(function_body, ir.docstring, indent="    ")
 
         function_code = f"""def {f}({param_str}){sync_return_str}:
@@ -974,18 +977,15 @@ def emit_module_level_function(
     else:
         helpers_code = ""
 
-    sync_impl_ref = f"    impl_function = {impl_dotted}"
-    sync_unwrap_section = sync_impl_ref
-    if unwrap_code:
-        sync_unwrap_section += "\n" + unwrap_code
+    sync_unwrap_section = unwrap_code
 
     if is_async_gen:
         sync_wrap_expr_raw = return_transformer.wrap_expr(current_target_module, "gen", is_async=False)
         sync_wrap_expr = sync_wrap_expr_raw.replace("self.", "")
-        sync_function_body = f"    gen = impl_function({call_args_str})\n    yield from {sync_wrap_expr}"
+        sync_function_body = f"    gen = {function_call_expr}\n    yield from {sync_wrap_expr}"
     else:
         sync_function_body = _build_call_with_wrap(
-            f"impl_function({call_args_str})",
+            function_call_expr,
             return_transformer,
             current_target_module,
             indent="    ",
@@ -997,10 +997,11 @@ def emit_module_level_function(
         f"@function_with_aio("
         f"{_function_with_aio_type_expr(ir, current_target_module, runtime_package, mat_ctx=mat_ctx)})"
     )
+    sync_body = f"{sync_unwrap_section}\n{sync_function_body}" if sync_unwrap_section else sync_function_body
 
     sync_function_code = f"""{decorator_line}
 def {f}({param_str}){sync_return_str}:
-{_prepend_docstring(f"{sync_unwrap_section}\n{sync_function_body}", ir.docstring, indent="    ")}
+{_prepend_docstring(sync_body, ir.docstring, indent="    ")}
 """
     with_aio_code = emit_function_with_aio_protocol(ir, current_target_module, runtime_package, mat_ctx=mat_ctx)
     if helpers_code:
@@ -1066,20 +1067,14 @@ def emit_method_wrapper_pair(
                 method_type=method_type,
                 method_owner_impl_ref=owner.impl_ref,
             )
-            impl_method_line = f"    impl_method = {impl_dotted}.{method_name}"
             if unwrap_code:
-                sync_method_body = impl_method_line + "\n" + unwrap_code + "\n" + sync_method_body
-            else:
-                sync_method_body = impl_method_line + "\n" + sync_method_body
+                sync_method_body = unwrap_code + "\n" + sync_method_body
             aio_body = None
         elif is_async_gen:
             gen_call = call_expr_prefix
             wrap_expr_raw = return_transformer.wrap_expr(current_target_module, "gen")
             wrap_expr = wrap_expr_raw.replace("self.", "wrapper_instance.")
-            impl_method_line = f"impl_method = {impl_dotted}.{method_name}"
-            unwrap_lines = f"\n{unwrap_code}\n" if unwrap_code else "\n"
-            aio_body = (
-                f"    {impl_method_line}{unwrap_lines}"
+            aio_body = (f"    {unwrap_code}\n" if unwrap_code else "") + (
                 f"    gen = {gen_call}\n"
                 f"    _wrapped = {wrap_expr}\n"
                 f"    _sent = None\n"
@@ -1095,16 +1090,11 @@ def emit_method_wrapper_pair(
             )
             sync_wrap_expr_raw = return_transformer.wrap_expr(current_target_module, "gen", is_async=False)
             sync_wrap_expr = sync_wrap_expr_raw
-            impl_method_line_sync = f"    {impl_method_line}"
             if unwrap_code:
-                sync_method_body = (
-                    f"{impl_method_line_sync}\n{unwrap_code}\n    gen = {gen_call}\n    yield from {sync_wrap_expr}"
-                )
+                sync_method_body = f"{unwrap_code}\n    gen = {gen_call}\n    yield from {sync_wrap_expr}"
             else:
-                sync_method_body = f"{impl_method_line_sync}\n    gen = {gen_call}\n    yield from {sync_wrap_expr}"
+                sync_method_body = f"    gen = {gen_call}\n    yield from {sync_wrap_expr}"
         else:
-            impl_method_line = f"    impl_method = {impl_dotted}.{method_name}"
-
             aio_body = _build_call_with_wrap(
                 call_expr_prefix,
                 return_transformer,
@@ -1115,9 +1105,7 @@ def emit_method_wrapper_pair(
                 method_owner_impl_ref=owner.impl_ref,
             )
             if unwrap_code:
-                aio_body = impl_method_line + "\n" + unwrap_code + "\n" + aio_body
-            else:
-                aio_body = impl_method_line + "\n" + aio_body
+                aio_body = unwrap_code + "\n" + aio_body
 
             sync_method_body = _build_call_with_wrap(
                 call_expr_prefix,
@@ -1129,9 +1117,7 @@ def emit_method_wrapper_pair(
                 method_owner_impl_ref=owner.impl_ref,
             )
             if unwrap_code:
-                sync_method_body = impl_method_line + "\n" + unwrap_code + "\n" + sync_method_body
-            else:
-                sync_method_body = impl_method_line + "\n" + sync_method_body
+                sync_method_body = unwrap_code + "\n" + sync_method_body
     elif method_type == MethodBindingKind.CLASSMETHOD:
         if not is_async:
             sync_call_expr = call_expr_prefix

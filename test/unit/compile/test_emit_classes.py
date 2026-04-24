@@ -707,7 +707,7 @@ def test_emit_class_basic():
     assert "def get_value(self" in code
     assert "def set_value(self" in code
     assert "def add_to_value(self" in code
-    assert "impl_method = " in code
+    assert f"{IMPL}.EmitSimpleClass.add_to_value(self._impl_instance, amount)" in code
 
 
 def test_emit_class_method_descriptors():
@@ -805,7 +805,7 @@ def test_emit_class_method_with_varargs():
     assert "*args" in code
     assert "b=b" in code
     assert "**kwargs" in code
-    assert "impl_method(self._impl_instance, a, *args, b=b, **kwargs)" in code
+    assert f"{IMPL}.EmitVarArgsClass.method_with_varargs(self._impl_instance, a, *args, b=b, **kwargs)" in code
 
 
 def test_emit_class_method_various_builtin_default_values():
@@ -856,7 +856,11 @@ def test_emit_class_method_overloads_translate_each_overload():
     assert "return self._sync_impl(value)" in code
     assert "async def aio(self, value) -> typing.Any:" in code
     assert "@method_with_aio(_EmitOverloadedMethodClass_resolve_MethodWithAio)" in code
-    assert "impl_method = test.unit.compile.test_emit_classes.EmitOverloadedMethodClass.resolve" in code
+    assert (
+        "_run_function_async("
+        "test.unit.compile.test_emit_classes.EmitOverloadedMethodClass.resolve("
+        "self._wrapper_instance._impl_instance, value))" in code
+    )
     assert "def resolve(self, value) -> typing.Any:" in code
 
 

@@ -63,7 +63,7 @@ def test_generated_wrapper_contains_overloads():
     assert "def __call__(self, value: typing.Union[int, str]) -> typing.Union[int, str]:" in source
     assert "async def aio(self, value: typing.Union[int, str]) -> typing.Union[int, str]:" in source
     assert "@function_with_aio(_duplicate_FunctionWithAio)" in source
-    assert "impl_function = overloads_impl.duplicate" in source
+    assert "_run_function_async(overloads_impl.duplicate(value))" in source
     assert "class _maybe_wrap_FunctionWithAio(FunctionWithAio):" in source
     assert "def __call__(self, value: int, wrap: typing.Literal[False]) -> int: ..." in source
     assert 'def __call__(self, value: int, wrap: typing.Literal[True]) -> "Record": ...' in source
@@ -76,7 +76,9 @@ def test_generated_wrapper_contains_overloads():
     assert "async def aio(self, value: int) -> int: ..." in source
     assert "async def aio(self, value: str) -> str: ..." in source
     assert "@method_with_aio(_Resolver_resolve_MethodWithAio)" in source
-    assert "impl_method = overloads_impl.Resolver.resolve" in source
+    assert (
+        "_run_function_async(overloads_impl.Resolver.resolve(self._wrapper_instance._impl_instance, value))" in source
+    )
 
 
 def test_pyright_implementation():
