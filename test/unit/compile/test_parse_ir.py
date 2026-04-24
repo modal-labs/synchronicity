@@ -15,6 +15,7 @@ from typing import Generic, TypeVar
 from synchronicity2 import Module
 from synchronicity2.codegen.default_expressions import resolve_parameter_default_expressions
 from synchronicity2.codegen.ir import (
+    ClassPropertyWrapperIR,
     ManualClassAttributeAccessKind,
     ManualReexportIR,
     ModuleCompilationIR,
@@ -36,7 +37,7 @@ from synchronicity2.codegen.transformer_ir import (
     WrappedClassTypeIR,
     WrapperRef,
 )
-from synchronicity2.descriptor import function_with_aio, method_with_aio
+from synchronicity2.descriptor import classproperty, function_with_aio, method_with_aio
 
 PARSE_DEFAULT_GREETING = "hello"
 
@@ -408,6 +409,57 @@ class Bad:
     Bad = ns["Bad"]
     with pytest.raises(TypeError, match="async"):
         parse_class_wrapper_ir(Bad, "generated.async_prop", globals_dict=ns)
+
+
+def test_parse_class_sync_classproperty():
+    """Sync @classproperty is collected into ClassWrapperIR.class_properties."""
+
+    ns: dict = {"Module": Module, "classproperty": classproperty}
+    exec(
+        """
+m = Module("generated.classprop_parse")
+@m.wrap_class()
+class Manager:
+    pass
+@m.wrap_class()
+class Service:
+    _manager = Manager()
+    @classproperty
+    def manager(cls) -> Manager:
+        return cls._manager
+""",
+        ns,
+    )
+    Service = ns["Service"]
+    Manager = ns["Manager"]
+    ir = parse_class_wrapper_ir(Service, "generated.classprop_parse", globals_dict=ns)
+    assert len(ir.class_properties) == 1
+    prop = ir.class_properties[0]
+    assert isinstance(prop, ClassPropertyWrapperIR)
+    assert prop.name == "manager"
+    assert isinstance(prop.return_transformer_ir, WrappedClassTypeIR)
+    assert prop.return_transformer_ir.impl == ImplQualifiedRef(Manager.__module__, Manager.__qualname__)
+    assert prop.return_transformer_ir.wrapper == WrapperRef("generated.classprop_parse", "Manager")
+
+
+def test_parse_class_async_classproperty_raises():
+    """An async getter on a @classproperty must be rejected at parse time."""
+
+    ns: dict = {"Module": Module, "classproperty": classproperty}
+    exec(
+        """
+m = Module("generated.async_classprop")
+@m.wrap_class()
+class Bad:
+    @classproperty
+    async def broken(cls) -> int:
+        return 1
+""",
+        ns,
+    )
+    Bad = ns["Bad"]
+    with pytest.raises(TypeError, match="Class properties must be synchronous"):
+        parse_class_wrapper_ir(Bad, "generated.async_classprop", globals_dict=ns)
 
 
 def test_parse_class_attributes_are_type_ir_not_wrapper_strings():

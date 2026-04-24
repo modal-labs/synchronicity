@@ -8,6 +8,7 @@ import sys
 import types
 import typing
 
+from synchronicity2.descriptor import classproperty
 from synchronicity2.module import (
     _IMPL_WRAPPER_LOCATION_ATTR,
     Module,
@@ -20,6 +21,7 @@ from .compile_utils import (
     parse_parameters_to_ir,
 )
 from .ir import (
+    ClassPropertyWrapperIR,
     ClassWrapperIR,
     ImplQualifiedRef,
     ManualClassAttributeAccessKind,
@@ -54,7 +56,7 @@ def _is_manual_wrapper(obj: object, *, manual_wrapper_ids: frozenset[int]) -> bo
 
 
 def _manual_class_attribute_access_kind(obj: object) -> ManualClassAttributeAccessKind:
-    if isinstance(obj, (classmethod, staticmethod, property)):
+    if isinstance(obj, (classmethod, staticmethod, property, classproperty)):
         return ManualClassAttributeAccessKind.RAW_CLASS_DICT
     if getattr(obj, "_synchronicity_raw_class_dict", False):
         return ManualClassAttributeAccessKind.RAW_CLASS_DICT
@@ -133,6 +135,19 @@ def cross_module_imports_for_module(
                     continue
                 if isinstance(attr, classmethod | staticmethod):
                     method = attr.__func__
+                elif isinstance(attr, (property, classproperty)):
+                    getter = attr.fget
+                    setter = attr.fset if isinstance(attr, property) else None
+                    if getter is not None:
+                        getter_func = getter.__func__ if isinstance(getter, classmethod) else getter
+                        annotations = _safe_get_annotations(getter_func)
+                        for annotation in annotations.values():
+                            _check_annotation_for_cross_refs(annotation, module_name, cross_module_refs)
+                    if setter is not None:
+                        annotations = _safe_get_annotations(setter)
+                        for annotation in annotations.values():
+                            _check_annotation_for_cross_refs(annotation, module_name, cross_module_refs)
+                    continue
                 elif inspect.isfunction(attr):
                     method = attr
                 else:
@@ -544,8 +559,10 @@ def parse_class_wrapper_ir(
 
     # classmethods, staticmethods, and properties (descriptor unwrapping requires cls.__dict__)
     property_names: set[str] = set()
+    classproperty_names: set[str] = set()
     manual_attribute_names: set[str] = set()
     property_irs: list[PropertyWrapperIR] = []
+    classproperty_irs: list[ClassPropertyWrapperIR] = []
     manual_attributes: list[ManualClassAttributeIR] = []
     for name, attr in cls.__dict__.items():
         if name.startswith("_"):
@@ -612,6 +629,31 @@ def parse_class_wrapper_ir(
                     setter_value_ir=setter_value_ir,
                 )
             )
+        elif isinstance(attr, classproperty):
+            classproperty_names.add(name)
+            fget = attr.fget.__func__
+            if inspect.iscoroutinefunction(fget):
+                raise TypeError(
+                    f"Class property {cls.__qualname__}.{name} has an async getter. "
+                    f"Class properties must be synchronous; use a classmethod instead."
+                )
+            getter_annotations = _safe_get_annotations(fget, globals_dict)
+            return_annotation = getter_annotations.get("return", inspect.Signature.empty)
+            return_ir: TypeTransformerIR | None = None
+            if return_annotation != inspect.Signature.empty:
+                return_ir = annotation_to_transformer_ir(
+                    return_annotation,
+                    owner_impl_type=cls,
+                    owner_has_type_parameters=bool(generic_typevars),
+                    impl_modules=impl_modules,
+                    source_label=f"{cls.__module__}.{cls.__qualname__}.{name} return",
+                )
+            classproperty_irs.append(
+                ClassPropertyWrapperIR(
+                    name=name,
+                    return_transformer_ir=return_ir,
+                )
+            )
 
     # instance methods (only directly defined on cls)
     for name, method in inspect.getmembers(cls, predicate=inspect.isfunction):
@@ -620,6 +662,7 @@ def parse_class_wrapper_ir(
             and name in cls.__dict__
             and name not in classmethod_staticmethod_names
             and name not in property_names
+            and name not in classproperty_names
             and name not in manual_attribute_names
         ):
             source_methods.append((name, method, MethodBindingKind.INSTANCE))
@@ -676,6 +719,7 @@ def parse_class_wrapper_ir(
         generic_type_parameters=generic_type_parameters,
         attributes=tuple(attributes),
         properties=tuple(property_irs),
+        class_properties=tuple(classproperty_irs),
         methods=method_irs,
         manual_attributes=tuple(manual_attributes),
     )

@@ -185,6 +185,19 @@ class PropertyWrapperIR:
         return frozenset(modules)
 
 
+@dataclasses.dataclass(frozen=True)
+class ClassPropertyWrapperIR:
+    """Parsed @classproperty: name and getter return type."""
+
+    name: str
+    return_transformer_ir: TypeTransformerIR | None
+
+    def required_import_modules(self) -> frozenset[str]:
+        if self.return_transformer_ir is None:
+            return frozenset()
+        return self.return_transformer_ir.required_import_modules()
+
+
 class ManualClassAttributeAccessKind(str, enum.Enum):
     """How to reference a manual class attribute in emitted wrapper code."""
 
@@ -228,6 +241,7 @@ class ClassWrapperIR:
     attributes: tuple[tuple[str, TypeTransformerIR | None], ...]
     properties: tuple[PropertyWrapperIR, ...]
     methods: tuple[MethodWrapperIR, ...]
+    class_properties: tuple[ClassPropertyWrapperIR, ...] = ()
     manual_attributes: tuple[ManualClassAttributeIR, ...] = ()
 
     def required_import_modules(self) -> frozenset[str]:
@@ -237,6 +251,8 @@ class ClassWrapperIR:
                 modules.update(annotation_ir.required_import_modules())
         for property_ir in self.properties:
             modules.update(property_ir.required_import_modules())
+        for class_property_ir in self.class_properties:
+            modules.update(class_property_ir.required_import_modules())
         for method_ir in self.methods:
             modules.update(method_ir.required_import_modules())
         return frozenset(modules)

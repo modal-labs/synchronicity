@@ -9,7 +9,14 @@ from __future__ import annotations
 import dataclasses
 
 from synchronicity2.codegen.emitters.sync_async_wrappers import emit_class_from_ir
-from synchronicity2.codegen.ir import ClassWrapperIR, MethodBindingKind, MethodWrapperIR, ParameterIR, SignatureIR
+from synchronicity2.codegen.ir import (
+    ClassPropertyWrapperIR,
+    ClassWrapperIR,
+    MethodBindingKind,
+    MethodWrapperIR,
+    ParameterIR,
+    SignatureIR,
+)
 from synchronicity2.codegen.transformer_ir import (
     AsyncGeneratorTypeIR,
     AsyncIteratorTypeIR,
@@ -912,6 +919,33 @@ def test_emit_class_aiter_signature_variations():
     code = emit_class_from_ir(IR_CLASS_AITER_ASYNC_ITER_TYPE, TARGET)
     assert 'def __iter__(self) -> "synchronicity2.types.SyncOrAsyncIterator[bool]":' in code
     assert 'def __aiter__(self) -> "synchronicity2.types.SyncOrAsyncIterator[bool]":' in code
+
+
+def test_emit_classproperty_translation():
+    ir = ClassWrapperIR(
+        impl_ref=ImplQualifiedRef(IMPL, "EmitClassPropertyService"),
+        wrapper_ref=WrapperRef(TARGET, "EmitClassPropertyService"),
+        wrapped_bases=(),
+        generic_type_parameters=None,
+        attributes=(),
+        properties=(),
+        methods=(),
+        class_properties=(
+            ClassPropertyWrapperIR(
+                name="manager",
+                return_transformer_ir=WrappedClassTypeIR(
+                    impl=ImplQualifiedRef(IMPL, "EmitClassPropertyManager"),
+                    wrapper=WrapperRef(TARGET, "EmitClassPropertyManager"),
+                ),
+            ),
+        ),
+    )
+
+    code = emit_class_from_ir(ir, TARGET)
+
+    assert "    @classproperty\n    def manager(cls) -> EmitClassPropertyManager:" in code
+    assert "_impl_val = test.unit.compile.test_emit_classes.EmitClassPropertyService.manager" in code
+    assert "return EmitClassPropertyManager._from_impl(_impl_val)" in code
 
 
 def test_emit_class_without_explicit_init():

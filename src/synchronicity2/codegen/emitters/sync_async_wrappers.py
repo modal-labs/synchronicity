@@ -169,6 +169,7 @@ def _runtime_import_header(runtime_package: str) -> str:
 from {runtime_package}.descriptor import (
     FunctionWithAio,
     MethodWithAio,
+    classproperty,
     classmethod_with_aio,
     function_with_aio,
     method_with_aio,
@@ -1521,6 +1522,35 @@ def emit_class_from_ir(
         else:
             property_definitions.append(getter_code)
 
+    class_property_definitions = []
+    for class_prop_ir in ir.class_properties:
+        prop_transformer = None
+        prop_type_str = ""
+        if class_prop_ir.return_transformer_ir is not None:
+            prop_transformer = materialize_transformer_ir(
+                class_prop_ir.return_transformer_ir,
+                runtime_package,
+                ctx=mat_ctx,
+            )
+            prop_type_str = prop_transformer.wrapped_type(target_module)
+
+        getter_value_expr = f"{impl_dot}.{class_prop_ir.name}"
+        if prop_transformer is not None and prop_transformer.needs_translation():
+            getter_return_expr = prop_transformer.wrap_expr(target_module, "_impl_val", is_async=False)
+            getter_body = f"_impl_val = {getter_value_expr}\n        return {getter_return_expr}"
+        else:
+            getter_body = f"return {getter_value_expr}"
+
+        if prop_type_str:
+            getter_code = f"""    @classproperty
+    def {class_prop_ir.name}(cls) -> {prop_type_str}:
+        {getter_body}"""
+        else:
+            getter_code = f"""    @classproperty
+    def {class_prop_ir.name}(cls):
+        {getter_body}"""
+        class_property_definitions.append(getter_code)
+
     iterator_methods_section = ""
     if iterator_mirs:
         iterator_blocks: list[str] = []
@@ -1678,6 +1708,7 @@ def emit_class_from_ir(
         type(self)._instance_cache[id(self._impl_instance)] = self"""
 
     properties_section = "\n\n".join(property_definitions) if property_definitions else ""
+    class_properties_section = "\n\n".join(class_property_definitions) if class_property_definitions else ""
     methods_section = "\n\n".join(method_definitions_with_async) if method_definitions_with_async else ""
     manual_attributes_section = "\n".join(
         f"    {manual_attr.name} = "
@@ -1694,6 +1725,8 @@ def emit_class_from_ir(
         sections.append(from_impl_method)
     if properties_section:
         sections.append(properties_section)
+    if class_properties_section:
+        sections.append(class_properties_section)
     if iterator_methods_section:
         sections.append(iterator_methods_section)
     if context_manager_methods_section:

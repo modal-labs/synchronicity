@@ -19,7 +19,8 @@ The `synchronicity2` CLI / codegen package is still installed separately at buil
 """
 
 from .module import DEFAULT_SYNCHRONIZER_NAME, Module
-from .synchronizer import Synchronizer, classproperty, get_synchronizer
+from .descriptor import classproperty
+from .synchronizer import Synchronizer, get_synchronizer
 
 __all__ = [
     "DEFAULT_SYNCHRONIZER_NAME",
