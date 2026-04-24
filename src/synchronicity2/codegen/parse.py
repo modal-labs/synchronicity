@@ -159,7 +159,7 @@ def build_module_compilation_ir(
     )
 
     classes: list[type] = []
-    functions: list[types.FunctionType] = []
+    functions: list[tuple[types.FunctionType, str]] = []
     manual_reexports: list[ManualReexportIR] = []
     for o, registration in module_items.items():
         if _is_manual_wrapper(o, manual_wrapper_ids=manual_wrapper_ids):
@@ -173,11 +173,11 @@ def build_module_compilation_ir(
         if isinstance(o, type):
             classes.append(o)
         elif isinstance(o, types.FunctionType):
-            functions.append(o)
+            functions.append((o, registration.name))
 
     module_typevars: dict[str, typing.TypeVar | typing.ParamSpec] = {}
 
-    for func in functions:
+    for func, _export_name in functions:
         for overload_func in (func, *_iter_overload_functions(func)):
             annotations = _safe_get_annotations(overload_func)
             module_typevars.update(_extract_typevars_from_function(overload_func, annotations))
@@ -225,10 +225,16 @@ def build_module_compilation_ir(
         for c in classes
     )
     module_functions_ir_list: list[ModuleLevelFunctionIR] = []
-    for f in functions:
+    for f, export_name in functions:
         g = sys.modules[f.__module__].__dict__ if f.__module__ in sys.modules else None
         module_functions_ir_list.append(
-            parse_module_level_function_ir(f, module.target_module, globals_dict=g, impl_modules=impl_mods)
+            parse_module_level_function_ir(
+                f,
+                module.target_module,
+                export_name=export_name,
+                globals_dict=g,
+                impl_modules=impl_mods,
+            )
         )
     module_functions_ir = tuple(module_functions_ir_list)
 
@@ -381,6 +387,7 @@ def parse_module_level_function_ir(
     f: types.FunctionType,
     target_module: str,
     *,
+    export_name: str | None = None,
     globals_dict: dict[str, typing.Any] | None = None,
     runtime_package: str = "synchronicity2",
     impl_modules: frozenset[str] | None = None,
@@ -422,6 +429,7 @@ def parse_module_level_function_ir(
         return_transformer_ir=signature_ir.return_transformer_ir,
         overloads=overloads,
         docstring=f.__doc__,
+        export_name=export_name,
     )
 
 

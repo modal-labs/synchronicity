@@ -218,6 +218,7 @@ def generated_wrappers():
         "manual_nowrap_impl",
         "async_context_manager_impl",
         "property_class_impl",
+        "renamed_exports_impl",
         "sandboxlib._sandbox",
     ]
 

@@ -31,6 +31,7 @@ from synchronicity2.codegen.transformer_ir import (
     AwaitableTypeIR,
     IdentityTypeIR,
     ImplQualifiedRef,
+    SubscriptedWrappedClassTypeIR,
     UnionTypeIR,
     WrappedClassTypeIR,
     WrapperRef,
@@ -76,6 +77,21 @@ def parse_unstable_default(value: float = time.time()) -> None:
 class ParseDefaultService:
     async def configure(self, greeting: str = "hello", *, retries: int = 3) -> None:
         return None
+
+
+_RENAMED_EXPORTS_MODULE = Module("generated.renamed")
+RenameT = TypeVar("RenameT")
+
+
+@_RENAMED_EXPORTS_MODULE.wrap_class(name="PublicService")
+class _RenamedImplService(Generic[RenameT]):
+    async def get(self) -> RenameT:
+        raise NotImplementedError
+
+
+@_RENAMED_EXPORTS_MODULE.wrap_function(name="make_service")
+async def _renamed_make_service() -> _RenamedImplService[int]:
+    raise NotImplementedError
 
 
 def test_parse_module_level_function_ir_async_is_awaitable_ir():
@@ -218,6 +234,19 @@ def test_build_module_compilation_ir_uses_qualified_refs():
     assert len(ir.module_functions_ir) == 1
     assert ir.module_functions_ir[0].impl_ref == ir.function_refs[0]
     assert ir.has_wrapped_classes is True
+
+
+def test_build_module_compilation_ir_preserves_registered_export_names():
+    ir = build_module_compilation_ir(_RENAMED_EXPORTS_MODULE)
+
+    assert ir.class_wrappers[0].wrapper_ref == WrapperRef("generated.renamed", "PublicService")
+    assert ir.module_functions_ir[0].export_name == "make_service"
+    assert isinstance(ir.module_functions_ir[0].return_transformer_ir, AwaitableTypeIR)
+    assert isinstance(ir.module_functions_ir[0].return_transformer_ir.inner, SubscriptedWrappedClassTypeIR)
+    assert ir.module_functions_ir[0].return_transformer_ir.inner.wrapper == WrapperRef(
+        "generated.renamed",
+        "PublicService",
+    )
 
 
 def test_wrap_decorators_require_factory_call() -> None:

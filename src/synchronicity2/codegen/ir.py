@@ -128,6 +128,7 @@ class ModuleLevelFunctionIR:
     return_transformer_ir: TypeTransformerIR
     overloads: tuple[SignatureIR, ...] = ()
     docstring: str | None = None
+    export_name: str | None = None
 
     def required_import_modules(self) -> frozenset[str]:
         signatures = self.overloads or (SignatureIR(self.parameters, self.return_transformer_ir),)

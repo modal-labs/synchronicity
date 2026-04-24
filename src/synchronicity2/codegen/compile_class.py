@@ -38,6 +38,7 @@ def compile_method_wrapper(
     )
     owner = MethodEmitOwner(
         impl_ref=ImplQualifiedRef(impl_class.__module__, impl_class.__qualname__),
+        wrapper_name=impl_class.__name__,
         target_module=current_target_module,
     )
     return emit_method_wrapper_pair(owner, ir, runtime_package=runtime_package)

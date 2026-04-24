@@ -33,14 +33,15 @@ class MethodEmitOwner:
     """Class-wrapper context needed when emitting method wrappers (emitter-only)."""
 
     impl_ref: ImplQualifiedRef
+    wrapper_name: str
     target_module: str
     generic_type_parameters: tuple[str, ...] | None
 
 
-def _wrapper_short_name(impl_ref: ImplQualifiedRef) -> str:
-    """Emitted wrapper class identifier (last segment of implementation ``__qualname__``)."""
-
-    return impl_ref.qualname.rpartition(".")[2]
+def _module_function_name(ir: ModuleLevelFunctionIR) -> str:
+    if ir.export_name is not None:
+        return ir.export_name
+    return ir.impl_ref.qualname.rpartition(".")[2]
 
 
 def _wrapper_class_reference(
@@ -76,6 +77,7 @@ def _impl_value_dotted(impl_ref: ImplQualifiedRef) -> str:
 def method_emit_owner(class_ir: ClassWrapperIR, target_module: str) -> MethodEmitOwner:
     return MethodEmitOwner(
         impl_ref=class_ir.impl_ref,
+        wrapper_name=class_ir.wrapper_ref.wrapper_name,
         target_module=target_module,
         generic_type_parameters=class_ir.generic_type_parameters,
     )
@@ -180,7 +182,7 @@ def _wrapper_registration_lines(class_wrappers: tuple[ClassWrapperIR, ...]) -> l
     lines: list[str] = []
     for ir in class_wrappers:
         impl_dot = _impl_type_dotted(ir.impl_ref)
-        wshort = _wrapper_short_name(ir.impl_ref)
+        wshort = ir.wrapper_ref.wrapper_name
         lines.append(f"_synchronizer.register_wrapper_class({impl_dot}, {wshort})")
     return lines
 
@@ -300,11 +302,11 @@ def _emit_method_overloads(
 
 
 def _method_with_aio_protocol_name(owner: MethodEmitOwner, method_name: str) -> str:
-    return f"_{_wrapper_short_name(owner.impl_ref)}_{method_name}_MethodWithAio"
+    return f"_{owner.wrapper_name}_{method_name}_MethodWithAio"
 
 
 def _method_with_aio_self_type_name(owner: MethodEmitOwner, method_name: str) -> str:
-    return f"_{_wrapper_short_name(owner.impl_ref)}_{method_name}_SelfType"
+    return f"_{owner.wrapper_name}_{method_name}_SelfType"
 
 
 def _bound_with_aio_method_signature_line(
@@ -527,7 +529,8 @@ def emit_function_with_aio_protocol(
         runtime_package,
         mat_ctx=mat_ctx,
     )
-    with_aio_name = _function_with_aio_protocol_name(ir.impl_ref.qualname.rpartition(".")[2])
+    function_name = _module_function_name(ir)
+    with_aio_name = _function_with_aio_protocol_name(function_name)
     return_transformer = materialize_transformer_ir(ir.return_transformer_ir, runtime_package, ctx=mat_ctx)
     param_str, call_args_str, unwrap_code = format_parameters_for_emit(
         ir.parameters,
@@ -539,8 +542,7 @@ def emit_function_with_aio_protocol(
     with_aio_call_args_str = _with_aio_call_args_str(ir.parameters)
     sync_return_str, async_return_str = _format_return_annotation(return_transformer, target_module)
     aio_return_str = _with_aio_return_str(async_return_str)
-    impl_name = ir.impl_ref.qualname.rpartition(".")[2]
-    impl_dotted = f"{ir.impl_ref.module}.{impl_name}"
+    impl_dotted = _impl_value_dotted(ir.impl_ref)
 
     helpers_dict = return_transformer.get_wrapper_helpers(target_module, indent="    ")
     if isinstance(return_transformer, (AwaitableTransformer, CoroutineTransformer)):
@@ -643,7 +645,7 @@ def _function_with_aio_type_expr(
         runtime_package,
         mat_ctx=mat_ctx,
     )
-    protocol_name = _function_with_aio_protocol_name(ir.impl_ref.qualname.rpartition(".")[2])
+    protocol_name = _function_with_aio_protocol_name(_module_function_name(ir))
     if not generic_parameters:
         return protocol_name
     return f"{protocol_name}[{', '.join(generic_parameters)}]"
@@ -897,8 +899,8 @@ def emit_module_level_function(
         mat_ctx=mat_ctx,
     )
     is_async_gen = ir.is_async_gen
-    f = ir.impl_ref.qualname.rpartition(".")[2]
-    impl_dotted = f"{ir.impl_ref.module}.{f}"
+    f = _module_function_name(ir)
+    impl_dotted = _impl_value_dotted(ir.impl_ref)
 
     if not ir.needs_async_wrapper:
         sync_return_str, _ = _format_return_annotation(return_transformer, current_target_module)
@@ -1021,7 +1023,7 @@ def emit_method_wrapper_pair(
     method_name = mir.method_name
     method_type = mir.method_type
     impl_dotted = _impl_type_dotted(owner.impl_ref)
-    short_name = _wrapper_short_name(owner.impl_ref)
+    short_name = owner.wrapper_name
     current_target_module = owner.target_module
     if return_transformer is None:
         return_transformer = materialize_transformer_ir(mir.return_transformer_ir, runtime_package, ctx=mat_ctx)
@@ -1419,7 +1421,7 @@ def emit_class_from_ir(
     mat_ctx: MaterializeContext | None = None,
 ) -> str:
     """Emit wrapper class source from :class:`ClassWrapperIR` (no live implementation objects)."""
-    wshort = _wrapper_short_name(ir.impl_ref)
+    wshort = ir.wrapper_ref.wrapper_name
     impl_dot = _impl_type_dotted(ir.impl_ref)
     proxy_type_comment = f"# Proxy type for the underlying implementation type {impl_dot}."
     owner = method_emit_owner(ir, target_module)

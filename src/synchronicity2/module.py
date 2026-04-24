@@ -29,6 +29,18 @@ class ManualWrapperRef:
     qualname: str
 
 
+def _validate_registration_name(name: str | None, *, decorator_name: str, fallback: str) -> str:
+    if name is None:
+        return fallback
+    if not isinstance(name, str):
+        raise TypeError(f"{decorator_name}() name must be a string")
+    if not name:
+        raise ValueError(f"{decorator_name}() name must be a non-empty string")
+    if not name.isidentifier():
+        raise ValueError(f"{decorator_name}() name must be a valid Python identifier")
+    return name
+
+
 def _impl_ref_from_object(obj: object | None) -> ManualWrapperRef | None:
     if obj is None:
         return None
@@ -167,41 +179,51 @@ class Module:
 
         return decorator
 
-    def wrap_function(self) -> Callable[[F], F]:
+    def wrap_function(self, *, name: str | None = None) -> Callable[[F], F]:
         """Decorator to mark a function for wrapper generation."""
 
         def decorator(fn: F) -> F:
-            name = getattr(fn, "__name__", None)
-            if not isinstance(name, str):
+            function_name = getattr(fn, "__name__", None)
+            if not isinstance(function_name, str):
                 ref = self._manual_wrapper_ref(fn)
                 if ref is None:
                     raise TypeError(
                         "wrap_function() expects a function or a @module.manual_wrapper()-registered "
                         "with-aio helper with an underlying implementation reference"
                     )
-                name = ref.qualname.rpartition(".")[2]
+                function_name = ref.qualname.rpartition(".")[2]
+            export_name = _validate_registration_name(
+                name,
+                decorator_name="wrap_function",
+                fallback=function_name,
+            )
             self._wrapped_functions[fn] = RegistrationInfo(
                 target_module=self._target_module,
-                name=name,
+                name=export_name,
             )
             return fn
 
         return decorator
 
-    def wrap_class(self) -> Callable[[C], C]:
+    def wrap_class(self, *, name: str | None = None) -> Callable[[C], C]:
         """Decorator to mark a class for wrapper generation."""
 
         def decorator(impl_cls: C) -> C:
+            export_name = _validate_registration_name(
+                name,
+                decorator_name="wrap_class",
+                fallback=impl_cls.__name__,
+            )
             registration = RegistrationInfo(
                 target_module=self._target_module,
-                name=impl_cls.__name__,
+                name=export_name,
             )
             self._wrapped_classes[impl_cls] = registration
 
             if self._is_manual_wrapper(impl_cls):
                 return impl_cls
 
-            wrapper_location = (self._target_module, impl_cls.__name__)
+            wrapper_location = (self._target_module, export_name)
             existing_location = impl_cls.__dict__.get(_IMPL_WRAPPER_LOCATION_ATTR)
             if existing_location is not None and existing_location != wrapper_location:
                 raise RuntimeError(
