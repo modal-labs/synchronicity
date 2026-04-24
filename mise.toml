@@ -8,4 +8,3 @@ uv = "latest"
 
 [env]
 PYTHONPATH = "generated:test/support_files"
-

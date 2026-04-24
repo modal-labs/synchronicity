@@ -29,9 +29,19 @@ class ManualWrapperRef:
     qualname: str
 
 
+def _default_export_name(source_name: str, *, decorator_name: str) -> str:
+    export_name = source_name.lstrip("_")
+    if export_name:
+        return export_name
+    raise ValueError(
+        f"{decorator_name}() could not derive a valid export name from source name {source_name!r}; "
+        "pass name= explicitly"
+    )
+
+
 def _validate_registration_name(name: str | None, *, decorator_name: str, fallback: str) -> str:
     if name is None:
-        return fallback
+        return _default_export_name(fallback, decorator_name=decorator_name)
     if not isinstance(name, str):
         raise TypeError(f"{decorator_name}() name must be a string")
     if not name:

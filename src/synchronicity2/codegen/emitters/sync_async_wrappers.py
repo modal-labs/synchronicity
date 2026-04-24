@@ -302,10 +302,16 @@ def _emit_method_overloads(
 
 
 def _method_with_aio_protocol_name(owner: MethodEmitOwner, method_name: str) -> str:
+    if owner.wrapper_name.startswith("_"):
+        owner_name = owner.wrapper_name.lstrip("_") or owner.wrapper_name
+        return f"_synchronicity_{owner_name}_{method_name}_MethodWithAio"
     return f"_{owner.wrapper_name}_{method_name}_MethodWithAio"
 
 
 def _method_with_aio_self_type_name(owner: MethodEmitOwner, method_name: str) -> str:
+    if owner.wrapper_name.startswith("_"):
+        owner_name = owner.wrapper_name.lstrip("_") or owner.wrapper_name
+        return f"_synchronicity_{owner_name}_{method_name}_SelfType"
     return f"_{owner.wrapper_name}_{method_name}_SelfType"
 
 

@@ -6,3 +6,4 @@ dist
 uv.lock
 /generated/
 playground
+mise.local.toml
