@@ -94,6 +94,28 @@ async def _renamed_make_service() -> _RenamedImplService[int]:
     raise NotImplementedError
 
 
+@_RENAMED_EXPORTS_MODULE.wrap_class()
+class _DefaultNamedService:
+    async def get(self) -> int:
+        raise NotImplementedError
+
+
+@_RENAMED_EXPORTS_MODULE.wrap_function()
+async def _default_named_factory() -> _DefaultNamedService:
+    raise NotImplementedError
+
+
+@_RENAMED_EXPORTS_MODULE.wrap_class(name="_ExplicitlyPrivateService")
+class _ExplicitlyPrivateServiceImpl:
+    async def get(self) -> int:
+        raise NotImplementedError
+
+
+@_RENAMED_EXPORTS_MODULE.wrap_function(name="_explicitly_private_factory")
+async def _explicitly_private_factory_impl() -> _ExplicitlyPrivateServiceImpl:
+    raise NotImplementedError
+
+
 def test_parse_module_level_function_ir_async_is_awaitable_ir():
     async def impl() -> int:
         return 1
@@ -239,14 +261,24 @@ def test_build_module_compilation_ir_uses_qualified_refs():
 def test_build_module_compilation_ir_preserves_registered_export_names():
     ir = build_module_compilation_ir(_RENAMED_EXPORTS_MODULE)
 
-    assert ir.class_wrappers[0].wrapper_ref == WrapperRef("generated.renamed", "PublicService")
-    assert ir.module_functions_ir[0].export_name == "make_service"
-    assert isinstance(ir.module_functions_ir[0].return_transformer_ir, AwaitableTypeIR)
-    assert isinstance(ir.module_functions_ir[0].return_transformer_ir.inner, SubscriptedWrappedClassTypeIR)
-    assert ir.module_functions_ir[0].return_transformer_ir.inner.wrapper == WrapperRef(
+    class_wrappers = {wrapper.impl_ref.qualname.rpartition(".")[2]: wrapper for wrapper in ir.class_wrappers}
+    function_irs = {function.impl_ref.qualname.rpartition(".")[2]: function for function in ir.module_functions_ir}
+
+    assert class_wrappers["_RenamedImplService"].wrapper_ref == WrapperRef("generated.renamed", "PublicService")
+    assert function_irs["_renamed_make_service"].export_name == "make_service"
+    assert isinstance(function_irs["_renamed_make_service"].return_transformer_ir, AwaitableTypeIR)
+    assert isinstance(function_irs["_renamed_make_service"].return_transformer_ir.inner, SubscriptedWrappedClassTypeIR)
+    assert function_irs["_renamed_make_service"].return_transformer_ir.inner.wrapper == WrapperRef(
         "generated.renamed",
         "PublicService",
     )
+    assert class_wrappers["_DefaultNamedService"].wrapper_ref == WrapperRef("generated.renamed", "DefaultNamedService")
+    assert function_irs["_default_named_factory"].export_name == "default_named_factory"
+    assert class_wrappers["_ExplicitlyPrivateServiceImpl"].wrapper_ref == WrapperRef(
+        "generated.renamed",
+        "_ExplicitlyPrivateService",
+    )
+    assert function_irs["_explicitly_private_factory_impl"].export_name == "_explicitly_private_factory"
 
 
 def test_wrap_decorators_require_factory_call() -> None:
