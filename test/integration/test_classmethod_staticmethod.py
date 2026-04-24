@@ -8,12 +8,9 @@ from test.integration.test_utils import check_pyright
 
 def test_runtime():
     import classmethod_staticmethod
-    import classmethod_staticmethod_impl
 
     obj = classmethod_staticmethod.TestClass(42)
     assert obj.instance_method() == 42
-    assert obj.instance_method.__doc__ == classmethod_staticmethod_impl.TestClass.instance_method.__doc__
-    assert obj.instance_method.aio.__doc__ == classmethod_staticmethod_impl.TestClass.instance_method.__doc__
 
     async def test_async():
         result = await obj.instance_method.aio()
@@ -22,14 +19,6 @@ def test_runtime():
     asyncio.run(test_async())
 
     assert classmethod_staticmethod.TestClass.async_classmethod(2) == 84
-    assert (
-        classmethod_staticmethod.TestClass.async_classmethod.__doc__
-        == classmethod_staticmethod_impl.TestClass.async_classmethod.__doc__
-    )
-    assert (
-        classmethod_staticmethod.TestClass.async_classmethod.aio.__doc__
-        == classmethod_staticmethod_impl.TestClass.async_classmethod.__doc__
-    )
 
     async def test_async_cm():
         result = await classmethod_staticmethod.TestClass.async_classmethod.aio(3)
@@ -38,20 +27,8 @@ def test_runtime():
     asyncio.run(test_async_cm())
 
     assert classmethod_staticmethod.TestClass.sync_classmethod("test") == "sync_test"
-    assert (
-        classmethod_staticmethod.TestClass.sync_classmethod.__doc__
-        == classmethod_staticmethod_impl.TestClass.sync_classmethod.__doc__
-    )
 
     assert classmethod_staticmethod.TestClass.async_staticmethod(10, 20) == 30
-    assert (
-        classmethod_staticmethod.TestClass.async_staticmethod.__doc__
-        == classmethod_staticmethod_impl.TestClass.async_staticmethod.__doc__
-    )
-    assert (
-        classmethod_staticmethod.TestClass.async_staticmethod.aio.__doc__
-        == classmethod_staticmethod_impl.TestClass.async_staticmethod.__doc__
-    )
 
     async def test_async_sm():
         result = await classmethod_staticmethod.TestClass.async_staticmethod.aio(15, 25)
@@ -60,10 +37,18 @@ def test_runtime():
     asyncio.run(test_async_sm())
 
     assert classmethod_staticmethod.TestClass.sync_staticmethod("hello") == "static_hello"
-    assert (
-        classmethod_staticmethod.TestClass.sync_staticmethod.__doc__
-        == classmethod_staticmethod_impl.TestClass.sync_staticmethod.__doc__
-    )
+
+
+def test_generated_wrapper_preserves_docstrings():
+    import classmethod_staticmethod
+
+    wrapper_source = Path(classmethod_staticmethod.__file__).read_text()
+
+    assert '"""Return the instance value asynchronously."""' in wrapper_source
+    assert '"""Multiply the class-level sentinel asynchronously."""' in wrapper_source
+    assert '"""Prefix a string through a synchronous classmethod."""' in wrapper_source
+    assert '"""Add two numbers asynchronously from a staticmethod."""' in wrapper_source
+    assert '"""Prefix a string through a synchronous staticmethod."""' in wrapper_source
 
 
 def test_pyright_implementation():

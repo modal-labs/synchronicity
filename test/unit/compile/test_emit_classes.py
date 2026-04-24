@@ -719,6 +719,7 @@ def test_emit_class_method_descriptors():
     assert "return self._sync_impl(amount)" in code
     assert "self._with_aio_from_impl = _from_impl" not in code
     assert "def _from_impl(self, impl_instance: typing.Any) -> typing.Any:" not in code
+    assert "impl_method =" not in code
 
 
 def test_emit_class_method_docstring_skips_with_aio_class_level_copy():
@@ -750,6 +751,7 @@ def test_emit_class_async_generators():
     assert "_run_generator_async" in code
     assert "_sent = yield _item" in code
     assert "await _wrapped.asend(_sent)" in code
+    assert "impl_method =" not in code
     # No helper functions needed when yield type doesn't need translation
     assert "@staticmethod" not in code
     assert "_wrap_async_gen" not in code

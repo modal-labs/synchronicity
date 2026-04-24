@@ -703,10 +703,10 @@ def emit_method_with_aio_protocol(
             # This is inconsistent with wrappers for methods returning AsyncGenerator,
             # where the wrapper result is already directly async-iterable.
             wrap_expr = return_transformer.wrap_expr(current_target_module, "gen")
-            aio_body = f"impl_method = {impl_dotted}.{mir.method_name}"
+            aio_body = ""
             if unwrap_code:
-                aio_body += "\n" + unwrap_code
-            aio_body += "\n" + (
+                aio_body = unwrap_code + "\n"
+            aio_body += (
                 f"gen = {call_expr_prefix}\n"
                 f"_wrapped = {wrap_expr}\n"
                 f"_sent = None\n"
@@ -731,10 +731,9 @@ def emit_method_with_aio_protocol(
                 method_type=mir.method_type,
                 method_owner_impl_ref=owner.impl_ref,
             )
-            aio_prelude = f"impl_method = {impl_dotted}.{mir.method_name}"
             if unwrap_code:
-                aio_prelude += "\n" + unwrap_code
-            aio_body = (aio_prelude + "\n" + aio_body).replace("wrapper_instance", "self._wrapper_instance")
+                aio_body = unwrap_code + "\n" + aio_body
+            aio_body = aio_body.replace("wrapper_instance", "self._wrapper_instance")
     elif mir.method_type == MethodBindingKind.CLASSMETHOD:
         if mir.is_async_gen:
             wrap_expr = return_transformer.wrap_expr(current_target_module, "gen")

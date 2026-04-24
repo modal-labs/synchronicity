@@ -8,3 +8,6 @@ uv = "latest"
 
 [env]
 PYTHONPATH = "generated:test/support_files"
+
+[tasks.test]
+run = "pytest"
