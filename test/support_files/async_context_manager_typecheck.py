@@ -18,6 +18,12 @@ svc = async_context_manager.ServiceWithContextMethod()
 with svc.connect() as v2:
     assert_type(v2, async_context_manager.Connection)
 
+with async_context_manager.ServiceWithFactoryContexts.connect_class() as v3:
+    assert_type(v3, async_context_manager.Connection)
+
+with async_context_manager.ServiceWithFactoryContexts.connect_static() as v4:
+    assert_type(v4, async_context_manager.Connection)
+
 
 # Async checks
 async def async_check():
@@ -30,3 +36,9 @@ async def async_check():
     svc2 = async_context_manager.ServiceWithContextMethod()
     async with svc2.connect() as av2:
         assert_type(av2, async_context_manager.Connection)
+
+    async with async_context_manager.ServiceWithFactoryContexts.connect_class() as av3:
+        assert_type(av3, async_context_manager.Connection)
+
+    async with async_context_manager.ServiceWithFactoryContexts.connect_static() as av4:
+        assert_type(av4, async_context_manager.Connection)

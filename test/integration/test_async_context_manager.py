@@ -63,6 +63,24 @@ def test_runtime_method_sync():
 
 
 @pytest.mark.usefixtures("generated_wrappers")
+def test_runtime_classmethod_context_manager_sync():
+    import async_context_manager
+
+    with async_context_manager.ServiceWithFactoryContexts.connect_class() as v:
+        assert isinstance(v, async_context_manager.Connection)
+        assert v.value == 123
+
+
+@pytest.mark.usefixtures("generated_wrappers")
+def test_runtime_staticmethod_context_manager_sync():
+    import async_context_manager
+
+    with async_context_manager.ServiceWithFactoryContexts.connect_static() as v:
+        assert isinstance(v, async_context_manager.Connection)
+        assert v.value == 321
+
+
+@pytest.mark.usefixtures("generated_wrappers")
 @pytest.mark.asyncio
 async def test_runtime_method_async():
     import async_context_manager
@@ -71,6 +89,26 @@ async def test_runtime_method_async():
     async with svc.connect() as v:
         assert isinstance(v, async_context_manager.Connection)
         assert v.value == 99
+
+
+@pytest.mark.usefixtures("generated_wrappers")
+@pytest.mark.asyncio
+async def test_runtime_classmethod_context_manager_async():
+    import async_context_manager
+
+    async with async_context_manager.ServiceWithFactoryContexts.connect_class() as v:
+        assert isinstance(v, async_context_manager.Connection)
+        assert v.value == 123
+
+
+@pytest.mark.usefixtures("generated_wrappers")
+@pytest.mark.asyncio
+async def test_runtime_staticmethod_context_manager_async():
+    import async_context_manager
+
+    async with async_context_manager.ServiceWithFactoryContexts.connect_static() as v:
+        assert isinstance(v, async_context_manager.Connection)
+        assert v.value == 321
 
 
 def test_pyright_implementation():

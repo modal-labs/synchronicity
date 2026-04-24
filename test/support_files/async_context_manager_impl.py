@@ -59,3 +59,20 @@ class ServiceWithContextMethod:
     async def connect(self) -> typing.AsyncGenerator[Connection, None]:
         assert threading.current_thread().ident != threading.main_thread().ident
         yield Connection(99)
+
+
+@mod.wrap_class()
+class ServiceWithFactoryContexts:
+    """A class with class/static methods returning async context managers."""
+
+    @classmethod
+    @asynccontextmanager
+    async def connect_class(cls) -> typing.AsyncGenerator[Connection, None]:
+        assert threading.current_thread().ident != threading.main_thread().ident
+        yield Connection(123)
+
+    @staticmethod
+    @asynccontextmanager
+    async def connect_static() -> typing.AsyncGenerator[Connection, None]:
+        assert threading.current_thread().ident != threading.main_thread().ident
+        yield Connection(321)

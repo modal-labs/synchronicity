@@ -8,7 +8,6 @@ import sys
 import types
 import typing
 
-from synchronicity2.descriptor import classproperty
 from synchronicity2.module import (
     _IMPL_WRAPPER_LOCATION_ATTR,
     Module,
@@ -56,11 +55,16 @@ def _is_manual_wrapper(obj: object, *, manual_wrapper_ids: frozenset[int]) -> bo
 
 
 def _manual_class_attribute_access_kind(obj: object) -> ManualClassAttributeAccessKind:
-    if isinstance(obj, (classmethod, staticmethod, property, classproperty)):
+    if isinstance(obj, (classmethod, staticmethod, property)) or _is_classproperty_descriptor(obj):
         return ManualClassAttributeAccessKind.RAW_CLASS_DICT
     if getattr(obj, "_synchronicity_raw_class_dict", False):
         return ManualClassAttributeAccessKind.RAW_CLASS_DICT
     return ManualClassAttributeAccessKind.ATTRIBUTE
+
+
+def _is_classproperty_descriptor(obj: object) -> bool:
+    descriptor_type = type(obj)
+    return descriptor_type.__name__ == "classproperty" and isinstance(getattr(obj, "fget", None), classmethod)
 
 
 def _manual_wrapper_impl_ref(module: Module, obj: object) -> ImplQualifiedRef:
@@ -109,6 +113,16 @@ def _iter_overload_functions(f: types.FunctionType) -> tuple[types.FunctionType,
     return tuple(typing.get_overloads(f))
 
 
+_FORWARDED_DUNDER_METHODS = frozenset(
+    {
+        "__contains__",
+        "__delitem__",
+        "__getitem__",
+        "__setitem__",
+    }
+)
+
+
 def cross_module_imports_for_module(
     module_name: str,
     module_items: dict,
@@ -135,7 +149,7 @@ def cross_module_imports_for_module(
                     continue
                 if isinstance(attr, classmethod | staticmethod):
                     method = attr.__func__
-                elif isinstance(attr, (property, classproperty)):
+                elif isinstance(attr, property) or _is_classproperty_descriptor(attr):
                     getter = attr.fget
                     setter = attr.fset if isinstance(attr, property) else None
                     if getter is not None:
@@ -629,7 +643,7 @@ def parse_class_wrapper_ir(
                     setter_value_ir=setter_value_ir,
                 )
             )
-        elif isinstance(attr, classproperty):
+        elif _is_classproperty_descriptor(attr):
             classproperty_names.add(name)
             fget = attr.fget.__func__
             if inspect.iscoroutinefunction(fget):
@@ -666,6 +680,10 @@ def parse_class_wrapper_ir(
             and name not in manual_attribute_names
         ):
             source_methods.append((name, method, MethodBindingKind.INSTANCE))
+
+    for dunder_name in _FORWARDED_DUNDER_METHODS:
+        if dunder_name in cls.__dict__:
+            source_methods.append((dunder_name, cls.__dict__[dunder_name], MethodBindingKind.INSTANCE))
 
     # async iterator protocol dunders (only directly defined on cls)
     for dunder_name in ("__aiter__", "__anext__"):

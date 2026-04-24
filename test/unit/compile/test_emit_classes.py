@@ -18,6 +18,7 @@ from synchronicity2.codegen.ir import (
     SignatureIR,
 )
 from synchronicity2.codegen.transformer_ir import (
+    AsyncContextManagerTypeIR,
     AsyncGeneratorTypeIR,
     AsyncIteratorTypeIR,
     AwaitableTypeIR,
@@ -946,6 +947,50 @@ def test_emit_classproperty_translation():
     assert "    @classproperty\n    def manager(cls) -> EmitClassPropertyManager:" in code
     assert "_impl_val = test.unit.compile.test_emit_classes.EmitClassPropertyService.manager" in code
     assert "return EmitClassPropertyManager._from_impl(_impl_val)" in code
+
+
+def test_emit_classmethod_and_staticmethod_async_context_manager_helper_binding():
+    ir = ClassWrapperIR(
+        impl_ref=ImplQualifiedRef(IMPL, "EmitContextFactories"),
+        wrapper_ref=WrapperRef(TARGET, "EmitContextFactories"),
+        wrapped_bases=(),
+        generic_type_parameters=None,
+        attributes=(),
+        properties=(),
+        methods=(
+            MethodWrapperIR(
+                method_name="connect_class",
+                method_type=MethodBindingKind.CLASSMETHOD,
+                parameters=(),
+                is_async_gen=False,
+                is_async=False,
+                return_transformer_ir=AsyncContextManagerTypeIR(
+                    value=WrappedClassTypeIR(
+                        impl=ImplQualifiedRef(IMPL, "EmitConnection"),
+                        wrapper=WrapperRef(TARGET, "EmitConnection"),
+                    )
+                ),
+            ),
+            MethodWrapperIR(
+                method_name="connect_static",
+                method_type=MethodBindingKind.STATICMETHOD,
+                parameters=(),
+                is_async_gen=False,
+                is_async=False,
+                return_transformer_ir=AsyncContextManagerTypeIR(
+                    value=WrappedClassTypeIR(
+                        impl=ImplQualifiedRef(IMPL, "EmitConnection"),
+                        wrapper=WrapperRef(TARGET, "EmitConnection"),
+                    )
+                ),
+            ),
+        ),
+    )
+
+    code = emit_class_from_ir(ir, TARGET)
+
+    assert "value_wrapper=cls._wrap_async_cm_EmitConnection" in code
+    assert "value_wrapper=EmitContextFactories._wrap_async_cm_EmitConnection" in code
 
 
 def test_emit_class_without_explicit_init():

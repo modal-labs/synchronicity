@@ -368,7 +368,22 @@ def _build_call_with_wrap(
     method_owner_impl_ref: ImplQualifiedRef | None = None,
 ) -> str:
     """Build a function call with optional return value wrapping."""
-    from .type_transformer import AwaitableTransformer, CoroutineTransformer, WrappedClassTransformer
+    from .type_transformer import (
+        AsyncContextManagerTransformer,
+        AwaitableTransformer,
+        CoroutineTransformer,
+        WrappedClassTransformer,
+    )
+
+    def _adjust_method_helper_reference(expr: str) -> str:
+        if not isinstance(return_transformer, AsyncContextManagerTransformer):
+            return expr
+        if method_type == MethodBindingKind.CLASSMETHOD:
+            return expr.replace("self.", "cls.")
+        if method_type == MethodBindingKind.STATICMETHOD and method_owner_impl_ref is not None:
+            wrapper_name = method_owner_impl_ref.qualname.rpartition(".")[2]
+            return expr.replace("self.", f"{wrapper_name}.")
+        return expr
 
     def _wrap_result_expr(outer_transformer) -> str:
         st = _unwrap_to_self_transformer(outer_transformer)
@@ -405,6 +420,7 @@ def _build_call_with_wrap(
                 wrap_expr = "self._from_impl(result)"
             else:
                 wrap_expr = _wrap_result_expr(return_transformer)
+            wrap_expr = _adjust_method_helper_reference(wrap_expr)
             if is_function:
                 wrap_expr = wrap_expr.replace("self.", "")
             return f"""{indent}result = {wrapped_call}
@@ -425,6 +441,7 @@ def _build_call_with_wrap(
             wrap_expr = "self._from_impl(result)"
         else:
             wrap_expr = _wrap_result_expr(return_transformer)
+        wrap_expr = _adjust_method_helper_reference(wrap_expr)
         if is_function:
             wrap_expr = wrap_expr.replace("self.", "")
         return f"""{indent}result = {call_expr}

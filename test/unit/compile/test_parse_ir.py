@@ -29,6 +29,7 @@ from synchronicity2.codegen.parse import (
     parse_module_level_function_ir,
 )
 from synchronicity2.codegen.transformer_ir import (
+    AsyncContextManagerTypeIR,
     AwaitableTypeIR,
     IdentityTypeIR,
     ImplQualifiedRef,
@@ -338,7 +339,7 @@ def test_parse_class_wrapper_ir_generic_stores_type_parameter_names():
 def test_parse_class_sync_property_readonly():
     """Sync read-only @property is collected into ClassWrapperIR.properties."""
 
-    ns: dict = {"Module": Module}
+    ns: dict = {"Module": Module, "__name__": __name__}
     exec(
         """
 m = Module("generated.prop_parse")
@@ -460,6 +461,93 @@ class Bad:
     Bad = ns["Bad"]
     with pytest.raises(TypeError, match="Class properties must be synchronous"):
         parse_class_wrapper_ir(Bad, "generated.async_classprop", globals_dict=ns)
+
+
+def test_parse_class_vendored_classproperty_descriptor():
+    """Vendored runtimes may provide an equivalent classproperty descriptor type."""
+
+    ns: dict = {"Module": Module}
+    exec(
+        """
+class classproperty:
+    def __init__(self, fget):
+        if not isinstance(fget, classmethod):
+            fget = classmethod(fget)
+        self.fget = fget
+
+    def __get__(self, obj, owner):
+        return self.fget.__get__(None, owner)()
+
+m = Module("generated.vendored_classprop")
+@m.wrap_class()
+class Item:
+    pass
+@m.wrap_class()
+class Service:
+    @classproperty
+    def current(cls) -> Item:
+        return Item()
+""",
+        ns,
+    )
+    Service = ns["Service"]
+    Item = ns["Item"]
+
+    ir = parse_class_wrapper_ir(Service, "generated.vendored_classprop", globals_dict=ns)
+
+    assert len(ir.class_properties) == 1
+    assert isinstance(ir.class_properties[0].return_transformer_ir, WrappedClassTypeIR)
+    assert ir.class_properties[0].return_transformer_ir.impl == ImplQualifiedRef(Item.__module__, Item.__qualname__)
+
+
+def test_parse_class_forwarded_dunder_methods():
+    """Selected data-model methods should be emitted as callable wrappers."""
+
+    m = Module("generated.dunders")
+
+    @m.wrap_class()
+    class Box:
+        async def __getitem__(self, key: str) -> int:
+            return 1
+
+        async def __setitem__(self, key: str, value: int) -> None:
+            return None
+
+        async def __contains__(self, key: str) -> bool:
+            return True
+
+        async def __delitem__(self, key: str) -> None:
+            return None
+
+    ir = parse_class_wrapper_ir(Box, "generated.dunders", globals_dict=locals())
+    method_names = {method_ir.method_name for method_ir in ir.methods}
+
+    assert {"__getitem__", "__setitem__", "__contains__", "__delitem__"} <= method_names
+
+
+def test_parse_classmethod_async_context_manager_return_ir():
+    """Classmethods returning async context managers should preserve wrapped yield translation."""
+
+    from contextlib import asynccontextmanager
+
+    m = Module("generated.class_cm")
+
+    @m.wrap_class()
+    class Item:
+        pass
+
+    @m.wrap_class()
+    class Service:
+        @classmethod
+        @asynccontextmanager
+        async def make(cls) -> typing.AsyncGenerator[Item, None]:
+            yield Item()
+
+    ir = parse_class_wrapper_ir(Service, "generated.class_cm", globals_dict=locals())
+    make_ir = next(method_ir for method_ir in ir.methods if method_ir.method_name == "make")
+
+    assert isinstance(make_ir.return_transformer_ir, AsyncContextManagerTypeIR)
+    assert isinstance(make_ir.return_transformer_ir.value, WrappedClassTypeIR)
 
 
 def test_parse_class_attributes_are_type_ir_not_wrapper_strings():
