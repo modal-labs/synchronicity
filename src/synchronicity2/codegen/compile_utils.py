@@ -18,21 +18,6 @@ if typing.TYPE_CHECKING:
     from .transformer_materialize import MaterializeContext
 
 
-def _parameter_annotation_str(
-    transformer,
-    wrapper_type_str: str,
-    current_target_module: str,
-) -> str:
-    """Use quoted forward references for bare local wrapper class names (class body scope)."""
-    if not isinstance(transformer, WrappedClassTransformer):
-        return wrapper_type_str
-    if not transformer.needs_translation():
-        return wrapper_type_str
-    if transformer._wrapper.wrapper_module == current_target_module:
-        return f'"{transformer._wrapper.wrapper_name}"'
-    return wrapper_type_str
-
-
 def _normalize_async_annotation(func, return_annotation):
     """
     Normalize async function annotations to Awaitable[T] for uniform handling.
@@ -245,6 +230,14 @@ def format_parameters_for_emit(
     last_positional_only_index = -1
     positional_only_marker_added = False
 
+    def _vararg_unwrap_expr(transformer, source_name: str) -> str:
+        item_unwrap = transformer.unwrap_expr("_item")
+        return f"tuple({item_unwrap} for _item in {source_name})"
+
+    def _varkw_unwrap_expr(transformer, source_name: str) -> str:
+        value_unwrap = transformer.unwrap_expr("_value")
+        return f"{{_key: {value_unwrap} for _key, _value in {source_name}.items()}}"
+
     for param_ir in parameters:
         name = param_ir.name
         kind = param_ir.kind
@@ -260,28 +253,37 @@ def format_parameters_for_emit(
         if kind == inspect.Parameter.VAR_POSITIONAL:
             if param_ir.annotation_ir is not None:
                 assert transformer is not None
-                wrapper_type_str = transformer.wrapped_type(current_target_module)
-                ann = _parameter_annotation_str(transformer, wrapper_type_str, current_target_module)
+                ann = transformer.annotation_type(current_target_module)
                 params.append(f"*{name}: {ann}")
+                if transformer.needs_translation():
+                    unwrap_expr = _vararg_unwrap_expr(transformer, name)
+                    unwrap_stmts.append(f"{unwrap_indent}{name}_impl = {unwrap_expr}")
+                    call_args.append(f"*{name}_impl")
+                else:
+                    call_args.append(f"*{name}")
             else:
                 params.append(f"*{name}")
-            call_args.append(f"*{name}")
+                call_args.append(f"*{name}")
 
         elif kind == inspect.Parameter.VAR_KEYWORD:
             if param_ir.annotation_ir is not None:
                 assert transformer is not None
-                wrapper_type_str = transformer.wrapped_type(current_target_module)
-                ann = _parameter_annotation_str(transformer, wrapper_type_str, current_target_module)
+                ann = transformer.annotation_type(current_target_module)
                 params.append(f"**{name}: {ann}")
+                if transformer.needs_translation():
+                    unwrap_expr = _varkw_unwrap_expr(transformer, name)
+                    unwrap_stmts.append(f"{unwrap_indent}{name}_impl = {unwrap_expr}")
+                    call_args.append(f"**{name}_impl")
+                else:
+                    call_args.append(f"**{name}")
             else:
                 params.append(f"**{name}")
-            call_args.append(f"**{name}")
+                call_args.append(f"**{name}")
 
         elif kind == inspect.Parameter.KEYWORD_ONLY:
             if param_ir.annotation_ir is not None:
                 assert transformer is not None
-                wrapper_type_str = transformer.wrapped_type(current_target_module)
-                ann = _parameter_annotation_str(transformer, wrapper_type_str, current_target_module)
+                ann = transformer.annotation_type(current_target_module)
                 param_str = f"{name}: {ann}"
 
                 if transformer.needs_translation():
@@ -302,8 +304,7 @@ def format_parameters_for_emit(
         else:
             if param_ir.annotation_ir is not None:
                 assert transformer is not None
-                wrapper_type_str = transformer.wrapped_type(current_target_module)
-                ann = _parameter_annotation_str(transformer, wrapper_type_str, current_target_module)
+                ann = transformer.annotation_type(current_target_module)
                 param_str = f"{name}: {ann}"
 
                 if transformer.needs_translation():
@@ -372,7 +373,6 @@ def _build_call_with_wrap(
         AsyncContextManagerTransformer,
         AwaitableTransformer,
         CoroutineTransformer,
-        WrappedClassTransformer,
     )
 
     def _adjust_method_helper_reference(expr: str) -> str:
@@ -455,24 +455,14 @@ def _format_return_annotation(
     current_target_module: str,
 ) -> tuple[str, str]:
     """Format return type annotations for both sync and async versions."""
-    from .type_transformer import AwaitableTransformer, CoroutineTransformer
 
-    sync_return_type = return_transformer.wrapped_type(current_target_module, is_async=False)
-    async_return_type = return_transformer.wrapped_type(current_target_module, is_async=True)
+    sync_return_type = return_transformer.annotation_type(current_target_module, is_async=False)
+    async_return_type = return_transformer.annotation_type(current_target_module, is_async=True)
 
     if not sync_return_type:
         return "", ""
 
-    if isinstance(return_transformer, (AwaitableTransformer, CoroutineTransformer)):
-        should_quote = return_transformer.return_transformer.needs_translation()
-    else:
-        should_quote = return_transformer.needs_translation()
-
-    if should_quote:
-        sync_return_str = f' -> "{sync_return_type}"'
-        async_return_str = f' -> "{async_return_type}"'
-    else:
-        sync_return_str = f" -> {sync_return_type}"
-        async_return_str = f" -> {async_return_type}"
+    sync_return_str = f" -> {sync_return_type}"
+    async_return_str = f" -> {async_return_type}"
 
     return sync_return_str, async_return_str

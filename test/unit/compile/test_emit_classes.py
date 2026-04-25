@@ -29,6 +29,7 @@ from synchronicity2.codegen.transformer_ir import (
     ListTypeIR,
     OptionalTypeIR,
     SelfTypeIR,
+    SubscriptedWrappedClassTypeIR,
     WrappedClassTypeIR,
     WrapperRef,
 )
@@ -605,6 +606,30 @@ IR_CLASS_SELF = ClassWrapperIR(
     ),
 )
 
+IR_CLASS_CLASSMETHOD_SELF = ClassWrapperIR(
+    impl_ref=ImplQualifiedRef(IMPL, "EmitSelfClassmethodClass"),
+    wrapper_ref=WrapperRef(TARGET, "EmitSelfClassmethodClass"),
+    wrapped_bases=(),
+    generic_type_parameters=None,
+    attributes=(),
+    properties=(),
+    methods=(
+        MethodWrapperIR(
+            method_name="create",
+            method_type=MethodBindingKind.CLASSMETHOD,
+            parameters=(),
+            is_async_gen=False,
+            is_async=True,
+            return_transformer_ir=AwaitableTypeIR(
+                inner=SelfTypeIR(
+                    owner_impl=ImplQualifiedRef(IMPL, "EmitSelfClassmethodClass"),
+                    wrapper=WrapperRef(TARGET, "EmitSelfClassmethodClass"),
+                )
+            ),
+        ),
+    ),
+)
+
 IR_CLASS_SIMPLE = ClassWrapperIR(
     impl_ref=ImplQualifiedRef(IMPL, "EmitSimpleClass"),
     wrapper_ref=WrapperRef(TARGET, "EmitSimpleClass"),
@@ -695,6 +720,74 @@ IR_CLASS_VARARGS = ClassWrapperIR(
             is_async_gen=False,
             is_async=True,
             return_transformer_ir=AwaitableTypeIR(inner=IdentityTypeIR(signature_text="str")),
+        ),
+    ),
+)
+
+IR_CLASS_TRANSLATED_STATICMETHOD_VARARGS = ClassWrapperIR(
+    impl_ref=ImplQualifiedRef(IMPL, "EmitTranslatedStaticVarArgsClass"),
+    wrapper_ref=WrapperRef(TARGET, "EmitTranslatedStaticVarArgsClass"),
+    wrapped_bases=(),
+    generic_type_parameters=None,
+    attributes=(),
+    properties=(),
+    methods=(
+        MethodWrapperIR(
+            method_name="collect",
+            method_type=MethodBindingKind.STATICMETHOD,
+            parameters=(
+                ParameterIR(
+                    name="args",
+                    kind=2,
+                    annotation_ir=WrappedClassTypeIR(
+                        impl=ImplQualifiedRef(IMPL, "Node"),
+                        wrapper=WrapperRef(TARGET, "Node"),
+                    ),
+                    default_expr=None,
+                ),
+                ParameterIR(
+                    name="kwargs",
+                    kind=4,
+                    annotation_ir=WrappedClassTypeIR(
+                        impl=ImplQualifiedRef(IMPL, "Node"),
+                        wrapper=WrapperRef(TARGET, "Node"),
+                    ),
+                    default_expr=None,
+                ),
+            ),
+            is_async_gen=False,
+            is_async=True,
+            return_transformer_ir=AwaitableTypeIR(inner=IdentityTypeIR(signature_text="list[str]")),
+        ),
+    ),
+)
+
+IR_CLASS_TRANSLATED_STATICMETHOD_SUBSCRIPTED_VARARGS = ClassWrapperIR(
+    impl_ref=ImplQualifiedRef(IMPL, "EmitTranslatedSubscriptedStaticVarArgsClass"),
+    wrapper_ref=WrapperRef(TARGET, "EmitTranslatedSubscriptedStaticVarArgsClass"),
+    wrapped_bases=(),
+    generic_type_parameters=("T",),
+    attributes=(),
+    properties=(),
+    methods=(
+        MethodWrapperIR(
+            method_name="collect",
+            method_type=MethodBindingKind.STATICMETHOD,
+            parameters=(
+                ParameterIR(
+                    name="args",
+                    kind=2,
+                    annotation_ir=SubscriptedWrappedClassTypeIR(
+                        impl=ImplQualifiedRef(IMPL, "Node"),
+                        wrapper=WrapperRef(TARGET, "Node"),
+                        type_args=(IdentityTypeIR(signature_text="T"),),
+                    ),
+                    default_expr=None,
+                ),
+            ),
+            is_async_gen=False,
+            is_async=True,
+            return_transformer_ir=AwaitableTypeIR(inner=IdentityTypeIR(signature_text="list[str]")),
         ),
     ),
 )
@@ -818,6 +911,24 @@ def test_emit_class_method_with_varargs():
     assert f"{IMPL}.EmitVarArgsClass.method_with_varargs(self._impl_instance, a, *args, b=b, **kwargs)" in code
 
 
+def test_emit_staticmethod_translated_varargs_and_kwargs():
+    code = emit_class_from_ir(IR_CLASS_TRANSLATED_STATICMETHOD_VARARGS, TARGET)
+
+    assert 'def collect(*args: "Node", **kwargs: "Node") -> list[str]:' in code
+    assert "args_impl = tuple(_item._impl_instance for _item in args)" in code
+    assert "kwargs_impl = {_key: _value._impl_instance for _key, _value in kwargs.items()}" in code
+    assert f"{IMPL}.EmitTranslatedStaticVarArgsClass.collect(*args_impl, **kwargs_impl)" in code
+
+
+def test_emit_staticmethod_translated_subscripted_varargs_quotes_forward_ref():
+    code = emit_class_from_ir(IR_CLASS_TRANSLATED_STATICMETHOD_SUBSCRIPTED_VARARGS, TARGET)
+
+    assert 'def __call__(self, *args: "Node[T]") -> list[str]:' in code
+    assert 'def aio(self, *args: "Node[T]") -> list[str]:' in code
+    assert 'def collect(*args: "Node[T]") -> list[str]:' in code
+    assert "args_impl = tuple(_item._impl_instance for _item in args)" in code
+
+
 def test_emit_class_method_various_builtin_default_values():
     code = emit_class_from_ir(IR_CLASS_METHOD_WITH_DEFAULTS, TARGET)
     compile(code, "<string>", "exec")
@@ -876,29 +987,43 @@ def test_emit_class_method_overloads_translate_each_overload():
 
 def test_emit_class_aiter_typed_iter():
     code = emit_class_from_ir(IR_CLASS_ASYNC_ITERABLE, TARGET)
-    assert 'def __iter__(self) -> "synchronicity2.types.SyncOrAsyncIterator[str]":' in code
-    assert 'def __aiter__(self) -> "synchronicity2.types.SyncOrAsyncIterator[str]":' in code
+    assert "def __iter__(self) -> synchronicity2.types.SyncOrAsyncIterator[str]:" in code
+    assert "def __aiter__(self) -> synchronicity2.types.SyncOrAsyncIterator[str]:" in code
 
 
 def test_emit_class_anext_typed_next():
     code = emit_class_from_ir(IR_CLASS_ASYNC_ITERATOR, TARGET)
     assert "def __next__(self) -> int:" in code
     assert "async def __anext__(self) -> int:" in code
-    assert 'def __iter__(self) -> "typing.Self":' in code
-    assert 'def __aiter__(self) -> "typing.Self":' in code
+    assert "def __iter__(self) -> typing.Self:" in code
+    assert "def __aiter__(self) -> typing.Self:" in code
 
 
 def test_emit_class_preserves_typing_self():
     code = emit_class_from_ir(IR_CLASS_SELF, TARGET)
-    assert 'def accept(self, s: typing.Self) -> "typing.Self":' in code
+    assert "def accept(self, s: typing.Self) -> typing.Self:" in code
     assert "typing.cast(typing.Self, self._from_impl(result))" in code
     assert "s_impl = s._impl_instance" in code
 
 
+def test_emit_classmethod_with_aio_threads_owner_self_type_into_helper():
+    code = emit_class_from_ir(IR_CLASS_CLASSMETHOD_SELF, TARGET)
+    assert (
+        "_EmitSelfClassmethodClass_create_SelfType = typing.TypeVar("
+        '"_EmitSelfClassmethodClass_create_SelfType", bound="EmitSelfClassmethodClass")'
+    ) in code
+    assert (
+        "class _EmitSelfClassmethodClass_create_MethodWithAio(MethodWithAio, "
+        "typing.Generic[_EmitSelfClassmethodClass_create_SelfType]):"
+    ) in code
+    assert "def __call__(self) -> _EmitSelfClassmethodClass_create_SelfType:" in code
+    assert "async def aio(self) -> _EmitSelfClassmethodClass_create_SelfType:" in code
+
+
 def test_emit_class_aiter_signature_variations():
     code = emit_class_from_ir(IR_CLASS_AITER_SYNC_WITH_ANN, TARGET)
-    assert 'def __iter__(self) -> "synchronicity2.types.SyncOrAsyncIterator[str]":' in code
-    assert 'def __aiter__(self) -> "synchronicity2.types.SyncOrAsyncIterator[str]":' in code
+    assert "def __iter__(self) -> synchronicity2.types.SyncOrAsyncIterator[str]:" in code
+    assert "def __aiter__(self) -> synchronicity2.types.SyncOrAsyncIterator[str]:" in code
 
     code = emit_class_from_ir(IR_CLASS_AITER_SYNC_NO_ANN, TARGET)
     assert "def __iter__(self):" in code
@@ -906,20 +1031,20 @@ def test_emit_class_aiter_signature_variations():
     assert " -> :" not in code
 
     code = emit_class_from_ir(IR_CLASS_AITER_ASYNC_WITH_ANN, TARGET)
-    assert 'def __iter__(self) -> "synchronicity2.types.SyncOrAsyncIterator[int]":' in code
-    assert 'def __aiter__(self) -> "synchronicity2.types.SyncOrAsyncIterator[int]":' in code
+    assert "def __iter__(self) -> synchronicity2.types.SyncOrAsyncIterator[int]:" in code
+    assert "def __aiter__(self) -> synchronicity2.types.SyncOrAsyncIterator[int]:" in code
 
     code = emit_class_from_ir(IR_CLASS_AITER_ASYNC_NO_ANN, TARGET)
     assert "def __iter__(self) -> typing.Any:" in code
     assert "def __aiter__(self) -> typing.Any:" in code
 
     code = emit_class_from_ir(IR_CLASS_AITER_ASYNC_GEN, TARGET)
-    assert 'def __iter__(self) -> "typing.Generator[float, None, None]":' in code
-    assert 'def __aiter__(self) -> "typing.AsyncGenerator[float, None]":' in code
+    assert "def __iter__(self) -> typing.Generator[float, None, None]:" in code
+    assert "def __aiter__(self) -> typing.AsyncGenerator[float, None]:" in code
 
     code = emit_class_from_ir(IR_CLASS_AITER_ASYNC_ITER_TYPE, TARGET)
-    assert 'def __iter__(self) -> "synchronicity2.types.SyncOrAsyncIterator[bool]":' in code
-    assert 'def __aiter__(self) -> "synchronicity2.types.SyncOrAsyncIterator[bool]":' in code
+    assert "def __iter__(self) -> synchronicity2.types.SyncOrAsyncIterator[bool]:" in code
+    assert "def __aiter__(self) -> synchronicity2.types.SyncOrAsyncIterator[bool]:" in code
 
 
 def test_emit_classproperty_translation():
@@ -944,7 +1069,7 @@ def test_emit_classproperty_translation():
 
     code = emit_class_from_ir(ir, TARGET)
 
-    assert "    @classproperty\n    def manager(cls) -> EmitClassPropertyManager:" in code
+    assert '    @classproperty\n    def manager(cls) -> "EmitClassPropertyManager":' in code
     assert "_impl_val = test.unit.compile.test_emit_classes.EmitClassPropertyService.manager" in code
     assert "return EmitClassPropertyManager._from_impl(_impl_val)" in code
 

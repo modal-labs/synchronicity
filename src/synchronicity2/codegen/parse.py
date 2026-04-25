@@ -142,7 +142,7 @@ def cross_module_imports_for_module(
         elif isinstance(obj, type):
             for base in getattr(obj, "__bases__", ()):
                 _check_impl_type_for_cross_ref(base, module_name, cross_module_refs)
-            for method_name, attr in obj.__dict__.items():
+            for method_name, attr in tuple(obj.__dict__.items()):
                 if method_name.startswith("_"):
                     continue
                 if _is_manual_wrapper(attr, manual_wrapper_ids=manual_wrapper_ids):
@@ -221,7 +221,7 @@ def build_module_compilation_ir(
                     if isinstance(arg, typing.TypeVar) or isinstance(arg, typing.ParamSpec):
                         module_typevars[arg.__name__] = arg
 
-        for name, attr in cls.__dict__.items():
+        for name, attr in tuple(cls.__dict__.items()):
             if name.startswith("_") or _is_manual_wrapper(attr, manual_wrapper_ids=manual_wrapper_ids):
                 continue
             if isinstance(attr, classmethod | staticmethod):
@@ -578,7 +578,7 @@ def parse_class_wrapper_ir(
     property_irs: list[PropertyWrapperIR] = []
     classproperty_irs: list[ClassPropertyWrapperIR] = []
     manual_attributes: list[ManualClassAttributeIR] = []
-    for name, attr in cls.__dict__.items():
+    for name, attr in tuple(cls.__dict__.items()):
         if name.startswith("_"):
             continue
         if _is_manual_wrapper(attr, manual_wrapper_ids=manual_wrapper_ids):

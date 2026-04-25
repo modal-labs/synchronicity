@@ -15,6 +15,10 @@ class SomeClass:
         assert isinstance(s, SomeClass)  # this can be a subclass too
         return self
 
+    @classmethod
+    async def create(cls) -> typing.Self:
+        return cls()
+
 
 @lib.wrap_class()
 class SomeSubclass(SomeClass):

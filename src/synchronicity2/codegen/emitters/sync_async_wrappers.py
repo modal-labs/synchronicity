@@ -473,7 +473,6 @@ def _method_with_aio_signature_variants(
     )
     if self_type_name is not None:
         used_type_parameters.append(self_type_name)
-
     with_aio_variants: list[tuple[str, str, str]] = []
     for param_str, sync_return_str, async_return_str in rendered:
         rewritten_param_str = _rewrite_with_aio_annotation_text(param_str, self_type_name)
@@ -671,6 +670,7 @@ def emit_method_with_aio_protocol(
     supported_generic_parameters = _supported_method_with_aio_parameters(owner, mir.method_name, generic_parameters)
     with_aio_name = _method_with_aio_protocol_name(owner, mir.method_name)
     current_target_module = owner.target_module
+    self_type_name = _method_with_aio_self_type_name(owner, mir.method_name) if _needs_self_type else None
     return_transformer = materialize_transformer_ir(mir.return_transformer_ir, runtime_package, ctx=mat_ctx)
     param_str, call_args_str, unwrap_code = format_parameters_for_emit(
         mir.parameters,
@@ -682,6 +682,9 @@ def emit_method_with_aio_protocol(
     with_aio_call_args_str = _with_aio_call_args_str(mir.parameters)
     sync_return_str, async_return_str = _format_return_annotation(return_transformer, current_target_module)
     aio_return_str = _with_aio_return_str(async_return_str)
+    param_str = _rewrite_with_aio_annotation_text(param_str, self_type_name)
+    sync_return_str = _rewrite_with_aio_annotation_text(sync_return_str, self_type_name)
+    aio_return_str = _rewrite_with_aio_annotation_text(aio_return_str, self_type_name)
     impl_dotted = _impl_type_dotted(owner.impl_ref)
     call_expr_prefix = _method_impl_call_expr(
         mir.method_type,
@@ -802,6 +805,8 @@ def emit_method_with_aio_protocol(
             if unwrap_code:
                 aio_body = unwrap_code + "\n" + aio_body
 
+    aio_body = _rewrite_with_aio_annotation_text(aio_body, self_type_name)
+
     if supported_generic_parameters:
         header = f"class {with_aio_name}(MethodWithAio, typing.Generic[{', '.join(supported_generic_parameters)}]):"
     else:
@@ -839,8 +844,11 @@ def emit_method_with_aio_protocol(
     if helpers_code:
         body_lines.append("")
         body_lines.append(helpers_code)
+    prelude = ""
+    if self_type_name is not None and self_type_name in supported_generic_parameters:
+        prelude = f'{self_type_name} = typing.TypeVar("{self_type_name}", bound="{owner.wrapper_name}")\n\n'
 
-    return f"{header}\n" + "\n".join(body_lines)
+    return prelude + f"{header}\n" + "\n".join(body_lines)
 
 
 def _method_with_aio_type_data(
@@ -1452,7 +1460,7 @@ def emit_class_from_ir(
         attr_type_str = ""
         if annotation_ir is not None:
             attr_transformer = materialize_transformer_ir(annotation_ir, runtime_package, ctx=mat_ctx)
-            attr_type_str = attr_transformer.wrapped_type(target_module)
+            attr_type_str = attr_transformer.annotation_type(target_module)
         if attr_type_str:
             property_code = f"""    # Generated properties
     @property
@@ -1478,7 +1486,7 @@ def emit_class_from_ir(
         prop_type_str = ""
         if prop_ir.return_transformer_ir is not None:
             prop_transformer = materialize_transformer_ir(prop_ir.return_transformer_ir, runtime_package, ctx=mat_ctx)
-            prop_type_str = prop_transformer.wrapped_type(target_module)
+            prop_type_str = prop_transformer.annotation_type(target_module)
         # Getter: wrap impl value → wrapper value if needed
         getter_value_expr = f"self._impl_instance.{prop_ir.name}"
         if prop_transformer is not None and prop_transformer.needs_translation():
@@ -1499,7 +1507,7 @@ def emit_class_from_ir(
             setter_type_str = ""
             if prop_ir.setter_value_ir is not None:
                 setter_transformer = materialize_transformer_ir(prop_ir.setter_value_ir, runtime_package, ctx=mat_ctx)
-                setter_type_str = setter_transformer.wrapped_type(target_module)
+                setter_type_str = setter_transformer.annotation_type(target_module)
             # Setter: unwrap wrapper value → impl value if needed
             if setter_transformer is not None and setter_transformer.needs_translation():
                 setter_assign_expr = setter_transformer.unwrap_expr("value")
@@ -1532,7 +1540,7 @@ def emit_class_from_ir(
                 runtime_package,
                 ctx=mat_ctx,
             )
-            prop_type_str = prop_transformer.wrapped_type(target_module)
+            prop_type_str = prop_transformer.annotation_type(target_module)
 
         getter_value_expr = f"{impl_dot}.{class_prop_ir.name}"
         if prop_transformer is not None and prop_transformer.needs_translation():

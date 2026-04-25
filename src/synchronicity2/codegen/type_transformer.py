@@ -90,6 +90,25 @@ class TypeTransformer(ABC):
         """
         return {}
 
+    def has_local_wrapper_ref(self, target_module: str) -> bool:
+        """Whether this annotation references a wrapper class defined in ``target_module``.
+
+        Generated source must quote such annotations when they can appear before the local
+        wrapper class is defined.
+        """
+        return False
+
+    def annotation_type(self, target_module: str, is_async: bool = True) -> str:
+        """Return the string to emit in generated annotations.
+
+        This defaults to ``wrapped_type`` and quotes the whole expression whenever it contains
+        a local wrapper reference that may otherwise be a forward reference at import time.
+        """
+        wrapped = self.wrapped_type(target_module, is_async)
+        if self.has_local_wrapper_ref(target_module):
+            return f'"{wrapped}"'
+        return wrapped
+
 
 class IdentityStrTransformer(TypeTransformer):
     """Like :class:`IdentityTransformer` but stores only the preformatted type string."""
@@ -160,6 +179,9 @@ class WrappedClassTransformer(TypeTransformer):
     def needs_translation(self) -> bool:
         return True
 
+    def has_local_wrapper_ref(self, target_module: str) -> bool:
+        return self._wrapper.wrapper_module == target_module
+
 
 class SubscriptedWrappedClassTransformer(TypeTransformer):
     """Wrapped class subscripted with type args, e.g. ``SomeContainer[WrappedType]``.
@@ -190,6 +212,11 @@ class SubscriptedWrappedClassTransformer(TypeTransformer):
 
     def needs_translation(self) -> bool:
         return True
+
+    def has_local_wrapper_ref(self, target_module: str) -> bool:
+        return self._inner.has_local_wrapper_ref(target_module) or any(
+            t.has_local_wrapper_ref(target_module) for t in self._type_arg_transformers
+        )
 
 
 class TypeVarBoundTransformer(TypeTransformer):
@@ -309,6 +336,9 @@ class ListTransformer(TypeTransformer):
         """Recursively collect helpers from item transformer."""
         return self.item_transformer.get_wrapper_helpers(target_module, indent)
 
+    def has_local_wrapper_ref(self, target_module: str) -> bool:
+        return self.item_transformer.has_local_wrapper_ref(target_module)
+
 
 class DictTransformer(TypeTransformer):
     """Transformer for dict[K, V] types."""
@@ -352,6 +382,11 @@ class DictTransformer(TypeTransformer):
         helpers.update(self.key_transformer.get_wrapper_helpers(target_module, indent))
         helpers.update(self.value_transformer.get_wrapper_helpers(target_module, indent))
         return helpers
+
+    def has_local_wrapper_ref(self, target_module: str) -> bool:
+        return self.key_transformer.has_local_wrapper_ref(
+            target_module
+        ) or self.value_transformer.has_local_wrapper_ref(target_module)
 
 
 class TupleTransformer(TypeTransformer):
@@ -418,6 +453,9 @@ class TupleTransformer(TypeTransformer):
             helpers.update(transformer.get_wrapper_helpers(target_module, indent))
         return helpers
 
+    def has_local_wrapper_ref(self, target_module: str) -> bool:
+        return any(transformer.has_local_wrapper_ref(target_module) for transformer in self.item_transformers)
+
 
 class OptionalTransformer(TypeTransformer):
     """Transformer for Optional[T] (Union[T, None]) types."""
@@ -456,6 +494,9 @@ class OptionalTransformer(TypeTransformer):
     ) -> dict[str, str]:
         """Recursively collect helpers from inner transformer."""
         return self.inner_transformer.get_wrapper_helpers(target_module, indent)
+
+    def has_local_wrapper_ref(self, target_module: str) -> bool:
+        return self.inner_transformer.has_local_wrapper_ref(target_module)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -795,6 +836,9 @@ class UnionTransformer(TypeTransformer):
             helpers.update(transformer.get_wrapper_helpers(target_module, indent))
         return helpers
 
+    def has_local_wrapper_ref(self, target_module: str) -> bool:
+        return any(transformer.has_local_wrapper_ref(target_module) for transformer in self.item_transformers)
+
 
 class AsyncGeneratorTransformer(TypeTransformer):
     """Transformer for AsyncGenerator/AsyncIterator types."""
@@ -903,6 +947,9 @@ class AsyncGeneratorTransformer(TypeTransformer):
 
         return helpers
 
+    def has_local_wrapper_ref(self, target_module: str) -> bool:
+        return self.yield_transformer.has_local_wrapper_ref(target_module)
+
 
 class SyncGeneratorTransformer(TypeTransformer):
     """Transformer for sync Generator types."""
@@ -974,6 +1021,9 @@ class SyncGeneratorTransformer(TypeTransformer):
 
         return helpers
 
+    def has_local_wrapper_ref(self, target_module: str) -> bool:
+        return self.yield_transformer.has_local_wrapper_ref(target_module)
+
 
 # Keep GeneratorTransformer as an alias for backward compatibility during transition
 GeneratorTransformer = AsyncGeneratorTransformer
@@ -1039,6 +1089,9 @@ class AsyncIteratorTransformer(TypeTransformer):
             helpers[helper_name] = helper_func
 
         return helpers
+
+    def has_local_wrapper_ref(self, target_module: str) -> bool:
+        return self.item_transformer.has_local_wrapper_ref(target_module)
 
 
 class AsyncIterableTransformer(TypeTransformer):
@@ -1108,6 +1161,9 @@ class AsyncIterableTransformer(TypeTransformer):
 
         return helpers
 
+    def has_local_wrapper_ref(self, target_module: str) -> bool:
+        return self.item_transformer.has_local_wrapper_ref(target_module)
+
 
 class AsyncContextManagerTransformer(TypeTransformer):
     """Transformer for AsyncContextManager[T] types.
@@ -1160,6 +1216,9 @@ class AsyncContextManagerTransformer(TypeTransformer):
 
         return helpers
 
+    def has_local_wrapper_ref(self, target_module: str) -> bool:
+        return self.value_transformer.has_local_wrapper_ref(target_module)
+
 
 class CoroutineTransformer(TypeTransformer):
     """Transformer for Coroutine[YieldType, SendType, ReturnType] types.
@@ -1194,6 +1253,9 @@ class CoroutineTransformer(TypeTransformer):
         """Signal that this type needs to be awaited or run through synchronizer."""
         return True
 
+    def has_local_wrapper_ref(self, target_module: str) -> bool:
+        return self.return_transformer.has_local_wrapper_ref(target_module)
+
 
 class AwaitableTransformer(TypeTransformer):
     """Transformer for Awaitable[T] types.
@@ -1227,6 +1289,9 @@ class AwaitableTransformer(TypeTransformer):
     def requires_await(self) -> bool:
         """Signal that this type needs to be awaited or run through synchronizer."""
         return True
+
+    def has_local_wrapper_ref(self, target_module: str) -> bool:
+        return self.return_transformer.has_local_wrapper_ref(target_module)
 
 
 def _is_self_annotation(annotation: object) -> bool:

@@ -550,6 +550,27 @@ def test_parse_classmethod_async_context_manager_return_ir():
     assert isinstance(make_ir.return_transformer_ir.value, WrappedClassTypeIR)
 
 
+def test_parse_class_wrapper_ir_tolerates_class_dict_mutation_during_property_inspection():
+    m = Module("generated.mutating_prop")
+
+    class MutatingProperty(property):
+        @property
+        def fget(self):
+            MutatingService._added_during_parse = lambda self: None
+            return super().fget
+
+    @m.wrap_class()
+    class MutatingService:
+        def _get_value(self) -> int:
+            return 1
+
+        value = MutatingProperty(_get_value)
+
+    ir = parse_class_wrapper_ir(MutatingService, "generated.mutating_prop", globals_dict=locals())
+
+    assert any(prop.name == "value" for prop in ir.properties)
+
+
 def test_parse_class_attributes_are_type_ir_not_wrapper_strings():
     """Class field annotations are TypeTransformerIR (e.g. WrappedClassTypeIR), not emitted names.
 

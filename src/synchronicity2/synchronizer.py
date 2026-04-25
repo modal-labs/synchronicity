@@ -231,7 +231,11 @@ class Synchronizer:
                     value = fut.result(timeout=self._future_poll_interval)
                     break
                 except concurrent.futures.TimeoutError:
-                    pass
+                    # concurrent.futures.TimeoutError aliases builtins TimeoutError, so a coroutine-raised
+                    # TimeoutError is indistinguishable by exception type alone. Only treat it as a polling
+                    # timeout while the cross-thread future is still pending.
+                    if fut.done():
+                        raise
         except KeyboardInterrupt as exc:
             # in case there is a keyboard interrupt while we are waiting
             # we cancel the *underlying* coro_task (unlike what fut.cancel() would do)
@@ -288,6 +292,10 @@ class Synchronizer:
                         value = await asyncio.shield(shielded_task)
                         break
                     except asyncio.TimeoutError:
+                        # asyncio.TimeoutError aliases builtins TimeoutError, so if the wrapped future already
+                        # resolved this is the coroutine's own exception and must propagate instead of polling.
+                        if a_fut.done():
+                            raise
                         continue
 
             except asyncio.CancelledError:

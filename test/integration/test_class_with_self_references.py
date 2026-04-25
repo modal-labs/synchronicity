@@ -21,6 +21,7 @@ def test_runtime():
     assert sub.accept_self_by_name(sub) is sub
 
     assert a.accept_self_by_name(sub)
+    assert isinstance(class_with_self_references.SomeClass.create(), class_with_self_references.SomeClass)
 
 
 def test_pyright_implementation():
