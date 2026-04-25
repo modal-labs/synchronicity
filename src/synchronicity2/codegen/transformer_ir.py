@@ -84,6 +84,14 @@ class DictTypeIR(ImportAwareTypeIR):
 
 
 @dataclasses.dataclass(frozen=True)
+class SequenceTypeIR(ImportAwareTypeIR):
+    item: TypeTransformerIR
+
+    def required_import_modules(self) -> frozenset[str]:
+        return self.item.required_import_modules()
+
+
+@dataclasses.dataclass(frozen=True)
 class TupleTypeIR(ImportAwareTypeIR):
     """Fixed ``tuple[T1, T2]`` or variadic ``tuple[T, ...]`` (``variadic=True``, single element)."""
 
@@ -170,6 +178,17 @@ class AsyncContextManagerTypeIR(ImportAwareTypeIR):
 
 
 @dataclasses.dataclass(frozen=True)
+class CallableTypeIR(ImportAwareTypeIR):
+    params: tuple[TypeTransformerIR, ...] | None
+    return_type: TypeTransformerIR
+
+    def required_import_modules(self) -> frozenset[str]:
+        if self.params is None:
+            return self.return_type.required_import_modules()
+        return _merge_required_import_modules(*self.params, self.return_type)
+
+
+@dataclasses.dataclass(frozen=True)
 class SubscriptedWrappedClassTypeIR(ImportAwareTypeIR):
     """Wrapped class subscripted with type arguments, e.g. ``SomeContainer[WrappedType]``."""
 
@@ -188,6 +207,7 @@ TypeTransformerIR = typing.Union[
     SelfTypeIR,
     ListTypeIR,
     DictTypeIR,
+    SequenceTypeIR,
     TupleTypeIR,
     OptionalTypeIR,
     UnionTypeIR,
@@ -198,6 +218,7 @@ TypeTransformerIR = typing.Union[
     CoroutineTypeIR,
     AwaitableTypeIR,
     AsyncContextManagerTypeIR,
+    CallableTypeIR,
     SubscriptedWrappedClassTypeIR,
 ]
 

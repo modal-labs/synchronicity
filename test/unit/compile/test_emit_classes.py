@@ -22,6 +22,7 @@ from synchronicity2.codegen.transformer_ir import (
     AsyncGeneratorTypeIR,
     AsyncIteratorTypeIR,
     AwaitableTypeIR,
+    CallableTypeIR,
     CoroutineTypeIR,
     DictTypeIR,
     IdentityTypeIR,
@@ -29,6 +30,7 @@ from synchronicity2.codegen.transformer_ir import (
     ListTypeIR,
     OptionalTypeIR,
     SelfTypeIR,
+    SequenceTypeIR,
     SubscriptedWrappedClassTypeIR,
     WrappedClassTypeIR,
     WrapperRef,
@@ -1116,6 +1118,68 @@ def test_emit_classmethod_and_staticmethod_async_context_manager_helper_binding(
 
     assert "value_wrapper=cls._wrap_async_cm_EmitConnection" in code
     assert "value_wrapper=EmitContextFactories._wrap_async_cm_EmitConnection" in code
+
+
+def test_emit_sequence_and_callable_ellipsis_annotations():
+    ir = ClassWrapperIR(
+        impl_ref=ImplQualifiedRef(IMPL, "EmitSequenceCallableService"),
+        wrapper_ref=WrapperRef(TARGET, "EmitSequenceCallableService"),
+        wrapped_bases=(),
+        generic_type_parameters=None,
+        attributes=(
+            (
+                "deps",
+                CallableTypeIR(
+                    params=None,
+                    return_type=SequenceTypeIR(
+                        item=WrappedClassTypeIR(
+                            impl=ImplQualifiedRef(IMPL, "Node"),
+                            wrapper=WrapperRef(TARGET, "Node"),
+                        )
+                    ),
+                ),
+            ),
+        ),
+        properties=(),
+        methods=(
+            MethodWrapperIR(
+                method_name="clone_all",
+                method_type=MethodBindingKind.INSTANCE,
+                parameters=(
+                    ParameterIR(
+                        name="nodes",
+                        kind=1,
+                        annotation_ir=SequenceTypeIR(
+                            item=WrappedClassTypeIR(
+                                impl=ImplQualifiedRef(IMPL, "Node"),
+                                wrapper=WrapperRef(TARGET, "Node"),
+                            )
+                        ),
+                        default_expr=None,
+                    ),
+                ),
+                is_async_gen=False,
+                is_async=True,
+                return_transformer_ir=AwaitableTypeIR(
+                    inner=SequenceTypeIR(
+                        item=WrappedClassTypeIR(
+                            impl=ImplQualifiedRef(IMPL, "Node"),
+                            wrapper=WrapperRef(TARGET, "Node"),
+                        )
+                    )
+                ),
+            ),
+        ),
+    )
+
+    code = emit_class_from_ir(ir, TARGET)
+
+    assert (
+        'def deps(self) -> "typing.Callable[..., '
+        'typing.Sequence[test.unit.compile.test_emit_classes.Node]]":' in code
+    )
+    assert 'def clone_all(self, nodes: "typing.Sequence[Node]") -> "typing.Sequence[Node]":' in code
+    assert "nodes_impl = [x._impl_instance for x in nodes]" in code
 
 
 def test_emit_class_without_explicit_init():

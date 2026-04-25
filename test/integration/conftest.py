@@ -220,6 +220,7 @@ def generated_wrappers():
         "property_class_impl",
         "renamed_exports_impl",
         "classproperty_class_impl",
+        "sequence_callable_annotations_impl",
         "variadic_translation_impl",
         "sandboxlib._sandbox",
     ]

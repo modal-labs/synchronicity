@@ -19,6 +19,7 @@ from .transformer_ir import (
     AsyncIterableTypeIR,
     AsyncIteratorTypeIR,
     AwaitableTypeIR,
+    CallableTypeIR,
     CoroutineTypeIR,
     DictTypeIR,
     IdentityTypeIR,
@@ -26,6 +27,7 @@ from .transformer_ir import (
     ListTypeIR,
     OptionalTypeIR,
     SelfTypeIR,
+    SequenceTypeIR,
     SubscriptedWrappedClassTypeIR,
     SyncGeneratorTypeIR,
     TupleTypeIR,
@@ -206,6 +208,19 @@ def annotation_to_transformer_ir(
             )
         return _identity_ir_from_annotation(annotation)
 
+    if origin is collections.abc.Sequence:
+        if args:
+            return SequenceTypeIR(
+                annotation_to_transformer_ir(
+                    args[0],
+                    owner_impl_type=owner_impl_type,
+                    owner_has_type_parameters=owner_has_type_parameters,
+                    impl_modules=impl_modules,
+                    source_label=source_label,
+                )
+            )
+        return _identity_ir_from_annotation(annotation)
+
     if origin is tuple:
         if args:
             if Ellipsis in args:
@@ -361,6 +376,34 @@ def annotation_to_transformer_ir(
             )
         return AsyncContextManagerTypeIR(value=_identity_ir_from_annotation(typing.Any))
 
+    if origin is collections.abc.Callable:
+        if len(args) >= 2:
+            params = args[0]
+            return_type = annotation_to_transformer_ir(
+                args[1],
+                owner_impl_type=owner_impl_type,
+                owner_has_type_parameters=owner_has_type_parameters,
+                impl_modules=impl_modules,
+                source_label=source_label,
+            )
+            if params is Ellipsis:
+                return CallableTypeIR(None, return_type)
+            if isinstance(params, list | tuple):
+                return CallableTypeIR(
+                    tuple(
+                        annotation_to_transformer_ir(
+                            param,
+                            owner_impl_type=owner_impl_type,
+                            owner_has_type_parameters=owner_has_type_parameters,
+                            impl_modules=impl_modules,
+                            source_label=source_label,
+                        )
+                        for param in params
+                    ),
+                    return_type,
+                )
+        return _identity_ir_from_annotation(annotation)
+
     # Subscripted wrapped class, e.g. SomeContainer[WrappedType]
     if isinstance(origin, type) and _is_wrapped_impl(origin) and args:
         arg_irs = tuple(
@@ -415,6 +458,8 @@ def materialize_transformer_ir(
             materialize_transformer_ir(ir.key, runtime_package, ctx=ctx),
             materialize_transformer_ir(ir.value, runtime_package, ctx=ctx),
         )
+    if isinstance(ir, SequenceTypeIR):
+        return tt.SequenceTransformer(materialize_transformer_ir(ir.item, runtime_package, ctx=ctx))
     if isinstance(ir, TupleTypeIR):
         if ir.variadic:
             (single,) = ir.elements
@@ -448,6 +493,13 @@ def materialize_transformer_ir(
         return tt.CoroutineTransformer(materialize_transformer_ir(ir.return_type, runtime_package, ctx=ctx))
     if isinstance(ir, AwaitableTypeIR):
         return tt.AwaitableTransformer(materialize_transformer_ir(ir.inner, runtime_package, ctx=ctx))
+    if isinstance(ir, CallableTypeIR):
+        params = (
+            None
+            if ir.params is None
+            else tuple(materialize_transformer_ir(param, runtime_package, ctx=ctx) for param in ir.params)
+        )
+        return tt.CallableTransformer(params, materialize_transformer_ir(ir.return_type, runtime_package, ctx=ctx))
     if isinstance(ir, SubscriptedWrappedClassTypeIR):
         arg_transformers = [materialize_transformer_ir(a, runtime_package, ctx=ctx) for a in ir.type_args]
         return tt.SubscriptedWrappedClassTransformer(ir.impl, ir.wrapper, arg_transformers)

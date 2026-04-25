@@ -31,8 +31,10 @@ from synchronicity2.codegen.parse import (
 from synchronicity2.codegen.transformer_ir import (
     AsyncContextManagerTypeIR,
     AwaitableTypeIR,
+    CallableTypeIR,
     IdentityTypeIR,
     ImplQualifiedRef,
+    SequenceTypeIR,
     SubscriptedWrappedClassTypeIR,
     UnionTypeIR,
     WrappedClassTypeIR,
@@ -41,6 +43,27 @@ from synchronicity2.codegen.transformer_ir import (
 from synchronicity2.descriptor import classproperty, function_with_aio, method_with_aio
 
 PARSE_DEFAULT_GREETING = "hello"
+
+_SEQUENCE_CALLABLE_PARSE_MODULE = Module("generated.sequence_callable_parse")
+
+
+@_SEQUENCE_CALLABLE_PARSE_MODULE.wrap_class()
+class _SequenceCallableParseNode:
+    pass
+
+
+@_SEQUENCE_CALLABLE_PARSE_MODULE.wrap_function()
+async def _sequence_callable_parse_clone_all(
+    nodes: typing.Sequence[_SequenceCallableParseNode],
+) -> typing.Sequence[_SequenceCallableParseNode]:
+    return list(nodes)
+
+
+@_SEQUENCE_CALLABLE_PARSE_MODULE.wrap_function()
+def _sequence_callable_parse_make_callback(
+    node: _SequenceCallableParseNode,
+) -> typing.Callable[..., typing.Sequence[_SequenceCallableParseNode]]:
+    return lambda *args, **kwargs: [node]
 
 
 def parse_builtin_default(value: object = "hello") -> None:
@@ -760,3 +783,27 @@ def test_parse_class_wrapper_ir_collects_manual_with_aio_methods():
             access_kind=ManualClassAttributeAccessKind.ATTRIBUTE,
         ),
     )
+
+
+def test_parse_sequence_and_callable_ellipsis_annotations():
+    clone_ir = parse_module_level_function_ir(
+        _sequence_callable_parse_clone_all,
+        "generated.sequence_callable_parse",
+        globals_dict=globals(),
+    )
+    callback_ir = parse_module_level_function_ir(
+        _sequence_callable_parse_make_callback,
+        "generated.sequence_callable_parse",
+        globals_dict=globals(),
+    )
+
+    assert isinstance(clone_ir.parameters[0].annotation_ir, SequenceTypeIR)
+    assert isinstance(clone_ir.parameters[0].annotation_ir.item, WrappedClassTypeIR)
+    assert isinstance(clone_ir.return_transformer_ir, AwaitableTypeIR)
+    assert isinstance(clone_ir.return_transformer_ir.inner, SequenceTypeIR)
+    assert isinstance(clone_ir.return_transformer_ir.inner.item, WrappedClassTypeIR)
+
+    assert isinstance(callback_ir.return_transformer_ir, CallableTypeIR)
+    assert callback_ir.return_transformer_ir.params is None
+    assert isinstance(callback_ir.return_transformer_ir.return_type, SequenceTypeIR)
+    assert isinstance(callback_ir.return_transformer_ir.return_type.item, WrappedClassTypeIR)

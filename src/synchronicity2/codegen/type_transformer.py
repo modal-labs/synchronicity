@@ -109,6 +109,15 @@ class TypeTransformer(ABC):
             return f'"{wrapped}"'
         return wrapped
 
+    def passthrough_annotation_type(self, target_module: str, is_async: bool = True) -> str:
+        """Return the impl-facing annotation string for passthrough values.
+
+        This is used for container annotations like ``Callable`` where Synchronicity does not
+        currently wrap or unwrap the inner runtime value, so the public wrapper annotation needs
+        to describe the implementation-facing contract rather than the translated wrapper-facing one.
+        """
+        return self.annotation_type(target_module, is_async)
+
 
 class IdentityStrTransformer(TypeTransformer):
     """Like :class:`IdentityTransformer` but stores only the preformatted type string."""
@@ -182,6 +191,9 @@ class WrappedClassTransformer(TypeTransformer):
     def has_local_wrapper_ref(self, target_module: str) -> bool:
         return self._wrapper.wrapper_module == target_module
 
+    def passthrough_annotation_type(self, target_module: str, is_async: bool = True) -> str:
+        return _impl_ref_dotted(self.impl_ref)
+
 
 class SubscriptedWrappedClassTransformer(TypeTransformer):
     """Wrapped class subscripted with type args, e.g. ``SomeContainer[WrappedType]``.
@@ -218,6 +230,11 @@ class SubscriptedWrappedClassTransformer(TypeTransformer):
             t.has_local_wrapper_ref(target_module) for t in self._type_arg_transformers
         )
 
+    def passthrough_annotation_type(self, target_module: str, is_async: bool = True) -> str:
+        base = _impl_ref_dotted(self._inner.impl_ref)
+        args = ", ".join(t.passthrough_annotation_type(target_module, is_async) for t in self._type_arg_transformers)
+        return f"{base}[{args}]"
+
 
 class TypeVarBoundTransformer(TypeTransformer):
     """Type variable: signature shows *name* (e.g. ``T``); unwrap/wrap follows the bound type transformer."""
@@ -245,6 +262,9 @@ class TypeVarBoundTransformer(TypeTransformer):
         indent: str = "    ",
     ) -> dict[str, str]:
         return self._bound.get_wrapper_helpers(target_module, indent)
+
+    def passthrough_annotation_type(self, target_module: str, is_async: bool = True) -> str:
+        return self._name
 
 
 class SelfTransformer(TypeTransformer):
@@ -293,6 +313,9 @@ class SelfTransformer(TypeTransformer):
     ) -> dict[str, str]:
         return self._impl.get_wrapper_helpers(target_module, indent)
 
+    def passthrough_annotation_type(self, target_module: str, is_async: bool = True) -> str:
+        return _impl_ref_dotted(self._impl.impl_ref)
+
 
 class ListTransformer(TypeTransformer):
     """Transformer for list[T] types."""
@@ -338,6 +361,10 @@ class ListTransformer(TypeTransformer):
 
     def has_local_wrapper_ref(self, target_module: str) -> bool:
         return self.item_transformer.has_local_wrapper_ref(target_module)
+
+    def passthrough_annotation_type(self, target_module: str, is_async: bool = True) -> str:
+        item_type_str = self.item_transformer.passthrough_annotation_type(target_module, is_async)
+        return f"list[{item_type_str}]"
 
 
 class DictTransformer(TypeTransformer):
@@ -387,6 +414,55 @@ class DictTransformer(TypeTransformer):
         return self.key_transformer.has_local_wrapper_ref(
             target_module
         ) or self.value_transformer.has_local_wrapper_ref(target_module)
+
+    def passthrough_annotation_type(self, target_module: str, is_async: bool = True) -> str:
+        key_type_str = self.key_transformer.passthrough_annotation_type(target_module, is_async)
+        value_type_str = self.value_transformer.passthrough_annotation_type(target_module, is_async)
+        return f"dict[{key_type_str}, {value_type_str}]"
+
+
+class SequenceTransformer(TypeTransformer):
+    """Transformer for typing.Sequence[T]."""
+
+    def __init__(self, item_transformer: TypeTransformer):
+        self.item_transformer = item_transformer
+
+    def wrapped_type(self, target_module: str, is_async: bool = True) -> str:
+        item_type_str = self.item_transformer.wrapped_type(target_module, is_async)
+        return f"typing.Sequence[{item_type_str}]"
+
+    def unwrap_expr(self, var_name: str) -> str:
+        if not self.item_transformer.needs_translation():
+            return var_name
+        item_unwrap = self.item_transformer.unwrap_expr("x")
+        return f"[{item_unwrap} for x in {var_name}]"
+
+    def wrap_expr(self, target_module: str, var_name: str, is_async: bool = True) -> str:
+        if not self.item_transformer.needs_translation():
+            return var_name
+        item_wrap = self.item_transformer.wrap_expr(target_module, "x", is_async)
+        expr = f"[{item_wrap} for x in {var_name}]"
+        if isinstance(self.item_transformer, TypeVarBoundTransformer):
+            ann = self.wrapped_type(target_module, is_async)
+            return f"typing.cast({ann}, {expr})"
+        return expr
+
+    def needs_translation(self) -> bool:
+        return self.item_transformer.needs_translation()
+
+    def get_wrapper_helpers(
+        self,
+        target_module: str,
+        indent: str = "    ",
+    ) -> dict[str, str]:
+        return self.item_transformer.get_wrapper_helpers(target_module, indent)
+
+    def has_local_wrapper_ref(self, target_module: str) -> bool:
+        return self.item_transformer.has_local_wrapper_ref(target_module)
+
+    def passthrough_annotation_type(self, target_module: str, is_async: bool = True) -> str:
+        item_type_str = self.item_transformer.passthrough_annotation_type(target_module, is_async)
+        return f"typing.Sequence[{item_type_str}]"
 
 
 class TupleTransformer(TypeTransformer):
@@ -456,6 +532,13 @@ class TupleTransformer(TypeTransformer):
     def has_local_wrapper_ref(self, target_module: str) -> bool:
         return any(transformer.has_local_wrapper_ref(target_module) for transformer in self.item_transformers)
 
+    def passthrough_annotation_type(self, target_module: str, is_async: bool = True) -> str:
+        if len(self.item_transformers) == 1:
+            item_type_str = self.item_transformers[0].passthrough_annotation_type(target_module, is_async)
+            return f"tuple[{item_type_str}, ...]"
+        item_type_strs = [t.passthrough_annotation_type(target_module, is_async) for t in self.item_transformers]
+        return f"tuple[{', '.join(item_type_strs)}]"
+
 
 class OptionalTransformer(TypeTransformer):
     """Transformer for Optional[T] (Union[T, None]) types."""
@@ -497,6 +580,10 @@ class OptionalTransformer(TypeTransformer):
 
     def has_local_wrapper_ref(self, target_module: str) -> bool:
         return self.inner_transformer.has_local_wrapper_ref(target_module)
+
+    def passthrough_annotation_type(self, target_module: str, is_async: bool = True) -> str:
+        inner_type_str = self.inner_transformer.passthrough_annotation_type(target_module, is_async)
+        return f"typing.Union[{inner_type_str}, None]"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -839,6 +926,10 @@ class UnionTransformer(TypeTransformer):
     def has_local_wrapper_ref(self, target_module: str) -> bool:
         return any(transformer.has_local_wrapper_ref(target_module) for transformer in self.item_transformers)
 
+    def passthrough_annotation_type(self, target_module: str, is_async: bool = True) -> str:
+        item_types = [t.passthrough_annotation_type(target_module, is_async) for t in self.item_transformers]
+        return f"typing.Union[{', '.join(item_types)}]"
+
 
 class AsyncGeneratorTransformer(TypeTransformer):
     """Transformer for AsyncGenerator/AsyncIterator types."""
@@ -950,6 +1041,15 @@ class AsyncGeneratorTransformer(TypeTransformer):
     def has_local_wrapper_ref(self, target_module: str) -> bool:
         return self.yield_transformer.has_local_wrapper_ref(target_module)
 
+    def passthrough_annotation_type(self, target_module: str, is_async: bool = True) -> str:
+        yield_type_str = self.yield_transformer.passthrough_annotation_type(target_module, is_async)
+        if is_async:
+            if self.send_type_str is None:
+                return f"typing.AsyncGenerator[{yield_type_str}]"
+            return f"typing.AsyncGenerator[{yield_type_str}, {self.send_type_str}]"
+        send_type_for_sync = self.send_type_str if self.send_type_str is not None else "None"
+        return f"typing.Generator[{yield_type_str}, {send_type_for_sync}, None]"
+
 
 class SyncGeneratorTransformer(TypeTransformer):
     """Transformer for sync Generator types."""
@@ -1024,6 +1124,10 @@ class SyncGeneratorTransformer(TypeTransformer):
     def has_local_wrapper_ref(self, target_module: str) -> bool:
         return self.yield_transformer.has_local_wrapper_ref(target_module)
 
+    def passthrough_annotation_type(self, target_module: str, is_async: bool = True) -> str:
+        yield_type_str = self.yield_transformer.passthrough_annotation_type(target_module, is_async)
+        return f"typing.Generator[{yield_type_str}, None, None]"
+
 
 # Keep GeneratorTransformer as an alias for backward compatibility during transition
 GeneratorTransformer = AsyncGeneratorTransformer
@@ -1092,6 +1196,10 @@ class AsyncIteratorTransformer(TypeTransformer):
 
     def has_local_wrapper_ref(self, target_module: str) -> bool:
         return self.item_transformer.has_local_wrapper_ref(target_module)
+
+    def passthrough_annotation_type(self, target_module: str, is_async: bool = True) -> str:
+        item_type_str = self.item_transformer.passthrough_annotation_type(target_module, is_async)
+        return f"collections.abc.AsyncIterator[{item_type_str}]"
 
 
 class AsyncIterableTransformer(TypeTransformer):
@@ -1164,6 +1272,10 @@ class AsyncIterableTransformer(TypeTransformer):
     def has_local_wrapper_ref(self, target_module: str) -> bool:
         return self.item_transformer.has_local_wrapper_ref(target_module)
 
+    def passthrough_annotation_type(self, target_module: str, is_async: bool = True) -> str:
+        item_type_str = self.item_transformer.passthrough_annotation_type(target_module, is_async)
+        return f"collections.abc.AsyncIterable[{item_type_str}]"
+
 
 class AsyncContextManagerTransformer(TypeTransformer):
     """Transformer for AsyncContextManager[T] types.
@@ -1219,6 +1331,10 @@ class AsyncContextManagerTransformer(TypeTransformer):
     def has_local_wrapper_ref(self, target_module: str) -> bool:
         return self.value_transformer.has_local_wrapper_ref(target_module)
 
+    def passthrough_annotation_type(self, target_module: str, is_async: bool = True) -> str:
+        value_type_str = self.value_transformer.passthrough_annotation_type(target_module, is_async)
+        return f"typing.AsyncContextManager[{value_type_str}]"
+
 
 class CoroutineTransformer(TypeTransformer):
     """Transformer for Coroutine[YieldType, SendType, ReturnType] types.
@@ -1255,6 +1371,9 @@ class CoroutineTransformer(TypeTransformer):
 
     def has_local_wrapper_ref(self, target_module: str) -> bool:
         return self.return_transformer.has_local_wrapper_ref(target_module)
+
+    def passthrough_annotation_type(self, target_module: str, is_async: bool = True) -> str:
+        return self.return_transformer.passthrough_annotation_type(target_module, is_async)
 
 
 class AwaitableTransformer(TypeTransformer):
@@ -1293,6 +1412,50 @@ class AwaitableTransformer(TypeTransformer):
     def has_local_wrapper_ref(self, target_module: str) -> bool:
         return self.return_transformer.has_local_wrapper_ref(target_module)
 
+    def passthrough_annotation_type(self, target_module: str, is_async: bool = True) -> str:
+        return self.return_transformer.passthrough_annotation_type(target_module, is_async)
+
+
+class CallableTransformer(TypeTransformer):
+    """Transformer for typing.Callable[[...], T] and typing.Callable[..., T].
+
+    This is currently annotation-only. Runtime callback translation is handled separately.
+    """
+
+    def __init__(
+        self,
+        param_transformers: tuple[TypeTransformer, ...] | None,
+        return_transformer: TypeTransformer,
+    ):
+        self.param_transformers = param_transformers
+        self.return_transformer = return_transformer
+
+    def wrapped_type(self, target_module: str, is_async: bool = True) -> str:
+        if self.param_transformers is None:
+            params_str = "..."
+        else:
+            param_types = (t.passthrough_annotation_type(target_module, is_async) for t in self.param_transformers)
+            params_str = f"[{', '.join(param_types)}]"
+        return_type_str = self.return_transformer.passthrough_annotation_type(target_module, is_async)
+        return f"typing.Callable[{params_str}, {return_type_str}]"
+
+    def unwrap_expr(self, var_name: str) -> str:
+        return var_name
+
+    def wrap_expr(self, target_module: str, var_name: str, is_async: bool = True) -> str:
+        return var_name
+
+    def needs_translation(self) -> bool:
+        return False
+
+    def has_local_wrapper_ref(self, target_module: str) -> bool:
+        param_has_local_ref = (
+            False
+            if self.param_transformers is None
+            else any(t.has_local_wrapper_ref(target_module) for t in self.param_transformers)
+        )
+        return param_has_local_ref or self.return_transformer.has_local_wrapper_ref(target_module)
+
 
 def _is_self_annotation(annotation: object) -> bool:
     """True if annotation is typing.Self (or typing_extensions.Self when available)."""
@@ -1319,6 +1482,9 @@ def _format_annotation_str(annotation) -> str:
     # NoneType (from -> None annotation)
     if annotation is type(None) or annotation is None:
         return "None"
+
+    if annotation is Ellipsis:
+        return "..."
 
     # Handle TypeVar and ParamSpec - just return their names
     if isinstance(annotation, typing.TypeVar):
