@@ -7,7 +7,6 @@ from test.integration.test_utils import check_pyright
 
 def test_runtime():
     import sequence_callable_annotations
-    import sequence_callable_annotations_impl
 
     nodes = [sequence_callable_annotations.Node(1), sequence_callable_annotations.Node(2)]
     cloned = sequence_callable_annotations.clone_all(nodes)
@@ -17,7 +16,11 @@ def test_runtime():
 
     callback = sequence_callable_annotations.make_callback(nodes[0])
     callback_result = callback()
-    assert all(isinstance(node, sequence_callable_annotations_impl.Node) for node in callback_result)
+    assert all(isinstance(node, sequence_callable_annotations.Node) for node in callback_result)
+
+    callback2 = sequence_callable_annotations.make_callback2()
+    listified = callback2(nodes[0])
+    assert isinstance(listified[0], sequence_callable_annotations.Node)
 
 
 def test_generated_wrapper_source():
@@ -26,10 +29,7 @@ def test_generated_wrapper_source():
     wrapper_source = Path(sequence_callable_annotations.__file__).read_text()
 
     assert 'def clone_all(nodes: "typing.Sequence[Node]") -> "typing.Sequence[Node]":' in wrapper_source
-    assert (
-        'def make_callback(node: "Node") -> "typing.Callable[..., '
-        'typing.Sequence[sequence_callable_annotations_impl.Node]]":' in wrapper_source
-    )
+    assert 'def make_callback(node: "Node") -> "typing.Callable[..., ' 'typing.Sequence[Node]]":' in wrapper_source
 
 
 def test_pyright_implementation():

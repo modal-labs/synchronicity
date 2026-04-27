@@ -1417,36 +1417,69 @@ class AwaitableTransformer(TypeTransformer):
 
 
 class CallableTransformer(TypeTransformer):
-    """Transformer for typing.Callable[[...], T] and typing.Callable[..., T].
-
-    This is currently annotation-only. Runtime callback translation is handled separately.
-    """
+    """Transformer for typing.Callable[[...], T] and typing.Callable[..., T]."""
 
     def __init__(
         self,
         param_transformers: tuple[TypeTransformer, ...] | None,
         return_transformer: TypeTransformer,
+        *,
+        param_signature_text: str | None = None,
     ):
         self.param_transformers = param_transformers
         self.return_transformer = return_transformer
+        self.param_signature_text = param_signature_text
 
     def wrapped_type(self, target_module: str, is_async: bool = True) -> str:
         if self.param_transformers is None:
-            params_str = "..."
+            params_str = self.param_signature_text or "..."
         else:
-            param_types = (t.passthrough_annotation_type(target_module, is_async) for t in self.param_transformers)
+            param_types = (t.wrapped_type(target_module, is_async) for t in self.param_transformers)
             params_str = f"[{', '.join(param_types)}]"
-        return_type_str = self.return_transformer.passthrough_annotation_type(target_module, is_async)
+        return_type_str = self.return_transformer.wrapped_type(target_module, is_async)
         return f"typing.Callable[{params_str}, {return_type_str}]"
 
-    def unwrap_expr(self, var_name: str) -> str:
-        return var_name
+    def _translated_callback_args_expr(self, target_module: str, *, wrapper_to_impl: bool) -> str:
+        if self.param_transformers is None:
+            return "*_callback_args, **_callback_kwargs"
+
+        translated_args: list[str] = []
+        for index, transformer in enumerate(self.param_transformers):
+            arg_expr = f"_callback_args[{index}]"
+            if wrapper_to_impl:
+                translated_args.append(transformer.unwrap_expr(arg_expr))
+            else:
+                translated_args.append(transformer.wrap_expr(target_module, arg_expr, is_async=False))
+
+        translated_tuple = f"({', '.join(translated_args)}"
+        if len(translated_args) == 1:
+            translated_tuple += ","
+        translated_tuple += ")"
+        rest_tuple = f"tuple(_callback_args[{len(self.param_transformers)}:])"
+        return f"*({translated_tuple} + {rest_tuple}), **_callback_kwargs"
+
+    def unwrap_expr(self, var_name: str, target_module: str | None = None) -> str:
+        if target_module is None:
+            raise TypeError("CallableTransformer.unwrap_expr requires target_module for callback translation")
+
+        callback_args = self._translated_callback_args_expr(target_module, wrapper_to_impl=False)
+        call_expr = f"_wrapper_callable({callback_args})"
+        if self.return_transformer.needs_translation():
+            call_expr = self.return_transformer.unwrap_expr(call_expr)
+        return f"(lambda _wrapper_callable: " f"(lambda *_callback_args, **_callback_kwargs: {call_expr}))({var_name})"
 
     def wrap_expr(self, target_module: str, var_name: str, is_async: bool = True) -> str:
-        return var_name
+        callback_args = self._translated_callback_args_expr(target_module, wrapper_to_impl=True)
+        call_expr = f"_impl_callable({callback_args})"
+        if self.return_transformer.needs_translation():
+            call_expr = self.return_transformer.wrap_expr(target_module, call_expr, is_async)
+        return f"(lambda _impl_callable: " f"(lambda *_callback_args, **_callback_kwargs: {call_expr}))({var_name})"
 
     def needs_translation(self) -> bool:
-        return False
+        params_need_translation = (
+            False if self.param_transformers is None else any(t.needs_translation() for t in self.param_transformers)
+        )
+        return params_need_translation or self.return_transformer.needs_translation()
 
     def has_local_wrapper_ref(self, target_module: str) -> bool:
         param_has_local_ref = (

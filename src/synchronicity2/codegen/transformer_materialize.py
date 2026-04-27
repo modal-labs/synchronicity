@@ -402,6 +402,13 @@ def annotation_to_transformer_ir(
                     ),
                     return_type,
                 )
+            params_identity_ir = _identity_ir_from_annotation(params)
+            return CallableTypeIR(
+                None,
+                return_type,
+                params_signature_text=params_identity_ir.signature_text,
+                params_signature_import_modules=params_identity_ir.import_modules,
+            )
         return _identity_ir_from_annotation(annotation)
 
     # Subscripted wrapped class, e.g. SomeContainer[WrappedType]
@@ -499,7 +506,11 @@ def materialize_transformer_ir(
             if ir.params is None
             else tuple(materialize_transformer_ir(param, runtime_package, ctx=ctx) for param in ir.params)
         )
-        return tt.CallableTransformer(params, materialize_transformer_ir(ir.return_type, runtime_package, ctx=ctx))
+        return tt.CallableTransformer(
+            params,
+            materialize_transformer_ir(ir.return_type, runtime_package, ctx=ctx),
+            param_signature_text=ir.params_signature_text,
+        )
     if isinstance(ir, SubscriptedWrappedClassTypeIR):
         arg_transformers = [materialize_transformer_ir(a, runtime_package, ctx=ctx) for a in ir.type_args]
         return tt.SubscriptedWrappedClassTransformer(ir.impl, ir.wrapper, arg_transformers)

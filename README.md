@@ -346,8 +346,14 @@ Some design ideas are still future work. In particular, the current implementati
 
 Known gaps worth keeping in mind:
 
-- functions using `Callable[...]` parameters and return values that mention wrapped classes are not translated yet
 - unwrapped base classes are not reflected in generated wrapper inheritance
+
+Callable support is partially implemented and covered by tests for the following shapes:
+
+- callback parameters like `Callable[[Node], Node]` and `Callable[[Node], int]`, where wrapper arguments are translated to implementation objects before invoking the callback
+- returned non-async callables like `Callable[..., Sequence[Node]]` and `Callable[P, list[T]]`, where wrapped implementation results are translated back to wrapper values
+
+The currently tested scope is specifically non-async callables. Async callable return values and more advanced callable protocol shapes are not yet a documented or tested feature boundary.
 
 For example, if your implementation looks roughly like:
 
@@ -371,9 +377,7 @@ This is intentional. Wrapper instances are proxies around implementation instanc
 
 The generated APIs are tested with pyright, including consumer-side usage examples, but some advanced typing forms still have rough edges.
 
-Known caveats include:
-
-- Plain callback translation is also not typed correctly yet. For example, shapes like `Callable[[Node], Node]` and `Callable[[Node], int]` are not rewritten to the public wrapper type consistently, so user-facing callback signatures do not type check cleanly.
+Callable translation for the non-async cases listed above is covered by pyright-based integration tests. Remaining caveats are mainly around more advanced or not-yet-supported callable forms, especially async callables.
 
 ## Runtime architecture
 

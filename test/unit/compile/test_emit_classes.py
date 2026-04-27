@@ -1210,10 +1210,7 @@ def test_emit_sequence_and_callable_ellipsis_annotations():
 
     code = emit_class_from_ir(ir, TARGET)
 
-    assert (
-        'def deps(self) -> "typing.Callable[..., '
-        'typing.Sequence[test.unit.compile.test_emit_classes.Node]]":' in code
-    )
+    assert 'def deps(self) -> "typing.Callable[..., ' 'typing.Sequence[Node]]":' in code
     assert 'def clone_all(self, nodes: "typing.Sequence[Node]") -> "typing.Sequence[Node]":' in code
     assert "nodes_impl = [x._impl_instance for x in nodes]" in code
 

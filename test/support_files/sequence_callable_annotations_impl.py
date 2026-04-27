@@ -23,3 +23,8 @@ async def clone_all(nodes: typing.Sequence[Node]) -> typing.Sequence[Node]:
 @mod.wrap_function()
 def make_callback(node: Node) -> typing.Callable[..., typing.Sequence[Node]]:
     return lambda *args, **kwargs: [node]
+
+
+@mod.wrap_function()
+def make_callback2() -> typing.Callable[[Node], typing.Sequence[Node]]:
+    return lambda n: [n]

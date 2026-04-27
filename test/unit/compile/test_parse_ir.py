@@ -45,6 +45,8 @@ from synchronicity2.descriptor import classproperty, function_with_aio, method_w
 PARSE_DEFAULT_GREETING = "hello"
 
 _SEQUENCE_CALLABLE_PARSE_MODULE = Module("generated.sequence_callable_parse")
+_SEQUENCE_CALLABLE_PARSE_P = typing.ParamSpec("_SEQUENCE_CALLABLE_PARSE_P")
+_SEQUENCE_CALLABLE_PARSE_T = typing.TypeVar("_SEQUENCE_CALLABLE_PARSE_T", bound="_SequenceCallableParseNode")
 
 
 @_SEQUENCE_CALLABLE_PARSE_MODULE.wrap_class()
@@ -64,6 +66,16 @@ def _sequence_callable_parse_make_callback(
     node: _SequenceCallableParseNode,
 ) -> typing.Callable[..., typing.Sequence[_SequenceCallableParseNode]]:
     return lambda *args, **kwargs: [node]
+
+
+@_SEQUENCE_CALLABLE_PARSE_MODULE.wrap_function()
+def _sequence_callable_parse_listify(
+    callback: typing.Callable[_SEQUENCE_CALLABLE_PARSE_P, _SEQUENCE_CALLABLE_PARSE_T],
+) -> typing.Callable[_SEQUENCE_CALLABLE_PARSE_P, list[_SEQUENCE_CALLABLE_PARSE_T]]:
+    def inner(*args: _SEQUENCE_CALLABLE_PARSE_P.args, **kwargs: _SEQUENCE_CALLABLE_PARSE_P.kwargs):
+        return [callback(*args, **kwargs)]
+
+    return inner
 
 
 def parse_builtin_default(value: object = "hello") -> None:
@@ -807,3 +819,19 @@ def test_parse_sequence_and_callable_ellipsis_annotations():
     assert callback_ir.return_transformer_ir.params is None
     assert isinstance(callback_ir.return_transformer_ir.return_type, SequenceTypeIR)
     assert isinstance(callback_ir.return_transformer_ir.return_type.item, WrappedClassTypeIR)
+
+
+def test_parse_callable_with_paramspec_and_wrapped_return():
+    ir = parse_module_level_function_ir(
+        _sequence_callable_parse_listify,
+        "generated.sequence_callable_parse",
+        globals_dict=globals(),
+    )
+
+    assert isinstance(ir.parameters[0].annotation_ir, CallableTypeIR)
+    assert ir.parameters[0].annotation_ir.params is None
+    assert ir.parameters[0].annotation_ir.params_signature_text == "_SEQUENCE_CALLABLE_PARSE_P"
+
+    assert isinstance(ir.return_transformer_ir, CallableTypeIR)
+    assert ir.return_transformer_ir.params is None
+    assert ir.return_transformer_ir.params_signature_text == "_SEQUENCE_CALLABLE_PARSE_P"

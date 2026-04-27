@@ -181,11 +181,14 @@ class AsyncContextManagerTypeIR(ImportAwareTypeIR):
 class CallableTypeIR(ImportAwareTypeIR):
     params: tuple[TypeTransformerIR, ...] | None
     return_type: TypeTransformerIR
+    params_signature_text: str | None = None
+    params_signature_import_modules: tuple[str, ...] = ()
 
     def required_import_modules(self) -> frozenset[str]:
+        extra_modules = frozenset(self.params_signature_import_modules)
         if self.params is None:
-            return self.return_type.required_import_modules()
-        return _merge_required_import_modules(*self.params, self.return_type)
+            return self.return_type.required_import_modules() | extra_modules
+        return _merge_required_import_modules(*self.params, self.return_type) | extra_modules
 
 
 @dataclasses.dataclass(frozen=True)
