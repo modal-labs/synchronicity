@@ -3,7 +3,6 @@ import typing
 import synchronicity2
 
 P = typing.ParamSpec("P")
-T = typing.TypeVar("T", bound="Node")
 
 mod = synchronicity2.Module("callback_translation")
 
@@ -27,7 +26,7 @@ async def map_node_to_int(node: Node, callback: typing.Callable[[Node], int]) ->
 
 
 @mod.wrap_function()
-def listify(c: typing.Callable[P, T]) -> typing.Callable[P, list[T]]:
+def listify(c: typing.Callable[P, Node]) -> typing.Callable[P, list[Node]]:
     def c2(*args: P.args, **kwargs: P.kwargs):
         return [c(*args, **kwargs)]
 

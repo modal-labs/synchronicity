@@ -858,3 +858,18 @@ def test_parse_callable_with_paramspec_and_wrapped_return():
     assert isinstance(ir.return_transformer_ir, CallableTypeIR)
     assert ir.return_transformer_ir.params is None
     assert ir.return_transformer_ir.params_signature_text == "_SEQUENCE_CALLABLE_PARSE_P"
+
+
+def test_parse_callable_parameter_with_wrapped_types_warns():
+    module = Module("generated.callback_warning")
+
+    @module.wrap_class()
+    class Node:
+        pass
+
+    @module.wrap_function()
+    def apply(node: Node, callback: typing.Callable[[Node], Node]) -> Node:
+        return callback(node)
+
+    with pytest.warns(UserWarning, match="callable containing synchronized types"):
+        parse_module_level_function_ir(apply, "generated.callback_warning", globals_dict=locals())

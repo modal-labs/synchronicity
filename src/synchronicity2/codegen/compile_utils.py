@@ -7,11 +7,25 @@ import inspect
 import sys
 import types
 import typing
+import warnings
 
 from .default_expressions import resolve_parameter_default_expressions
 from .ir import MethodBindingKind, ParameterIR
 from .signature_utils import is_async_generator
-from .transformer_ir import ImplQualifiedRef
+from .transformer_ir import (
+    CallableTypeIR,
+    DictTypeIR,
+    ImplQualifiedRef,
+    ListTypeIR,
+    OptionalTypeIR,
+    SelfTypeIR,
+    SequenceTypeIR,
+    SubscriptedWrappedClassTypeIR,
+    TupleTypeIR,
+    TypeTransformerIR,
+    UnionTypeIR,
+    WrappedClassTypeIR,
+)
 from .type_transformer import CallableTransformer, WrappedClassTransformer
 
 if typing.TYPE_CHECKING:
@@ -192,6 +206,16 @@ def parse_parameters_to_ir(
                 impl_modules=impl_modules,
                 source_label=(f"{source_label_prefix} parameter {name!r}" if source_label_prefix is not None else None),
             )
+            if isinstance(annotation_ir, CallableTypeIR) and _callable_ir_contains_wrapped_refs(annotation_ir):
+                warnings.warn(
+                    (
+                        f"{source_label_prefix or func.__qualname__} parameter {name!r} is a callable containing "
+                        "synchronized types. Callable-valued parameters are passed through unchanged at runtime, "
+                        "so generated wrapper annotations use implementation types inside the callable signature."
+                    ),
+                    UserWarning,
+                    stacklevel=2,
+                )
 
         default_expr: str | None = None
         default_import_refs = ()
@@ -210,6 +234,39 @@ def parse_parameters_to_ir(
             )
         )
     return tuple(result)
+
+
+def _callable_ir_contains_wrapped_refs(ir: CallableTypeIR) -> bool:
+    items: list[TypeTransformerIR] = [ir.return_type]
+    if ir.params is not None:
+        items.extend(ir.params)
+    return any(_transformer_ir_contains_wrapped_refs(item) for item in items)
+
+
+def _transformer_ir_contains_wrapped_refs(ir: TypeTransformerIR) -> bool:
+    if isinstance(ir, (WrappedClassTypeIR, SubscriptedWrappedClassTypeIR, SelfTypeIR)):
+        return True
+    if isinstance(ir, ListTypeIR):
+        return _transformer_ir_contains_wrapped_refs(ir.item)
+    if isinstance(ir, SequenceTypeIR):
+        return _transformer_ir_contains_wrapped_refs(ir.item)
+    if isinstance(ir, OptionalTypeIR):
+        return _transformer_ir_contains_wrapped_refs(ir.inner)
+    if isinstance(ir, DictTypeIR):
+        return _transformer_ir_contains_wrapped_refs(ir.key) or _transformer_ir_contains_wrapped_refs(ir.value)
+    if isinstance(ir, TupleTypeIR):
+        return any(_transformer_ir_contains_wrapped_refs(item) for item in ir.items)
+    if isinstance(ir, UnionTypeIR):
+        return any(_transformer_ir_contains_wrapped_refs(item) for item in ir.items)
+    if isinstance(ir, CallableTypeIR):
+        return _callable_ir_contains_wrapped_refs(ir)
+    return False
+
+
+def _parameter_annotation_str(transformer, current_target_module: str) -> str:
+    if isinstance(transformer, CallableTransformer):
+        return transformer.passthrough_annotation_type(current_target_module)
+    return transformer.annotation_type(current_target_module)
 
 
 def format_parameters_for_emit(
@@ -261,7 +318,7 @@ def format_parameters_for_emit(
         if kind == inspect.Parameter.VAR_POSITIONAL:
             if param_ir.annotation_ir is not None:
                 assert transformer is not None
-                ann = transformer.annotation_type(current_target_module)
+                ann = _parameter_annotation_str(transformer, current_target_module)
                 params.append(f"*{name}: {ann}")
                 if transformer.needs_translation():
                     unwrap_expr = _vararg_unwrap_expr(transformer, name)
@@ -276,7 +333,7 @@ def format_parameters_for_emit(
         elif kind == inspect.Parameter.VAR_KEYWORD:
             if param_ir.annotation_ir is not None:
                 assert transformer is not None
-                ann = transformer.annotation_type(current_target_module)
+                ann = _parameter_annotation_str(transformer, current_target_module)
                 params.append(f"**{name}: {ann}")
                 if transformer.needs_translation():
                     unwrap_expr = _varkw_unwrap_expr(transformer, name)
@@ -291,7 +348,7 @@ def format_parameters_for_emit(
         elif kind == inspect.Parameter.KEYWORD_ONLY:
             if param_ir.annotation_ir is not None:
                 assert transformer is not None
-                ann = transformer.annotation_type(current_target_module)
+                ann = _parameter_annotation_str(transformer, current_target_module)
                 param_str = f"{name}: {ann}"
 
                 if transformer.needs_translation():
@@ -316,7 +373,7 @@ def format_parameters_for_emit(
         else:
             if param_ir.annotation_ir is not None:
                 assert transformer is not None
-                ann = transformer.annotation_type(current_target_module)
+                ann = _parameter_annotation_str(transformer, current_target_module)
                 param_str = f"{name}: {ann}"
 
                 if transformer.needs_translation():

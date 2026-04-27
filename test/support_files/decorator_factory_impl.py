@@ -19,7 +19,15 @@ class RemoteFunction(typing.Generic[P, T]):
 
 @mod.wrap_class()
 class FunctionDecoratorType:
-    def __call__(self, func: typing.Callable[P, T]) -> RemoteFunction[P, T]:
+    @typing.overload
+    def __call__(
+        self, func: typing.Callable[P, typing.Coroutine[typing.Any, typing.Any, T]]
+    ) -> RemoteFunction[P, T]: ...
+
+    @typing.overload
+    def __call__(self, func: typing.Callable[P, T]) -> RemoteFunction[P, T]: ...
+
+    def __call__(self, func: typing.Any) -> typing.Any:
         return RemoteFunction(func)
 
 

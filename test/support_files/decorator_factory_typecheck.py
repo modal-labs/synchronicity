@@ -11,3 +11,11 @@ def f(a: str) -> float:
 
 
 assert_type(f.remote("hello"), float)
+
+
+@registry.function()
+async def g(a: str) -> float:
+    return 0.0
+
+
+assert_type(g.remote("hello"), float)

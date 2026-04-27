@@ -1373,7 +1373,8 @@ class CoroutineTransformer(TypeTransformer):
         return self.return_transformer.has_local_wrapper_ref(target_module)
 
     def passthrough_annotation_type(self, target_module: str, is_async: bool = True) -> str:
-        return self.return_transformer.passthrough_annotation_type(target_module, is_async)
+        return_type_str = self.return_transformer.passthrough_annotation_type(target_module, is_async)
+        return f"typing.Coroutine[typing.Any, typing.Any, {return_type_str}]"
 
 
 class AwaitableTransformer(TypeTransformer):
@@ -1413,7 +1414,8 @@ class AwaitableTransformer(TypeTransformer):
         return self.return_transformer.has_local_wrapper_ref(target_module)
 
     def passthrough_annotation_type(self, target_module: str, is_async: bool = True) -> str:
-        return self.return_transformer.passthrough_annotation_type(target_module, is_async)
+        return_type_str = self.return_transformer.passthrough_annotation_type(target_module, is_async)
+        return f"typing.Awaitable[{return_type_str}]"
 
 
 class CallableTransformer(TypeTransformer):
@@ -1437,6 +1439,15 @@ class CallableTransformer(TypeTransformer):
             param_types = (t.wrapped_type(target_module, is_async) for t in self.param_transformers)
             params_str = f"[{', '.join(param_types)}]"
         return_type_str = self.return_transformer.wrapped_type(target_module, is_async)
+        return f"typing.Callable[{params_str}, {return_type_str}]"
+
+    def passthrough_annotation_type(self, target_module: str, is_async: bool = True) -> str:
+        if self.param_transformers is None:
+            params_str = self.param_signature_text or "..."
+        else:
+            param_types = (t.passthrough_annotation_type(target_module, is_async) for t in self.param_transformers)
+            params_str = f"[{', '.join(param_types)}]"
+        return_type_str = self.return_transformer.passthrough_annotation_type(target_module, is_async)
         return f"typing.Callable[{params_str}, {return_type_str}]"
 
     def _translated_callback_args_expr(self, target_module: str, *, wrapper_to_impl: bool) -> str:
@@ -1464,17 +1475,7 @@ class CallableTransformer(TypeTransformer):
         return f"*({translated_tuple} + {rest_tuple}), **_callback_kwargs"
 
     def unwrap_expr(self, var_name: str, target_module: str | None = None) -> str:
-        if target_module is None:
-            raise TypeError("CallableTransformer.unwrap_expr requires target_module for callback translation")
-
-        callback_args = self._translated_callback_args_expr(target_module, wrapper_to_impl=False)
-        call_expr = f"_wrapper_callable({callback_args})"
-        if self.return_transformer.needs_translation():
-            if isinstance(self.return_transformer, CallableTransformer):
-                call_expr = self.return_transformer.unwrap_expr(call_expr, target_module)
-            else:
-                call_expr = self.return_transformer.unwrap_expr(call_expr)
-        return f"(lambda _wrapper_callable: " f"(lambda *_callback_args, **_callback_kwargs: {call_expr}))({var_name})"
+        return f"typing.cast(typing.Any, {var_name})"
 
     def wrap_expr(self, target_module: str, var_name: str, is_async: bool = True) -> str:
         callback_args = self._translated_callback_args_expr(target_module, wrapper_to_impl=True)

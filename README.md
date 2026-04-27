@@ -350,10 +350,10 @@ Known gaps worth keeping in mind:
 
 Callable support is partially implemented and covered by tests for the following shapes:
 
-- callback parameters like `Callable[[Node], Node]` and `Callable[[Node], int]`, where wrapper arguments are translated to implementation objects before invoking the callback
+- callable-valued parameters are passed through unchanged at runtime. Generated wrapper annotations preserve the callable shape, including `Coroutine[...]` / `Awaitable[...]` designators, but nested synchronized types inside those callable signatures remain implementation-facing types.
 - returned non-async callables like `Callable[..., Sequence[Node]]` and `Callable[P, list[T]]`, where wrapped implementation results are translated back to wrapper values
 
-The currently tested scope is specifically non-async callables. Async callable return values and more advanced callable protocol shapes are not yet a documented or tested feature boundary.
+The currently tested scope is specifically non-async callable return values. Async callable return values and more advanced callable protocol shapes are not yet a documented or tested feature boundary.
 
 For example, if your implementation looks roughly like:
 
@@ -377,7 +377,12 @@ This is intentional. Wrapper instances are proxies around implementation instanc
 
 The generated APIs are tested with pyright, including consumer-side usage examples, but some advanced typing forms still have rough edges.
 
-Callable translation for the non-async cases listed above is covered by pyright-based integration tests. Remaining caveats are mainly around more advanced or not-yet-supported callable forms, especially async callables.
+Callable typing is covered by pyright-based integration tests for:
+- decorator-style callable parameters whose signature must be preserved in the public wrapper API
+- passthrough callable parameters, including coroutine-returning callback annotations
+- returned non-async callables whose results contain synchronized types
+
+Remaining caveats are mainly around more advanced or not-yet-supported callable forms, especially async callable return values.
 
 ## Runtime architecture
 
