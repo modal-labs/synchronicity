@@ -28,19 +28,11 @@ from .writer import write_modules
 
 def run_ruff_on_file(file_path: Path) -> None:
     """
-    Run ruff check --fix and ruff format on a single file.
+    Run ruff format on a single file.
 
     Args:
         file_path: Path to the file to format
     """
-    # Run ruff check --fix for autofixes
-    subprocess.run(
-        ["ruff", "check", "--fix", str(file_path)],
-        capture_output=True,
-        text=True,
-    )
-
-    # Run ruff format
     subprocess.run(
         ["ruff", "format", str(file_path)],
         capture_output=True,

@@ -115,10 +115,19 @@ def _iter_overload_functions(f: types.FunctionType) -> tuple[types.FunctionType,
 
 _FORWARDED_DUNDER_METHODS = frozenset(
     {
+        "__call__",
         "__contains__",
         "__delitem__",
         "__getitem__",
         "__setitem__",
+    }
+)
+_TYPE_SCANNED_DUNDER_METHODS = _FORWARDED_DUNDER_METHODS | frozenset(
+    {
+        "__aenter__",
+        "__aexit__",
+        "__aiter__",
+        "__anext__",
     }
 )
 
@@ -143,7 +152,7 @@ def cross_module_imports_for_module(
             for base in getattr(obj, "__bases__", ()):
                 _check_impl_type_for_cross_ref(base, module_name, cross_module_refs)
             for method_name, attr in tuple(obj.__dict__.items()):
-                if method_name.startswith("_"):
+                if method_name.startswith("_") and method_name not in _TYPE_SCANNED_DUNDER_METHODS:
                     continue
                 if _is_manual_wrapper(attr, manual_wrapper_ids=manual_wrapper_ids):
                     continue
@@ -222,7 +231,9 @@ def build_module_compilation_ir(
                         module_typevars[arg.__name__] = arg
 
         for name, attr in tuple(cls.__dict__.items()):
-            if name.startswith("_") or _is_manual_wrapper(attr, manual_wrapper_ids=manual_wrapper_ids):
+            if (name.startswith("_") and name not in _TYPE_SCANNED_DUNDER_METHODS) or _is_manual_wrapper(
+                attr, manual_wrapper_ids=manual_wrapper_ids
+            ):
                 continue
             if isinstance(attr, classmethod | staticmethod):
                 method = attr.__func__

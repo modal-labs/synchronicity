@@ -222,6 +222,7 @@ def generated_wrappers():
         "staticmethod_method_local_typevar_impl",
         "classproperty_class_impl",
         "sequence_callable_annotations_impl",
+        "decorator_factory_impl",
         "variadic_translation_impl",
         "sandboxlib._sandbox",
     ]

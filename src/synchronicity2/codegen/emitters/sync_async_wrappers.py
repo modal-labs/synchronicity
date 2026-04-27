@@ -1384,6 +1384,20 @@ def emit_method_wrapper_pair(
     else:
         sync_method_code = f"{def_line}\n{indented_method_body}"
 
+    overload_code = ""
+    if mir.overloads and not uses_with_aio_wrapper:
+        overload_code = _emit_method_overloads(
+            mir.overloads,
+            method_name,
+            method_type,
+            current_target_module,
+            runtime_package,
+            mat_ctx=mat_ctx,
+            is_async=False,
+        )
+    if overload_code:
+        sync_method_code = f"{overload_code}\n{sync_method_code}"
+
     return wrapper_functions_code, sync_method_code
 
 

@@ -542,6 +542,9 @@ def test_parse_class_forwarded_dunder_methods():
 
     @m.wrap_class()
     class Box:
+        async def __call__(self, key: str) -> int:
+            return 1
+
         async def __getitem__(self, key: str) -> int:
             return 1
 
@@ -557,7 +560,27 @@ def test_parse_class_forwarded_dunder_methods():
     ir = parse_class_wrapper_ir(Box, "generated.dunders", globals_dict=locals())
     method_names = {method_ir.method_name for method_ir in ir.methods}
 
-    assert {"__getitem__", "__setitem__", "__contains__", "__delitem__"} <= method_names
+    assert {"__call__", "__getitem__", "__setitem__", "__contains__", "__delitem__"} <= method_names
+
+
+def test_build_module_compilation_ir_collects_typevars_from_call_dunder():
+    m = Module("generated.call_dunder_typevars")
+    call_p = typing.ParamSpec("call_p")
+    call_t = typing.TypeVar("call_t")
+
+    @m.wrap_class()
+    class RemoteFunction(typing.Generic[call_p, call_t]):
+        def remote(self, *args: call_p.args, **kwargs: call_p.kwargs) -> call_t:
+            raise NotImplementedError
+
+    @m.wrap_class()
+    class FunctionDecoratorType:
+        def __call__(self, func: typing.Callable[call_p, call_t]) -> RemoteFunction[call_p, call_t]:
+            raise NotImplementedError
+
+    ir = build_module_compilation_ir(m)
+
+    assert {spec.name for spec in ir.typevar_specs} == {"call_p", "call_t"}
 
 
 def test_parse_classmethod_async_context_manager_return_ir():

@@ -363,6 +363,55 @@ IR_CLASS_OVERLOADED_METHOD = ClassWrapperIR(
     ),
 )
 
+IR_CLASS_SYNC_OVERLOADED_METHOD = ClassWrapperIR(
+    impl_ref=ImplQualifiedRef(IMPL, "EmitSyncOverloadedMethodClass"),
+    wrapper_ref=WrapperRef(TARGET, "EmitSyncOverloadedMethodClass"),
+    wrapped_bases=(),
+    generic_type_parameters=None,
+    attributes=(),
+    properties=(),
+    methods=(
+        MethodWrapperIR(
+            method_name="decorate",
+            method_type=MethodBindingKind.INSTANCE,
+            parameters=(ParameterIR(name="value", kind=1, annotation_ir=None, default_expr=None),),
+            is_async_gen=False,
+            is_async=False,
+            return_transformer_ir=IdentityTypeIR(signature_text="typing.Any"),
+            overloads=(
+                SignatureIR(
+                    parameters=(
+                        ParameterIR(
+                            name="value",
+                            kind=1,
+                            annotation_ir=IdentityTypeIR(signature_text="int"),
+                            default_expr=None,
+                        ),
+                    ),
+                    return_transformer_ir=IdentityTypeIR(signature_text="int"),
+                ),
+                SignatureIR(
+                    parameters=(
+                        ParameterIR(
+                            name="value",
+                            kind=1,
+                            annotation_ir=WrappedClassTypeIR(
+                                impl=ImplQualifiedRef(IMPL, "Node"),
+                                wrapper=WrapperRef(TARGET, "Node"),
+                            ),
+                            default_expr=None,
+                        ),
+                    ),
+                    return_transformer_ir=WrappedClassTypeIR(
+                        impl=ImplQualifiedRef(IMPL, "Node"),
+                        wrapper=WrapperRef(TARGET, "Node"),
+                    ),
+                ),
+            ),
+        ),
+    ),
+)
+
 IR_CLASS_COMPLEX = ClassWrapperIR(
     impl_ref=ImplQualifiedRef(IMPL, "EmitComplexClass"),
     wrapper_ref=WrapperRef(TARGET, "EmitComplexClass"),
@@ -1021,6 +1070,15 @@ def test_emit_class_method_overloads_translate_each_overload():
         "self._wrapper_instance._impl_instance, value))" in code
     )
     assert "def resolve(self, value) -> typing.Any:" in code
+
+
+def test_emit_sync_method_overloads():
+    code = emit_class_from_ir(IR_CLASS_SYNC_OVERLOADED_METHOD, TARGET)
+    compile(code, "<string>", "exec")
+    assert "@typing.overload" in code
+    assert "def decorate(self, value: int) -> int: ..." in code
+    assert 'def decorate(self, value: "Node") -> "Node": ...' in code
+    assert "def decorate(self, value) -> typing.Any:" in code
 
 
 def test_emit_class_aiter_typed_iter():
