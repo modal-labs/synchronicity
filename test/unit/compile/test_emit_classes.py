@@ -32,6 +32,7 @@ from synchronicity2.codegen.transformer_ir import (
     SelfTypeIR,
     SequenceTypeIR,
     SubscriptedWrappedClassTypeIR,
+    TypeVarIR,
     WrappedClassTypeIR,
     WrapperRef,
 )
@@ -929,6 +930,41 @@ def test_emit_staticmethod_translated_subscripted_varargs_quotes_forward_ref():
     assert 'def aio(self, *args: "Node[T]") -> list[str]:' in code
     assert 'def collect(*args: "Node[T]") -> list[str]:' in code
     assert "args_impl = tuple(_item._impl_instance for _item in args)" in code
+
+
+def test_emit_staticmethod_with_method_local_typevar_without_type_checking_stub():
+    ir = ClassWrapperIR(
+        impl_ref=ImplQualifiedRef(IMPL, "EmitMethodLocalTypeVarClass"),
+        wrapper_ref=WrapperRef(TARGET, "EmitMethodLocalTypeVarClass"),
+        wrapped_bases=(),
+        generic_type_parameters=None,
+        attributes=(),
+        properties=(),
+        class_properties=(),
+        manual_attributes=(),
+        methods=(
+            MethodWrapperIR(
+                method_name="echo",
+                method_type=MethodBindingKind.STATICMETHOD,
+                parameters=(
+                    ParameterIR(
+                        name="value",
+                        kind=1,
+                        annotation_ir=TypeVarIR(name="T"),
+                        default_expr=None,
+                    ),
+                ),
+                is_async_gen=False,
+                is_async=True,
+                return_transformer_ir=AwaitableTypeIR(inner=TypeVarIR(name="T")),
+            ),
+        ),
+    )
+
+    code = emit_class_from_ir(ir, TARGET)
+
+    assert "@staticmethod_with_aio(_EmitMethodLocalTypeVarClass_echo_MethodWithAio)" in code
+    assert "if typing.TYPE_CHECKING" not in code
 
 
 def test_emit_class_method_various_builtin_default_values():

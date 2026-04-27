@@ -219,6 +219,7 @@ def generated_wrappers():
         "async_context_manager_impl",
         "property_class_impl",
         "renamed_exports_impl",
+        "staticmethod_method_local_typevar_impl",
         "classproperty_class_impl",
         "sequence_callable_annotations_impl",
         "variadic_translation_impl",

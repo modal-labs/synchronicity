@@ -5,10 +5,6 @@ from __future__ import annotations
 import dataclasses
 import re
 import textwrap
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from ..type_transformer import TypeTransformer
 
 from ..compile_utils import _build_call_with_wrap, _format_return_annotation, format_parameters_for_emit
 from ..ir import (
@@ -24,7 +20,7 @@ from ..ir import (
 )
 from ..transformer_ir import ImplQualifiedRef, WrapperRef
 from ..transformer_materialize import MaterializeContext, materialize_transformer_ir
-from ..type_transformer import AwaitableTransformer, CoroutineTransformer
+from ..type_transformer import AwaitableTransformer, CoroutineTransformer, TypeTransformer
 from ..typevar_codegen import typevar_definition_lines
 
 
@@ -1051,13 +1047,9 @@ def emit_method_wrapper_pair(
     sync_return_str, async_return_str = _format_return_annotation(return_transformer, current_target_module)
     uses_with_aio_wrapper = is_async
     method_with_aio_type_expr: str | None = None
-    needs_type_checking_stub = False
     if uses_with_aio_wrapper:
-        method_with_aio_type_expr, needs_type_checking_stub = _method_with_aio_type_data(
-            owner,
-            mir,
-            runtime_package,
-            mat_ctx=mat_ctx,
+        method_with_aio_type_expr, _needs_type_checking_stub = _method_with_aio_type_data(
+            owner, mir, runtime_package, mat_ctx=mat_ctx
         )
 
     aio_body = None
@@ -1388,15 +1380,7 @@ def emit_method_wrapper_pair(
 
     if decorator_line:
         runtime_method_code = f"    {decorator_line}\n{def_line}\n{indented_method_body}"
-        if needs_type_checking_stub and method_with_aio_type_expr is not None:
-            sync_method_code = (
-                "    if typing.TYPE_CHECKING:\n"
-                f"        {method_name}: {method_with_aio_type_expr}\n"
-                "    else:\n"
-                f"{_indent_block(runtime_method_code, '        ')}"
-            )
-        else:
-            sync_method_code = runtime_method_code
+        sync_method_code = runtime_method_code
     else:
         sync_method_code = f"{def_line}\n{indented_method_body}"
 
