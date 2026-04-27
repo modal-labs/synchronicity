@@ -1446,8 +1446,13 @@ class CallableTransformer(TypeTransformer):
         translated_args: list[str] = []
         for index, transformer in enumerate(self.param_transformers):
             arg_expr = f"_callback_args[{index}]"
-            if wrapper_to_impl:
-                translated_args.append(transformer.unwrap_expr(arg_expr))
+            if not transformer.needs_translation():
+                translated_args.append(arg_expr)
+            elif wrapper_to_impl:
+                if isinstance(transformer, CallableTransformer):
+                    translated_args.append(transformer.unwrap_expr(arg_expr, target_module))
+                else:
+                    translated_args.append(transformer.unwrap_expr(arg_expr))
             else:
                 translated_args.append(transformer.wrap_expr(target_module, arg_expr, is_async=False))
 
@@ -1465,7 +1470,10 @@ class CallableTransformer(TypeTransformer):
         callback_args = self._translated_callback_args_expr(target_module, wrapper_to_impl=False)
         call_expr = f"_wrapper_callable({callback_args})"
         if self.return_transformer.needs_translation():
-            call_expr = self.return_transformer.unwrap_expr(call_expr)
+            if isinstance(self.return_transformer, CallableTransformer):
+                call_expr = self.return_transformer.unwrap_expr(call_expr, target_module)
+            else:
+                call_expr = self.return_transformer.unwrap_expr(call_expr)
         return f"(lambda _wrapper_callable: " f"(lambda *_callback_args, **_callback_kwargs: {call_expr}))({var_name})"
 
     def wrap_expr(self, target_module: str, var_name: str, is_async: bool = True) -> str:
