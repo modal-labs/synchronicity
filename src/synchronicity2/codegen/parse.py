@@ -116,6 +116,7 @@ def _iter_overload_functions(f: types.FunctionType) -> tuple[types.FunctionType,
 _FORWARDED_DUNDER_METHODS = frozenset(
     {
         "__get__",
+        "__getattr__",
         "__call__",
         "__contains__",
         "__delitem__",
@@ -153,9 +154,10 @@ def cross_module_imports_for_module(
             for base in getattr(obj, "__bases__", ()):
                 _check_impl_type_for_cross_ref(base, module_name, cross_module_refs)
             for method_name, attr in tuple(obj.__dict__.items()):
-                if method_name.startswith("_") and method_name not in _TYPE_SCANNED_DUNDER_METHODS:
+                is_manual = _is_manual_wrapper(attr, manual_wrapper_ids=manual_wrapper_ids)
+                if method_name.startswith("_") and method_name not in _TYPE_SCANNED_DUNDER_METHODS and not is_manual:
                     continue
-                if _is_manual_wrapper(attr, manual_wrapper_ids=manual_wrapper_ids):
+                if is_manual and not isinstance(attr, (classmethod, staticmethod)) and not inspect.isfunction(attr):
                     continue
                 if isinstance(attr, classmethod | staticmethod):
                     method = attr.__func__
@@ -591,9 +593,18 @@ def parse_class_wrapper_ir(
     classproperty_irs: list[ClassPropertyWrapperIR] = []
     manual_attributes: list[ManualClassAttributeIR] = []
     for name, attr in tuple(cls.__dict__.items()):
-        if name.startswith("_"):
-            continue
         if _is_manual_wrapper(attr, manual_wrapper_ids=manual_wrapper_ids):
+            if isinstance(attr, classmethod):
+                source_methods.append((name, attr.__func__, MethodBindingKind.CLASSMETHOD))
+                classmethod_staticmethod_names.add(name)
+                continue
+            if isinstance(attr, staticmethod):
+                source_methods.append((name, attr.__func__, MethodBindingKind.STATICMETHOD))
+                classmethod_staticmethod_names.add(name)
+                continue
+            if inspect.isfunction(attr):
+                source_methods.append((name, attr, MethodBindingKind.INSTANCE))
+                continue
             manual_attribute_names.add(name)
             manual_attributes.append(
                 ManualClassAttributeIR(
@@ -601,6 +612,8 @@ def parse_class_wrapper_ir(
                     access_kind=_manual_class_attribute_access_kind(attr),
                 )
             )
+            continue
+        if name.startswith("_"):
             continue
         if isinstance(attr, classmethod):
             source_methods.append((name, attr.__func__, MethodBindingKind.CLASSMETHOD))

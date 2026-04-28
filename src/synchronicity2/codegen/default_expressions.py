@@ -225,6 +225,9 @@ def resolve_parameter_default_expressions(
     impl_module: types.ModuleType,
     source_label_prefix: str | None = None,
 ) -> dict[str, ResolvedDefaultExpression]:
+    if all(parameter.default is inspect.Parameter.empty for parameter in sig.parameters.values()):
+        return {}
+
     source_defaults = _extract_source_default_expressions(
         func,
         sig,

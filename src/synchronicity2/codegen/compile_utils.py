@@ -96,7 +96,14 @@ def _safe_get_annotations(obj, globals_dict=None):
                         # Try to import the module
                         import importlib
 
-                        importlib.import_module(module_path)
+                        imported_module = importlib.import_module(module_path)
+                        # Ensure parent packages expose the imported submodule as an attribute
+                        # so expressions like "modal._app._App" can be evaluated.
+                        if "." in module_path:
+                            parent_path, child_name = module_path.rsplit(".", 1)
+                            parent_module = sys.modules.get(parent_path)
+                            if parent_module is not None and not hasattr(parent_module, child_name):
+                                setattr(parent_module, child_name, imported_module)
                         # Add the top-level module to extended_globals
                         # For "a.b.c.Class", add "a" -> sys.modules["a"]
                         top_level_module = parts[0]

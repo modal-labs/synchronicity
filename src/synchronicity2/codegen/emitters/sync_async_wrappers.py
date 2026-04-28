@@ -87,6 +87,7 @@ def _materialize_context_for_module(specs: tuple[TypeVarSpecIR, ...]) -> Materia
 
 _CLASS_INIT_NAME = "__init__"
 _DESCRIPTOR_DUNDERS = frozenset({"__get__"})
+_DYNAMIC_ATTR_DUNDERS = frozenset({"__getattr__"})
 _ASYNC_ITERATOR_DUNDERS = frozenset({"__aiter__", "__anext__"})
 _ASYNC_CONTEXT_MANAGER_DUNDERS = frozenset({"__aenter__", "__aexit__"})
 
@@ -99,15 +100,18 @@ def _partition_class_methods(
     tuple[MethodWrapperIR, ...],
     tuple[MethodWrapperIR, ...],
     tuple[MethodWrapperIR, ...],
+    tuple[MethodWrapperIR, ...],
 ]:
     """Split ``__init__``, descriptor/iterator/context-manager dunders, and everything else."""
 
     init_mir: MethodWrapperIR | None = None
     descriptor: list[MethodWrapperIR] = []
+    dynamic_attr: list[MethodWrapperIR] = []
     iterator: list[MethodWrapperIR] = []
     context_manager: list[MethodWrapperIR] = []
     normal: list[MethodWrapperIR] = []
     descriptor_order = {"__get__": 0}
+    dynamic_attr_order = {"__getattr__": 0}
     iter_order = {"__aiter__": 0, "__anext__": 1}
     cm_order = {"__aenter__": 0, "__aexit__": 1}
     for mir in methods:
@@ -115,6 +119,8 @@ def _partition_class_methods(
             init_mir = mir
         elif mir.method_name in _DESCRIPTOR_DUNDERS:
             descriptor.append(mir)
+        elif mir.method_name in _DYNAMIC_ATTR_DUNDERS:
+            dynamic_attr.append(mir)
         elif mir.method_name in _ASYNC_ITERATOR_DUNDERS:
             iterator.append(mir)
         elif mir.method_name in _ASYNC_CONTEXT_MANAGER_DUNDERS:
@@ -122,9 +128,10 @@ def _partition_class_methods(
         else:
             normal.append(mir)
     descriptor.sort(key=lambda m: descriptor_order[m.method_name])
+    dynamic_attr.sort(key=lambda m: dynamic_attr_order[m.method_name])
     iterator.sort(key=lambda m: iter_order[m.method_name])
     context_manager.sort(key=lambda m: cm_order[m.method_name])
-    return init_mir, tuple(descriptor), tuple(iterator), tuple(context_manager), tuple(normal)
+    return init_mir, tuple(descriptor), tuple(dynamic_attr), tuple(iterator), tuple(context_manager), tuple(normal)
 
 
 def _async_iterator_dunder_pair(
@@ -1420,9 +1427,14 @@ def emit_class_from_ir(
     impl_dot = _impl_type_dotted(ir.impl_ref)
     proxy_type_comment = f"# Proxy type for the underlying implementation type {impl_dot}."
     owner = method_emit_owner(ir, target_module)
-    init_mir, descriptor_mirs, iterator_mirs, context_manager_mirs, normal_methods = _partition_class_methods(
-        ir.methods
-    )
+    (
+        init_mir,
+        descriptor_mirs,
+        dynamic_attr_mirs,
+        iterator_mirs,
+        context_manager_mirs,
+        normal_methods,
+    ) = _partition_class_methods(ir.methods)
 
     # Pre-materialize return transformers once so helpers and method bodies use the same instances
     method_transformers: dict[str, TypeTransformer] = {}
@@ -1578,6 +1590,35 @@ def emit_class_from_ir(
         return _wrap_maybe_from_impl(result, _synchronizer)"""
             )
         descriptor_methods_section = "\n\n".join(descriptor_blocks)
+
+    dynamic_attr_methods_section = ""
+    if dynamic_attr_mirs:
+        dynamic_attr_blocks: list[str] = []
+        for mir in dynamic_attr_mirs:
+            if mir.method_name != "__getattr__":
+                continue
+            method_return_transformer = method_transformers[mir.method_name]
+            method_sync_return_str, _method_async_return_str = _format_return_annotation(
+                method_return_transformer, target_module
+            )
+            method_param_str, method_call_args_str, method_unwrap_code = format_parameters_for_emit(
+                mir.parameters,
+                target_module,
+                runtime_package,
+                unwrap_indent="        ",
+                mat_ctx=mat_ctx,
+            )
+            method_params = f"self, {method_param_str}" if method_param_str else "self"
+            method_body = f"""        result = {impl_dot}.__getattr__(self._impl_instance, {method_call_args_str})
+        return _wrap_maybe_from_impl(result, _synchronizer)"""
+            if method_unwrap_code:
+                method_body = f"{method_unwrap_code}\n{method_body}"
+            method_body = _prepend_docstring(method_body, mir.docstring, indent="        ")
+            dynamic_attr_blocks.append(
+                f"""    def __getattr__({method_params}){method_sync_return_str}:
+{method_body}"""
+            )
+        dynamic_attr_methods_section = "\n\n".join(dynamic_attr_blocks)
 
     iterator_methods_section = ""
     if iterator_mirs:
@@ -1757,6 +1798,8 @@ def emit_class_from_ir(
         sections.append(class_properties_section)
     if descriptor_methods_section:
         sections.append(descriptor_methods_section)
+    if dynamic_attr_methods_section:
+        sections.append(dynamic_attr_methods_section)
     if iterator_methods_section:
         sections.append(iterator_methods_section)
     if context_manager_methods_section:

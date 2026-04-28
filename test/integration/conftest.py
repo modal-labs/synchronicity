@@ -218,6 +218,7 @@ def generated_wrappers():
         "manual_nowrap_impl",
         "async_context_manager_impl",
         "property_class_impl",
+        "dynamic_attr_impl",
         "renamed_exports_impl",
         "staticmethod_method_local_typevar_impl",
         "classproperty_class_impl",

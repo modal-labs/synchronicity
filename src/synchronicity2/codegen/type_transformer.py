@@ -191,6 +191,9 @@ class WrappedClassTransformer(TypeTransformer):
     def has_local_wrapper_ref(self, target_module: str) -> bool:
         return self._wrapper.wrapper_module == target_module
 
+    def annotation_type(self, target_module: str, is_async: bool = True) -> str:
+        return f'"{self.wrapped_type(target_module, is_async)}"'
+
     def passthrough_annotation_type(self, target_module: str, is_async: bool = True) -> str:
         return _impl_ref_dotted(self.impl_ref)
 
@@ -229,6 +232,9 @@ class SubscriptedWrappedClassTransformer(TypeTransformer):
         return self._inner.has_local_wrapper_ref(target_module) or any(
             t.has_local_wrapper_ref(target_module) for t in self._type_arg_transformers
         )
+
+    def annotation_type(self, target_module: str, is_async: bool = True) -> str:
+        return f'"{self.wrapped_type(target_module, is_async)}"'
 
     def passthrough_annotation_type(self, target_module: str, is_async: bool = True) -> str:
         base = _impl_ref_dotted(self._inner.impl_ref)
