@@ -286,6 +286,7 @@ def format_parameters_for_emit(
 
     last_positional_only_index = -1
     positional_only_marker_added = False
+    keyword_only_marker_added = False
 
     def _vararg_unwrap_expr(transformer, source_name: str) -> str:
         item_unwrap = (
@@ -346,6 +347,11 @@ def format_parameters_for_emit(
                 call_args.append(f"**{name}")
 
         elif kind == inspect.Parameter.KEYWORD_ONLY:
+            if not keyword_only_marker_added and not any(
+                p.kind == inspect.Parameter.VAR_POSITIONAL for p in parameters
+            ):
+                params.append("*")
+                keyword_only_marker_added = True
             if param_ir.annotation_ir is not None:
                 assert transformer is not None
                 ann = _parameter_annotation_str(transformer, current_target_module)

@@ -115,6 +115,7 @@ def _iter_overload_functions(f: types.FunctionType) -> tuple[types.FunctionType,
 
 _FORWARDED_DUNDER_METHODS = frozenset(
     {
+        "__get__",
         "__call__",
         "__contains__",
         "__delitem__",

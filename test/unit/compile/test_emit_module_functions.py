@@ -122,6 +122,27 @@ IR_FN_CREATE_PERSON = ModuleLevelFunctionIR(
         impl=ImplQualifiedRef(IMPL, "Person"), wrapper=WrapperRef(TARGET, "Person")
     ),
 )
+IR_FN_KEYWORD_ONLY = ModuleLevelFunctionIR(
+    impl_ref=ImplQualifiedRef(IMPL, "fn_keyword_only"),
+    needs_async_wrapper=False,
+    is_async_gen=False,
+    parameters=(
+        ParameterIR(name="_sentinel", kind=1, annotation_ir=None, default_expr="None"),
+        ParameterIR(
+            name="required_kwonly",
+            kind=3,
+            annotation_ir=IdentityTypeIR(signature_text="int"),
+            default_expr=None,
+        ),
+        ParameterIR(
+            name="optional_kwonly",
+            kind=3,
+            annotation_ir=IdentityTypeIR(signature_text="str"),
+            default_expr="'x'",
+        ),
+    ),
+    return_transformer_ir=IdentityTypeIR(signature_text="None"),
+)
 IR_FN_GENERIC_TYPES = ModuleLevelFunctionIR(
     impl_ref=ImplQualifiedRef(IMPL, "fn_generic_types"),
     needs_async_wrapper=True,
@@ -594,6 +615,16 @@ def test_emit_function_positional_only():
     code = emit_module_level_function(IR_FN_POSONLY, TARGET)
     assert "def fn_with_posonly(a, b, /, c, d = 10)" in code
     assert "return test.unit.compile.test_emit_module_functions.fn_with_posonly(a, b, c, d)" in code
+    compile(code, "<string>", "exec")
+
+
+def test_emit_function_keyword_only_separator():
+    code = emit_module_level_function(IR_FN_KEYWORD_ONLY, TARGET)
+    assert "def fn_keyword_only(_sentinel = None, *, required_kwonly: int, optional_kwonly: str = 'x')" in code
+    assert (
+        "return test.unit.compile.test_emit_module_functions.fn_keyword_only("
+        "_sentinel, required_kwonly=required_kwonly, optional_kwonly=optional_kwonly)" in code
+    )
     compile(code, "<string>", "exec")
 
 

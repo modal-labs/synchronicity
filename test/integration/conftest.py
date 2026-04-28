@@ -223,6 +223,7 @@ def generated_wrappers():
         "classproperty_class_impl",
         "sequence_callable_annotations_impl",
         "decorator_factory_impl",
+        "descriptor_dunder_impl",
         "variadic_translation_impl",
         "sandboxlib._sandbox",
     ]

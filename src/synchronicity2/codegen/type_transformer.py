@@ -675,6 +675,9 @@ def _runtime_action_key(transformer: TypeTransformer) -> tuple[str, ...] | None:
             return None
         return ("optional", *inner_key)
 
+    if isinstance(transformer, CallableTransformer):
+        return ("callable",)
+
     return None
 
 
@@ -801,6 +804,17 @@ def _union_arm_runtime_spec(
             wrap_guard_expr="isinstance(_v, tuple)",
             translated=transformer.needs_translation(),
             unwrap_value_expr=transformer.unwrap_expr("_v"),
+            wrap_value_expr=transformer.wrap_expr(target_module, "_v", is_async),
+        )
+
+    if isinstance(transformer, CallableTransformer):
+        return _UnionArmRuntimeSpec(
+            discriminator_key=("callable",),
+            runtime_action_key=_runtime_action_key(transformer),
+            unwrap_guard_expr='callable(_v) and not hasattr(_v, "_impl_instance")',
+            wrap_guard_expr="callable(_v)",
+            translated=transformer.needs_translation(),
+            unwrap_value_expr=transformer.unwrap_expr("_v", target_module),
             wrap_value_expr=transformer.wrap_expr(target_module, "_v", is_async),
         )
 

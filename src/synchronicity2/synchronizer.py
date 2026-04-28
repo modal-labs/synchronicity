@@ -19,6 +19,9 @@ R = typing.TypeVar("R")
 class WrapperClassProtocol(typing.Protocol):
     _impl_instance: typing.Any
 
+    @classmethod
+    def _from_impl(cls, impl_instance: typing.Any) -> typing.Any: ...
+
 
 WRAPPER_CLASS_T = typing.TypeVar("WRAPPER_CLASS_T", bound=WrapperClassProtocol)
 
@@ -69,6 +72,17 @@ def _wrapped_from_impl(
     resolved_cache[cache_key] = wrapper
 
     return wrapper
+
+
+def _wrap_maybe_from_impl(value: typing.Any, synchronizer: "Synchronizer") -> typing.Any:
+    """Wrap an implementation instance when a generated wrapper exists."""
+
+    value_type = type(value)
+    if getattr(value_type, _IMPL_WRAPPER_LOCATION_ATTR, None) is None:
+        return value
+
+    wrapper_cls = synchronizer._resolve_wrapper_class(value)
+    return wrapper_cls._from_impl(value)
 
 
 class Synchronizer:
