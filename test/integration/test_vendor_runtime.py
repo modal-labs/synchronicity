@@ -15,6 +15,31 @@ from synchronicity2.codegen.runtime_vendor import vendor_runtime
 from synchronicity2.module import Module
 
 
+def _run_codegen_wrappers(module_name: str, module_dir: Path) -> subprocess.CompletedProcess[str]:
+    project_root = Path(__file__).parent.parent.parent
+    env = os.environ.copy()
+    pythonpath_parts = [str(module_dir), str(project_root)]
+    if "PYTHONPATH" in env:
+        pythonpath_parts.append(env["PYTHONPATH"])
+    env["PYTHONPATH"] = os.pathsep.join(pythonpath_parts)
+
+    return subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "synchronicity2.codegen",
+            "wrappers",
+            "-m",
+            module_name,
+            "--stdout",
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=str(project_root),
+    )
+
+
 def test_vendor_runtime_writes_expected_files(tmp_path: Path) -> None:
     dest = vendor_runtime(target_package="vendored_test.sync_rt", output_base=tmp_path)
     assert dest == tmp_path / "vendored_test" / "sync_rt"
@@ -119,3 +144,55 @@ async def bad_default(value: float = time.time()) -> float:
     assert "Error:" in result.stderr
     assert "parameter 'value'" in result.stderr
     assert "unsupported default expression" in result.stderr
+
+
+def test_cli_wrappers_rejects_implementation_importing_wrapper_module(tmp_path: Path) -> None:
+    (tmp_path / "wrapper_import_cycle.py").write_text("SENTINEL = True\n")
+    (tmp_path / "wrapper_import_cycle_impl.py").write_text(
+        """
+import wrapper_import_cycle
+
+from synchronicity2 import Module
+
+wrapper_module = Module("wrapper_import_cycle")
+
+@wrapper_module.wrap_function()
+async def value() -> int:
+    return 1
+""".strip()
+        + "\n"
+    )
+
+    result = _run_codegen_wrappers("wrapper_import_cycle_impl", tmp_path)
+
+    assert result.returncode != 0
+    assert "Implementation imports loaded generated wrapper module(s) during codegen" in result.stderr
+    assert "wrapper_import_cycle" in result.stderr
+
+
+def test_cli_wrappers_rejects_annotation_fallback_importing_wrapper_module(tmp_path: Path) -> None:
+    (tmp_path / "annotation_wrapper_cycle.py").write_text(
+        """
+class PublicType:
+    pass
+""".strip()
+        + "\n"
+    )
+    (tmp_path / "annotation_wrapper_cycle_impl.py").write_text(
+        """
+from synchronicity2 import Module
+
+wrapper_module = Module("annotation_wrapper_cycle")
+
+@wrapper_module.wrap_function()
+async def value(arg: "annotation_wrapper_cycle.PublicType | None" = None) -> int:
+    return 1
+""".strip()
+        + "\n"
+    )
+
+    result = _run_codegen_wrappers("annotation_wrapper_cycle_impl", tmp_path)
+
+    assert result.returncode != 0
+    assert "Implementation annotations may not import generated wrapper module" in result.stderr
+    assert "annotation_wrapper_cycle" in result.stderr

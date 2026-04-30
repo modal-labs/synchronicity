@@ -339,6 +339,7 @@ The reason for choosing this path is:
 - Sync calls cross a thread boundary into the synchronizer loop, so there is some dispatch overhead compared with calling the raw implementation directly.
 - Generated modules import the implementation modules at runtime, so generation does not make the implementation code disposable.
 - Generated wrapper modules import runtime pieces like `synchronicity2.synchronizer` by default, or your vendored path (e.g. `mylib.synchronicity.synchronizer`) when using `--runtime-package`. They do not need `synchronicity2.codegen` at runtime.
+- Fallback runtime wrapping for dynamically typed returns is opt-in, not automatic. If something dynamic like `__getattr__` or `__get__` should wrap a known synchronized type but otherwise fall back to opaque values, annotate it as a union such as `_PartialFunction | typing.Any` or `Payload | typing.Any`. Synchronicity will honor the wrapped union arm at runtime and treat the `Any` arm as the no-translation fallback.
 
 ## Current limitations
 

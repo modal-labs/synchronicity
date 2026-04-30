@@ -18,7 +18,7 @@ class Descriptor:
     def __init__(self, payload: Payload):
         self._payload = payload
 
-    def __get__(self, obj, objtype=None) -> typing.Any:
+    def __get__(self, obj, objtype=None) -> "Descriptor | Payload | typing.Any":
         if obj is None:
             return self
         return self._payload

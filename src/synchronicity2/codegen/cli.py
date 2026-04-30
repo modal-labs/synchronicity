@@ -53,6 +53,19 @@ def import_module(module_name: str) -> None:
         raise ImportError(f"Could not import module '{module_name}': {e}")
 
 
+def _fail_if_wrapper_modules_loaded(module_objects: list[object]) -> None:
+    loaded_wrapper_modules = sorted(
+        {module.target_module for module in module_objects if module.target_module in sys.modules}
+    )
+    if not loaded_wrapper_modules:
+        return
+    loaded_str = ", ".join(repr(name) for name in loaded_wrapper_modules)
+    raise TypeError(
+        "Implementation imports loaded generated wrapper module(s) during codegen: "
+        f"{loaded_str}. Implementation modules must import implementation modules instead."
+    )
+
+
 def import_modules_two_pass(module_names: list[str]) -> list:
     """
     Import modules in two passes to handle TYPE_CHECKING imports.
@@ -255,6 +268,7 @@ def _run_wrappers(args: argparse.Namespace) -> None:
     print("Compiling wrappers...", file=sys.stderr)
 
     try:
+        _fail_if_wrapper_modules_loaded(module_objects)
         modules = compile_modules(
             module_objects,
             runtime_package=args.runtime_package,

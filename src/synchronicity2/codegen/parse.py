@@ -139,6 +139,7 @@ def cross_module_imports_for_module(
     module_items: dict,
     *,
     manual_wrapper_ids: frozenset[int] = frozenset(),
+    forbidden_wrapper_modules: frozenset[str] | None = None,
 ) -> dict[str, set[str]]:
     cross_module_refs: dict[str, set[str]] = {}
 
@@ -147,7 +148,7 @@ def cross_module_imports_for_module(
             continue
         if isinstance(obj, types.FunctionType):
             for f in (obj, *_iter_overload_functions(obj)):
-                annotations = _safe_get_annotations(f)
+                annotations = _safe_get_annotations(f, forbidden_wrapper_modules=forbidden_wrapper_modules)
                 for annotation in annotations.values():
                     _check_annotation_for_cross_refs(annotation, module_name, cross_module_refs)
         elif isinstance(obj, type):
@@ -166,11 +167,13 @@ def cross_module_imports_for_module(
                     setter = attr.fset if isinstance(attr, property) else None
                     if getter is not None:
                         getter_func = getter.__func__ if isinstance(getter, classmethod) else getter
-                        annotations = _safe_get_annotations(getter_func)
+                        annotations = _safe_get_annotations(
+                            getter_func, forbidden_wrapper_modules=forbidden_wrapper_modules
+                        )
                         for annotation in annotations.values():
                             _check_annotation_for_cross_refs(annotation, module_name, cross_module_refs)
                     if setter is not None:
-                        annotations = _safe_get_annotations(setter)
+                        annotations = _safe_get_annotations(setter, forbidden_wrapper_modules=forbidden_wrapper_modules)
                         for annotation in annotations.values():
                             _check_annotation_for_cross_refs(annotation, module_name, cross_module_refs)
                     continue
@@ -179,7 +182,7 @@ def cross_module_imports_for_module(
                 else:
                     continue
                 for f in (method, *_iter_overload_functions(method)):
-                    annotations = _safe_get_annotations(f)
+                    annotations = _safe_get_annotations(f, forbidden_wrapper_modules=forbidden_wrapper_modules)
                     for annotation in annotations.values():
                         _check_annotation_for_cross_refs(annotation, module_name, cross_module_refs)
 
@@ -188,6 +191,8 @@ def cross_module_imports_for_module(
 
 def build_module_compilation_ir(
     module: Module,
+    *,
+    forbidden_wrapper_modules: frozenset[str] | None = None,
 ) -> ModuleCompilationIR:
     """Step 1–2 for a single output module: layout, cross-refs, and collected type variables."""
     module_items = module._module_items()
@@ -197,6 +202,7 @@ def build_module_compilation_ir(
         module.target_module,
         module_items,
         manual_wrapper_ids=manual_wrapper_ids,
+        forbidden_wrapper_modules=forbidden_wrapper_modules,
     )
 
     classes: list[type] = []
@@ -220,7 +226,7 @@ def build_module_compilation_ir(
 
     for func, _export_name in functions:
         for overload_func in (func, *_iter_overload_functions(func)):
-            annotations = _safe_get_annotations(overload_func)
+            annotations = _safe_get_annotations(overload_func, forbidden_wrapper_modules=forbidden_wrapper_modules)
             module_typevars.update(_extract_typevars_from_function(overload_func, annotations))
 
     for cls in classes:
@@ -245,7 +251,9 @@ def build_module_compilation_ir(
             else:
                 continue
             for overload_method in (method, *_iter_overload_functions(method)):
-                annotations = _safe_get_annotations(overload_method)
+                annotations = _safe_get_annotations(
+                    overload_method, forbidden_wrapper_modules=forbidden_wrapper_modules
+                )
                 module_typevars.update(_extract_typevars_from_function(overload_method, annotations))
 
     known_impl_types = frozenset(classes)
@@ -264,6 +272,7 @@ def build_module_compilation_ir(
             module.target_module,
             impl_modules=impl_mods,
             manual_wrapper_ids=manual_wrapper_ids,
+            forbidden_wrapper_modules=forbidden_wrapper_modules,
         )
         for c in classes
     )
@@ -277,6 +286,7 @@ def build_module_compilation_ir(
                 export_name=export_name,
                 globals_dict=g,
                 impl_modules=impl_mods,
+                forbidden_wrapper_modules=forbidden_wrapper_modules,
             )
         )
     module_functions_ir = tuple(module_functions_ir_list)
@@ -407,10 +417,15 @@ def _parse_overload_signature_irs(
     owner_impl_type: type | None,
     owner_has_type_parameters: bool,
     impl_modules: frozenset[str],
+    forbidden_wrapper_modules: frozenset[str] | None = None,
 ) -> tuple[SignatureIR, ...]:
     overload_irs: list[SignatureIR] = []
     for overload_func in _iter_overload_functions(f):
-        annotations = _safe_get_annotations(overload_func, globals_dict)
+        annotations = _safe_get_annotations(
+            overload_func,
+            globals_dict,
+            forbidden_wrapper_modules=forbidden_wrapper_modules,
+        )
         sig = inspect.signature(overload_func)
         overload_ir, _ = _parse_signature_ir(
             overload_func,
@@ -434,11 +449,12 @@ def parse_module_level_function_ir(
     globals_dict: dict[str, typing.Any] | None = None,
     runtime_package: str = "synchronicity2",
     impl_modules: frozenset[str] | None = None,
+    forbidden_wrapper_modules: frozenset[str] | None = None,
 ) -> ModuleLevelFunctionIR:
     _ = runtime_package  # reserved for parity with API; IR does not embed runtime package on nodes
     if impl_modules is None:
         impl_modules = frozenset({f.__module__})
-    annotations = _safe_get_annotations(f, globals_dict)
+    annotations = _safe_get_annotations(f, globals_dict, forbidden_wrapper_modules=forbidden_wrapper_modules)
     sig = inspect.signature(f)
     impl_module = sys.modules[f.__module__]
     signature_ir, is_async_gen = _parse_signature_ir(
@@ -458,6 +474,7 @@ def parse_module_level_function_ir(
         owner_impl_type=None,
         owner_has_type_parameters=False,
         impl_modules=impl_modules,
+        forbidden_wrapper_modules=forbidden_wrapper_modules,
     )
 
     needs_async_wrapper = is_async_gen or isinstance(
@@ -486,10 +503,11 @@ def parse_method_wrapper_ir(
     globals_dict: dict[str, typing.Any] | None = None,
     generic_typevars: dict[str, typing.TypeVar | typing.ParamSpec] | None = None,
     impl_modules: frozenset[str] | None = None,
+    forbidden_wrapper_modules: frozenset[str] | None = None,
 ) -> MethodWrapperIR:
     if impl_modules is None:
         impl_modules = frozenset({impl_class.__module__})
-    annotations = _safe_get_annotations(method, globals_dict)
+    annotations = _safe_get_annotations(method, globals_dict, forbidden_wrapper_modules=forbidden_wrapper_modules)
     sig = inspect.signature(method)
     impl_module = sys.modules[method.__module__]
     return_annotation = annotations.get("return", sig.return_annotation)
@@ -524,6 +542,7 @@ def parse_method_wrapper_ir(
         owner_impl_type=impl_class,
         owner_has_type_parameters=owner_has_type_parameters,
         impl_modules=impl_modules,
+        forbidden_wrapper_modules=forbidden_wrapper_modules,
     )
 
     is_async = is_async_gen or isinstance(signature_ir.return_transformer_ir, (AwaitableTypeIR, CoroutineTypeIR))
@@ -548,6 +567,7 @@ def parse_class_wrapper_ir(
     runtime_package: str = "synchronicity2",
     impl_modules: frozenset[str] | None = None,
     manual_wrapper_ids: frozenset[int] = frozenset(),
+    forbidden_wrapper_modules: frozenset[str] | None = None,
 ) -> ClassWrapperIR:
     """Collect :class:`ClassWrapperIR` from a live implementation class (parse-time only)."""
     if impl_modules is None:
@@ -632,7 +652,9 @@ def parse_class_wrapper_ir(
             # Parse getter return type
             return_ir: TypeTransformerIR | None = None
             if fget is not None:
-                getter_annotations = _safe_get_annotations(fget, globals_dict)
+                getter_annotations = _safe_get_annotations(
+                    fget, globals_dict, forbidden_wrapper_modules=forbidden_wrapper_modules
+                )
                 return_annotation = getter_annotations.get("return", inspect.Signature.empty)
                 if return_annotation != inspect.Signature.empty:
                     return_ir = annotation_to_transformer_ir(
@@ -646,7 +668,9 @@ def parse_class_wrapper_ir(
             has_setter = attr.fset is not None
             setter_value_ir: TypeTransformerIR | None = None
             if has_setter and attr.fset is not None:
-                setter_annotations = _safe_get_annotations(attr.fset, globals_dict)
+                setter_annotations = _safe_get_annotations(
+                    attr.fset, globals_dict, forbidden_wrapper_modules=forbidden_wrapper_modules
+                )
                 setter_sig = inspect.signature(attr.fset)
                 setter_params = list(setter_sig.parameters.values())
                 if len(setter_params) >= 2:
@@ -676,7 +700,9 @@ def parse_class_wrapper_ir(
                     f"Class property {cls.__qualname__}.{name} has an async getter. "
                     f"Class properties must be synchronous; use a classmethod instead."
                 )
-            getter_annotations = _safe_get_annotations(fget, globals_dict)
+            getter_annotations = _safe_get_annotations(
+                fget, globals_dict, forbidden_wrapper_modules=forbidden_wrapper_modules
+            )
             return_annotation = getter_annotations.get("return", inspect.Signature.empty)
             return_ir: TypeTransformerIR | None = None
             if return_annotation != inspect.Signature.empty:
@@ -724,7 +750,9 @@ def parse_class_wrapper_ir(
     class_annotations = cls.__annotations__ if hasattr(cls, "__annotations__") else {}
     for name, annotation in class_annotations.items():
         if not name.startswith("_"):
-            annotations_resolved = _safe_get_annotations(cls, globals_dict)
+            annotations_resolved = _safe_get_annotations(
+                cls, globals_dict, forbidden_wrapper_modules=forbidden_wrapper_modules
+            )
             resolved_annotation = annotations_resolved.get(name, annotation)
             annotation_ir = annotation_to_transformer_ir(
                 resolved_annotation,
@@ -746,6 +774,7 @@ def parse_class_wrapper_ir(
             globals_dict=globals_dict,
             generic_typevars=generic_typevars if generic_typevars else None,
             impl_modules=impl_modules,
+            forbidden_wrapper_modules=forbidden_wrapper_modules,
         )
         for method_name, method, method_type in source_methods
     )

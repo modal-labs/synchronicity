@@ -31,6 +31,7 @@ def compile_module(
     *,
     runtime_package: str = "synchronicity2",
     emitter: CodegenEmitter | None = None,
+    forbidden_wrapper_modules: frozenset[str] | None = None,
 ) -> str:
     """
     Compile wrapped items for a single target module.
@@ -43,7 +44,7 @@ def compile_module(
     Returns:
         String containing compiled wrapper code for this module
     """
-    ir = build_module_compilation_ir(module)
+    ir = build_module_compilation_ir(module, forbidden_wrapper_modules=forbidden_wrapper_modules)
     gen = emitter or SyncAsyncWrapperEmitter(runtime_package=runtime_package)
     return gen.emit_module(ir)
 
@@ -70,8 +71,9 @@ def compile_modules(
     gen = emitter or SyncAsyncWrapperEmitter(runtime_package=runtime_package)
 
     result = {}
+    forbidden_wrapper_modules = frozenset(module.target_module for module in modules)
     for module in modules:
-        code = compile_module(module, emitter=gen)
+        code = compile_module(module, emitter=gen, forbidden_wrapper_modules=forbidden_wrapper_modules)
         if code:
             result[module.target_module] = code
 

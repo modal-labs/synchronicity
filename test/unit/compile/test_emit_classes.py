@@ -33,6 +33,7 @@ from synchronicity2.codegen.transformer_ir import (
     SequenceTypeIR,
     SubscriptedWrappedClassTypeIR,
     TypeVarIR,
+    UnionTypeIR,
     WrappedClassTypeIR,
     WrapperRef,
 )
@@ -1279,3 +1280,79 @@ def test_emit_class_without_explicit_init():
     assert "def __init__(self):" in code
     assert "def __init__(self, *args, **kwargs):" not in code
     assert f"{IMPL}.{_impl_short(ir)}()" in code
+
+
+def test_emit_getattr_without_union_fallback_uses_plain_return():
+    ir = ClassWrapperIR(
+        impl_ref=ImplQualifiedRef(IMPL, "EmitDynamicOwner"),
+        wrapper_ref=WrapperRef(TARGET, "EmitDynamicOwner"),
+        wrapped_bases=(),
+        generic_type_parameters=None,
+        attributes=(),
+        properties=(),
+        methods=(
+            MethodWrapperIR(
+                method_name="__getattr__",
+                method_type=MethodBindingKind.INSTANCE,
+                parameters=(
+                    ParameterIR(
+                        name="name",
+                        kind=1,
+                        annotation_ir=IdentityTypeIR(signature_text="str"),
+                        default_expr=None,
+                    ),
+                ),
+                is_async_gen=False,
+                is_async=False,
+                return_transformer_ir=IdentityTypeIR(signature_text="typing.Any"),
+            ),
+        ),
+    )
+
+    code = emit_class_from_ir(ir, TARGET)
+
+    assert "return result" in code
+    assert "return _wrap_maybe_from_impl(result, _synchronizer)" not in code
+
+
+def test_emit_getattr_with_union_any_fallback_uses_runtime_fallback_wrap():
+    ir = ClassWrapperIR(
+        impl_ref=ImplQualifiedRef(IMPL, "EmitExplicitDynamicOwner"),
+        wrapper_ref=WrapperRef(TARGET, "EmitExplicitDynamicOwner"),
+        wrapped_bases=(),
+        generic_type_parameters=None,
+        attributes=(),
+        properties=(),
+        methods=(
+            MethodWrapperIR(
+                method_name="__getattr__",
+                method_type=MethodBindingKind.INSTANCE,
+                parameters=(
+                    ParameterIR(
+                        name="name",
+                        kind=1,
+                        annotation_ir=IdentityTypeIR(signature_text="str"),
+                        default_expr=None,
+                    ),
+                ),
+                is_async_gen=False,
+                is_async=False,
+                return_transformer_ir=UnionTypeIR(
+                    items=(
+                        WrappedClassTypeIR(
+                            impl=ImplQualifiedRef(IMPL, "EmitPayload"),
+                            wrapper=WrapperRef(TARGET, "EmitPayload"),
+                        ),
+                        IdentityTypeIR(signature_text="typing.Any"),
+                    )
+                ),
+            ),
+        ),
+    )
+
+    code = emit_class_from_ir(ir, TARGET)
+
+    expected_branch = (
+        "EmitPayload._from_impl(_v) if isinstance(_v, test.unit.compile.test_emit_classes.EmitPayload) else _v"
+    )
+    assert expected_branch in code

@@ -68,7 +68,7 @@ def _normalize_async_annotation(func, return_annotation):
     return return_annotation
 
 
-def _safe_get_annotations(obj, globals_dict=None):
+def _safe_get_annotations(obj, globals_dict=None, *, forbidden_wrapper_modules: frozenset[str] | None = None):
     """
     Safely get annotations, with fallback for forward references under TYPE_CHECKING.
 
@@ -96,6 +96,11 @@ def _safe_get_annotations(obj, globals_dict=None):
                         # Try to import the module
                         import importlib
 
+                        if forbidden_wrapper_modules is not None and module_path in forbidden_wrapper_modules:
+                            raise TypeError(
+                                f"Implementation annotations may not import generated wrapper module {module_path!r}. "
+                                "Import implementation modules instead."
+                            )
                         imported_module = importlib.import_module(module_path)
                         # Ensure parent packages expose the imported submodule as an attribute
                         # so expressions like "modal._app._App" can be evaluated.

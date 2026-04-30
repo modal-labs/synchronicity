@@ -74,17 +74,6 @@ def _wrapped_from_impl(
     return wrapper
 
 
-def _wrap_maybe_from_impl(value: typing.Any, synchronizer: "Synchronizer") -> typing.Any:
-    """Wrap an implementation instance when a generated wrapper exists."""
-
-    value_type = type(value)
-    if getattr(value_type, _IMPL_WRAPPER_LOCATION_ATTR, None) is None:
-        return value
-
-    wrapper_cls = synchronizer._resolve_wrapper_class(value)
-    return wrapper_cls._from_impl(value)
-
-
 class Synchronizer:
     def __init__(self, name: Optional[str] = None):
         self._name = name

@@ -166,6 +166,22 @@ def test_parse_module_level_function_ir_async_is_awaitable_ir():
     assert ir.impl_ref == ImplQualifiedRef(impl.__module__, impl.__qualname__)
 
 
+def test_parse_module_level_function_ir_preserves_union_with_any_for_runtime_fallback():
+    def maybe_wrapped_value() -> _SequenceCallableParseNode | typing.Any:
+        return None
+
+    ir = parse_module_level_function_ir(maybe_wrapped_value, "out_mod", globals_dict=globals())
+
+    assert isinstance(ir.return_transformer_ir, UnionTypeIR)
+    assert ir.return_transformer_ir.items == (
+        WrappedClassTypeIR(
+            impl=ImplQualifiedRef(__name__, "_SequenceCallableParseNode"),
+            wrapper=WrapperRef("generated.sequence_callable_parse", "SequenceCallableParseNode"),
+        ),
+        IdentityTypeIR(signature_text="typing.Any"),
+    )
+
+
 def test_resolve_parameter_default_expressions_preserves_exact_source_slices():
     resolved = resolve_parameter_default_expressions(
         parse_multiline_default,
@@ -334,7 +350,13 @@ def test_module_public_members_are_minimal() -> None:
         for name in Module.__dict__
         if not name.startswith("_") and not (name.startswith("__") and name.endswith("__"))
     }
-    assert public_names == {"target_module", "synchronizer_name", "manual_wrapper", "wrap_function", "wrap_class"}
+    assert public_names == {
+        "target_module",
+        "synchronizer_name",
+        "manual_wrapper",
+        "wrap_function",
+        "wrap_class",
+    }
 
 
 def test_parse_class_wrapper_ir_inheritance_stores_impl_refs_not_wrapper_names():

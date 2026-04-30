@@ -185,7 +185,7 @@ from {runtime_package}.descriptor import (
     method_with_aio,
     staticmethod_with_aio,
 )
-from {runtime_package}.synchronizer import get_synchronizer, _wrap_maybe_from_impl, _wrapped_from_impl
+from {runtime_package}.synchronizer import get_synchronizer, _wrapped_from_impl
 """
 
 
@@ -1584,10 +1584,26 @@ def emit_class_from_ir(
         for mir in descriptor_mirs:
             if mir.method_name != "__get__":
                 continue
+            method_return_transformer = method_transformers[mir.method_name]
+            method_sync_return_str, _method_async_return_str = _format_return_annotation(
+                method_return_transformer, target_module
+            )
+            method_param_str, method_call_args_str, method_unwrap_code = format_parameters_for_emit(
+                mir.parameters,
+                target_module,
+                runtime_package,
+                unwrap_indent="        ",
+                mat_ctx=mat_ctx,
+            )
+            method_params = f"self, {method_param_str}" if method_param_str else "self"
+            method_wrap_expr = method_return_transformer.wrap_expr(target_module, "result", False)
+            method_body = f"""        result = {impl_dot}.__get__(self._impl_instance, {method_call_args_str})
+        return {method_wrap_expr}"""
+            if method_unwrap_code:
+                method_body = f"{method_unwrap_code}\n{method_body}"
             descriptor_blocks.append(
-                f"""    def __get__(self, obj, objtype=None):
-        result = {impl_dot}.__get__(self._impl_instance, obj, objtype)
-        return _wrap_maybe_from_impl(result, _synchronizer)"""
+                f"""    def __get__({method_params}){method_sync_return_str}:
+{method_body}"""
             )
         descriptor_methods_section = "\n\n".join(descriptor_blocks)
 
@@ -1609,8 +1625,9 @@ def emit_class_from_ir(
                 mat_ctx=mat_ctx,
             )
             method_params = f"self, {method_param_str}" if method_param_str else "self"
+            method_wrap_expr = method_return_transformer.wrap_expr(target_module, "result", False)
             method_body = f"""        result = {impl_dot}.__getattr__(self._impl_instance, {method_call_args_str})
-        return _wrap_maybe_from_impl(result, _synchronizer)"""
+        return {method_wrap_expr}"""
             if method_unwrap_code:
                 method_body = f"{method_unwrap_code}\n{method_body}"
             method_body = _prepend_docstring(method_body, mir.docstring, indent="        ")
