@@ -183,6 +183,21 @@ def test_parse_module_level_function_ir_preserves_union_with_any_for_runtime_fal
     )
 
 
+def test_wrapped_type_ir_requires_wrapper_import_modules():
+    wrapped_ir = WrappedClassTypeIR(
+        impl=ImplQualifiedRef(__name__, "_SequenceCallableParseNode"),
+        wrapper=WrapperRef("generated.sequence_callable_parse", "SequenceCallableParseNode"),
+    )
+    subscripted_ir = SubscriptedWrappedClassTypeIR(
+        impl=ImplQualifiedRef(__name__, "_SequenceCallableParseNode"),
+        wrapper=WrapperRef("generated.sequence_callable_parse", "SequenceCallableParseNode"),
+        type_args=(IdentityTypeIR(signature_text="str"),),
+    )
+
+    assert wrapped_ir.required_import_modules() == frozenset({"generated.sequence_callable_parse"})
+    assert subscripted_ir.required_import_modules() == frozenset({"generated.sequence_callable_parse"})
+
+
 def test_resolve_parameter_default_expressions_preserves_exact_source_slices():
     resolved = resolve_parameter_default_expressions(
         parse_multiline_default,

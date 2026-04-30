@@ -24,6 +24,7 @@ from synchronicity2.codegen.transformer_ir import (
     ImplQualifiedRef,
     ListTypeIR,
     OptionalTypeIR,
+    WrappedClassTypeIR,
     WrapperRef,
 )
 
@@ -282,3 +283,51 @@ def test_emit_module_imports_annotation_module_refs():
 
     assert "import datetime" in generated_code
     assert "def round_trip_timestamp(value: datetime.datetime) -> datetime.datetime:" in generated_code
+
+
+def test_emit_module_imports_cross_module_wrapper_refs_but_not_self_imports():
+    ir = ModuleCompilationIR(
+        target_module="generated.cloud_bucket_mount",
+        synchronizer_name="default_synchronizer",
+        impl_modules=frozenset({IMPL}),
+        cross_module_imports={},
+        typevar_specs=(),
+        class_wrappers=(
+            ClassWrapperIR(
+                impl_ref=ImplQualifiedRef(IMPL, "_CloudBucketMount"),
+                wrapper_ref=WrapperRef("generated.cloud_bucket_mount", "CloudBucketMount"),
+                wrapped_bases=(),
+                generic_type_parameters=None,
+                attributes=(),
+                properties=(),
+                methods=(
+                    MethodWrapperIR(
+                        method_name="__init__",
+                        method_type=MethodBindingKind.INSTANCE,
+                        parameters=(
+                            ParameterIR(
+                                name="secret",
+                                kind=1,
+                                annotation_ir=OptionalTypeIR(
+                                    inner=WrappedClassTypeIR(
+                                        impl=ImplQualifiedRef(IMPL, "_Secret"),
+                                        wrapper=WrapperRef("generated.secret", "Secret"),
+                                    )
+                                ),
+                                default_expr="None",
+                            ),
+                        ),
+                        is_async_gen=False,
+                        is_async=False,
+                        return_transformer_ir=IdentityTypeIR(signature_text=""),
+                    ),
+                ),
+            ),
+        ),
+        module_functions_ir=(),
+    )
+
+    generated_code = SyncAsyncWrapperEmitter().emit_module(ir)
+
+    assert "import generated.secret" in generated_code
+    assert "import generated.cloud_bucket_mount" not in generated_code

@@ -50,6 +50,9 @@ class WrappedClassTypeIR(ImportAwareTypeIR):
     impl: ImplQualifiedRef
     wrapper: WrapperRef
 
+    def required_import_modules(self) -> frozenset[str]:
+        return frozenset((self.wrapper.wrapper_module,))
+
 
 @dataclasses.dataclass(frozen=True)
 class TypeVarIR(ImportAwareTypeIR):
@@ -64,6 +67,9 @@ class SelfTypeIR(ImportAwareTypeIR):
 
     owner_impl: ImplQualifiedRef
     wrapper: WrapperRef
+
+    def required_import_modules(self) -> frozenset[str]:
+        return frozenset((self.wrapper.wrapper_module,))
 
 
 @dataclasses.dataclass(frozen=True)
@@ -200,7 +206,7 @@ class SubscriptedWrappedClassTypeIR(ImportAwareTypeIR):
     type_args: tuple[TypeTransformerIR, ...]
 
     def required_import_modules(self) -> frozenset[str]:
-        return _merge_required_import_modules(*self.type_args)
+        return frozenset((self.wrapper.wrapper_module,)) | _merge_required_import_modules(*self.type_args)
 
 
 TypeTransformerIR = typing.Union[

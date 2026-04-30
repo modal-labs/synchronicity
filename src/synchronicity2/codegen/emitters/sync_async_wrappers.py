@@ -1852,7 +1852,9 @@ class SyncAsyncWrapperEmitter:
         runtime_package = self.runtime_package
         default_import_modules = _default_import_modules_for_module(ir)
         annotation_import_modules = set(ir.required_import_modules())
-        module_imports = sorted(set(ir.impl_modules) | default_import_modules | annotation_import_modules)
+        module_imports = sorted(
+            (set(ir.impl_modules) | default_import_modules | annotation_import_modules) - {ir.target_module}
+        )
         imports = "\n".join(f"import {mod}" for mod in module_imports)
         cross_module_import_strs = [
             f"import {m}" for m in sorted(set(ir.cross_module_imports.keys()) - set(module_imports))
