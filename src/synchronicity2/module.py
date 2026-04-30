@@ -17,6 +17,20 @@ DEFAULT_SYNCHRONIZER_NAME = "default_synchronizer"
 _IMPL_WRAPPER_LOCATION_ATTR = "__synchronicity_wrapper_location__"
 
 
+def _direct_wrapper_location(impl_cls: type) -> tuple[str, str] | None:
+    return impl_cls.__dict__.get(_IMPL_WRAPPER_LOCATION_ATTR)
+
+
+def _inherited_wrapper_location(impl_cls: type) -> tuple[type, tuple[str, str]] | None:
+    if _direct_wrapper_location(impl_cls) is not None:
+        return None
+    for base in impl_cls.__mro__[1:]:
+        location = base.__dict__.get(_IMPL_WRAPPER_LOCATION_ATTR)
+        if location is not None:
+            return base, location
+    return None
+
+
 @dataclasses.dataclass(frozen=True)
 class RegistrationInfo:
     target_module: str

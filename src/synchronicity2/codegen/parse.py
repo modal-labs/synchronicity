@@ -11,6 +11,7 @@ import typing
 from synchronicity2.module import (
     _IMPL_WRAPPER_LOCATION_ATTR,
     Module,
+    _direct_wrapper_location,
 )
 
 from .compile_utils import (
@@ -47,7 +48,7 @@ from .typevar_codegen import typevar_specs_from_collected
 
 
 def _get_wrapper_location(t: type) -> tuple[str, str] | None:
-    return getattr(t, _IMPL_WRAPPER_LOCATION_ATTR, None)
+    return _direct_wrapper_location(t)
 
 
 def _is_manual_wrapper(obj: object, *, manual_wrapper_ids: frozenset[int]) -> bool:

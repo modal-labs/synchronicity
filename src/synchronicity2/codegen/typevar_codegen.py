@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import typing
+import warnings
 
-from synchronicity2.module import _IMPL_WRAPPER_LOCATION_ATTR
+from synchronicity2.module import (
+    _direct_wrapper_location,
+    _inherited_wrapper_location,
+)
 
 from .ir import TypeVarSpecIR
 from .transformer_ir import TypeTransformerIR, WrappedClassTypeIR, WrapperRef
@@ -12,7 +16,22 @@ from .transformer_materialize import annotation_import_modules, resolve_typevar_
 
 
 def _get_wrapper_location(t: type) -> tuple[str, str] | None:
-    return getattr(t, _IMPL_WRAPPER_LOCATION_ATTR, None)
+    return _direct_wrapper_location(t)
+
+
+def _warn_if_inherited_wrapper_bound(bound: type) -> None:
+    inherited = _inherited_wrapper_location(bound)
+    if inherited is None:
+        return
+    base, _location = inherited
+    warnings.warn(
+        "TypeVar bound references subclass "
+        + f"{bound.__module__}.{bound.__qualname__} of wrapped implementation class "
+        + f"{base.__module__}.{base.__qualname__}, but the subclass is not directly wrapped; "
+        + "treating it as an unwrapped identity type",
+        UserWarning,
+        stacklevel=3,
+    )
 
 
 def translate_typevar_bound(
@@ -52,6 +71,7 @@ def translate_typevar_bound(
         return f'"{bound}"'
 
     if isinstance(bound, type):
+        _warn_if_inherited_wrapper_bound(bound)
         loc = _get_wrapper_location(bound)
         if loc is not None:
             wrapper_target_module, wrapper_name = loc

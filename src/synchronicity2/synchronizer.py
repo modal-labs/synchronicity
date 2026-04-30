@@ -7,7 +7,7 @@ import threading
 import typing
 from typing import Optional
 
-from .module import _IMPL_WRAPPER_LOCATION_ATTR
+from .module import _direct_wrapper_location
 
 # Global registry for synchronizer instances
 _synchronizer_registry = {}
@@ -114,7 +114,7 @@ class Synchronizer:
         if wrapper_cls is not None:
             return wrapper_cls
 
-        location = getattr(impl_type, _IMPL_WRAPPER_LOCATION_ATTR, None)
+        location = _direct_wrapper_location(impl_type)
         if location is None:
             raise RuntimeError(f"Implementation type {impl_type!r} has no registered wrapper location")
 

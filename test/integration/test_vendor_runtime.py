@@ -196,3 +196,34 @@ async def value(arg: "annotation_wrapper_cycle.PublicType | None" = None) -> int
     assert result.returncode != 0
     assert "Implementation annotations may not import generated wrapper module" in result.stderr
     assert "annotation_wrapper_cycle" in result.stderr
+
+
+def test_cli_wrappers_warns_for_inherited_wrapper_annotation_and_treats_it_as_identity(tmp_path: Path) -> None:
+    (tmp_path / "inherited_wrapper_impl.py").write_text(
+        """
+from synchronicity2 import Module
+
+wrapper_module = Module("inherited_wrapper")
+
+@wrapper_module.wrap_class()
+class WrappedBase:
+    pass
+
+class UnwrappedChild(WrappedBase):
+    pass
+
+@wrapper_module.wrap_function()
+async def passthrough(value: UnwrappedChild | int) -> UnwrappedChild | int:
+    return value
+""".strip()
+        + "\n"
+    )
+
+    result = _run_codegen_wrappers("inherited_wrapper_impl", tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    assert "subclass inherited_wrapper_impl.UnwrappedChild of wrapped implementation class" in result.stderr
+    assert "not directly wrapped" in result.stderr
+    assert "typing.Union[inherited_wrapper_impl.UnwrappedChild, int]" in result.stdout
+    assert "typing.Union[inherited_wrapper.WrappedBase, int]" not in result.stdout
+    assert 'hasattr(_v, "_impl_instance")' not in result.stdout

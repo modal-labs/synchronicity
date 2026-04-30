@@ -8,8 +8,12 @@ import dataclasses
 import inspect
 import types
 import typing
+import warnings
 
-from synchronicity2.module import _IMPL_WRAPPER_LOCATION_ATTR
+from synchronicity2.module import (
+    _direct_wrapper_location,
+    _inherited_wrapper_location,
+)
 
 from . import type_transformer as tt
 from .ir import TypeVarSpecIR
@@ -52,11 +56,30 @@ def impl_qualified(t: type) -> ImplQualifiedRef:
 
 def _get_wrapper_location(impl_type: type) -> tuple[str, str] | None:
     """Read the wrapper location from the marker attribute set by ``Module.wrap_class``."""
-    return getattr(impl_type, _IMPL_WRAPPER_LOCATION_ATTR, None)
+    return _direct_wrapper_location(impl_type)
 
 
 def _is_wrapped_impl(t: type) -> bool:
-    return hasattr(t, _IMPL_WRAPPER_LOCATION_ATTR)
+    return _direct_wrapper_location(t) is not None
+
+
+def _warn_if_inherited_wrapper_reference(annotation: object, source_label: str | None) -> None:
+    if not isinstance(annotation, type):
+        return
+    inherited = _inherited_wrapper_location(annotation)
+    if inherited is None:
+        return
+    base, _location = inherited
+    prefix = f"{source_label}: " if source_label else ""
+    warnings.warn(
+        prefix
+        + "type annotation references subclass "
+        + f"{annotation.__module__}.{annotation.__qualname__} of wrapped implementation class "
+        + f"{base.__module__}.{base.__qualname__}, but the subclass is not directly wrapped; "
+        + "treating it as an unwrapped identity type",
+        UserWarning,
+        stacklevel=3,
+    )
 
 
 def _wrapper_ref_from_type(impl_type: type) -> WrapperRef:
@@ -160,6 +183,8 @@ def annotation_to_transformer_ir(
             f"Found unresolved forward reference '{forward_str}' in type annotation. "
             f"Use inspect.get_annotations(eval_str=True) to resolve forward references."
         )
+
+    _warn_if_inherited_wrapper_reference(annotation, source_label)
 
     if isinstance(annotation, type) and _is_wrapped_impl(annotation):
         return WrappedClassTypeIR(impl_qualified(annotation), _wrapper_ref_from_type(annotation))

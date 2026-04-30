@@ -895,3 +895,32 @@ def test_parse_callable_parameter_with_wrapped_types_warns():
 
     with pytest.warns(UserWarning, match="callable containing synchronized types"):
         parse_module_level_function_ir(apply, "generated.callback_warning", globals_dict=locals())
+
+
+def test_parse_inherited_wrapped_subclass_warns_and_stays_identity():
+    module = Module("generated.inherited_wrapper_warning")
+
+    @module.wrap_class()
+    class WrappedBase:
+        pass
+
+    class UnwrappedChild(WrappedBase):
+        pass
+
+    @module.wrap_function()
+    def apply(value: UnwrappedChild | int) -> UnwrappedChild | int:
+        return value
+
+    with pytest.warns(UserWarning, match="subclass .* is not directly wrapped"):
+        ir = parse_module_level_function_ir(apply, "generated.inherited_wrapper_warning", globals_dict=locals())
+
+    assert isinstance(ir.parameters[0].annotation_ir, UnionTypeIR)
+    param_items = ir.parameters[0].annotation_ir.items
+    assert isinstance(param_items[0], IdentityTypeIR)
+    assert param_items[0].signature_text == f"{UnwrappedChild.__module__}.{UnwrappedChild.__name__}"
+    assert isinstance(param_items[1], IdentityTypeIR)
+
+    assert isinstance(ir.return_transformer_ir, UnionTypeIR)
+    return_items = ir.return_transformer_ir.items
+    assert isinstance(return_items[0], IdentityTypeIR)
+    assert return_items[0].signature_text == f"{UnwrappedChild.__module__}.{UnwrappedChild.__name__}"
