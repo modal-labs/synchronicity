@@ -10,6 +10,7 @@ from synchronicity2.module import (
     _inherited_wrapper_location,
 )
 
+from . import type_transformer as tt
 from .ir import TypeVarSpecIR
 from .transformer_ir import TypeTransformerIR, WrappedClassTypeIR, WrapperRef
 from .transformer_materialize import annotation_import_modules, resolve_typevar_bound_to_wrapped_impl
@@ -78,9 +79,10 @@ def translate_typevar_bound(
             if wrapper_target_module == target_module:
                 return f'"{wrapper_name}"'
             return f'"{wrapper_target_module}.{wrapper_name}"'
-        if bound.__module__ == "builtins":
+        canonical_module, canonical_qualname = tt._canonical_type_ref(bound)
+        if canonical_module == "builtins":
             return bound.__name__
-        return f"{bound.__module__}.{bound.__name__}"
+        return f"{canonical_module}.{canonical_qualname}"
 
     return repr(bound)
 
@@ -124,10 +126,11 @@ def typevar_specs_from_collected(
                         else:
                             constraint_parts.append(f"{wrapper_target_module}.{wrapper_name}")
                     else:
+                        canonical_module, canonical_qualname = tt._canonical_type_ref(constraint)
                         constraint_parts.append(
                             constraint.__name__
-                            if constraint.__module__ == "builtins"
-                            else f"{constraint.__module__}.{constraint.__name__}"
+                            if canonical_module == "builtins"
+                            else f"{canonical_module}.{canonical_qualname}"
                         )
                 else:
                     constraint_parts.append(repr(constraint))

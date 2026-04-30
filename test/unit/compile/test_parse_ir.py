@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import datetime
+import pathlib
 import pytest
 import subprocess
 import sys
@@ -244,6 +245,22 @@ def test_parse_module_level_function_ir_keeps_annotation_import_modules():
     assert ir.return_transformer_ir == IdentityTypeIR(
         signature_text="datetime.datetime",
         import_modules=("datetime",),
+    )
+
+
+def test_parse_module_level_function_ir_canonicalizes_stdlib_private_impl_types():
+    def parse_path_annotation(path: pathlib.PurePosixPath) -> pathlib.PurePosixPath:
+        return path
+
+    ir = parse_module_level_function_ir(parse_path_annotation, "out_mod", globals_dict=locals())
+
+    assert ir.parameters[0].annotation_ir == IdentityTypeIR(
+        signature_text="pathlib.PurePosixPath",
+        import_modules=("pathlib",),
+    )
+    assert ir.return_transformer_ir == IdentityTypeIR(
+        signature_text="pathlib.PurePosixPath",
+        import_modules=("pathlib",),
     )
 
 
@@ -917,10 +934,10 @@ def test_parse_inherited_wrapped_subclass_warns_and_stays_identity():
     assert isinstance(ir.parameters[0].annotation_ir, UnionTypeIR)
     param_items = ir.parameters[0].annotation_ir.items
     assert isinstance(param_items[0], IdentityTypeIR)
-    assert param_items[0].signature_text == f"{UnwrappedChild.__module__}.{UnwrappedChild.__name__}"
+    assert param_items[0].signature_text == f"{UnwrappedChild.__module__}.{UnwrappedChild.__qualname__}"
     assert isinstance(param_items[1], IdentityTypeIR)
 
     assert isinstance(ir.return_transformer_ir, UnionTypeIR)
     return_items = ir.return_transformer_ir.items
     assert isinstance(return_items[0], IdentityTypeIR)
-    assert return_items[0].signature_text == f"{UnwrappedChild.__module__}.{UnwrappedChild.__name__}"
+    assert return_items[0].signature_text == f"{UnwrappedChild.__module__}.{UnwrappedChild.__qualname__}"

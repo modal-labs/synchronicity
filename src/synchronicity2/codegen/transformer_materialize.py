@@ -143,13 +143,14 @@ def annotation_import_modules(annotation: object) -> frozenset[str]:
             "typing",
             "collections.abc",
         ):
-            modules.add(origin_module)
+            canonical_origin_module, _canonical_origin_qualname = tt._canonical_type_ref(origin)
+            modules.add(canonical_origin_module)
         for arg in args:
             modules.update(annotation_import_modules(arg))
         return frozenset(modules)
 
     if isinstance(annotation, type):
-        annotation_module = getattr(annotation, "__module__", None)
+        annotation_module, _annotation_qualname = tt._canonical_type_ref(annotation)
         if annotation_module not in (None, "builtins", "__builtin__", "typing"):
             modules.add(annotation_module)
 

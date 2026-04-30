@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import dataclasses
 import inspect
+import pathlib
 import re
 import typing
 import uuid
@@ -19,6 +20,19 @@ from abc import ABC, abstractmethod
 
 from .ir import MethodBindingKind
 from .transformer_ir import ImplQualifiedRef, WrapperRef
+
+_CANONICAL_TYPE_REFS: dict[type, tuple[str, str]] = {
+    pathlib.Path: ("pathlib", "Path"),
+    pathlib.PurePath: ("pathlib", "PurePath"),
+    pathlib.PurePosixPath: ("pathlib", "PurePosixPath"),
+    pathlib.PureWindowsPath: ("pathlib", "PureWindowsPath"),
+    pathlib.PosixPath: ("pathlib", "PosixPath"),
+    pathlib.WindowsPath: ("pathlib", "WindowsPath"),
+}
+
+
+def _canonical_type_ref(annotation: type) -> tuple[str, str]:
+    return _CANONICAL_TYPE_REFS.get(annotation, (annotation.__module__, annotation.__qualname__))
 
 
 class TypeTransformer(ABC):
@@ -1583,7 +1597,8 @@ def _format_annotation_str(annotation) -> str:
                 # typing types and their collections.abc aliases (e.g. Callable)
                 return f"typing.{origin_name}[{', '.join(formatted_args)}]"
             elif isinstance(origin, type) and origin_module not in ("builtins", "__builtin__"):
-                return f"{origin.__module__}.{origin.__qualname__}[{', '.join(formatted_args)}]"
+                canonical_module, canonical_qualname = _canonical_type_ref(origin)
+                return f"{canonical_module}.{canonical_qualname}[{', '.join(formatted_args)}]"
             else:
                 return f"{origin_name}[{', '.join(formatted_args)}]"
         else:
@@ -1594,7 +1609,8 @@ def _format_annotation_str(annotation) -> str:
         if annotation.__module__ in ("builtins", "__builtin__"):
             return annotation.__name__
         else:
-            return f"{annotation.__module__}.{annotation.__name__}"
+            canonical_module, canonical_qualname = _canonical_type_ref(annotation)
+            return f"{canonical_module}.{canonical_qualname}"
 
     # Fallback
     return repr(annotation)
