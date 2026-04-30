@@ -300,20 +300,15 @@ def format_parameters_for_emit(
     positional_only_marker_added = False
     keyword_only_marker_added = False
 
+    def _unwrap_expr(transformer, source_name: str) -> str:
+        return transformer.unwrap_expr(source_name, current_target_module)
+
     def _vararg_unwrap_expr(transformer, source_name: str) -> str:
-        item_unwrap = (
-            transformer.unwrap_expr("_item", current_target_module)
-            if isinstance(transformer, CallableTransformer)
-            else transformer.unwrap_expr("_item")
-        )
+        item_unwrap = _unwrap_expr(transformer, "_item")
         return f"tuple({item_unwrap} for _item in {source_name})"
 
     def _varkw_unwrap_expr(transformer, source_name: str) -> str:
-        value_unwrap = (
-            transformer.unwrap_expr("_value", current_target_module)
-            if isinstance(transformer, CallableTransformer)
-            else transformer.unwrap_expr("_value")
-        )
+        value_unwrap = _unwrap_expr(transformer, "_value")
         return f"{{_key: {value_unwrap} for _key, _value in {source_name}.items()}}"
 
     for param_ir in parameters:
@@ -370,11 +365,7 @@ def format_parameters_for_emit(
                 param_str = f"{name}: {ann}"
 
                 if transformer.needs_translation():
-                    unwrap_expr = (
-                        transformer.unwrap_expr(name, current_target_module)
-                        if isinstance(transformer, CallableTransformer)
-                        else transformer.unwrap_expr(name)
-                    )
+                    unwrap_expr = _unwrap_expr(transformer, name)
                     unwrap_stmts.append(f"{unwrap_indent}{name}_impl = {unwrap_expr}")
                     call_args.append(f"{name}={name}_impl")
                 else:
@@ -395,11 +386,7 @@ def format_parameters_for_emit(
                 param_str = f"{name}: {ann}"
 
                 if transformer.needs_translation():
-                    unwrap_expr = (
-                        transformer.unwrap_expr(name, current_target_module)
-                        if isinstance(transformer, CallableTransformer)
-                        else transformer.unwrap_expr(name)
-                    )
+                    unwrap_expr = _unwrap_expr(transformer, name)
                     unwrap_stmts.append(f"{unwrap_indent}{name}_impl = {unwrap_expr}")
                     call_args.append(f"{name}_impl")
                 else:

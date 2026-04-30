@@ -35,6 +35,16 @@ def _canonical_type_ref(annotation: type) -> tuple[str, str]:
     return _CANONICAL_TYPE_REFS.get(annotation, (annotation.__module__, annotation.__qualname__))
 
 
+def _wrapper_ref_dotted(wrapper: WrapperRef) -> str:
+    return f"{wrapper.wrapper_module}.{wrapper.wrapper_name}"
+
+
+def _wrapper_ref_runtime_expr(wrapper: WrapperRef, target_module: str) -> str:
+    if wrapper.wrapper_module == target_module:
+        return wrapper.wrapper_name
+    return _wrapper_ref_dotted(wrapper)
+
+
 class TypeTransformer(ABC):
     """Base class for type transformers that handle type signatures and translation."""
 
@@ -52,7 +62,7 @@ class TypeTransformer(ABC):
         pass
 
     @abstractmethod
-    def unwrap_expr(self, var_name: str) -> str:
+    def unwrap_expr(self, var_name: str, target_module: str | None = None) -> str:
         """Generate Python expression to unwrap from wrapper → impl.
 
         Args:
@@ -142,7 +152,7 @@ class IdentityStrTransformer(TypeTransformer):
     def wrapped_type(self, target_module: str, is_async: bool = True) -> str:
         return self._signature_text
 
-    def unwrap_expr(self, var_name: str) -> str:
+    def unwrap_expr(self, var_name: str, target_module: str | None = None) -> str:
         return var_name
 
     def wrap_expr(self, target_module: str, var_name: str, is_async: bool = True) -> str:
@@ -162,7 +172,7 @@ class IdentityTransformer(TypeTransformer):
         """Format the type annotation as-is."""
         return _format_annotation_str(self.annotation)
 
-    def unwrap_expr(self, var_name: str) -> str:
+    def unwrap_expr(self, var_name: str, target_module: str | None = None) -> str:
         """No unwrapping needed - return variable as-is."""
         return var_name
 
@@ -188,7 +198,7 @@ class WrappedClassTransformer(TypeTransformer):
         else:
             return f"{self._wrapper.wrapper_module}.{self._wrapper.wrapper_name}"
 
-    def unwrap_expr(self, var_name: str) -> str:
+    def unwrap_expr(self, var_name: str, target_module: str | None = None) -> str:
         """Unwrap by accessing _impl_instance."""
         return f"{var_name}._impl_instance"
 
@@ -233,8 +243,8 @@ class SubscriptedWrappedClassTransformer(TypeTransformer):
         args = ", ".join(t.wrapped_type(target_module, is_async) for t in self._type_arg_transformers)
         return f"{base}[{args}]"
 
-    def unwrap_expr(self, var_name: str) -> str:
-        return self._inner.unwrap_expr(var_name)
+    def unwrap_expr(self, var_name: str, target_module: str | None = None) -> str:
+        return self._inner.unwrap_expr(var_name, target_module)
 
     def wrap_expr(self, target_module: str, var_name: str, is_async: bool = True) -> str:
         return self._inner.wrap_expr(target_module, var_name, is_async)
@@ -266,8 +276,8 @@ class TypeVarBoundTransformer(TypeTransformer):
     def wrapped_type(self, target_module: str, is_async: bool = True) -> str:
         return self._name
 
-    def unwrap_expr(self, var_name: str) -> str:
-        return self._bound.unwrap_expr(var_name)
+    def unwrap_expr(self, var_name: str, target_module: str | None = None) -> str:
+        return self._bound.unwrap_expr(var_name, target_module)
 
     def wrap_expr(self, target_module: str, var_name: str, is_async: bool = True) -> str:
         inner = self._bound.wrap_expr(target_module, var_name, is_async)
@@ -300,8 +310,8 @@ class SelfTransformer(TypeTransformer):
     def wrapped_type(self, target_module: str, is_async: bool = True) -> str:
         return "typing.Self"
 
-    def unwrap_expr(self, var_name: str) -> str:
-        return self._impl.unwrap_expr(var_name)
+    def unwrap_expr(self, var_name: str, target_module: str | None = None) -> str:
+        return self._impl.unwrap_expr(var_name, target_module)
 
     def wrap_expr(self, target_module: str, var_name: str, is_async: bool = True) -> str:
         return self._impl.wrap_expr(target_module, var_name, is_async)
@@ -348,12 +358,12 @@ class ListTransformer(TypeTransformer):
         item_type_str = self.item_transformer.wrapped_type(target_module, is_async)
         return f"list[{item_type_str}]"
 
-    def unwrap_expr(self, var_name: str) -> str:
+    def unwrap_expr(self, var_name: str, target_module: str | None = None) -> str:
         """Generate list comprehension to unwrap items."""
         if not self.item_transformer.needs_translation():
             return var_name
 
-        item_unwrap = self.item_transformer.unwrap_expr("x")
+        item_unwrap = self.item_transformer.unwrap_expr("x", target_module)
         return f"[{item_unwrap} for x in {var_name}]"
 
     def wrap_expr(self, target_module: str, var_name: str, is_async: bool = True) -> str:
@@ -400,12 +410,12 @@ class DictTransformer(TypeTransformer):
         value_type_str = self.value_transformer.wrapped_type(target_module, is_async)
         return f"dict[{key_type_str}, {value_type_str}]"
 
-    def unwrap_expr(self, var_name: str) -> str:
+    def unwrap_expr(self, var_name: str, target_module: str | None = None) -> str:
         """Generate dict comprehension to unwrap values."""
         if not self.value_transformer.needs_translation():
             return var_name
 
-        value_unwrap = self.value_transformer.unwrap_expr("v")
+        value_unwrap = self.value_transformer.unwrap_expr("v", target_module)
         return f"{{k: {value_unwrap} for k, v in {var_name}.items()}}"
 
     def wrap_expr(self, target_module: str, var_name: str, is_async: bool = True) -> str:
@@ -451,10 +461,10 @@ class SequenceTransformer(TypeTransformer):
         item_type_str = self.item_transformer.wrapped_type(target_module, is_async)
         return f"typing.Sequence[{item_type_str}]"
 
-    def unwrap_expr(self, var_name: str) -> str:
+    def unwrap_expr(self, var_name: str, target_module: str | None = None) -> str:
         if not self.item_transformer.needs_translation():
             return var_name
-        item_unwrap = self.item_transformer.unwrap_expr("x")
+        item_unwrap = self.item_transformer.unwrap_expr("x", target_module)
         return f"[{item_unwrap} for x in {var_name}]"
 
     def wrap_expr(self, target_module: str, var_name: str, is_async: bool = True) -> str:
@@ -505,16 +515,18 @@ class TupleTransformer(TypeTransformer):
             item_type_strs = [t.wrapped_type(target_module, is_async) for t in self.item_transformers]
             return f"tuple[{', '.join(item_type_strs)}]"
 
-    def unwrap_expr(self, var_name: str) -> str:
+    def unwrap_expr(self, var_name: str, target_module: str | None = None) -> str:
         """Generate tuple comprehension/constructor to unwrap items."""
         if not self.needs_translation():
             return var_name
 
         if len(self.item_transformers) == 1:
-            item_unwrap = self.item_transformers[0].unwrap_expr("x")
+            item_unwrap = self.item_transformers[0].unwrap_expr("x", target_module)
             return f"tuple({item_unwrap} for x in {var_name})"
         else:
-            unwrap_exprs = [t.unwrap_expr(f"{var_name}[{i}]") for i, t in enumerate(self.item_transformers)]
+            unwrap_exprs = [
+                t.unwrap_expr(f"{var_name}[{i}]", target_module) for i, t in enumerate(self.item_transformers)
+            ]
             return f"({', '.join(unwrap_exprs)})"
 
     def wrap_expr(self, target_module: str, var_name: str, is_async: bool = True) -> str:
@@ -571,12 +583,12 @@ class OptionalTransformer(TypeTransformer):
         inner_type_str = self.inner_transformer.wrapped_type(target_module, is_async)
         return f"typing.Union[{inner_type_str}, None]"
 
-    def unwrap_expr(self, var_name: str) -> str:
+    def unwrap_expr(self, var_name: str, target_module: str | None = None) -> str:
         """Generate conditional expression to unwrap if not None."""
         if not self.inner_transformer.needs_translation():
             return var_name
 
-        inner_unwrap = self.inner_transformer.unwrap_expr(var_name)
+        inner_unwrap = self.inner_transformer.unwrap_expr(var_name, target_module)
         return f"{inner_unwrap} if {var_name} is not None else None"
 
     def wrap_expr(self, target_module: str, var_name: str, is_async: bool = True) -> str:
@@ -740,31 +752,29 @@ def _union_arm_runtime_spec(
         )
 
     if isinstance(transformer, WrappedClassTransformer):
+        wrapper_expr = _wrapper_ref_runtime_expr(transformer._wrapper, target_module)
         impl_expr = _impl_ref_dotted(transformer.impl_ref)
         return _UnionArmRuntimeSpec(
             discriminator_key=("impl", transformer.impl_ref.module, transformer.impl_ref.qualname),
             runtime_action_key=_runtime_action_key(transformer),
-            unwrap_guard_expr=(
-                f'hasattr(_v, "_impl_instance") and isinstance(getattr(_v, "_impl_instance"), {impl_expr})'
-            ),
+            unwrap_guard_expr=f"isinstance(_v, {wrapper_expr})",
             wrap_guard_expr=f"isinstance(_v, {impl_expr})",
             translated=True,
-            unwrap_value_expr='getattr(_v, "_impl_instance")',
+            unwrap_value_expr="_v._impl_instance",
             wrap_value_expr=transformer.wrap_expr(target_module, "_v", is_async),
         )
 
     if isinstance(transformer, SubscriptedWrappedClassTransformer):
         inner = transformer._inner
+        wrapper_expr = _wrapper_ref_runtime_expr(inner._wrapper, target_module)
         impl_expr = _impl_ref_dotted(inner.impl_ref)
         return _UnionArmRuntimeSpec(
             discriminator_key=("impl", inner.impl_ref.module, inner.impl_ref.qualname),
             runtime_action_key=_runtime_action_key(transformer),
-            unwrap_guard_expr=(
-                f'hasattr(_v, "_impl_instance") and isinstance(getattr(_v, "_impl_instance"), {impl_expr})'
-            ),
+            unwrap_guard_expr=f"isinstance(_v, {wrapper_expr})",
             wrap_guard_expr=f"isinstance(_v, {impl_expr})",
             translated=True,
-            unwrap_value_expr='getattr(_v, "_impl_instance")',
+            unwrap_value_expr="_v._impl_instance",
             wrap_value_expr=transformer.wrap_expr(target_module, "_v", is_async),
         )
 
@@ -781,16 +791,15 @@ def _union_arm_runtime_spec(
         )
 
     if isinstance(transformer, SelfTransformer):
+        wrapper_expr = _wrapper_ref_runtime_expr(transformer._impl._wrapper, target_module)
         impl_expr = _impl_ref_dotted(transformer._impl.impl_ref)
         return _UnionArmRuntimeSpec(
             discriminator_key=("impl", transformer._impl.impl_ref.module, transformer._impl.impl_ref.qualname),
             runtime_action_key=_runtime_action_key(transformer),
-            unwrap_guard_expr=(
-                f'hasattr(_v, "_impl_instance") and isinstance(getattr(_v, "_impl_instance"), {impl_expr})'
-            ),
+            unwrap_guard_expr=f"isinstance(_v, {wrapper_expr})",
             wrap_guard_expr=f"isinstance(_v, {impl_expr})",
             translated=True,
-            unwrap_value_expr='getattr(_v, "_impl_instance")',
+            unwrap_value_expr="_v._impl_instance",
             wrap_value_expr=transformer.wrap_expr(target_module, "_v", is_async),
         )
 
@@ -831,7 +840,7 @@ def _union_arm_runtime_spec(
         return _UnionArmRuntimeSpec(
             discriminator_key=("callable",),
             runtime_action_key=_runtime_action_key(transformer),
-            unwrap_guard_expr='callable(_v) and not hasattr(_v, "_impl_instance")',
+            unwrap_guard_expr="callable(_v)",
             wrap_guard_expr="callable(_v)",
             translated=transformer.needs_translation(),
             unwrap_value_expr=transformer.unwrap_expr("_v", target_module),
@@ -938,8 +947,8 @@ class UnionTransformer(TypeTransformer):
             expr = f"({value_expr} if {guard} else {expr})"
         return f"((lambda _v: {expr})({var_name}))"
 
-    def unwrap_expr(self, var_name: str) -> str:
-        return self._branch_expr("", var_name, is_async=True, for_wrap=False)
+    def unwrap_expr(self, var_name: str, target_module: str | None = None) -> str:
+        return self._branch_expr(target_module or "", var_name, is_async=True, for_wrap=False)
 
     def wrap_expr(self, target_module: str, var_name: str, is_async: bool = True) -> str:
         return self._branch_expr(target_module, var_name, is_async=is_async, for_wrap=True)
@@ -986,7 +995,7 @@ class AsyncGeneratorTransformer(TypeTransformer):
             send_type_for_sync = self.send_type_str if self.send_type_str is not None else "None"
             return f"typing.Generator[{yield_type_str}, {send_type_for_sync}, None]"
 
-    def unwrap_expr(self, var_name: str) -> str:
+    def unwrap_expr(self, var_name: str, target_module: str | None = None) -> str:
         """Generators don't unwrap at the parameter level."""
         return var_name
 
@@ -1096,7 +1105,7 @@ class SyncGeneratorTransformer(TypeTransformer):
         yield_type_str = self.yield_transformer.wrapped_type(target_module, is_async)
         return f"typing.Generator[{yield_type_str}, None, None]"
 
-    def unwrap_expr(self, var_name: str) -> str:
+    def unwrap_expr(self, var_name: str, target_module: str | None = None) -> str:
         """Generators don't unwrap at the parameter level."""
         return var_name
 
@@ -1183,7 +1192,7 @@ class AsyncIteratorTransformer(TypeTransformer):
         item_type_str = self.item_transformer.wrapped_type(target_module, is_async)
         return f"{self._runtime_package}.types.SyncOrAsyncIterator[{item_type_str}]"
 
-    def unwrap_expr(self, var_name: str) -> str:
+    def unwrap_expr(self, var_name: str, target_module: str | None = None) -> str:
         """Iterators don't unwrap at the parameter level."""
         return var_name
 
@@ -1254,7 +1263,7 @@ class AsyncIterableTransformer(TypeTransformer):
         item_type_str = self.item_transformer.wrapped_type(target_module, is_async)
         return f"{self._runtime_package}.types.SyncOrAsyncIterable[{item_type_str}]"
 
-    def unwrap_expr(self, var_name: str) -> str:
+    def unwrap_expr(self, var_name: str, target_module: str | None = None) -> str:
         """No unwrapping needed for async iterables."""
         return var_name
 
@@ -1326,7 +1335,7 @@ class AsyncContextManagerTransformer(TypeTransformer):
         value_type_str = self.value_transformer.wrapped_type(target_module, is_async)
         return f"{self._runtime_package}.types.SyncOrAsyncContextManager[{value_type_str}]"
 
-    def unwrap_expr(self, var_name: str) -> str:
+    def unwrap_expr(self, var_name: str, target_module: str | None = None) -> str:
         return var_name
 
     def wrap_expr(self, target_module: str, var_name: str, is_async: bool = True) -> str:
@@ -1387,7 +1396,7 @@ class CoroutineTransformer(TypeTransformer):
         """Return the unwrapped return type."""
         return self.return_transformer.wrapped_type(target_module, is_async)
 
-    def unwrap_expr(self, var_name: str) -> str:
+    def unwrap_expr(self, var_name: str, target_module: str | None = None) -> str:
         """No unwrapping needed - the coroutine itself is passed through."""
         return var_name
 
@@ -1428,7 +1437,7 @@ class AwaitableTransformer(TypeTransformer):
         """Return the unwrapped return type."""
         return self.return_transformer.wrapped_type(target_module, is_async)
 
-    def unwrap_expr(self, var_name: str) -> str:
+    def unwrap_expr(self, var_name: str, target_module: str | None = None) -> str:
         """No unwrapping needed - the awaitable itself is passed through."""
         return var_name
 

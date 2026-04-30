@@ -164,6 +164,39 @@ def _identity_ir_from_annotation(annotation: object) -> IdentityTypeIR:
     )
 
 
+def _union_ir_contains_wrapped_runtime_arm(ir: TypeTransformerIR) -> bool:
+    if isinstance(ir, (WrappedClassTypeIR, SubscriptedWrappedClassTypeIR, SelfTypeIR)):
+        return True
+    if isinstance(ir, OptionalTypeIR):
+        return _union_ir_contains_wrapped_runtime_arm(ir.inner)
+    return False
+
+
+def _warn_if_callable_union_arm_precedes_wrapped_type(
+    item_irs: list[TypeTransformerIR], source_label: str | None
+) -> None:
+    first_wrapped_index = next(
+        (index for index, ir in enumerate(item_irs) if _union_ir_contains_wrapped_runtime_arm(ir)),
+        None,
+    )
+    if first_wrapped_index is None:
+        return
+
+    first_callable_index = next((index for index, ir in enumerate(item_irs) if isinstance(ir, CallableTypeIR)), None)
+    if first_callable_index is None or first_callable_index > first_wrapped_index:
+        return
+
+    prefix = f"{source_label}: " if source_label else ""
+    warnings.warn(
+        prefix
+        + "Callable union arm appears before a wrapped-type arm. Union runtime resolution is greedy, so "
+        + "a callable value may match the Callable arm before a synchronized wrapper arm. Put Callable arms "
+        + "after wrapped types to avoid misclassification.",
+        UserWarning,
+        stacklevel=3,
+    )
+
+
 def annotation_to_transformer_ir(
     annotation: object,
     *,
@@ -289,17 +322,19 @@ def annotation_to_transformer_ir(
                     source_label=source_label,
                 )
             )
+        item_irs = [
+            annotation_to_transformer_ir(
+                arg,
+                owner_impl_type=owner_impl_type,
+                owner_has_type_parameters=owner_has_type_parameters,
+                impl_modules=impl_modules,
+                source_label=source_label,
+            )
+            for arg in args
+        ]
+        _warn_if_callable_union_arm_precedes_wrapped_type(item_irs, source_label)
         return UnionTypeIR(
-            tuple(
-                annotation_to_transformer_ir(
-                    arg,
-                    owner_impl_type=owner_impl_type,
-                    owner_has_type_parameters=owner_has_type_parameters,
-                    impl_modules=impl_modules,
-                    source_label=source_label,
-                )
-                for arg in args
-            ),
+            tuple(item_irs),
             source_label=source_label,
         )
 

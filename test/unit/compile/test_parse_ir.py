@@ -976,3 +976,22 @@ def test_parse_inherited_wrapped_subclass_warns_and_stays_identity():
     return_items = ir.return_transformer_ir.items
     assert isinstance(return_items[0], IdentityTypeIR)
     assert return_items[0].signature_text == f"{UnwrappedChild.__module__}.{UnwrappedChild.__qualname__}"
+
+
+def test_parse_union_warns_when_callable_precedes_wrapped_type():
+    module = Module("generated.callable_union_warning")
+
+    @module.wrap_class()
+    class Node:
+        pass
+
+    @module.wrap_function()
+    def apply(value: typing.Callable[[int], int] | Node) -> typing.Callable[[int], int] | Node:
+        return value
+
+    with pytest.warns(UserWarning, match="Callable union arm appears before a wrapped-type arm"):
+        ir = parse_module_level_function_ir(apply, "generated.callable_union_warning", globals_dict=locals())
+
+    assert isinstance(ir.parameters[0].annotation_ir, UnionTypeIR)
+    assert isinstance(ir.parameters[0].annotation_ir.items[0], CallableTypeIR)
+    assert isinstance(ir.parameters[0].annotation_ir.items[1], WrappedClassTypeIR)

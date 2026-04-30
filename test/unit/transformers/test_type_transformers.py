@@ -9,6 +9,7 @@ Tests each transformer type for:
 
 import pytest
 import sys
+import types
 
 from synchronicity2.codegen.transformer_ir import ImplQualifiedRef, WrapperRef
 from synchronicity2.codegen.transformer_materialize import (
@@ -363,8 +364,9 @@ class TestUnionTransformer:
     def test_unwrap_expr_mixed_union(self, wrapped_class):
         transformer = UnionTransformer([IdentityTransformer(int), _make_wrapped_transformer(wrapped_class)])
         result = transformer.unwrap_expr("value")
-        assert 'hasattr(_v, "_impl_instance")' in result
-        assert 'getattr(_v, "_impl_instance")' in result
+        assert "isinstance(_v, test_module.TestClass)" in result
+        assert "_v._impl_instance" in result
+        assert 'getattr(_v, "_impl_instance")' not in result
 
     def test_execution_wrap_expr_returns_wrapper(self, wrapped_class):
         transformer = UnionTransformer([IdentityTransformer(int), _make_wrapped_transformer(wrapped_class)])
@@ -388,12 +390,11 @@ class TestUnionTransformer:
             def __init__(self, impl):
                 self._impl_instance = impl
 
+        test_module = types.SimpleNamespace(TestClass=Wrapper)
         impl = wrapped_class(9)
         wrapper = Wrapper(impl)
         expr = transformer.unwrap_expr("value")
-        module = sys.modules[wrapped_class.__module__]
-        setattr(module, wrapped_class.__name__, wrapped_class)
-        result = eval(expr, {"value": wrapper, "test": __import__("test")})
+        result = eval(expr, {"value": wrapper, "test_module": test_module})
         assert result is impl
 
     def test_rejects_ambiguous_translated_union(self, wrapped_class):
@@ -424,8 +425,8 @@ class TestUnionTransformer:
 
         assert "TestClass._from_impl(_v)" in wrap_expr
         assert wrap_expr.count("TestClass._from_impl(_v)") == 1
-        assert unwrap_expr.count('hasattr(_v, "_impl_instance")') == 1
-        assert 'getattr(_v, "_impl_instance")' in unwrap_expr
+        assert unwrap_expr.count("isinstance(_v, test_module.TestClass)") == 1
+        assert "_v._impl_instance" in unwrap_expr
 
 
 class TestGeneratorTransformer:
