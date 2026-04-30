@@ -321,11 +321,13 @@ def _detect_async_context_manager_wrapper(f, return_annotation) -> typing.Any | 
 
     # Annotation says AsyncGenerator but function isn't one — check for @asynccontextmanager
     wrapped = getattr(f, "__wrapped__", None)
-    if wrapped is not None and inspect.isasyncgenfunction(wrapped):
-        args = typing.get_args(return_annotation)
-        if args:
-            return args[0]
-        return typing.Any
+    while wrapped is not None:
+        if inspect.isasyncgenfunction(wrapped):
+            args = typing.get_args(return_annotation)
+            if args:
+                return args[0]
+            return typing.Any
+        wrapped = getattr(wrapped, "__wrapped__", None)
 
     return None
 

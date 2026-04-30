@@ -647,6 +647,41 @@ def test_parse_classmethod_async_context_manager_return_ir():
     assert isinstance(make_ir.return_transformer_ir.value, WrappedClassTypeIR)
 
 
+def test_parse_method_async_context_manager_return_ir_through_extra_wraps_layer():
+    """Instance methods should still be detected as async context managers through wrapper layers."""
+
+    from contextlib import asynccontextmanager
+    from functools import wraps
+
+    m = Module("generated.wrapped_instance_cm")
+
+    @m.wrap_class()
+    class Item:
+        pass
+
+    def extra_contextmanager_wrapper(method):
+        @wraps(method)
+        @asynccontextmanager
+        async def wrapped(self):
+            async with method(self) as value:
+                yield value
+
+        return wrapped
+
+    @m.wrap_class()
+    class Service:
+        @extra_contextmanager_wrapper
+        @asynccontextmanager
+        async def make(self) -> typing.AsyncGenerator[Item, None]:
+            yield Item()
+
+    ir = parse_class_wrapper_ir(Service, "generated.wrapped_instance_cm", globals_dict=locals())
+    make_ir = next(method_ir for method_ir in ir.methods if method_ir.method_name == "make")
+
+    assert isinstance(make_ir.return_transformer_ir, AsyncContextManagerTypeIR)
+    assert isinstance(make_ir.return_transformer_ir.value, WrappedClassTypeIR)
+
+
 def test_parse_class_wrapper_ir_tolerates_class_dict_mutation_during_property_inspection():
     m = Module("generated.mutating_prop")
 
