@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import collections.abc
 import inspect
+import re
 import sys
 import types
 import typing
@@ -30,6 +31,20 @@ from .type_transformer import CallableTransformer, WrappedClassTransformer
 
 if typing.TYPE_CHECKING:
     from .transformer_materialize import MaterializeContext
+
+
+_ANNOTATION_IDENTIFIER_RE = re.compile(r"(?<![\w.])([A-Za-z_]\w*)\b")
+
+
+def quote_annotation_for_local_names(annotation: str, local_names: typing.AbstractSet[str] | None) -> str:
+    """Quote an annotation when local scope names would shadow identifiers inside it."""
+
+    if not annotation or not local_names or annotation[0] in {"'", '"'}:
+        return annotation
+    if not any(match.group(1) in local_names for match in _ANNOTATION_IDENTIFIER_RE.finditer(annotation)):
+        return annotation
+    escaped = annotation.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
 
 
 def _normalize_async_annotation(func, return_annotation):
@@ -288,6 +303,7 @@ def format_parameters_for_emit(
     unwrap_indent: str = "    ",
     *,
     mat_ctx: MaterializeContext | None = None,
+    annotation_local_names: typing.AbstractSet[str] | None = None,
 ) -> tuple[str, str, str]:
     """Build ``param_str``, ``call_args_str``, and unwrap lines from :class:`ParameterIR` (emitter-side)."""
     from .transformer_materialize import materialize_transformer_ir
@@ -327,6 +343,7 @@ def format_parameters_for_emit(
             if param_ir.annotation_ir is not None:
                 assert transformer is not None
                 ann = _parameter_annotation_str(transformer, current_target_module)
+                ann = quote_annotation_for_local_names(ann, annotation_local_names)
                 params.append(f"*{name}: {ann}")
                 if transformer.needs_translation():
                     unwrap_expr = _vararg_unwrap_expr(transformer, name)
@@ -342,6 +359,7 @@ def format_parameters_for_emit(
             if param_ir.annotation_ir is not None:
                 assert transformer is not None
                 ann = _parameter_annotation_str(transformer, current_target_module)
+                ann = quote_annotation_for_local_names(ann, annotation_local_names)
                 params.append(f"**{name}: {ann}")
                 if transformer.needs_translation():
                     unwrap_expr = _varkw_unwrap_expr(transformer, name)
@@ -362,6 +380,7 @@ def format_parameters_for_emit(
             if param_ir.annotation_ir is not None:
                 assert transformer is not None
                 ann = _parameter_annotation_str(transformer, current_target_module)
+                ann = quote_annotation_for_local_names(ann, annotation_local_names)
                 param_str = f"{name}: {ann}"
 
                 if transformer.needs_translation():
@@ -383,6 +402,7 @@ def format_parameters_for_emit(
             if param_ir.annotation_ir is not None:
                 assert transformer is not None
                 ann = _parameter_annotation_str(transformer, current_target_module)
+                ann = quote_annotation_for_local_names(ann, annotation_local_names)
                 param_str = f"{name}: {ann}"
 
                 if transformer.needs_translation():
@@ -531,11 +551,15 @@ def _build_call_with_wrap(
 def _format_return_annotation(
     return_transformer,
     current_target_module: str,
+    *,
+    annotation_local_names: typing.AbstractSet[str] | None = None,
 ) -> tuple[str, str]:
     """Format return type annotations for both sync and async versions."""
 
     sync_return_type = return_transformer.annotation_type(current_target_module, is_async=False)
     async_return_type = return_transformer.annotation_type(current_target_module, is_async=True)
+    sync_return_type = quote_annotation_for_local_names(sync_return_type, annotation_local_names)
+    async_return_type = quote_annotation_for_local_names(async_return_type, annotation_local_names)
 
     if not sync_return_type:
         return "", ""

@@ -6,7 +6,12 @@ import dataclasses
 import re
 import textwrap
 
-from ..compile_utils import _build_call_with_wrap, _format_return_annotation, format_parameters_for_emit
+from ..compile_utils import (
+    _build_call_with_wrap,
+    _format_return_annotation,
+    format_parameters_for_emit,
+    quote_annotation_for_local_names,
+)
 from ..ir import (
     ClassWrapperIR,
     ManualClassAttributeAccessKind,
@@ -77,6 +82,16 @@ def method_emit_owner(class_ir: ClassWrapperIR, target_module: str) -> MethodEmi
         target_module=target_module,
         generic_type_parameters=class_ir.generic_type_parameters,
     )
+
+
+def _class_annotation_shadow_names(ir: ClassWrapperIR) -> set[str]:
+    return {
+        *[name for name, _annotation in ir.attributes],
+        *[prop.name for prop in ir.properties],
+        *[prop.name for prop in ir.class_properties],
+        *[attr.name for attr in ir.manual_attributes],
+        *[method.method_name for method in ir.methods],
+    }
 
 
 def _materialize_context_for_module(specs: tuple[TypeVarSpecIR, ...]) -> MaterializeContext | None:
@@ -286,6 +301,7 @@ def _emit_method_overloads(
     *,
     mat_ctx: MaterializeContext | None,
     is_async: bool,
+    annotation_local_names: set[str] | None = None,
 ) -> str:
     blocks: list[str] = []
     for overload in overloads:
@@ -294,9 +310,14 @@ def _emit_method_overloads(
             target_module,
             runtime_package,
             mat_ctx=mat_ctx,
+            annotation_local_names=annotation_local_names,
         )
         return_transformer = materialize_transformer_ir(overload.return_transformer_ir, runtime_package, ctx=mat_ctx)
-        sync_return_str, async_return_str = _format_return_annotation(return_transformer, target_module)
+        sync_return_str, async_return_str = _format_return_annotation(
+            return_transformer,
+            target_module,
+            annotation_local_names=annotation_local_names,
+        )
         return_str = async_return_str if is_async else sync_return_str
         lines = ["    @typing.overload"]
         if method_type == MethodBindingKind.CLASSMETHOD:
@@ -1034,6 +1055,7 @@ def emit_method_wrapper_pair(
     runtime_package: str = "synchronicity2",
     mat_ctx: MaterializeContext | None = None,
     return_transformer: TypeTransformer | None = None,
+    annotation_local_names: set[str] | None = None,
 ) -> tuple[str, str]:
     method_name = mir.method_name
     method_type = mir.method_type
@@ -1048,6 +1070,7 @@ def emit_method_wrapper_pair(
         runtime_package,
         unwrap_indent="    ",
         mat_ctx=mat_ctx,
+        annotation_local_names=annotation_local_names,
     )
     call_expr_prefix = _method_impl_call_expr(
         method_type,
@@ -1058,7 +1081,11 @@ def emit_method_wrapper_pair(
     dummy_param_str = param_str
     is_async_gen = mir.is_async_gen
     is_async = mir.is_async
-    sync_return_str, async_return_str = _format_return_annotation(return_transformer, current_target_module)
+    sync_return_str, async_return_str = _format_return_annotation(
+        return_transformer,
+        current_target_module,
+        annotation_local_names=annotation_local_names,
+    )
     uses_with_aio_wrapper = is_async
     method_with_aio_type_expr: str | None = None
     if uses_with_aio_wrapper:
@@ -1408,6 +1435,7 @@ def emit_method_wrapper_pair(
             runtime_package,
             mat_ctx=mat_ctx,
             is_async=False,
+            annotation_local_names=annotation_local_names,
         )
     if overload_code:
         sync_method_code = f"{overload_code}\n{sync_method_code}"
@@ -1427,6 +1455,7 @@ def emit_class_from_ir(
     impl_dot = _impl_type_dotted(ir.impl_ref)
     proxy_type_comment = f"# Proxy type for the underlying implementation type {impl_dot}."
     owner = method_emit_owner(ir, target_module)
+    annotation_local_names = _class_annotation_shadow_names(ir)
     (
         init_mir,
         descriptor_mirs,
@@ -1468,6 +1497,7 @@ def emit_class_from_ir(
             runtime_package=runtime_package,
             mat_ctx=mat_ctx,
             return_transformer=method_transformers[mir.method_name],
+            annotation_local_names=annotation_local_names,
         )
         if wrapper_functions_code:
             method_definitions_with_async.append(f"{wrapper_functions_code}\n\n{sync_method_code}")
@@ -1480,6 +1510,7 @@ def emit_class_from_ir(
         if annotation_ir is not None:
             attr_transformer = materialize_transformer_ir(annotation_ir, runtime_package, ctx=mat_ctx)
             attr_type_str = attr_transformer.annotation_type(target_module)
+            attr_type_str = quote_annotation_for_local_names(attr_type_str, annotation_local_names)
         if attr_type_str:
             property_code = f"""    # Generated properties
     @property
@@ -1506,6 +1537,7 @@ def emit_class_from_ir(
         if prop_ir.return_transformer_ir is not None:
             prop_transformer = materialize_transformer_ir(prop_ir.return_transformer_ir, runtime_package, ctx=mat_ctx)
             prop_type_str = prop_transformer.annotation_type(target_module)
+            prop_type_str = quote_annotation_for_local_names(prop_type_str, annotation_local_names)
         # Getter: wrap impl value → wrapper value if needed
         getter_value_expr = f"self._impl_instance.{prop_ir.name}"
         if prop_transformer is not None and prop_transformer.needs_translation():
@@ -1527,6 +1559,7 @@ def emit_class_from_ir(
             if prop_ir.setter_value_ir is not None:
                 setter_transformer = materialize_transformer_ir(prop_ir.setter_value_ir, runtime_package, ctx=mat_ctx)
                 setter_type_str = setter_transformer.annotation_type(target_module)
+                setter_type_str = quote_annotation_for_local_names(setter_type_str, annotation_local_names)
             # Setter: unwrap wrapper value → impl value if needed
             if setter_transformer is not None and setter_transformer.needs_translation():
                 setter_assign_expr = setter_transformer.unwrap_expr("value")
@@ -1560,6 +1593,7 @@ def emit_class_from_ir(
                 ctx=mat_ctx,
             )
             prop_type_str = prop_transformer.annotation_type(target_module)
+            prop_type_str = quote_annotation_for_local_names(prop_type_str, annotation_local_names)
 
         getter_value_expr = f"{impl_dot}.{class_prop_ir.name}"
         if prop_transformer is not None and prop_transformer.needs_translation():
@@ -1586,7 +1620,9 @@ def emit_class_from_ir(
                 continue
             method_return_transformer = method_transformers[mir.method_name]
             method_sync_return_str, _method_async_return_str = _format_return_annotation(
-                method_return_transformer, target_module
+                method_return_transformer,
+                target_module,
+                annotation_local_names=annotation_local_names,
             )
             method_param_str, method_call_args_str, method_unwrap_code = format_parameters_for_emit(
                 mir.parameters,
@@ -1594,6 +1630,7 @@ def emit_class_from_ir(
                 runtime_package,
                 unwrap_indent="        ",
                 mat_ctx=mat_ctx,
+                annotation_local_names=annotation_local_names,
             )
             method_params = f"self, {method_param_str}" if method_param_str else "self"
             method_wrap_expr = method_return_transformer.wrap_expr(target_module, "result", False)
@@ -1615,7 +1652,9 @@ def emit_class_from_ir(
                 continue
             method_return_transformer = method_transformers[mir.method_name]
             method_sync_return_str, _method_async_return_str = _format_return_annotation(
-                method_return_transformer, target_module
+                method_return_transformer,
+                target_module,
+                annotation_local_names=annotation_local_names,
             )
             method_param_str, method_call_args_str, method_unwrap_code = format_parameters_for_emit(
                 mir.parameters,
@@ -1623,6 +1662,7 @@ def emit_class_from_ir(
                 runtime_package,
                 unwrap_indent="        ",
                 mat_ctx=mat_ctx,
+                annotation_local_names=annotation_local_names,
             )
             method_params = f"self, {method_param_str}" if method_param_str else "self"
             method_wrap_expr = method_return_transformer.wrap_expr(target_module, "result", False)
@@ -1647,7 +1687,9 @@ def emit_class_from_ir(
             sync_method_name, async_method_name, use_async_def, stop_iteration_bridge = dunder_pair
             method_return_transformer = method_transformers[mir.method_name]
             method_sync_return_str, method_async_return_str = _format_return_annotation(
-                method_return_transformer, target_module
+                method_return_transformer,
+                target_module,
+                annotation_local_names=annotation_local_names,
             )
             method_call_expr = f"{impl_dot}.{mir.method_name}(self._impl_instance)"
             sync_indent = "            " if stop_iteration_bridge else "        "
@@ -1698,7 +1740,9 @@ def emit_class_from_ir(
             sync_method_name, async_method_name = dunder_pair
             method_return_transformer = method_transformers[mir.method_name]
             method_sync_return_str, method_async_return_str = _format_return_annotation(
-                method_return_transformer, target_module
+                method_return_transformer,
+                target_module,
+                annotation_local_names=annotation_local_names,
             )
             # Build parameter strings for __aexit__ (or empty for __aenter__)
             cm_param_str, cm_call_args_str, cm_unwrap_code = format_parameters_for_emit(
@@ -1707,6 +1751,7 @@ def emit_class_from_ir(
                 runtime_package,
                 unwrap_indent="        ",
                 mat_ctx=mat_ctx,
+                annotation_local_names=annotation_local_names,
             )
             sync_param_str = f"self, {cm_param_str}" if cm_param_str else "self"
 
@@ -1786,6 +1831,7 @@ def emit_class_from_ir(
         runtime_package,
         unwrap_indent="        ",
         mat_ctx=mat_ctx,
+        annotation_local_names=annotation_local_names,
     )
     init_params = f"self, {init_sig}" if init_sig else "self"
     init_method = f"""    def __init__({init_params}):

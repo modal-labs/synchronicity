@@ -7,6 +7,7 @@ IR literals are explicit dataclasses in this module (same shapes as the parse la
 from __future__ import annotations
 
 import dataclasses
+import weakref
 
 from synchronicity2.codegen.emitters.sync_async_wrappers import emit_class_from_ir
 from synchronicity2.codegen.ir import (
@@ -896,6 +897,40 @@ def test_emit_class_complex_types():
         or "optional_filter: typing.Optional[str]" in code
     )
     assert "-> list[str]" in code
+
+
+def test_emit_class_quotes_annotations_shadowed_by_class_namespace():
+    ir = ClassWrapperIR(
+        impl_ref=ImplQualifiedRef(IMPL, "EmitShadowedBuiltinAnnotation"),
+        wrapper_ref=WrapperRef(TARGET, "EmitShadowedBuiltinAnnotation"),
+        wrapped_bases=(),
+        generic_type_parameters=None,
+        attributes=(),
+        properties=(),
+        methods=(
+            MethodWrapperIR(
+                method_name="list",
+                method_type=MethodBindingKind.INSTANCE,
+                parameters=(),
+                is_async_gen=False,
+                is_async=False,
+                return_transformer_ir=ListTypeIR(item=IdentityTypeIR(signature_text="str")),
+            ),
+            MethodWrapperIR(
+                method_name="ls",
+                method_type=MethodBindingKind.INSTANCE,
+                parameters=(),
+                is_async_gen=False,
+                is_async=False,
+                return_transformer_ir=ListTypeIR(item=IdentityTypeIR(signature_text="str")),
+            ),
+        ),
+    )
+
+    code = emit_class_from_ir(ir, TARGET)
+
+    assert 'def ls(self) -> "list[str]":' in code
+    exec(code, {"weakref": weakref})
 
 
 def test_emit_class_async_generators():
