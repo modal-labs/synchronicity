@@ -15,6 +15,7 @@ from .ir import MethodBindingKind, ParameterIR
 from .signature_utils import is_async_generator
 from .transformer_ir import (
     CallableTypeIR,
+    CollectionTypeIR,
     DictTypeIR,
     ImplQualifiedRef,
     ListTypeIR,
@@ -276,6 +277,8 @@ def _transformer_ir_contains_wrapped_refs(ir: TypeTransformerIR) -> bool:
     if isinstance(ir, ListTypeIR):
         return _transformer_ir_contains_wrapped_refs(ir.item)
     if isinstance(ir, SequenceTypeIR):
+        return _transformer_ir_contains_wrapped_refs(ir.item)
+    if isinstance(ir, CollectionTypeIR):
         return _transformer_ir_contains_wrapped_refs(ir.item)
     if isinstance(ir, OptionalTypeIR):
         return _transformer_ir_contains_wrapped_refs(ir.inner)

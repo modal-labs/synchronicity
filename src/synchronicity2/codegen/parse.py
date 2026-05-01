@@ -223,6 +223,14 @@ def build_module_compilation_ir(
         elif isinstance(o, types.FunctionType):
             functions.append((o, registration.name))
 
+    for export_name, ref in module._manual_export_refs.items():
+        manual_reexports.append(
+            ManualReexportIR(
+                impl_ref=ImplQualifiedRef(ref.module, ref.qualname),
+                export_name=export_name,
+            )
+        )
+
     module_typevars: dict[str, typing.TypeVar | typing.ParamSpec] = {}
 
     for func, _export_name in functions:

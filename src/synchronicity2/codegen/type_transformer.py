@@ -495,6 +495,50 @@ class SequenceTransformer(TypeTransformer):
         return f"typing.Sequence[{item_type_str}]"
 
 
+class CollectionTransformer(TypeTransformer):
+    """Transformer for typing.Collection[T]."""
+
+    def __init__(self, item_transformer: TypeTransformer):
+        self.item_transformer = item_transformer
+
+    def wrapped_type(self, target_module: str, is_async: bool = True) -> str:
+        item_type_str = self.item_transformer.wrapped_type(target_module, is_async)
+        return f"typing.Collection[{item_type_str}]"
+
+    def unwrap_expr(self, var_name: str, target_module: str | None = None) -> str:
+        if not self.item_transformer.needs_translation():
+            return var_name
+        item_unwrap = self.item_transformer.unwrap_expr("x", target_module)
+        return f"[{item_unwrap} for x in {var_name}]"
+
+    def wrap_expr(self, target_module: str, var_name: str, is_async: bool = True) -> str:
+        if not self.item_transformer.needs_translation():
+            return var_name
+        item_wrap = self.item_transformer.wrap_expr(target_module, "x", is_async)
+        expr = f"[{item_wrap} for x in {var_name}]"
+        if isinstance(self.item_transformer, TypeVarBoundTransformer):
+            ann = self.wrapped_type(target_module, is_async)
+            return f"typing.cast({ann}, {expr})"
+        return expr
+
+    def needs_translation(self) -> bool:
+        return self.item_transformer.needs_translation()
+
+    def get_wrapper_helpers(
+        self,
+        target_module: str,
+        indent: str = "    ",
+    ) -> dict[str, str]:
+        return self.item_transformer.get_wrapper_helpers(target_module, indent)
+
+    def has_local_wrapper_ref(self, target_module: str) -> bool:
+        return self.item_transformer.has_local_wrapper_ref(target_module)
+
+    def passthrough_annotation_type(self, target_module: str, is_async: bool = True) -> str:
+        item_type_str = self.item_transformer.passthrough_annotation_type(target_module, is_async)
+        return f"typing.Collection[{item_type_str}]"
+
+
 class TupleTransformer(TypeTransformer):
     """Transformer for tuple types - both fixed-size tuple[T1, T2] and variable-length tuple[T, ...]."""
 

@@ -98,6 +98,14 @@ class SequenceTypeIR(ImportAwareTypeIR):
 
 
 @dataclasses.dataclass(frozen=True)
+class CollectionTypeIR(ImportAwareTypeIR):
+    item: TypeTransformerIR
+
+    def required_import_modules(self) -> frozenset[str]:
+        return self.item.required_import_modules()
+
+
+@dataclasses.dataclass(frozen=True)
 class TupleTypeIR(ImportAwareTypeIR):
     """Fixed ``tuple[T1, T2]`` or variadic ``tuple[T, ...]`` (``variadic=True``, single element)."""
 
@@ -217,6 +225,7 @@ TypeTransformerIR = typing.Union[
     ListTypeIR,
     DictTypeIR,
     SequenceTypeIR,
+    CollectionTypeIR,
     TupleTypeIR,
     OptionalTypeIR,
     UnionTypeIR,

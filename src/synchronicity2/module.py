@@ -6,6 +6,7 @@ what should be wrapped during the build step.
 """
 
 import dataclasses
+import inspect
 import typing
 from typing import Callable, Optional
 
@@ -148,6 +149,7 @@ class Module:
         self._wrapped_classes: dict[type, RegistrationInfo] = {}
         self._wrapped_functions: dict[object, RegistrationInfo] = {}
         self._manual_wrappers: dict[int, ManualWrapperRef | None] = {}
+        self._manual_exports: dict[str, ManualWrapperRef] = {}
 
     @property
     def target_module(self) -> str:
@@ -182,6 +184,11 @@ class Module:
         """Get the implementation reference for a manually forwarded object, if any."""
         return self._manual_wrappers.get(id(obj))
 
+    @property
+    def _manual_export_refs(self) -> dict[str, ManualWrapperRef]:
+        """Get named implementation exports that should be forwarded directly."""
+        return self._manual_exports
+
     def _module_items(self) -> dict[object, RegistrationInfo]:
         """Get all registered classes and functions with their target module and name.
 
@@ -202,6 +209,36 @@ class Module:
             return obj
 
         return decorator
+
+    def manual_export(
+        self,
+        name: str,
+        *,
+        source_name: str | None = None,
+        source_module: str | None = None,
+    ) -> None:
+        """Mark a module-level implementation name for direct forwarding.
+
+        This is intended for constants, type aliases, and other public values that do not have
+        a decorator target but should still appear in the generated public module.
+        """
+
+        export_name = _validate_registration_name(name, decorator_name="manual_export", fallback=name)
+        impl_name = source_name or export_name
+        _validate_registration_name(impl_name, decorator_name="manual_export", fallback=impl_name)
+
+        if source_module is None:
+            caller_frame = inspect.currentframe()
+            if caller_frame is None or caller_frame.f_back is None:
+                raise RuntimeError("manual_export() could not determine caller module")
+            source_module_value = caller_frame.f_back.f_globals.get("__name__")
+            if not isinstance(source_module_value, str):
+                raise RuntimeError("manual_export() could not determine caller module")
+            source_module = source_module_value
+        if not isinstance(source_module, str) or not source_module:
+            raise ValueError("manual_export() source_module must be a non-empty string")
+
+        self._manual_exports[export_name] = ManualWrapperRef(module=source_module, qualname=impl_name)
 
     def wrap_function(self, *, name: str | None = None) -> Callable[[F], F]:
         """Decorator to mark a function for wrapper generation."""

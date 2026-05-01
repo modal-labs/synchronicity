@@ -24,6 +24,7 @@ from synchronicity2.codegen.transformer_ir import (
     AsyncIteratorTypeIR,
     AwaitableTypeIR,
     CallableTypeIR,
+    CollectionTypeIR,
     CoroutineTypeIR,
     DictTypeIR,
     IdentityTypeIR,
@@ -1299,6 +1300,33 @@ def test_emit_sequence_and_callable_ellipsis_annotations():
                     )
                 ),
             ),
+            MethodWrapperIR(
+                method_name="clone_collection",
+                method_type=MethodBindingKind.INSTANCE,
+                parameters=(
+                    ParameterIR(
+                        name="nodes",
+                        kind=1,
+                        annotation_ir=CollectionTypeIR(
+                            item=WrappedClassTypeIR(
+                                impl=ImplQualifiedRef(IMPL, "Node"),
+                                wrapper=WrapperRef(TARGET, "Node"),
+                            )
+                        ),
+                        default_expr=None,
+                    ),
+                ),
+                is_async_gen=False,
+                is_async=True,
+                return_transformer_ir=AwaitableTypeIR(
+                    inner=CollectionTypeIR(
+                        item=WrappedClassTypeIR(
+                            impl=ImplQualifiedRef(IMPL, "Node"),
+                            wrapper=WrapperRef(TARGET, "Node"),
+                        )
+                    )
+                ),
+            ),
         ),
     )
 
@@ -1306,6 +1334,7 @@ def test_emit_sequence_and_callable_ellipsis_annotations():
 
     assert 'def deps(self) -> "typing.Callable[..., ' 'typing.Sequence[Node]]":' in code
     assert 'def clone_all(self, nodes: "typing.Sequence[Node]") -> "typing.Sequence[Node]":' in code
+    assert 'def clone_collection(self, nodes: "typing.Collection[Node]") -> "typing.Collection[Node]":' in code
     assert "nodes_impl = [x._impl_instance for x in nodes]" in code
 
 

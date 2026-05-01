@@ -848,6 +848,8 @@ def test_build_module_compilation_ir_collects_manual_reexports_separately():
     class ForwardedType:
         pass
 
+    m.manual_export("PUBLIC_VALUE", source_module="example.impl")
+
     ir = build_module_compilation_ir(m)
 
     assert ir.module_functions_ir == ()
@@ -860,6 +862,10 @@ def test_build_module_compilation_ir_collects_manual_reexports_separately():
         ManualReexportIR(
             impl_ref=ImplQualifiedRef(ForwardedType.__module__, ForwardedType.__qualname__),
             export_name="ForwardedType",
+        ),
+        ManualReexportIR(
+            impl_ref=ImplQualifiedRef("example.impl", "PUBLIC_VALUE"),
+            export_name="PUBLIC_VALUE",
         ),
     }
 

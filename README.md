@@ -97,7 +97,44 @@ That creates `src/mylib/weather.py`. Your users import the public API with `from
 
 ## Including unwrapped entries
 
-If a generated module or wrapper class should expose an entry without generating a synchronicity2 wrapper for it, register it as usual and mark the inserted object with `Module.manual_wrapper()`.
+If a generated module should expose a plain module-level value without generating a synchronicity2 wrapper for it, use `Module.manual_export(...)`. This is intended for constants, type aliases, helper dataclasses, enums, and helper functions that should remain importable from the generated public module but do not need sync/async or wrapper/implementation translation.
+
+```python
+from dataclasses import dataclass
+
+from mylib.synchronicity import Module
+
+mod = Module("mylib.api")
+
+DEFAULT_TIMEOUT = 30
+
+
+@dataclass(frozen=True)
+class FileInfo:
+    path: str
+    size: int
+
+
+def validate_name(name: str) -> None:
+    if not name:
+        raise ValueError("name must not be empty")
+
+
+mod.manual_export("DEFAULT_TIMEOUT")
+mod.manual_export("FileInfo")
+mod.manual_export("validate_name")
+```
+
+The generated module emits direct aliases such as `DEFAULT_TIMEOUT = mylib._impl.DEFAULT_TIMEOUT`. `manual_export(...)` does not parse annotations, does not create a wrapper class or wrapper function, and does not add call-boundary translation.
+
+Use `source_name=` when the public export name differs from the implementation name, or `source_module=` when forwarding a name from another module:
+
+```python
+mod.manual_export("public_name", source_name="_private_name")
+mod.manual_export("OTHER_VALUE", source_module="mylib._shared")
+```
+
+If a generated module or wrapper class should expose a wrapper-aware entry without generating a normal synchronicity2 wrapper body, register it as usual and mark the inserted object with `Module.manual_wrapper()`.
 
 ```python
 from mylib.synchronicity import FunctionWithAio, MethodWithAio, Module
@@ -134,7 +171,7 @@ class Client:
         return f"sync:{value}"
 ```
 
-The generated code re-exports these entries directly instead of parsing signatures and emitting a new wrapper body. At module scope that becomes a simple alias like `manual_function = mylib._impl.manual_function`; inside wrapped classes, the marked attribute is copied into the emitted wrapper class unchanged. The same pattern also works for re-exporting a whole class directly:
+The generated code re-exports these entries directly instead of parsing signatures and emitting a new wrapper body. At module scope that becomes a simple alias like `manual_function = mylib._impl.manual_function`; inside wrapped classes, the marked attribute is copied into the emitted wrapper class unchanged. The same pattern also works for re-exporting a whole class directly when that class is intentionally not generated as a wrapper:
 
 ```python
 @mod.wrap_class()
@@ -142,6 +179,8 @@ The generated code re-exports these entries directly instead of parsing signatur
 class ExistingPublicType:
     ...
 ```
+
+As a rule of thumb, prefer `manual_export(...)` for plain module aliases. Use `manual_wrapper()` for descriptor-managed functions, methods, class attributes, or pre-existing public classes that need to participate in wrapper generation without a generated wrapper body.
 
 ## Vendoring (recommended for published libraries)
 

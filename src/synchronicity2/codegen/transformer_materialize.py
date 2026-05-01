@@ -24,6 +24,7 @@ from .transformer_ir import (
     AsyncIteratorTypeIR,
     AwaitableTypeIR,
     CallableTypeIR,
+    CollectionTypeIR,
     CoroutineTypeIR,
     DictTypeIR,
     IdentityTypeIR,
@@ -270,6 +271,19 @@ def annotation_to_transformer_ir(
     if origin is collections.abc.Sequence:
         if args:
             return SequenceTypeIR(
+                annotation_to_transformer_ir(
+                    args[0],
+                    owner_impl_type=owner_impl_type,
+                    owner_has_type_parameters=owner_has_type_parameters,
+                    impl_modules=impl_modules,
+                    source_label=source_label,
+                )
+            )
+        return _identity_ir_from_annotation(annotation)
+
+    if origin is collections.abc.Collection:
+        if args:
+            return CollectionTypeIR(
                 annotation_to_transformer_ir(
                     args[0],
                     owner_impl_type=owner_impl_type,
@@ -528,6 +542,8 @@ def materialize_transformer_ir(
         )
     if isinstance(ir, SequenceTypeIR):
         return tt.SequenceTransformer(materialize_transformer_ir(ir.item, runtime_package, ctx=ctx))
+    if isinstance(ir, CollectionTypeIR):
+        return tt.CollectionTransformer(materialize_transformer_ir(ir.item, runtime_package, ctx=ctx))
     if isinstance(ir, TupleTypeIR):
         if ir.variadic:
             (single,) = ir.elements
