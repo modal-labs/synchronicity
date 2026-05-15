@@ -838,6 +838,14 @@ def test_union_pipe_syntax_imports():
     assert "pandas.core.series.Series" in src_multi
 
 
+def test_union_pipe_syntax_in_variable_annotation():
+    """Regression: _formatannotation should handle types.UnionType (X | Y) directly."""
+    s = StubEmitter(__name__)
+    s.add_variable(int | str, "x")
+    src = s.get_source()
+    assert "x: int | str" in src
+
+
 def test_async_classmethod_gets_aio(synchronizer):
     @synchronizer.wrap
     class A:

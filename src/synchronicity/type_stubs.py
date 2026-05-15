@@ -880,6 +880,10 @@ class StubEmitter:
 
             return repr(annotation)
 
+        if isinstance(annotation, types.UnionType):
+            formatted_args = [self._formatannotation(a) for a in args]
+            return " | ".join(formatted_args)
+
         # generic:
         origin_name = get_specific_generic_name(annotation)
         if origin is contextlib.AbstractAsyncContextManager:
