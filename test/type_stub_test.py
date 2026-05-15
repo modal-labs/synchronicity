@@ -846,6 +846,24 @@ def test_union_pipe_syntax_in_variable_annotation():
     assert "x: int | str" in src
 
 
+def test_union_type(tmp_path):
+    contents = dedent(
+        """
+        foo: int | None = None
+        """
+    )
+    with open(fname := (tmp_path / "my_union.py"), "w") as f:
+        f.write(contents)
+
+    spec = importlib.util.spec_from_file_location("my_union", fname)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    emitter = StubEmitter.from_module(mod)
+    src = emitter.get_source()
+    assert "foo: int | None" in src
+
+
 def test_async_classmethod_gets_aio(synchronizer):
     @synchronizer.wrap
     class A:
