@@ -846,6 +846,13 @@ def test_union_pipe_syntax_in_variable_annotation():
     assert "x: int | str" in src
 
 
+def test_union_pipe_syntax_three_way():
+    s = StubEmitter(__name__)
+    s.add_variable(int | str | float, "x")
+    src = s.get_source()
+    assert "x: int | str | float" in src
+
+
 def test_union_type(tmp_path):
     contents = dedent(
         """

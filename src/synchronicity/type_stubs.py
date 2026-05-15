@@ -880,6 +880,9 @@ class StubEmitter:
 
             return repr(annotation)
 
+        # types.UnionType is the PEP 604 `X | Y` form. The local get_origin() maps it to
+        # typing.Union so it doesn't hit the `origin is None` branch above, which means
+        # execution always reaches here for native union syntax.
         if isinstance(annotation, types.UnionType):
             formatted_args = [self._formatannotation(a) for a in args]
             return " | ".join(formatted_args)
