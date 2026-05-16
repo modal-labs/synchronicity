@@ -158,6 +158,8 @@ def _get_type_vars(typ, synchronizer, home_module):
         param_spec = synchronizer._translate_out(param_spec)
         ret.add(param_spec)
     elif origin:
+        if origin in (typing.Literal, typing_extensions.Literal):
+            return ret
         for arg in safe_get_args(typ):
             ret |= _get_type_vars(arg, synchronizer, home_module)
     else:

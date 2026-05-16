@@ -1,6 +1,7 @@
 import collections
 import functools
 import importlib
+import logging
 import pathlib
 import pytest
 import sys
@@ -566,6 +567,20 @@ def test_typing_literal():
 
     src = _function_source(foo)
     assert "-> typing.Literal['three', 'str']" in src  # "str" should not be eval:ed in a Literal!
+
+
+def test_synchronicity_wrapped_literal_does_not_log_eval_error(caplog):
+    async def foo(kind: typing.Literal["users", "service_users"]) -> typing.Literal["viewer", "contributor"]:
+        return "viewer"
+
+    wrapped_foo = synchronizer.create_blocking(foo, name="wrapped_foo")
+
+    with caplog.at_level(logging.ERROR, logger="synchronicity.type_stubs"):
+        src = _function_source(wrapped_foo)
+
+    assert "Error when evaluating" not in caplog.text
+    assert "kind: typing.Literal['users', 'service_users']" in src
+    assert "-> typing.Literal['viewer', 'contributor']" in src
 
 
 def test_overloads_unwrapped_functions():
