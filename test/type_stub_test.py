@@ -568,17 +568,17 @@ def test_typing_literal():
     assert "-> typing.Literal['three', 'str']" in src  # "str" should not be eval:ed in a Literal!
 
 
-MemberRole = typing.Literal["viewer", "contributor"]
+LiteralAlias = typing.Literal["literal_value_1", "literal_value_2"]
 
 
 class _WithLiteralAnnotations:
-    async def list(self) -> dict[typing.Literal["users", "service_users"], dict[str, MemberRole]]:
-        return {"users": {}, "service_users": {}}
+    async def list(self) -> dict[typing.Literal["key_a", "key_b"], dict[str, LiteralAlias]]:
+        return {"key_a": {}, "key_b": {}}
 
     async def update(
         self,
         *,
-        users: typing.Optional[typing.Mapping[str, MemberRole]] = None,
+        items: typing.Optional[typing.Mapping[str, LiteralAlias]] = None,
     ) -> None:
         pass
 
@@ -602,8 +602,8 @@ def test_literal_in_wrapped_class_method(capfd):
 
     captured = capfd.readouterr()
     assert "Error when evaluating" not in captured.err
-    assert "typing.Literal['users', 'service_users']" in src
-    assert "typing.Literal['viewer', 'contributor']" in src
+    assert "typing.Literal['key_a', 'key_b']" in src
+    assert "typing.Literal['literal_value_1', 'literal_value_2']" in src
 
 
 def test_overloads_unwrapped_functions():
