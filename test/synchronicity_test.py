@@ -3,6 +3,7 @@ import concurrent.futures
 import gc
 import inspect
 import logging
+import os
 import pytest
 import subprocess
 import sys
@@ -720,7 +721,12 @@ def test_synchronizer_unexpected_thread_death(caplog):
 def test_synchronizer_exposes_names_in_debug_mode():
     fn = Path(__file__).parent / "support" / "_blocking_func.py"
 
-    result = subprocess.run([sys.executable, fn], capture_output=True, text=True, env={"PYTHONASYNCIODEBUG": "1"})
+    result = subprocess.run(
+        [sys.executable, fn],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "PYTHONASYNCIODEBUG": "1"},
+    )
     assert "my_custom_coro_name" in result.stderr
 
 
