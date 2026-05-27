@@ -174,7 +174,8 @@ class MixedClass:
         print(val)
 
     @classproperty
-    def class_property(cls):
+    @classmethod
+    def class_property(cls) -> int:
         return 1
 
 
@@ -203,7 +204,12 @@ def test_class_generation():
     assert_in_after_last(f"{indent}@property\n{indent}def some_property(self) -> str:")
     assert_in_after_last(f"{indent}@some_property.setter\n{indent}def some_property(self, val):")
     assert_in_after_last(f"{indent}@some_property.deleter\n{indent}def some_property(self, val):")
-    assert_in_after_last(f"{indent}@synchronicity.classproperty\n{indent}def class_property(cls):\n{indent * 2}...")
+    assert_in_after_last(
+        f"{indent}@synchronicity.classproperty\n"
+        f"{indent}@classmethod\n"
+        f"{indent}def class_property(cls) -> int:\n"
+        f"{indent * 2}..."
+    )
 
 
 def merged_signature(*sigs):
@@ -314,7 +320,7 @@ def test_optional():
     src = _function_source(wrapped_f)
     # TODO: 3.14 does not preserve the typing.Optional[str]
     if sys.version_info[:2] == (3, 14):
-        assert "typing.Union[str, None]" in src
+        assert "str | None" in src
     elif sys.version_info[:2] >= (3, 10):
         assert "typing.Optional[str]" in src
     else:
@@ -560,6 +566,44 @@ def test_typing_literal():
 
     src = _function_source(foo)
     assert "-> typing.Literal['three', 'str']" in src  # "str" should not be eval:ed in a Literal!
+
+
+LiteralAlias = typing.Literal["literal_value_1", "literal_value_2"]
+
+
+class _WithLiteralAnnotations:
+    async def list(self) -> dict[typing.Literal["key_a", "key_b"], dict[str, LiteralAlias]]:
+        return {"key_a": {}, "key_b": {}}
+
+    async def update(
+        self,
+        *,
+        items: typing.Optional[typing.Mapping[str, LiteralAlias]] = None,
+    ) -> None:
+        pass
+
+
+WithLiteralAnnotations = synchronizer.create_blocking(_WithLiteralAnnotations, "WithLiteralAnnotations", __name__)
+
+
+def test_literal_in_wrapped_class_method(capfd):
+    """Literal string args should not be evaluated as forward references."""
+    import logging
+
+    # Capture warnings from the synchronicity logger
+    logger = logging.getLogger("synchronicity")
+    handler = logging.StreamHandler()
+    handler.setLevel(logging.WARNING)
+    logger.addHandler(handler)
+    try:
+        src = _class_source(WithLiteralAnnotations)
+    finally:
+        logger.removeHandler(handler)
+
+    captured = capfd.readouterr()
+    assert "Error when evaluating" not in captured.err
+    assert "typing.Literal['key_a', 'key_b']" in src
+    assert "typing.Literal['literal_value_1', 'literal_value_2']" in src
 
 
 def test_overloads_unwrapped_functions():
@@ -830,6 +874,39 @@ def test_union_pipe_syntax_imports():
     assert "import pandas.core.series" in src_multi
     assert "pandas.core.frame.DataFrame" in src_multi
     assert "pandas.core.series.Series" in src_multi
+
+
+def test_union_pipe_syntax_in_variable_annotation():
+    """Regression: _formatannotation should handle types.UnionType (X | Y) directly."""
+    s = StubEmitter(__name__)
+    s.add_variable(int | str, "x")
+    src = s.get_source()
+    assert "x: int | str" in src
+
+
+def test_union_pipe_syntax_three_way():
+    s = StubEmitter(__name__)
+    s.add_variable(int | str | float, "x")
+    src = s.get_source()
+    assert "x: int | str | float" in src
+
+
+def test_union_type(tmp_path):
+    contents = dedent(
+        """
+        foo: int | None = None
+        """
+    )
+    with open(fname := (tmp_path / "my_union.py"), "w") as f:
+        f.write(contents)
+
+    spec = importlib.util.spec_from_file_location("my_union", fname)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    emitter = StubEmitter.from_module(mod)
+    src = emitter.get_source()
+    assert "foo: int | None" in src
 
 
 def test_async_classmethod_gets_aio(synchronizer):

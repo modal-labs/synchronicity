@@ -18,6 +18,7 @@ import textwrap
 import types
 import typing
 import warnings
+from inspect import get_annotations
 from logging import getLogger
 from pathlib import Path
 from typing import TypeVar
@@ -26,7 +27,6 @@ from unittest import mock
 import sigtools.specifiers  # type: ignore
 import typing_extensions
 from sigtools._signatures import EmptyAnnotation, UpgradedAnnotation, UpgradedParameter  # type: ignore
-from typing_extensions import get_annotations
 
 import synchronicity
 from synchronicity import combined_types, overload_tracking
@@ -158,6 +158,8 @@ def _get_type_vars(typ, synchronizer, home_module):
         param_spec = synchronizer._translate_out(param_spec)
         ret.add(param_spec)
     elif origin:
+        if origin is typing.Literal:
+            return ret  # Literal args are values, not types
         for arg in safe_get_args(typ):
             ret |= _get_type_vars(arg, synchronizer, home_module)
     else:
@@ -361,8 +363,12 @@ class StubEmitter:
                     methods.append(f"{body_indent}@{entity_name}.deleter\n{fn_source}")
 
             elif isinstance(entity, classproperty):
-                fn_source = self._get_function_source_with_overloads(entity.fget, entity_name, body_indent_level)
-                methods.append(f"{body_indent}@synchronicity.classproperty\n{fn_source}")
+                fn_source = self._get_function_source_with_overloads(
+                    entity.fget.__func__,  # type: ignore[attr-defined]
+                    entity_name,
+                    body_indent_level,
+                )
+                methods.append(f"{body_indent}@synchronicity.classproperty\n{body_indent}@classmethod\n{fn_source}")
                 self.imports.add("synchronicity")
 
             elif isinstance(entity, FunctionWithAio):
@@ -875,6 +881,13 @@ class StubEmitter:
                 return f"[{subargs}]"
 
             return repr(annotation)
+
+        # types.UnionType is the PEP 604 `X | Y` form. The local get_origin() maps it to
+        # typing.Union so it doesn't hit the `origin is None` branch above, which means
+        # execution always reaches here for native union syntax.
+        if isinstance(annotation, types.UnionType):
+            formatted_args = [self._formatannotation(a) for a in args]
+            return " | ".join(formatted_args)
 
         # generic:
         origin_name = get_specific_generic_name(annotation)
