@@ -320,7 +320,7 @@ def test_optional():
     src = _function_source(wrapped_f)
     # TODO: 3.14 does not preserve the typing.Optional[str]
     if sys.version_info[:2] == (3, 14):
-        assert "typing.Union[str, None]" in src
+        assert "str | None" in src
     elif sys.version_info[:2] >= (3, 10):
         assert "typing.Optional[str]" in src
     else:
@@ -836,6 +836,39 @@ def test_union_pipe_syntax_imports():
     assert "import pandas.core.series" in src_multi
     assert "pandas.core.frame.DataFrame" in src_multi
     assert "pandas.core.series.Series" in src_multi
+
+
+def test_union_pipe_syntax_in_variable_annotation():
+    """Regression: _formatannotation should handle types.UnionType (X | Y) directly."""
+    s = StubEmitter(__name__)
+    s.add_variable(int | str, "x")
+    src = s.get_source()
+    assert "x: int | str" in src
+
+
+def test_union_pipe_syntax_three_way():
+    s = StubEmitter(__name__)
+    s.add_variable(int | str | float, "x")
+    src = s.get_source()
+    assert "x: int | str | float" in src
+
+
+def test_union_type(tmp_path):
+    contents = dedent(
+        """
+        foo: int | None = None
+        """
+    )
+    with open(fname := (tmp_path / "my_union.py"), "w") as f:
+        f.write(contents)
+
+    spec = importlib.util.spec_from_file_location("my_union", fname)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    emitter = StubEmitter.from_module(mod)
+    src = emitter.get_source()
+    assert "foo: int | None" in src
 
 
 def test_async_classmethod_gets_aio(synchronizer):
