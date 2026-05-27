@@ -725,10 +725,20 @@ def test_concatenate_origin_module():
     s.add_variable(collections.abc.Callable[typing_extensions.Concatenate[typing.Any, P], R], "f")
     src = s.get_source()
     print(src)
-    assert (
-        "f: collections.abc.Callable[typing.Concatenate[typing.Any, P], R]" in src
-        or "f: collections.abc.Callable[typing_extensions.Concatenate[typing.Any, P], R]" in src
-    )
+    if sys.version_info >= (3, 11):
+        assert "f: collections.abc.Callable[typing.Concatenate[typing.Any, P], R]" in src
+    else:
+        assert "f: collections.abc.Callable[typing_extensions.Concatenate[typing.Any, P], R]" in src
+
+
+def test_typing_concatenate_origin_module():
+    s = StubEmitter(__name__)
+    P = typing.ParamSpec("P")
+    R = typing.TypeVar("R")
+    s.add_variable(collections.abc.Callable[typing.Concatenate[typing.Any, P], R], "f")
+    src = s.get_source()
+    print(src)
+    assert "f: collections.abc.Callable[typing.Concatenate[typing.Any, P], R]" in src
 
 
 def test_paramspec_args():
