@@ -568,6 +568,44 @@ def test_typing_literal():
     assert "-> typing.Literal['three', 'str']" in src  # "str" should not be eval:ed in a Literal!
 
 
+LiteralAlias = typing.Literal["literal_value_1", "literal_value_2"]
+
+
+class _WithLiteralAnnotations:
+    async def list(self) -> dict[typing.Literal["key_a", "key_b"], dict[str, LiteralAlias]]:
+        return {"key_a": {}, "key_b": {}}
+
+    async def update(
+        self,
+        *,
+        items: typing.Optional[typing.Mapping[str, LiteralAlias]] = None,
+    ) -> None:
+        pass
+
+
+WithLiteralAnnotations = synchronizer.create_blocking(_WithLiteralAnnotations, "WithLiteralAnnotations", __name__)
+
+
+def test_literal_in_wrapped_class_method(capfd):
+    """Literal string args should not be evaluated as forward references."""
+    import logging
+
+    # Capture warnings from the synchronicity logger
+    logger = logging.getLogger("synchronicity")
+    handler = logging.StreamHandler()
+    handler.setLevel(logging.WARNING)
+    logger.addHandler(handler)
+    try:
+        src = _class_source(WithLiteralAnnotations)
+    finally:
+        logger.removeHandler(handler)
+
+    captured = capfd.readouterr()
+    assert "Error when evaluating" not in captured.err
+    assert "typing.Literal['key_a', 'key_b']" in src
+    assert "typing.Literal['literal_value_1', 'literal_value_2']" in src
+
+
 def test_overloads_unwrapped_functions():
     with overload_tracking.patched_overload():
 
