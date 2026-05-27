@@ -1,4 +1,4 @@
-# compatibility utilities/polyfills for supporting older python versions
+# Helpers for evaluating annotations that are only importable in type-checking contexts.
 import importlib
 import logging
 import sys

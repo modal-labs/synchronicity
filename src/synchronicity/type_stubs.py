@@ -47,9 +47,8 @@ logger = getLogger(__name__)
 def safe_get_module(obj: typing.Any) -> typing.Optional[str]:
     """Handles some special cases where obj.__module__ isn't correct or ugly
 
-    e.g. in Python 3.8 contextvars.ContextVar.__module__ == "builtins"
-    and in Python 3.11 contextvars.ContextVar.__module__ == "_contextvars"
-    and in emitted code it should *preferably* be "contextvars"
+    For example, contextvars.ContextVar.__module__ can be "_contextvars",
+    but emitted code should prefer "contextvars".
     """
     if obj == contextvars.ContextVar:
         return "contextvars"
@@ -64,15 +63,6 @@ def safe_get_module(obj: typing.Any) -> typing.Optional[str]:
         # in newer versions of Python (known: 3.13)
         # some pathlib classes live in pathlib._local
         return "pathlib"
-
-    try:
-        if (obj.__module__, obj.__name__) == ("typing", "Concatenate"):
-            # typing_extensions.Concatenate forwards typing.Concatenate if
-            # available, but we still want to emit typing_extensions to be
-            # backwards compatible
-            return "typing_extensions"
-    except Exception:
-        pass
 
     return obj.__module__
 
@@ -104,14 +94,13 @@ def add_prefix_arg(arg_name, remove_args=0):
 def replace_type_vars(replacement_dict: typing.Dict[type, type]):
     def _replace_type_vars_rec(tp: typing.Type[typing.Any]):
         origin = get_origin(tp)
-        args = safe_get_args(tp)
+        args = typing.get_args(tp)
 
         if isinstance(tp, (typing_extensions.ParamSpecArgs, typing_extensions.ParamSpecKwargs)):
             new_origin_type_var = _replace_type_vars_rec(origin)
             return type(tp)(new_origin_type_var)
 
-        if type(tp) is list:  # typically first argument to typing.Callable
-            # intentionally not using isinstance, since ParamSpec is a subclass of list in Python 3.9
+        if isinstance(tp, list):  # typically first argument to typing.Callable
             return [_replace_type_vars_rec(arg) for arg in tp]
 
         if tp in replacement_dict:
@@ -134,10 +123,6 @@ def replace_type_vars(replacement_dict: typing.Dict[type, type]):
 
 
 def get_origin(annotation: type):
-    if sys.version_info < (3, 10):
-        # typing.get_origin returns None for ParamSpecArgs on <= Python3.9
-        return getattr(annotation, "__origin__", None)
-
     origin = typing.get_origin(annotation)
     if origin is types.UnionType:
         # origin would be types.UnionType for unions, but it's more practical to use typing.Union
@@ -160,7 +145,7 @@ def _get_type_vars(typ, synchronizer, home_module):
     elif origin:
         if origin is typing.Literal:
             return ret  # Literal args are values, not types
-        for arg in safe_get_args(typ):
+        for arg in typing.get_args(typ):
             ret |= _get_type_vars(arg, synchronizer, home_module)
     else:
         # Copied string annotation handling from StubEmitter.translate_annotations - TODO: unify?
@@ -195,11 +180,9 @@ def _func_uses_self(func) -> bool:
     def _contains_self(typ) -> bool:
         if typ is typing_extensions.Self:
             return True
-        origin = get_origin(typ)
-        if origin:
-            for arg in safe_get_args(typ):
-                if _contains_self(arg):
-                    return True
+        for arg in typing.get_args(typ):
+            if _contains_self(arg):
+                return True
         return False
 
     annotations = get_annotations(func)
@@ -207,40 +190,6 @@ def _func_uses_self(func) -> bool:
         if _contains_self(typ):
             return True
     return False
-
-
-def safe_get_args(annotation):
-    # "polyfill" of Python 3.10+ typing.get_args() behavior of
-    # not putting ParamSpec and Ellipsis in a list when used as first argument to a Callable
-    # This can be removed if we drop support for *generating type stubs using Python <=3.9*
-    args = typing.get_args(annotation)
-    if sys.version_info[:2] <= (3, 9) and typing.get_origin(annotation) == collections.abc.Callable:
-        if (
-            args
-            and type(args[0]) is list
-            and args[0]
-            and isinstance(args[0][0], (typing_extensions.ParamSpec, type(...)))
-        ):
-            args = (args[0][0],) + args[1:]
-
-    return args
-
-
-def get_specific_generic_name(annotation):
-    """get the name of the generic type of a "specific" type (with args)
-    e.g.
-    >>> get_specific_generic_name(typing.List[str])
-    "List"
-    """
-    if hasattr(annotation, "__name__"):
-        # this works on new pythons
-        return annotation.__name__
-    elif hasattr(annotation, "_name") and annotation._name is not None:
-        # fallback for older Python (at least 3.8)
-        return annotation._name
-    else:
-        # also an old python
-        return get_specific_generic_name(annotation.__origin__)
 
 
 class StubEmitter:
@@ -546,7 +495,7 @@ class StubEmitter:
             return
 
         if isinstance(type_var, typing_extensions.ParamSpec):
-            type_module = "typing_extensions"  # this ensures stubs created by newer Python's still work on Python 3.9
+            type_module = "typing"
             type_name = "ParamSpec"
         elif isinstance(type_var, typing.TypeVar):
             type_module = "typing"
@@ -664,7 +613,7 @@ class StubEmitter:
                     f"Error when evaluating {annotation} in {home_module}. Falling back to string annotation"
                 )
                 return annotation
-        if type(annotation) is list:  # not using isinstance since ParamSpec is a subclass of list in Python 3.9
+        if isinstance(annotation, list):
             return [
                 self._translate_annotation(x, synchronizer, synchronicity_target_interface, home_module)
                 for x in annotation
@@ -688,7 +637,7 @@ class StubEmitter:
     ):
         # recursively map a nested type annotation to match the output interface
         origin = get_origin(type_annotation)
-        args = safe_get_args(type_annotation)
+        args = typing.get_args(type_annotation)
 
         if isinstance(type_annotation, (typing_extensions.ParamSpecArgs, typing_extensions.ParamSpecKwargs)):
             # ParamSpecArgs and ParamSpecKwargs are special - they have an origin (the ParamSpec) but no attrs
@@ -842,7 +791,7 @@ class StubEmitter:
 
         # The remaining forward refs should already have been evaluated
         assert not isinstance(annotation, typing.ForwardRef)
-        args = safe_get_args(annotation)
+        args = typing.get_args(annotation)
 
         if isinstance(annotation, typing_extensions.ParamSpecArgs):
             return self._formatannotation(typing_extensions.get_origin(annotation)) + "." + "args"
@@ -851,11 +800,6 @@ class StubEmitter:
             return self._formatannotation(typing_extensions.get_origin(annotation)) + "." + "kwargs"
 
         if origin is None or not args:
-            if annotation == typing.Sized:
-                return "typing.Sized"  # fix Python 3.8(+?) where the repr is "typing.Sized[]" for some reason
-            if annotation == typing.Hashable:
-                return "typing.Hashable"  # fix Python 3.8(+?) where the repr is "typing.Hashable[]" for some reason
-
             if annotation == Ellipsis:
                 return "..."
             if isinstance(annotation, type) or isinstance(annotation, (TypeVar, typing_extensions.ParamSpec)):
@@ -890,10 +834,10 @@ class StubEmitter:
             return " | ".join(formatted_args)
 
         # generic:
-        origin_name = get_specific_generic_name(annotation)
+        origin_name = annotation.__name__
         if origin is contextlib.AbstractAsyncContextManager:
             # python 3.13 adds a second optional exit arg, we only want to emit the first one
-            # to be backwards compatible
+            # so stubs generated on newer Python versions still work on Python 3.10-3.12.
             args = args[:1]
 
         if (safe_get_module(annotation), origin_name) == ("typing", "Optional"):
@@ -905,13 +849,6 @@ class StubEmitter:
             comma_separated_args = ", ".join(formatted_args)
 
         annotation_module = safe_get_module(annotation)
-        if annotation_module in ("typing", "contextlib") and origin_name.startswith("Abstract"):
-            # This is needed for Python <=3.8 where there is a bug (?) in the typing.AsyncContextManager
-            # causing it to be represented with the non-existent name typing.AbstractContextManager
-            # >>> typing.AsyncContextManager
-            # typing.AbstractAsyncContextManager
-            origin_name = origin_name[len("Abstract") :]  # cut the "Abstract"
-
         if annotation_module not in ("builtins", self.target_module):
             # need to qualify the module of the origin
             origin_module = annotation_module

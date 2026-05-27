@@ -1,6 +1,5 @@
 import asyncio
 import signal
-import sys
 import threading
 import typing
 
@@ -30,9 +29,7 @@ class Runner:
 
     def __exit__(self, exc_type, exc_value, traceback):
         self._loop.run_until_complete(self._loop.shutdown_asyncgens())
-        if sys.version_info[:2] >= (3, 9):
-            # Introduced in Python 3.9
-            self._loop.run_until_complete(self._loop.shutdown_default_executor())
+        self._loop.run_until_complete(self._loop.shutdown_default_executor())
 
         self._loop.close()
         return False

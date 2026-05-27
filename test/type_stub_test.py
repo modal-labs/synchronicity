@@ -312,7 +312,6 @@ def test_forward_ref():
 
 def test_optional():
     # Not super important, but try to preserve typing.Optional as typing.Optional instead of typing.Union[None, ...]
-    # This only works on Python 3.10+, since 3.9 and earlier do "eager" conversion when creating the type
     def f() -> typing.Optional[str]: ...
 
     wrapped_f = synchronizer.create_blocking(f, "wrapped_f", __name__)
@@ -321,10 +320,8 @@ def test_optional():
     # TODO: 3.14 does not preserve the typing.Optional[str]
     if sys.version_info[:2] == (3, 14):
         assert "str | None" in src
-    elif sys.version_info[:2] >= (3, 10):
-        assert "typing.Optional[str]" in src
     else:
-        assert "typing.Union[str, None]" in src
+        assert "typing.Optional[str]" in src
 
 
 class SelfRefFoo:
@@ -647,7 +644,6 @@ def test_wrapped_context_manager_is_both_blocking_and_async():
     assert "AbstractAsyncContextManager" not in wrapped_foo_src
 
 
-@pytest.mark.skipif(sys.version_info < (3, 9), reason="collections.abc.Iterator isn't a generic type before Python 3.9")
 def test_collections_iterator():
     def foo() -> collections.abc.Iterator[int]:
         class MyIterator(collections.abc.Iterator):
@@ -722,10 +718,6 @@ def test_contextvar():
     assert "c: contextvars.ContextVar" in src
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 10),
-    reason="collections.abc.Callable strips Concatenate wrappers at runtime before Python 3.10 :(",
-)
 def test_concatenate_origin_module():
     s = StubEmitter(__name__)
     P = typing_extensions.ParamSpec("P")
@@ -733,7 +725,20 @@ def test_concatenate_origin_module():
     s.add_variable(collections.abc.Callable[typing_extensions.Concatenate[typing.Any, P], R], "f")
     src = s.get_source()
     print(src)
-    assert "f: collections.abc.Callable[typing_extensions.Concatenate[typing.Any, P], R]" in src
+    if sys.version_info >= (3, 11):
+        assert "f: collections.abc.Callable[typing.Concatenate[typing.Any, P], R]" in src
+    else:
+        assert "f: collections.abc.Callable[typing_extensions.Concatenate[typing.Any, P], R]" in src
+
+
+def test_typing_concatenate_origin_module():
+    s = StubEmitter(__name__)
+    P = typing.ParamSpec("P")
+    R = typing.TypeVar("R")
+    s.add_variable(collections.abc.Callable[typing.Concatenate[typing.Any, P], R], "f")
+    src = s.get_source()
+    print(src)
+    assert "f: collections.abc.Callable[typing.Concatenate[typing.Any, P], R]" in src
 
 
 def test_paramspec_args():
@@ -809,7 +814,6 @@ def test_pathlib():
     assert "pathlib.Path" in src
 
 
-@pytest.mark.skipif(sys.version_info < (3, 10), reason="Union type syntax (|) requires Python 3.10+")
 def test_union_pipe_syntax_imports():
     """Test that Type | None syntax properly registers imports for Type.
 
