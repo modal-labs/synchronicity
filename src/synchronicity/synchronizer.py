@@ -268,18 +268,27 @@ class Synchronizer:
     def _get_loop(self, start: bool) -> typing.Union[asyncio.AbstractEventLoop, None]: ...
 
     def _get_loop(self, start=False) -> typing.Union[asyncio.AbstractEventLoop, None]:
-        if self._thread and not self._thread.is_alive():
-            if self._owner_pid == os.getpid():
-                # warn - thread died without us forking
-                logger.error(
-                    f"""Synchronizer thread unexpectedly died.
+        if self._thread:
+            thread_dead = not self._thread.is_alive()
+            loop_closed = self._loop is not None and self._loop.is_closed()
+
+            if thread_dead or loop_closed:
+                if not thread_dead:
+                    # Loop is closed but thread hasn't fully exited yet - wait for
+                    # it so that _thread_exception/_thread_traceback are populated.
+                    self._thread.join(timeout=5.0)
+
+                if self._owner_pid == os.getpid():
+                    # warn - thread died without us forking
+                    logger.error(
+                        f"""Synchronizer thread unexpectedly died.
 Cause: {type(self._thread_exception)}
 Traceback:{self._thread_traceback}"""
-                )
-                raise RuntimeError("Synchronizer thread unexpectedly died")
+                    )
+                    raise RuntimeError("Synchronizer thread unexpectedly died")
 
-            self._thread = None
-            self._loop = None
+                self._thread = None
+                self._loop = None
 
         if self._loop is None and start:
             return self._start_loop()

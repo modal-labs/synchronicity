@@ -680,7 +680,6 @@ def test_blocking_in_async_callback():
 
 
 @pytest.mark.filterwarnings("ignore")
-@pytest.mark.skipif(sys.version_info >= (3, 14), reason="Test flakes on 3.14")
 def test_synchronizer_unexpected_thread_death(caplog):
     s = Synchronizer()
 
