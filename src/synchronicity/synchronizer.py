@@ -14,6 +14,7 @@ import traceback
 import types
 import typing
 import warnings
+from functools import wraps
 from inspect import get_annotations
 from typing import Callable, ForwardRef, Optional
 
@@ -335,6 +336,7 @@ Traceback:{self._thread_traceback}"""
         if not self._async_leakage_warning:
             return coro
 
+        @wraps(coro)
         async def coro_wrapped():
             value = await coro
             # TODO: we should include the name of the original function here
