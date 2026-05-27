@@ -294,6 +294,21 @@ Traceback:{self._thread_traceback}"""
             return self._start_loop()
         return self._loop
 
+    async def _get_loop_async(self) -> asyncio.AbstractEventLoop:
+        """Like _get_loop(start=True) but non-blocking for async callers.
+
+        _start_loop() blocks the calling thread while waiting for the
+        background thread to initialize. When the caller is itself an
+        async coroutine, that block stalls the event loop and can trigger
+        asyncio's slow-callback warning. This method offloads the
+        blocking startup to a thread-pool executor so the caller's
+        event loop stays responsive.
+        """
+        loop = self._get_loop(start=False)
+        if loop is not None:
+            return loop
+        return await asyncio.get_running_loop().run_in_executor(None, lambda: self._get_loop(start=True))
+
     def _get_running_loop(self):
         # TODO: delete this method
         try:
@@ -482,7 +497,7 @@ Traceback:{self._thread_traceback}"""
     async def _run_function_async(self, coro, original_func):
         coro = wrap_coro_exception(coro)
         coro = self._wrap_check_async_leakage(coro)
-        loop = self._get_loop(start=True)
+        loop = await self._get_loop_async()
         if self._is_inside_loop():
             value = await coro
         else:
