@@ -220,7 +220,17 @@ class Synchronizer:
 
             def thread_inner():
                 async def loop_inner():
-                    self._loop = asyncio.get_running_loop()
+                    loop = asyncio.get_running_loop()
+                    # The synchronizer's event loop runs in a background thread
+                    # that shares the process with other threads. On loaded CI
+                    # machines (shared VMs), this thread can be preempted by the
+                    # OS for 100-300+ ms, causing asyncio's slow-callback
+                    # detection (which measures wall-clock time) to fire on
+                    # perfectly non-blocking task steps.  Raise the threshold so
+                    # it still catches genuinely blocking calls (>0.5 s) without
+                    # false-positives from scheduling jitter.
+                    loop.slow_callback_duration = 0.5
+                    self._loop = loop
                     self._stopping = asyncio.Event()
                     is_ready.set()
                     await self._stopping.wait()  # wait until told to stop
