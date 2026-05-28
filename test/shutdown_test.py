@@ -1,8 +1,21 @@
+import os
 import pytest
 import signal
 import subprocess
 import sys
 from pathlib import Path
+
+
+def _subprocess_env():
+    """Return an environment dict for subprocesses with PYTHONASYNCIODEBUG removed.
+
+    The conftest sets PYTHONASYNCIODEBUG=1 (autouse) to catch blocking calls
+    in the test process. But when inherited by subprocesses, asyncio's
+    slow-callback detection fires on the synchronizer's background event loop
+    for normal task steps that exceed 0.1s due to CI machine load, producing
+    spurious warnings on stderr that break 'assert stderr == ""' checks.
+    """
+    return {k: v for k, v in os.environ.items() if k != "PYTHONASYNCIODEBUG"}
 
 
 class PopenWithCtrlC(subprocess.Popen):
@@ -11,6 +24,7 @@ class PopenWithCtrlC(subprocess.Popen):
             # needed on windows to separate ctrl-c lifecycle of subprocess from parent:
             creationflags = creationflags | subprocess.CREATE_NEW_CONSOLE  # type: ignore
 
+        kwargs.setdefault("env", _subprocess_env())
         super().__init__(*args, **kwargs, creationflags=creationflags)
 
     def send_ctrl_c(self):
