@@ -946,4 +946,3 @@ def test_typeddict_base(tmp_path):
     emitter = StubEmitter.from_module(mod)
     src = emitter.get_source()
     assert "class A(typing.TypedDict):" in src
-    
