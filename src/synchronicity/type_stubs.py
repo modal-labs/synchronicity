@@ -21,7 +21,7 @@ import warnings
 from inspect import get_annotations
 from logging import getLogger
 from pathlib import Path
-from typing import TypeVar, TypedDict
+from typing import TypedDict, TypeVar
 from unittest import mock
 
 import sigtools.specifiers  # type: ignore
