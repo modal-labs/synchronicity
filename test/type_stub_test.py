@@ -925,3 +925,24 @@ def test_async_classmethod_gets_aio(synchronizer):
     assert "foo: typing.ClassVar[__foo_spec" in src
     assert "async def aio(self" in src
     assert "def __call__(self" in src
+
+
+def test_typeddict_base(tmp_path):
+    contents = dedent(
+        """
+        from typing import TypedDict
+
+        class A(TypedDict):
+            a: int
+        """
+    )
+    with open(fname := (tmp_path / "my_union.py"), "w") as f:
+        f.write(contents)
+
+    spec = importlib.util.spec_from_file_location("my_union", fname)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    emitter = StubEmitter.from_module(mod)
+    src = emitter.get_source()
+    assert "class A(typing.TypedDict):" in src

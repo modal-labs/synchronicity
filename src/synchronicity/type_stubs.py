@@ -21,7 +21,7 @@ import warnings
 from inspect import get_annotations
 from logging import getLogger
 from pathlib import Path
-from typing import TypeVar
+from typing import TypedDict, TypeVar
 from unittest import mock
 
 import sigtools.specifiers  # type: ignore
@@ -802,7 +802,12 @@ class StubEmitter:
         if origin is None or not args:
             if annotation == Ellipsis:
                 return "..."
-            if isinstance(annotation, type) or isinstance(annotation, (TypeVar, typing_extensions.ParamSpec)):
+
+            if (
+                annotation == TypedDict
+                or isinstance(annotation, type)
+                or isinstance(annotation, (TypeVar, typing_extensions.ParamSpec))
+            ):
                 if annotation is type(None):  # check for "NoneType"
                     return "None"
                 name = (
@@ -819,6 +824,7 @@ class StubEmitter:
                         " to specify target module on a blocking type?"
                     )
                 return annotation_module + "." + name
+
             if isinstance(annotation, list):
                 # e.g. first argument to typing.Callable
                 subargs = ",".join([self._formatannotation(arg) for arg in annotation])
