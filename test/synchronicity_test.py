@@ -900,4 +900,4 @@ def test_instance_method_called_on_class_passes_through(synchronizer):
     import re
 
     with pytest.raises(TypeError, match=re.escape("blocking_bar() missing 1 required positional argument: 'self'")):
-        Bar.bar()
+        Bar.bar("foo")
