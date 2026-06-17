@@ -811,6 +811,8 @@ Traceback:{self._thread_traceback}"""
             try:
                 instance = self.__dict__[synchronizer_self._original_attr]
             except (KeyError, AttributeError):
+                # sdk671 - If self is not the wrapped class, fallback to calling
+                # the wrapped method on self
                 return wrapped_method(self, *args, **kwargs)
             with suppress_synchronicity_tb_frames():
                 try:
