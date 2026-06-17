@@ -171,7 +171,6 @@ class Synchronizer:
         self._nowrap_attr = "_sync_nonwrap_%d" % id(self)
         self._input_translation_attr = "_sync_input_translation_%d" % id(self)
         self._output_translation_attr = "_sync_output_translation_%d" % id(self)
-        self._run_before_attr = "_sync_run_before_%d" % id(self)
 
         # Prep a synchronized context manager in case one is returned and needs translation
         self._ctx_mgr_cls = contextlib._AsyncGeneratorContextManager
@@ -809,8 +808,6 @@ Traceback:{self._thread_traceback}"""
 
         @wraps_by_interface(interface, wrapped_method)
         def proxy_method(self, *args, **kwargs):
-            if hook := getattr(method, synchronizer_self._run_before_attr, None):
-                hook(self)
             try:
                 instance = self.__dict__[synchronizer_self._original_attr]
             except (KeyError, AttributeError):
@@ -1045,12 +1042,6 @@ Traceback:{self._thread_traceback}"""
     def nowrap(self, obj):
         setattr(obj, self._nowrap_attr, True)
         return obj
-
-    def run_before(self, func):
-        def wrapper(obj):
-            setattr(obj, self._run_before_attr, func)
-            return obj
-        return wrapper
 
     def no_input_translation(self, obj):
         setattr(obj, self._input_translation_attr, False)
