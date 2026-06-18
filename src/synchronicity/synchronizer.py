@@ -808,7 +808,12 @@ Traceback:{self._thread_traceback}"""
 
         @wraps_by_interface(interface, wrapped_method)
         def proxy_method(self, *args, **kwargs):
-            instance = self.__dict__[synchronizer_self._original_attr]
+            try:
+                instance = self.__dict__[synchronizer_self._original_attr]
+            except (KeyError, AttributeError):
+                # If self is not a wrapped instance, call the method directly so that
+                # user-defined checks on the underlying method can raise meaningful errors.
+                return wrapped_method(self, *args, **kwargs)
             with suppress_synchronicity_tb_frames():
                 try:
                     return wrapped_method(instance, *args, **kwargs)

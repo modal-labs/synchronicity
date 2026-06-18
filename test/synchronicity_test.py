@@ -873,3 +873,29 @@ def test_del_is_not_wrapped(synchronizer):
         "init A",
         "del A",
     ]
+
+
+def test_instance_method_called_on_class_passes_through(synchronizer):
+    # Calling an instance method on the wrapped class with a non-instance as self
+    # should propagate to the underlying method so that user-defined checks can raise
+    # meaningful errors. Without the fallback, the proxy crashes first with an obscure
+    # error.
+    class _Foo:
+        def foo(self):
+            if not isinstance(self, _Foo):
+                raise ValueError(f"Expected _Foo instance, got {type(self).__name__}")
+            return "Foo!"
+
+    Foo = synchronizer.wrap(_Foo)
+
+    with pytest.raises(ValueError, match="Expected _Foo instance, got str"):
+        Foo.foo("not_a_foo_instance")
+
+    class _Bar:
+        def bar(self, x):
+            return f"Bar! {x}"
+
+    Bar = synchronizer.wrap(_Bar)
+
+    with pytest.raises(TypeError, match="missing 1 required positional argument: 'x'"):
+        Bar.bar("foo")
