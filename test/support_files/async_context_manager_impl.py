@@ -60,6 +60,11 @@ class ServiceWithContextMethod:
         assert threading.current_thread().ident != threading.main_thread().ident
         yield Connection(99)
 
+    @asynccontextmanager
+    async def no_value(self) -> typing.AsyncGenerator[None, None]:
+        assert threading.current_thread().ident != threading.main_thread().ident
+        yield
+
 
 @mod.wrap_class()
 class ServiceWithFactoryContexts:

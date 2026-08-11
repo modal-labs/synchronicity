@@ -182,6 +182,17 @@ class ExistingPublicType:
 
 As a rule of thumb, prefer `manual_export(...)` for plain module aliases. Use `manual_wrapper()` for descriptor-managed functions, methods, class attributes, or pre-existing public classes that need to participate in wrapper generation without a generated wrapper body.
 
+Generated wrapper classes normally include public methods, selected protocol dunders, and manually registered underscored attributes. If an implementation class intentionally exposes single-underscore methods as part of its public wrapper API, opt in at the class level:
+
+```python
+@mod.wrap_class(include_underscored_methods=True)
+class Client:
+    async def _logs(self) -> collections.abc.AsyncGenerator[str, None]:
+        ...
+```
+
+This generates normal sync/async wrappers for single-underscore instance methods and classmethods like `_logs`. Private staticmethods, double-underscore protocol methods, properties, and class attributes keep their usual explicit handling; this option is not a blanket export of all class internals.
+
 ## Vendoring (recommended for published libraries)
 
 Libraries published to PyPI usually should avoid a **runtime** dependency on the `synchronicity2` package. Instead, check in a copy of the library pieces your code and generated wrappers need under a package you own (for example `mylib.synchronicity`), and pass `--runtime-package` to `synchronicity2 wrappers` so imports point at that tree.

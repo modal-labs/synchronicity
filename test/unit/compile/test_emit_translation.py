@@ -291,15 +291,10 @@ def test_emit_translation_function_and_class_signatures():
         'def tr_create_node(value: int) -> "TestNode":' in create_node_code
         or "def tr_create_node(value: int) -> 'TestNode':" in create_node_code
     )
+    assert 'def tr_get_node_list(nodes: "list[TestNode]") -> "list[TestNode]":' in get_node_list_code
     assert (
-        'def tr_get_node_list(nodes: list[TestNode]) -> "list[TestNode]":' in get_node_list_code
-        or "def tr_get_node_list(nodes: list[TestNode]) -> 'list[TestNode]':" in get_node_list_code
-    )
-    assert (
-        'def tr_get_optional_node(node: typing.Union[TestNode, None]) -> "typing.Union[TestNode, None]":'
-        in get_optional_node_code
-        or "def tr_get_optional_node(node: typing.Union[TestNode, None]) -> 'typing.Union[TestNode, None]':"
-        in get_optional_node_code
+        'def tr_get_optional_node(node: "typing.Union[TestNode, None]") '
+        '-> "typing.Union[TestNode, None]":' in get_optional_node_code
     )
     assert (
         'def tr_connect_nodes(parent: "TestNode", child: "TestNode") -> "tuple[TestNode, TestNode]":'
@@ -357,8 +352,8 @@ def test_emit_async_generator_wrapping_helpers():
     assert "await _wrapped.asend(_sent)" in compiled_code
     assert "await _wrapped.aclose()" in compiled_code
     assert "async def aio(self)" in compiled_code
-    assert '-> "typing.Generator[str, None, None]":' in compiled_code
-    assert '-> "typing.AsyncGenerator[str, None]":' in compiled_code
+    assert "-> typing.Generator[str, None, None]:" in compiled_code
+    assert "-> typing.AsyncGenerator[str, None]:" in compiled_code
 
 
 def test_emit_tuple_of_generators():
@@ -372,12 +367,12 @@ def test_emit_tuple_of_generators():
     assert "_synchronizer._run_generator_sync(result[0])" in compiled_code
     assert "_synchronizer._run_generator_sync(result[1])" in compiled_code
     assert (
-        'def fn_tuple_generators() -> "tuple[typing.Generator[str, None, None], typing.Generator[int, None, None]]":'
-        in compiled_code
+        "def fn_tuple_generators() -> "
+        "tuple[typing.Generator[str, None, None], typing.Generator[int, None, None]]:" in compiled_code
     )
     assert (
         "async def aio(self) -> "
-        '"tuple[typing.AsyncGenerator[str, None], typing.AsyncGenerator[int, None]]":' in compiled_code
+        "tuple[typing.AsyncGenerator[str, None], typing.AsyncGenerator[int, None]]:" in compiled_code
     )
 
 

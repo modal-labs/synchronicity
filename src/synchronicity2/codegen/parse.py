@@ -11,6 +11,7 @@ import typing
 from synchronicity2.module import (
     _IMPL_WRAPPER_LOCATION_ATTR,
     Module,
+    RegistrationInfo,
     _direct_wrapper_location,
 )
 
@@ -66,6 +67,24 @@ def _manual_class_attribute_access_kind(obj: object) -> ManualClassAttributeAcce
 def _is_classproperty_descriptor(obj: object) -> bool:
     descriptor_type = type(obj)
     return descriptor_type.__name__ == "classproperty" and isinstance(getattr(obj, "fget", None), classmethod)
+
+
+def _is_dunder_name(name: str) -> bool:
+    return name.startswith("__") and name.endswith("__")
+
+
+def _should_scan_class_member_name(name: str, *, include_underscored_methods: bool) -> bool:
+    if name in _TYPE_SCANNED_DUNDER_METHODS:
+        return True
+    if _is_dunder_name(name):
+        return False
+    if name.startswith("_"):
+        return include_underscored_methods
+    return True
+
+
+def _should_include_private_staticmethod(name: str, *, is_manual: bool) -> bool:
+    return is_manual or not name.startswith("_")
 
 
 def _manual_wrapper_impl_ref(module: Module, obj: object) -> ImplQualifiedRef:
@@ -153,17 +172,31 @@ def cross_module_imports_for_module(
                 for annotation in annotations.values():
                     _check_annotation_for_cross_refs(annotation, module_name, cross_module_refs)
         elif isinstance(obj, type):
+            include_underscored_methods = _registration.include_underscored_methods
             for base in getattr(obj, "__bases__", ()):
                 _check_impl_type_for_cross_ref(base, module_name, cross_module_refs)
             for method_name, attr in tuple(obj.__dict__.items()):
                 is_manual = _is_manual_wrapper(attr, manual_wrapper_ids=manual_wrapper_ids)
-                if method_name.startswith("_") and method_name not in _TYPE_SCANNED_DUNDER_METHODS and not is_manual:
+                if (
+                    not _should_scan_class_member_name(
+                        method_name,
+                        include_underscored_methods=include_underscored_methods,
+                    )
+                    and not is_manual
+                ):
                     continue
                 if is_manual and not isinstance(attr, (classmethod, staticmethod)) and not inspect.isfunction(attr):
+                    continue
+                if isinstance(attr, staticmethod) and not _should_include_private_staticmethod(
+                    method_name,
+                    is_manual=is_manual,
+                ):
                     continue
                 if isinstance(attr, classmethod | staticmethod):
                     method = attr.__func__
                 elif isinstance(attr, property) or _is_classproperty_descriptor(attr):
+                    if method_name.startswith("_") and include_underscored_methods and not is_manual:
+                        continue
                     getter = attr.fget
                     setter = attr.fset if isinstance(attr, property) else None
                     if getter is not None:
@@ -207,6 +240,7 @@ def build_module_compilation_ir(
     )
 
     classes: list[type] = []
+    class_registrations: dict[type, RegistrationInfo] = {}
     functions: list[tuple[types.FunctionType, str]] = []
     manual_reexports: list[ManualReexportIR] = []
     for o, registration in module_items.items():
@@ -220,6 +254,7 @@ def build_module_compilation_ir(
             continue
         if isinstance(o, type):
             classes.append(o)
+            class_registrations[o] = registration
         elif isinstance(o, types.FunctionType):
             functions.append((o, registration.name))
 
@@ -249,9 +284,18 @@ def build_module_compilation_ir(
                         module_typevars[arg.__name__] = arg
 
         for name, attr in tuple(cls.__dict__.items()):
-            if (name.startswith("_") and name not in _TYPE_SCANNED_DUNDER_METHODS) or _is_manual_wrapper(
-                attr, manual_wrapper_ids=manual_wrapper_ids
+            include_underscored_methods = class_registrations[cls].include_underscored_methods
+            if (
+                not _should_scan_class_member_name(
+                    name,
+                    include_underscored_methods=include_underscored_methods,
+                )
+            ) or _is_manual_wrapper(
+                attr,
+                manual_wrapper_ids=manual_wrapper_ids,
             ):
+                continue
+            if isinstance(attr, staticmethod) and not _should_include_private_staticmethod(name, is_manual=False):
                 continue
             if isinstance(attr, classmethod | staticmethod):
                 method = attr.__func__
@@ -281,6 +325,7 @@ def build_module_compilation_ir(
             module.target_module,
             impl_modules=impl_mods,
             manual_wrapper_ids=manual_wrapper_ids,
+            include_underscored_methods=class_registrations[c].include_underscored_methods,
             forbidden_wrapper_modules=forbidden_wrapper_modules,
         )
         for c in classes
@@ -312,20 +357,24 @@ def build_module_compilation_ir(
     )
 
 
-def _detect_async_context_manager_wrapper(f, return_annotation) -> typing.Any | None:
+_NO_ASYNC_CONTEXT_MANAGER = object()
+
+
+def _detect_async_context_manager_wrapper(f, return_annotation) -> typing.Any:
     """Detect functions wrapped by ``@asynccontextmanager``.
 
-    Returns the yield type (context manager value type) if detected, ``None`` otherwise.
+    Returns the yield type (context manager value type) if detected, or
+    ``_NO_ASYNC_CONTEXT_MANAGER`` otherwise. ``None`` is a valid yield type.
     """
     if return_annotation == inspect.Signature.empty:
-        return None
+        return _NO_ASYNC_CONTEXT_MANAGER
 
     origin = typing.get_origin(return_annotation)
     if origin is not collections.abc.AsyncGenerator:
-        return None
+        return _NO_ASYNC_CONTEXT_MANAGER
 
     if inspect.isasyncgenfunction(f):
-        return None  # Actually is a raw async generator
+        return _NO_ASYNC_CONTEXT_MANAGER  # Actually is a raw async generator
 
     # Annotation says AsyncGenerator but function isn't one — check for @asynccontextmanager
     wrapped = getattr(f, "__wrapped__", None)
@@ -337,7 +386,7 @@ def _detect_async_context_manager_wrapper(f, return_annotation) -> typing.Any | 
             return typing.Any
         wrapped = getattr(wrapped, "__wrapped__", None)
 
-    return None
+    return _NO_ASYNC_CONTEXT_MANAGER
 
 
 def _normalize_return_transformer_ir(
@@ -370,7 +419,7 @@ def _parse_signature_ir(
     return_annotation = annotations.get("return", sig.return_annotation)
 
     cm_value_type = _detect_async_context_manager_wrapper(f, return_annotation)
-    if cm_value_type is not None:
+    if cm_value_type is not _NO_ASYNC_CONTEXT_MANAGER:
         value_ir = annotation_to_transformer_ir(
             cm_value_type,
             owner_impl_type=owner_impl_type,
@@ -578,11 +627,14 @@ def parse_class_wrapper_ir(
     runtime_package: str = "synchronicity2",
     impl_modules: frozenset[str] | None = None,
     manual_wrapper_ids: frozenset[int] = frozenset(),
+    include_underscored_methods: bool = False,
     forbidden_wrapper_modules: frozenset[str] | None = None,
 ) -> ClassWrapperIR:
     """Collect :class:`ClassWrapperIR` from a live implementation class (parse-time only)."""
     if impl_modules is None:
         impl_modules = frozenset({cls.__module__})
+    if globals_dict is None and cls.__module__ in sys.modules:
+        globals_dict = sys.modules[cls.__module__].__dict__
 
     wrapped_bases: list[tuple[ImplQualifiedRef, WrapperRef]] = []
     generic_type_parameters: tuple[str, ...] | None = None
@@ -644,15 +696,20 @@ def parse_class_wrapper_ir(
                 )
             )
             continue
-        if name.startswith("_"):
+        if not _should_scan_class_member_name(name, include_underscored_methods=include_underscored_methods):
             continue
         if isinstance(attr, classmethod):
             source_methods.append((name, attr.__func__, MethodBindingKind.CLASSMETHOD))
             classmethod_staticmethod_names.add(name)
         elif isinstance(attr, staticmethod):
+            if not _should_include_private_staticmethod(name, is_manual=False):
+                classmethod_staticmethod_names.add(name)
+                continue
             source_methods.append((name, attr.__func__, MethodBindingKind.STATICMETHOD))
             classmethod_staticmethod_names.add(name)
         elif isinstance(attr, property):
+            if name.startswith("_") and include_underscored_methods:
+                continue
             property_names.add(name)
             fget = attr.fget
             if fget is not None and inspect.iscoroutinefunction(fget):
@@ -704,6 +761,8 @@ def parse_class_wrapper_ir(
                 )
             )
         elif _is_classproperty_descriptor(attr):
+            if name.startswith("_") and include_underscored_methods:
+                continue
             classproperty_names.add(name)
             fget = attr.fget.__func__
             if inspect.iscoroutinefunction(fget):
@@ -734,7 +793,8 @@ def parse_class_wrapper_ir(
     # instance methods (only directly defined on cls)
     for name, method in inspect.getmembers(cls, predicate=inspect.isfunction):
         if (
-            not name.startswith("_")
+            (not name.startswith("_") or include_underscored_methods)
+            and not _is_dunder_name(name)
             and name in cls.__dict__
             and name not in classmethod_staticmethod_names
             and name not in property_names

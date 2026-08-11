@@ -63,6 +63,25 @@ def test_runtime_method_sync():
 
 
 @pytest.mark.usefixtures("generated_wrappers")
+def test_runtime_method_sync_no_value():
+    import async_context_manager
+
+    svc = async_context_manager.ServiceWithContextMethod()
+    with svc.no_value() as v:
+        assert v is None
+
+
+@pytest.mark.usefixtures("generated_wrappers")
+@pytest.mark.asyncio
+async def test_runtime_method_async_no_value():
+    import async_context_manager
+
+    svc = async_context_manager.ServiceWithContextMethod()
+    async with svc.no_value() as v:
+        assert v is None
+
+
+@pytest.mark.usefixtures("generated_wrappers")
 def test_runtime_classmethod_context_manager_sync():
     import async_context_manager
 

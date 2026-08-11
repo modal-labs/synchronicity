@@ -62,3 +62,18 @@ async def test_run_function_async_propagates_coroutine_timeout_error(monkeypatch
 
     with pytest.raises(TimeoutError, match="inner timeout"):
         await asyncio.wait_for(sync._run_function_async(object()), timeout=0.5)
+
+
+@pytest.mark.asyncio
+async def test_run_function_async_waits_beyond_poll_interval():
+    sync = Synchronizer("test_synchronizer_async_waits_beyond_poll_interval")
+    sync._future_poll_interval = 0.001
+
+    async def slow():
+        await asyncio.sleep(0.01)
+        return "ok"
+
+    try:
+        assert await sync._run_function_async(slow()) == "ok"
+    finally:
+        sync._close_loop()

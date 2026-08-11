@@ -36,6 +36,7 @@ def _inherited_wrapper_location(impl_cls: type) -> tuple[type, tuple[str, str]] 
 class RegistrationInfo:
     target_module: str
     name: str
+    include_underscored_methods: bool = False
 
 
 @dataclasses.dataclass(frozen=True)
@@ -266,7 +267,12 @@ class Module:
 
         return decorator
 
-    def wrap_class(self, *, name: str | None = None) -> Callable[[C], C]:
+    def wrap_class(
+        self,
+        *,
+        name: str | None = None,
+        include_underscored_methods: bool = False,
+    ) -> Callable[[C], C]:
         """Decorator to mark a class for wrapper generation."""
 
         def decorator(impl_cls: C) -> C:
@@ -278,6 +284,7 @@ class Module:
             registration = RegistrationInfo(
                 target_module=self._target_module,
                 name=export_name,
+                include_underscored_methods=include_underscored_methods,
             )
             self._wrapped_classes[impl_cls] = registration
 

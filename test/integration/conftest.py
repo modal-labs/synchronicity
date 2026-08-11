@@ -226,6 +226,7 @@ def generated_wrappers():
         "decorator_factory_impl",
         "descriptor_dunder_impl",
         "variadic_translation_impl",
+        "include_underscored_methods_impl",
         "sandboxlib._sandbox",
     ]
 

@@ -114,22 +114,18 @@ class TypeTransformer(ABC):
         """
         return {}
 
-    def has_local_wrapper_ref(self, target_module: str) -> bool:
-        """Whether this annotation references a wrapper class defined in ``target_module``.
-
-        Generated source must quote such annotations when they can appear before the local
-        wrapper class is defined.
-        """
+    def contains_wrapper_ref(self) -> bool:
+        """Whether this annotation contains a generated wrapper class reference."""
         return False
 
     def annotation_type(self, target_module: str, is_async: bool = True) -> str:
         """Return the string to emit in generated annotations.
 
         This defaults to ``wrapped_type`` and quotes the whole expression whenever it contains
-        a local wrapper reference that may otherwise be a forward reference at import time.
+        a wrapper reference that may otherwise be unavailable during module import.
         """
         wrapped = self.wrapped_type(target_module, is_async)
-        if self.has_local_wrapper_ref(target_module):
+        if self.contains_wrapper_ref():
             return f'"{wrapped}"'
         return wrapped
 
@@ -212,11 +208,8 @@ class WrappedClassTransformer(TypeTransformer):
     def needs_translation(self) -> bool:
         return True
 
-    def has_local_wrapper_ref(self, target_module: str) -> bool:
-        return self._wrapper.wrapper_module == target_module
-
-    def annotation_type(self, target_module: str, is_async: bool = True) -> str:
-        return f'"{self.wrapped_type(target_module, is_async)}"'
+    def contains_wrapper_ref(self) -> bool:
+        return True
 
     def passthrough_annotation_type(self, target_module: str, is_async: bool = True) -> str:
         return _impl_ref_dotted(self.impl_ref)
@@ -252,13 +245,8 @@ class SubscriptedWrappedClassTransformer(TypeTransformer):
     def needs_translation(self) -> bool:
         return True
 
-    def has_local_wrapper_ref(self, target_module: str) -> bool:
-        return self._inner.has_local_wrapper_ref(target_module) or any(
-            t.has_local_wrapper_ref(target_module) for t in self._type_arg_transformers
-        )
-
-    def annotation_type(self, target_module: str, is_async: bool = True) -> str:
-        return f'"{self.wrapped_type(target_module, is_async)}"'
+    def contains_wrapper_ref(self) -> bool:
+        return self._inner.contains_wrapper_ref() or any(t.contains_wrapper_ref() for t in self._type_arg_transformers)
 
     def passthrough_annotation_type(self, target_module: str, is_async: bool = True) -> str:
         base = _impl_ref_dotted(self._inner.impl_ref)
@@ -389,8 +377,8 @@ class ListTransformer(TypeTransformer):
         """Recursively collect helpers from item transformer."""
         return self.item_transformer.get_wrapper_helpers(target_module, indent)
 
-    def has_local_wrapper_ref(self, target_module: str) -> bool:
-        return self.item_transformer.has_local_wrapper_ref(target_module)
+    def contains_wrapper_ref(self) -> bool:
+        return self.item_transformer.contains_wrapper_ref()
 
     def passthrough_annotation_type(self, target_module: str, is_async: bool = True) -> str:
         item_type_str = self.item_transformer.passthrough_annotation_type(target_module, is_async)
@@ -440,10 +428,8 @@ class DictTransformer(TypeTransformer):
         helpers.update(self.value_transformer.get_wrapper_helpers(target_module, indent))
         return helpers
 
-    def has_local_wrapper_ref(self, target_module: str) -> bool:
-        return self.key_transformer.has_local_wrapper_ref(
-            target_module
-        ) or self.value_transformer.has_local_wrapper_ref(target_module)
+    def contains_wrapper_ref(self) -> bool:
+        return self.key_transformer.contains_wrapper_ref() or self.value_transformer.contains_wrapper_ref()
 
     def passthrough_annotation_type(self, target_module: str, is_async: bool = True) -> str:
         key_type_str = self.key_transformer.passthrough_annotation_type(target_module, is_async)
@@ -487,8 +473,8 @@ class SequenceTransformer(TypeTransformer):
     ) -> dict[str, str]:
         return self.item_transformer.get_wrapper_helpers(target_module, indent)
 
-    def has_local_wrapper_ref(self, target_module: str) -> bool:
-        return self.item_transformer.has_local_wrapper_ref(target_module)
+    def contains_wrapper_ref(self) -> bool:
+        return self.item_transformer.contains_wrapper_ref()
 
     def passthrough_annotation_type(self, target_module: str, is_async: bool = True) -> str:
         item_type_str = self.item_transformer.passthrough_annotation_type(target_module, is_async)
@@ -531,8 +517,8 @@ class CollectionTransformer(TypeTransformer):
     ) -> dict[str, str]:
         return self.item_transformer.get_wrapper_helpers(target_module, indent)
 
-    def has_local_wrapper_ref(self, target_module: str) -> bool:
-        return self.item_transformer.has_local_wrapper_ref(target_module)
+    def contains_wrapper_ref(self) -> bool:
+        return self.item_transformer.contains_wrapper_ref()
 
     def passthrough_annotation_type(self, target_module: str, is_async: bool = True) -> str:
         item_type_str = self.item_transformer.passthrough_annotation_type(target_module, is_async)
@@ -605,8 +591,8 @@ class TupleTransformer(TypeTransformer):
             helpers.update(transformer.get_wrapper_helpers(target_module, indent))
         return helpers
 
-    def has_local_wrapper_ref(self, target_module: str) -> bool:
-        return any(transformer.has_local_wrapper_ref(target_module) for transformer in self.item_transformers)
+    def contains_wrapper_ref(self) -> bool:
+        return any(transformer.contains_wrapper_ref() for transformer in self.item_transformers)
 
     def passthrough_annotation_type(self, target_module: str, is_async: bool = True) -> str:
         if len(self.item_transformers) == 1:
@@ -654,8 +640,8 @@ class OptionalTransformer(TypeTransformer):
         """Recursively collect helpers from inner transformer."""
         return self.inner_transformer.get_wrapper_helpers(target_module, indent)
 
-    def has_local_wrapper_ref(self, target_module: str) -> bool:
-        return self.inner_transformer.has_local_wrapper_ref(target_module)
+    def contains_wrapper_ref(self) -> bool:
+        return self.inner_transformer.contains_wrapper_ref()
 
     def passthrough_annotation_type(self, target_module: str, is_async: bool = True) -> str:
         inner_type_str = self.inner_transformer.passthrough_annotation_type(target_module, is_async)
@@ -1010,8 +996,8 @@ class UnionTransformer(TypeTransformer):
             helpers.update(transformer.get_wrapper_helpers(target_module, indent))
         return helpers
 
-    def has_local_wrapper_ref(self, target_module: str) -> bool:
-        return any(transformer.has_local_wrapper_ref(target_module) for transformer in self.item_transformers)
+    def contains_wrapper_ref(self) -> bool:
+        return any(transformer.contains_wrapper_ref() for transformer in self.item_transformers)
 
     def passthrough_annotation_type(self, target_module: str, is_async: bool = True) -> str:
         item_types = [t.passthrough_annotation_type(target_module, is_async) for t in self.item_transformers]
@@ -1125,8 +1111,8 @@ class AsyncGeneratorTransformer(TypeTransformer):
 
         return helpers
 
-    def has_local_wrapper_ref(self, target_module: str) -> bool:
-        return self.yield_transformer.has_local_wrapper_ref(target_module)
+    def contains_wrapper_ref(self) -> bool:
+        return self.yield_transformer.contains_wrapper_ref()
 
     def passthrough_annotation_type(self, target_module: str, is_async: bool = True) -> str:
         yield_type_str = self.yield_transformer.passthrough_annotation_type(target_module, is_async)
@@ -1208,8 +1194,8 @@ class SyncGeneratorTransformer(TypeTransformer):
 
         return helpers
 
-    def has_local_wrapper_ref(self, target_module: str) -> bool:
-        return self.yield_transformer.has_local_wrapper_ref(target_module)
+    def contains_wrapper_ref(self) -> bool:
+        return self.yield_transformer.contains_wrapper_ref()
 
     def passthrough_annotation_type(self, target_module: str, is_async: bool = True) -> str:
         yield_type_str = self.yield_transformer.passthrough_annotation_type(target_module, is_async)
@@ -1281,8 +1267,8 @@ class AsyncIteratorTransformer(TypeTransformer):
 
         return helpers
 
-    def has_local_wrapper_ref(self, target_module: str) -> bool:
-        return self.item_transformer.has_local_wrapper_ref(target_module)
+    def contains_wrapper_ref(self) -> bool:
+        return self.item_transformer.contains_wrapper_ref()
 
     def passthrough_annotation_type(self, target_module: str, is_async: bool = True) -> str:
         item_type_str = self.item_transformer.passthrough_annotation_type(target_module, is_async)
@@ -1356,8 +1342,8 @@ class AsyncIterableTransformer(TypeTransformer):
 
         return helpers
 
-    def has_local_wrapper_ref(self, target_module: str) -> bool:
-        return self.item_transformer.has_local_wrapper_ref(target_module)
+    def contains_wrapper_ref(self) -> bool:
+        return self.item_transformer.contains_wrapper_ref()
 
     def passthrough_annotation_type(self, target_module: str, is_async: bool = True) -> str:
         item_type_str = self.item_transformer.passthrough_annotation_type(target_module, is_async)
@@ -1415,8 +1401,8 @@ class AsyncContextManagerTransformer(TypeTransformer):
 
         return helpers
 
-    def has_local_wrapper_ref(self, target_module: str) -> bool:
-        return self.value_transformer.has_local_wrapper_ref(target_module)
+    def contains_wrapper_ref(self) -> bool:
+        return self.value_transformer.contains_wrapper_ref()
 
     def passthrough_annotation_type(self, target_module: str, is_async: bool = True) -> str:
         value_type_str = self.value_transformer.passthrough_annotation_type(target_module, is_async)
@@ -1456,8 +1442,8 @@ class CoroutineTransformer(TypeTransformer):
         """Signal that this type needs to be awaited or run through synchronizer."""
         return True
 
-    def has_local_wrapper_ref(self, target_module: str) -> bool:
-        return self.return_transformer.has_local_wrapper_ref(target_module)
+    def contains_wrapper_ref(self) -> bool:
+        return self.return_transformer.contains_wrapper_ref()
 
     def passthrough_annotation_type(self, target_module: str, is_async: bool = True) -> str:
         return_type_str = self.return_transformer.passthrough_annotation_type(target_module, is_async)
@@ -1497,8 +1483,8 @@ class AwaitableTransformer(TypeTransformer):
         """Signal that this type needs to be awaited or run through synchronizer."""
         return True
 
-    def has_local_wrapper_ref(self, target_module: str) -> bool:
-        return self.return_transformer.has_local_wrapper_ref(target_module)
+    def contains_wrapper_ref(self) -> bool:
+        return self.return_transformer.contains_wrapper_ref()
 
     def passthrough_annotation_type(self, target_module: str, is_async: bool = True) -> str:
         return_type_str = self.return_transformer.passthrough_annotation_type(target_module, is_async)
@@ -1577,13 +1563,11 @@ class CallableTransformer(TypeTransformer):
         )
         return params_need_translation or self.return_transformer.needs_translation()
 
-    def has_local_wrapper_ref(self, target_module: str) -> bool:
-        param_has_local_ref = (
-            False
-            if self.param_transformers is None
-            else any(t.has_local_wrapper_ref(target_module) for t in self.param_transformers)
+    def contains_wrapper_ref(self) -> bool:
+        param_has_wrapper_ref = (
+            False if self.param_transformers is None else any(t.contains_wrapper_ref() for t in self.param_transformers)
         )
-        return param_has_local_ref or self.return_transformer.has_local_wrapper_ref(target_module)
+        return param_has_wrapper_ref or self.return_transformer.contains_wrapper_ref()
 
 
 def _is_self_annotation(annotation: object) -> bool:

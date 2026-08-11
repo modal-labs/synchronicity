@@ -27,6 +27,9 @@
   - Raw async-generator wrappers currently require calling `.aio()` on the wrapper method/function before they become async-iterable
   - This is inconsistent with wrappers for callables returning `AsyncGenerator[...]`, where the wrapper result is already directly async-iterable
   - Migrate toward a single, more consistent async-generator surface model
+- [ ] **Investigate async-generator parameters inside unions**
+  - Confirm how argument annotations like `_watcher: typing.Union[typing.AsyncGenerator[set[str], None], None] = None` are parsed into IR and emitted in generated wrappers
+  - Decide whether async-generator-valued parameters should be treated as opaque pass-through values, translated containers, or need explicit unsupported-shape diagnostics
 - [ ] **Improve error messages in code generation**
   - Better diagnostics when type annotations are missing
   - Clear error messages for unsupported type constructs

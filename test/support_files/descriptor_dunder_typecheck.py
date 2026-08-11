@@ -11,5 +11,5 @@ class Holder:
     attr = descriptor
 
 
-assert_type(Holder.attr, typing.Any)
-assert_type(Holder().attr, typing.Any)
+assert_type(Holder.attr, descriptor_dunder.Descriptor | descriptor_dunder.Payload | typing.Any)
+assert_type(Holder().attr, descriptor_dunder.Descriptor | descriptor_dunder.Payload | typing.Any)

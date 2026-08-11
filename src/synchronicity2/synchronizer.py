@@ -78,6 +78,7 @@ class Synchronizer:
     def __init__(self, name: Optional[str] = None):
         self._name = name
         self._future_poll_interval = 0.1
+        self._blocking_in_async_callback = None
         self._loop = None
         self._loop_creation_lock = threading.Lock()
         self._thread = None
@@ -212,9 +213,20 @@ class Synchronizer:
         current_loop = self._get_running_loop()
         return loop == current_loop
 
-    def _run_function_sync(self, coro):
+    def _maybe_warn_blocking_in_async(self):
+        if self._blocking_in_async_callback is None or self._is_inside_loop():
+            return
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        self._blocking_in_async_callback(None)
+
+    def _run_function_sync(self, coro, *, _warn_if_running: bool = True):
         if self._is_inside_loop():
             raise Exception("Deadlock detected: calling a sync function from the synchronizer loop")
+        if _warn_if_running:
+            self._maybe_warn_blocking_in_async()
 
         loop = self._get_loop(start=True)
 
@@ -272,57 +284,32 @@ class Synchronizer:
             c_fut = asyncio.run_coroutine_threadsafe(wrapper_coro(), loop)
             a_fut = asyncio.wrap_future(c_fut)
 
-            shielded_task = None
             try:
-                while 1:
-                    # the loop + wait_for timeout is for windows ctrl-C compatibility since
-                    # windows doesn't truly interrupt the event loop on sigint
-                    try:
-                        # We create a task here to prevent an anonymous task inside asyncio.wait_for that could
-                        # get an unresolved timeout during cancellation handling below, resulting in a warning
-                        # traceback.
-                        shielded_task = asyncio.create_task(
-                            asyncio.wait_for(
-                                # inner shield prevents wait_for from cancelling a_fut on timeout
-                                asyncio.shield(a_fut),
-                                timeout=self._future_poll_interval,
-                            )
-                        )
-                        # The outer shield prevents a cancelled caller from cancelling a_fut directly
-                        # so that we can instead cancel the underlying coro_task and wait for it
-                        # to bubble back up as a CancelledError gracefully between threads
-                        # in order to run any cancellation logic in the coroutine
-                        value = await asyncio.shield(shielded_task)
-                        break
-                    except asyncio.TimeoutError:
-                        # asyncio.TimeoutError aliases builtins TimeoutError, so if the wrapped future already
-                        # resolved this is the coroutine's own exception and must propagate instead of polling.
-                        if a_fut.done():
-                            raise
-                        continue
+                # The polling loop in _run_function_sync is only needed so a blocking thread can
+                # observe interrupts. Async callers can await the cross-thread future directly;
+                # shielding keeps caller cancellation from cancelling a_fut before we cancel the
+                # underlying task explicitly below.
+                value = await asyncio.shield(a_fut)
 
             except asyncio.CancelledError:
-                try:
-                    if a_fut.cancelled():
-                        raise  # cancellation came from within c_fut
-                    if inner_task_fut.done():
-                        inner_task: asyncio.Task = inner_task_fut.result()
-                        loop.call_soon_threadsafe(inner_task.cancel)  # cancel task on synchronizer event loop
-                        # wait for cancellation logic in the underlying coro to complete
-                        # this should typically raise CancelledError, but in case of either:
-                        # * cancellation prevention in the coro (catching the CancelledError)
-                        # * coro_task resolves before the call_soon_threadsafe above is scheduled
-                        # the cancellation in a_fut would be cancelled
+                if a_fut.cancelled():
+                    raise  # cancellation came from within c_fut
+                if inner_task_fut.done():
+                    inner_task: asyncio.Task = inner_task_fut.result()
+                    loop.call_soon_threadsafe(inner_task.cancel)  # cancel task on synchronizer event loop
+                    # wait for cancellation logic in the underlying coro to complete
+                    # this should typically raise CancelledError, but in case of either:
+                    # * cancellation prevention in the coro (catching the CancelledError)
+                    # * coro_task resolves before the call_soon_threadsafe above is scheduled
+                    # the cancellation in a_fut would be cancelled
 
-                        await a_fut  # wait for cancellation logic to complete - this *normally* raises CancelledError
-                    raise  # re-raise the CancelledError regardless - preventing unintended cancellation aborts
-                finally:
-                    if shielded_task:
-                        shielded_task.cancel()  # cancel the shielded task, preventing timeouts
+                    await a_fut  # wait for cancellation logic to complete - this *normally* raises CancelledError
+                raise  # re-raise the CancelledError regardless - preventing unintended cancellation aborts
 
         return value  # type: ignore
 
     def _run_generator_sync(self, gen):
+        self._maybe_warn_blocking_in_async()
         value: typing.Any = None
         is_exc = False
         try:
@@ -331,9 +318,9 @@ class Synchronizer:
                     if is_exc:
                         # When is_exc is True, value is always a BaseException
                         assert isinstance(value, BaseException)
-                        value = self._run_function_sync(gen.athrow(value))
+                        value = self._run_function_sync(gen.athrow(value), _warn_if_running=False)
                     else:
-                        value = self._run_function_sync(gen.asend(value))
+                        value = self._run_function_sync(gen.asend(value), _warn_if_running=False)
                 except StopAsyncIteration:
                     break
 
@@ -349,7 +336,7 @@ class Synchronizer:
         finally:
             # Ensure the underlying async generator is properly closed
             # Need to run the aclose in the event loop thread
-            self._run_function_sync(gen.aclose())
+            self._run_function_sync(gen.aclose(), _warn_if_running=False)
 
     async def _run_generator_async(self, gen: typing.AsyncGenerator[typing.Any, typing.Any]):
         value: typing.Any = None
@@ -385,9 +372,10 @@ class Synchronizer:
         Unlike generators, iterators don't have asend()/aclose(), just __aiter__() and __anext__().
         This method simply iterates using anext() without send() support.
         """
+        self._maybe_warn_blocking_in_async()
         while True:
             try:
-                value = self._run_function_sync(async_iter.__anext__())
+                value = self._run_function_sync(async_iter.__anext__(), _warn_if_running=False)
             except StopAsyncIteration:
                 break
             yield value

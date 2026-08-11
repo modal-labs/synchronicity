@@ -486,7 +486,7 @@ def test_emit_async_generator_template_pattern():
     name = _fn_short(ir)
     assert f"class _{name}_FunctionWithAio(FunctionWithAio):" in code
     assert f"@function_with_aio(_{name}_FunctionWithAio)" in code
-    assert 'async def aio(self, items: list[str]) -> "typing.AsyncGenerator[str, None]":' in code
+    assert "async def aio(self, items: list[str]) -> typing.AsyncGenerator[str, None]:" in code
     assert f"def {name}" in code
     assert f"gen = {IMPL}.fn_async_gen(" in code
 
@@ -526,9 +526,9 @@ def test_emit_async_generator_nested_wrapped_yield_quoting():
 def test_emit_declared_bare_iterator():
     code = emit_module_level_function(IR_FN_BARE_ITERATOR, TARGET)
     assert "class _fn_declared_bare_iterator_FunctionWithAio(FunctionWithAio):" in code
-    assert 'async def aio(self) -> "typing.AsyncGenerator[typing.Any, None]":' in code
+    assert "async def aio(self) -> typing.AsyncGenerator[typing.Any, None]:" in code
     assert "@function_with_aio" in code
-    assert 'def fn_declared_bare_iterator() -> "typing.Generator[typing.Any, None, None]"' in code
+    assert "def fn_declared_bare_iterator() -> typing.Generator[typing.Any, None, None]" in code
 
 
 def test_emit_sync_function_basic():
