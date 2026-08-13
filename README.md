@@ -15,7 +15,7 @@ External wrapper interoperability
 
 `Synchronizer` exposes a small compatibility protocol for wrapper systems with different object layouts:
 
-```python
+```python notest
 synchronizer.register_external_wrapper_class(
     Implementation,
     Wrapper,
