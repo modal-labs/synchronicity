@@ -10,6 +10,13 @@ Installing
 pip install synchronicity
 ```
 
+External wrapper interoperability
+==================================
+
+`Synchronizer` exposes a small compatibility protocol for manual or external wrapper registration. An "external" wrapper class 
+can be registered through `register_external_wrapper_class(...)` and instances created using that wrapper can be cached using `register_external_wrapper_instance(...)` so normal Synchronicity input/output translation recognizes that wrapper and preserves one public wrapper per implementation instance.
+The main intention behind this is to provide a smoother migration path to a future version of synchronicity with different internals.
+
 
 Background: why is anything like this needed
 ============================================
