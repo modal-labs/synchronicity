@@ -7,37 +7,59 @@ def test_is_synchronized(synchronizer):
     assert synchronizer.is_synchronized(BlockingFoo) is True
 
 
-def test_generated_wrapper_interoperability(synchronizer):
+def test_external_wrapper_interoperability(synchronizer):
     class Foo:
         pass
 
     BlockingFoo = synchronizer.wrap(Foo, name="Foo", target_module="example.foo")
+    assert synchronizer._translate_out(Foo) is BlockingFoo
+
     wrapped = BlockingFoo()
     impl = synchronizer._translate_in(wrapped)
-
-    assert synchronizer._translate_out(Foo) is BlockingFoo
     assert synchronizer._translate_out(impl) is wrapped
-    assert not hasattr(wrapped, "_impl_instance")
 
-    class GeneratedSubclass(BlockingFoo):
+    class ExternalSubclass(BlockingFoo):
         pass
 
-    assert issubclass(GeneratedSubclass, BlockingFoo)
+    assert issubclass(ExternalSubclass, BlockingFoo)
 
-    class ExternalFoo(Foo):
+    class ExternalFoo:
         pass
 
-    class ExternalFooWrapper(BlockingFoo):
-        pass
+    class ExternalFooWrapper:
+        _cache = {}
 
-    synchronizer.register_external_wrapper_class(ExternalFoo, ExternalFooWrapper)
+        @classmethod
+        def _from_impl(cls, impl):
+            wrapper = cls._cache.get(id(impl))
+            if wrapper is None:
+                wrapper = cls.__new__(cls)
+                wrapper._impl_instance = impl
+                cls._cache[id(impl)] = wrapper
+            return wrapper
+
+    synchronizer.register_external_wrapper_class(
+        ExternalFoo,
+        ExternalFooWrapper,
+        translate_in=lambda wrapper: wrapper._impl_instance,
+        translate_out=ExternalFooWrapper._from_impl,
+    )
     external_impl = ExternalFoo()
-    external_wrapper = ExternalFooWrapper.__new__(ExternalFooWrapper)
-    synchronizer.register_external_wrapper_instance(external_impl, external_wrapper)
+    external_wrapper = synchronizer._translate_out(external_impl)
 
-    assert not hasattr(external_wrapper, "_impl_instance")
+    @synchronizer.wrap
+    async def echo_external(value):
+        assert value is external_impl
+        return value
+
+    assert external_wrapper._impl_instance is external_impl
+    assert synchronizer._translate_out(ExternalFoo) is ExternalFooWrapper
+    assert synchronizer._translate_in(ExternalFooWrapper) is ExternalFoo
     assert synchronizer._translate_in(external_wrapper) is external_impl
     assert synchronizer._translate_out(external_impl) is external_wrapper
+    assert echo_external(external_wrapper) is external_wrapper
+    assert synchronizer._translate_out([external_impl]) == [external_wrapper]
+    assert synchronizer._translate_in({"value": external_wrapper}) == {"value": external_impl}
 
 
 def test_wrapping_subclass_does_not_run_implementation_init_subclass(synchronizer):
