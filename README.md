@@ -81,6 +81,7 @@ from synchronicity import Synchronizer
 
 synchronizer = Synchronizer()
 
+
 @synchronizer.wrap
 async def f(x):
     await asyncio.sleep(1.0)
@@ -90,7 +91,7 @@ async def f(x):
 # Running f in a synchronous context blocks until the result is available
 ret = f(42)  # Blocks
 assert isinstance(ret, int)
-print('f(42) =', ret)
+print("f(42) =", ret)
 ```
 
 Async usage of the `f` wrapper, using the `f.aio` special coroutine function. This will execute `f` on `synchronizer`'s event loop - not the main event loop used by `asyncio.run()` here:
@@ -98,7 +99,8 @@ Async usage of the `f` wrapper, using the `f.aio` special coroutine function. Th
 async def g():
     # Running f in an asynchronous context works the normal way
     ret = await f.aio(42)  # f.aio is roughly equivalent to the original `f`
-    print('f(42) =', ret)
+    print("f(42) =", ret)
+
 
 asyncio.run(g())
 ```
@@ -118,6 +120,7 @@ async def f(n):
         await asyncio.sleep(1.0)
     yield i
 
+
 # Note that the following runs in a synchronous context
 # Each number will take 1s to print
 for ret in f(3):
@@ -130,7 +133,8 @@ The wrapped generators can also be called safely in an async context using the `
 async def async_iteration():
     async for ret in f.aio(3):
         pass
-    
+
+
 asyncio.run(async_iteration())
 ```
 
@@ -154,16 +158,17 @@ class DBConnection:
 
 
 # Now we can call it synchronously, if we want to
-db_conn = DBConnection('tcp://localhost:1234')
+db_conn = DBConnection("tcp://localhost:1234")
 db_conn.connect()
-data = db_conn.query('select * from foo')
+data = db_conn.query("select * from foo")
 ```
 *Or*, we could opt to use the wrapped class in an async context if we want to:
 ```python continuation
 async def async_main():
-    db_conn = DBConnection('tcp://localhost:1234')
+    db_conn = DBConnection("tcp://localhost:1234")
     await db_conn.connect.aio()
-    await db_conn.query.aio('select * from foo')  # .aio works on methods too
+    await db_conn.query.aio("select * from foo")  # .aio works on methods too
+
 
 asyncio.run(async_main())
 ```
@@ -181,9 +186,10 @@ class CtxMgr:
 
     async def __aenter__(self):
         pass
-    
+
     async def __aexit__(self, exc, exc_type, tb):
         await asyncio.sleep(self.exit_delay)
+
 
 with CtxMgr(exit_delay=1):
     print("sleeping 1 second")
@@ -202,9 +208,12 @@ async def f(x):
     await asyncio.sleep(1.0)
     return x**2
 
-futures = [f(i, _future=True) for i in range(10)]  # This returns immediately, but starts running all calls in the background
+
+futures = [
+    f(i, _future=True) for i in range(10)
+]  # This returns immediately, but starts running all calls in the background
 rets = [fut.result() for fut in futures]  # This should take ~1s to run, resolving all futures in parallel
-print('first ten squares:', rets)
+print("first ten squares:", rets)
 ```
 
 
@@ -221,10 +230,12 @@ A common pitfall in asynchronous programming is to accidentally lock up an event
 ```python
 import time
 
+
 @synchronizer.wrap
 async def buggy_library():
-    time.sleep(0.1)  #non-async sleep, this locks the library's event loop for the duration
-    
+    time.sleep(0.1)  # non-async sleep, this locks the library's event loop for the duration
+
+
 async def async_user_code():
     await buggy_library.aio()  # this will not lock the "user's" event loop
 ```
@@ -249,6 +260,7 @@ A recommended structure would be something like this:
 ```py
 import typing
 
+
 async def foo() -> typing.AsyncGenerator[int, None]:
     yield 1
 ```
@@ -272,12 +284,12 @@ The automatically generated type stub `my_library.pyi` would then look something
 import typing
 import typing_extensions
 
-class __foo_spec(typing_extensions.Protocol):
-    def __call__(self) -> typing.Generator[int, None, None]:
-        ...
 
-    def aio(self) -> typing.AsyncGenerator[int, None]:
-        ...
+class __foo_spec(typing_extensions.Protocol):
+    def __call__(self) -> typing.Generator[int, None, None]: ...
+
+    def aio(self) -> typing.AsyncGenerator[int, None]: ...
+
 
 foo: __foo_spec
 ```
@@ -293,7 +305,7 @@ Gotchas
     ```py
     @synchronizer.wrap
     def foo() -> typing.AsyncContextManager[str]:
-        return make_context_manager() 
+        return make_context_manager()
     ```
 * If a class is "synchronized", any instance of that class will be a proxy for an instance of the original class. Methods on the class will delegate to methods of the underlying class, but *attributes* of the original class aren't directly reachable and would need getter methods or @properties to be reachable on the wrapper.
 * Note that all synchronized code will run on a different thread, and a different event loop, so calling the code might have some minor extra overhead.

@@ -176,10 +176,10 @@ class Synchronizer:
 
         # Wrapper systems with different object layouts register explicit type
         # mappings rather than sharing Synchronicity's internal wrapper metadata.
-        self._external_wrapper_classes_by_impl = {}
-        self._external_impl_classes_by_wrapper = {}
-        self._external_input_translators_by_wrapper = {}
-        self._external_output_translators_by_impl = {}
+        self._external_wrapper_classes_by_impl: dict[type[typing.Any], type[typing.Any]] = {}
+        self._external_impl_classes_by_wrapper: dict[type[typing.Any], type[typing.Any]] = {}
+        self._external_input_translators_by_wrapper: dict[type[typing.Any], Callable[[typing.Any], typing.Any]] = {}
+        self._external_output_translators_by_impl: dict[type[typing.Any], Callable[[typing.Any], typing.Any]] = {}
 
         # Prep a synchronized context manager in case one is returned and needs translation
         self._ctx_mgr_cls = contextlib._AsyncGeneratorContextManager
