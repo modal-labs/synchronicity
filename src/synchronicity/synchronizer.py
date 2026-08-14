@@ -67,6 +67,8 @@ logger = logging.getLogger(__name__)
 
 T = typing.TypeVar("T")
 R = typing.TypeVar("R")
+ExternalImplT = typing.TypeVar("ExternalImplT")
+ExternalWrapperT = typing.TypeVar("ExternalWrapperT")
 
 
 class classproperty(typing.Generic[T, R]):
@@ -171,6 +173,14 @@ class Synchronizer:
         self._nowrap_attr = "_sync_nonwrap_%d" % id(self)
         self._input_translation_attr = "_sync_input_translation_%d" % id(self)
         self._output_translation_attr = "_sync_output_translation_%d" % id(self)
+
+        # These mappings allow for custom type wrapper + translation registration that
+        # is not facilitated by synchronicity itself. Intended for gradual migrations
+        # to the experimental "synchronicity2" package that's in development
+        self._external_wrapper_classes_by_impl: dict[type[typing.Any], type[typing.Any]] = {}
+        self._external_impl_classes_by_wrapper: dict[type[typing.Any], type[typing.Any]] = {}
+        self._external_input_translators_by_wrapper: dict[type[typing.Any], Callable[[typing.Any], typing.Any]] = {}
+        self._external_output_translators_by_impl: dict[type[typing.Any], Callable[[typing.Any], typing.Any]] = {}
 
         # Prep a synchronized context manager in case one is returned and needs translation
         self._ctx_mgr_cls = contextlib._AsyncGeneratorContextManager
@@ -359,7 +369,38 @@ Traceback:{self._thread_traceback}"""
         new_obj.__dict__[SYNCHRONIZER_ATTR] = self
         return new_obj
 
+    def register_external_wrapper_class(
+        self,
+        impl_cls: type[ExternalImplT],
+        wrapper_cls: type[ExternalWrapperT],
+        *,
+        translate_in: Callable[[ExternalWrapperT], ExternalImplT],
+        translate_out: Callable[[ExternalImplT], ExternalWrapperT],
+    ) -> None:
+        """Register a custom type wrapper/unwrapper"""
+        if (
+            existing_wrapper := self._external_wrapper_classes_by_impl.get(impl_cls)
+        ) is not None and existing_wrapper is not wrapper_cls:
+            raise RuntimeError(f"{impl_cls} already has external wrapper {existing_wrapper}")
+
+        if (
+            existing_impl := self._external_impl_classes_by_wrapper.get(wrapper_cls)
+        ) is not None and existing_impl is not impl_cls:
+            raise RuntimeError(f"{wrapper_cls} already wraps external implementation {existing_impl}")
+
+        self._external_wrapper_classes_by_impl[impl_cls] = wrapper_cls
+        self._external_impl_classes_by_wrapper[wrapper_cls] = impl_cls
+        self._external_input_translators_by_wrapper[wrapper_cls] = translate_in
+        self._external_output_translators_by_impl[impl_cls] = translate_out
+
     def _translate_scalar_in(self, obj):
+        if inspect.isclass(obj):
+            if (external_impl_cls := self._external_impl_classes_by_wrapper.get(obj)) is not None:
+                return external_impl_cls
+        else:
+            if (external_translate_in := self._external_input_translators_by_wrapper.get(type(obj))) is not None:
+                return external_translate_in(obj)
+
         # If it's an external object, translate it to the internal type
         if hasattr(obj, "__dict__"):
             if inspect.isclass(obj):  # TODO: functions?
@@ -372,6 +413,8 @@ Traceback:{self._thread_traceback}"""
     def _translate_scalar_out(self, obj):
         # If it's an internal object, translate it to the external interface
         if inspect.isclass(obj):  # TODO: functions?
+            if (external_wrapper_cls := self._external_wrapper_classes_by_impl.get(obj)) is not None:
+                return external_wrapper_cls
             cls_dct = obj.__dict__
             if self._wrapped_attr in cls_dct:
                 return cls_dct[self._wrapped_attr][Interface.BLOCKING]
@@ -383,6 +426,8 @@ Traceback:{self._thread_traceback}"""
             else:
                 return obj
         else:
+            if (external_translate_out := self._external_output_translators_by_impl.get(type(obj))) is not None:
+                return external_translate_out(obj)
             cls_dct = obj.__class__.__dict__
             if self._wrapped_attr in cls_dct:
                 # This is an *instance* of a synchronized class, translate its type
@@ -914,9 +959,8 @@ Traceback:{self._thread_traceback}"""
                     Interface._ASYNC_WITH_BLOCKING_TYPES,
                     allow_futures=False,
                 )
-            elif k in ("__new__", "__init__"):
-                # Skip custom constructor in the wrapped class
-                # Instead, delegate to the base class constructor and wrap it
+            elif k in ("__new__", "__init__", "__init_subclass__"):
+                # Implementation constructors and subclass hooks must not run against wrapper classes.
                 pass
             elif k in IGNORED_ATTRIBUTES:
                 pass
@@ -1062,8 +1106,7 @@ Traceback:{self._thread_traceback}"""
         return self.wrap(obj, name, target_module)
 
     def wrap(self, obj, name: Optional[str] = None, target_module: Optional[str] = None):
-        wrapped = self._wrap(obj, Interface.BLOCKING, name, target_module=target_module)
-        return wrapped
+        return self._wrap(obj, Interface.BLOCKING, name, target_module=target_module)
 
     def is_synchronized(self, obj):
         if inspect.isclass(obj) or inspect.isfunction(obj):
