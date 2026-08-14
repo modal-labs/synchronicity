@@ -69,7 +69,7 @@ class TypeTransformer(ABC):
             var_name: Variable name to unwrap
 
         Returns:
-            Expression string like "value._impl_instance" or "[x._impl_instance for x in value]"
+            Expression string that unwraps the value through the generated synchronizer binding.
         """
         pass
 
@@ -195,7 +195,7 @@ class WrappedClassTransformer(TypeTransformer):
             return f"{self._wrapper.wrapper_module}.{self._wrapper.wrapper_name}"
 
     def unwrap_expr(self, var_name: str, target_module: str | None = None) -> str:
-        """Unwrap by accessing _impl_instance."""
+        """Unwrap a native generated wrapper."""
         return f"{var_name}._impl_instance"
 
     def wrap_expr(self, target_module: str, var_name: str, is_async: bool = True) -> str:
@@ -204,6 +204,34 @@ class WrappedClassTransformer(TypeTransformer):
             return f"{self._wrapper.wrapper_name}._from_impl({var_name})"
         else:
             return f"{self._wrapper.wrapper_module}.{self._wrapper.wrapper_name}._from_impl({var_name})"
+
+    def needs_translation(self) -> bool:
+        return True
+
+    def contains_wrapper_ref(self) -> bool:
+        return True
+
+    def passthrough_annotation_type(self, target_module: str, is_async: bool = True) -> str:
+        return _impl_ref_dotted(self.impl_ref)
+
+
+class Synchronicity1WrappedClassTransformer(TypeTransformer):
+    """Transformer for implementation classes wrapped by Synchronicity 1."""
+
+    def __init__(self, impl: ImplQualifiedRef, wrapper: WrapperRef):
+        self.impl_ref = impl
+        self._wrapper = wrapper
+
+    def wrapped_type(self, target_module: str, is_async: bool = True) -> str:
+        return _wrapper_ref_runtime_expr(self._wrapper, target_module)
+
+    def unwrap_expr(self, var_name: str, target_module: str | None = None) -> str:
+        impl_type = _impl_ref_dotted(self.impl_ref)
+        return f"typing.cast({impl_type}, _synchronizer._synchronicity1._translate_in({var_name}))"
+
+    def wrap_expr(self, target_module: str, var_name: str, is_async: bool = True) -> str:
+        wrapper_type = _wrapper_ref_runtime_expr(self._wrapper, target_module)
+        return f"typing.cast({wrapper_type}, _synchronizer._synchronicity1._translate_out({var_name}))"
 
     def needs_translation(self) -> bool:
         return True
@@ -224,11 +252,10 @@ class SubscriptedWrappedClassTransformer(TypeTransformer):
 
     def __init__(
         self,
-        impl: ImplQualifiedRef,
-        wrapper: WrapperRef,
+        inner: WrappedClassTransformer | Synchronicity1WrappedClassTransformer,
         type_arg_transformers: list[TypeTransformer],
     ):
-        self._inner = WrappedClassTransformer(impl, wrapper)
+        self._inner = inner
         self._type_arg_transformers = type_arg_transformers
 
     def wrapped_type(self, target_module: str, is_async: bool = True) -> str:
@@ -688,9 +715,11 @@ def _runtime_action_key(transformer: TypeTransformer) -> tuple[str, ...] | None:
     if isinstance(transformer, WrappedClassTransformer):
         return ("wrapped_impl", transformer.impl_ref.module, transformer.impl_ref.qualname)
 
+    if isinstance(transformer, Synchronicity1WrappedClassTransformer):
+        return ("synchronicity1_wrapped_impl", transformer.impl_ref.module, transformer.impl_ref.qualname)
+
     if isinstance(transformer, SubscriptedWrappedClassTransformer):
-        inner = transformer._inner
-        return ("wrapped_impl", inner.impl_ref.module, inner.impl_ref.qualname)
+        return _runtime_action_key(transformer._inner)
 
     if isinstance(transformer, TypeVarBoundTransformer):
         return _runtime_action_key(transformer._bound)
@@ -795,16 +824,23 @@ def _union_arm_runtime_spec(
         )
 
     if isinstance(transformer, SubscriptedWrappedClassTransformer):
-        inner = transformer._inner
-        wrapper_expr = _wrapper_ref_runtime_expr(inner._wrapper, target_module)
-        impl_expr = _impl_ref_dotted(inner.impl_ref)
+        inner_spec = _union_arm_runtime_spec(transformer._inner, target_module, is_async=is_async)
+        return dataclasses.replace(
+            inner_spec,
+            runtime_action_key=_runtime_action_key(transformer),
+            wrap_value_expr=transformer.wrap_expr(target_module, "_v", is_async),
+        )
+
+    if isinstance(transformer, Synchronicity1WrappedClassTransformer):
+        wrapper_expr = _wrapper_ref_runtime_expr(transformer._wrapper, target_module)
+        impl_expr = _impl_ref_dotted(transformer.impl_ref)
         return _UnionArmRuntimeSpec(
-            discriminator_key=("impl", inner.impl_ref.module, inner.impl_ref.qualname),
+            discriminator_key=("synchronicity1_impl", transformer.impl_ref.module, transformer.impl_ref.qualname),
             runtime_action_key=_runtime_action_key(transformer),
             unwrap_guard_expr=f"isinstance(_v, {wrapper_expr})",
             wrap_guard_expr=f"isinstance(_v, {impl_expr})",
             translated=True,
-            unwrap_value_expr="_v._impl_instance",
+            unwrap_value_expr=transformer.unwrap_expr("_v"),
             wrap_value_expr=transformer.wrap_expr(target_module, "_v", is_async),
         )
 
@@ -1555,7 +1591,7 @@ class CallableTransformer(TypeTransformer):
         call_expr = f"_impl_callable({callback_args})"
         if self.return_transformer.needs_translation():
             call_expr = self.return_transformer.wrap_expr(target_module, call_expr, is_async)
-        return f"(lambda _impl_callable: " f"(lambda *_callback_args, **_callback_kwargs: {call_expr}))({var_name})"
+        return f"(lambda _impl_callable: (lambda *_callback_args, **_callback_kwargs: {call_expr}))({var_name})"
 
     def needs_translation(self) -> bool:
         params_need_translation = (

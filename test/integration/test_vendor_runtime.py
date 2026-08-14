@@ -31,6 +31,8 @@ def _run_codegen_wrappers(module_name: str, module_dir: Path) -> subprocess.Comp
             "wrappers",
             "-m",
             module_name,
+            "--synchronizer-module",
+            "test_generated_synchronizer",
             "--stdout",
         ],
         capture_output=True,
@@ -49,6 +51,8 @@ def test_vendor_runtime_writes_expected_files(tmp_path: Path) -> None:
     text = (dest / "__init__.py").read_text(encoding="utf-8")
     assert "FunctionWithAio" not in text
     assert "Module" in text
+    assert "get_synchronizer" not in text
+    assert "_preregister_synchronizer" not in text
 
 
 def test_compile_modules_respects_runtime_package(generated_wrappers) -> None:
@@ -58,12 +62,18 @@ def test_compile_modules_respects_runtime_package(generated_wrappers) -> None:
     assert module_objs
 
     custom = "my_library._vendored_synchronicity"
-    out = compile_modules(module_objs, runtime_package=custom)
+    out = compile_modules(
+        module_objs,
+        synchronizer_module="my_library._generated_synchronizer",
+        runtime_package=custom,
+    )
     code = "\n".join(out.values())
 
     assert f"import {custom}.types" in code
     assert f"from {custom}.descriptor import" in code
-    assert f"from {custom}.synchronizer import get_synchronizer" in code
+    assert f"from {custom}.synchronizer import Synchronizer" in code
+    assert "import my_library._generated_synchronizer" in code
+    assert "get_synchronizer" not in code
     assert "import synchronicity2.types" not in code
 
 
@@ -132,6 +142,8 @@ async def bad_default(value: float = time.time()) -> float:
             "wrappers",
             "-m",
             "bad_defaults_impl",
+            "--synchronizer-module",
+            "bad_defaults_synchronizer",
             "--stdout",
         ],
         capture_output=True,

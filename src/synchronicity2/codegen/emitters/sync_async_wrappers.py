@@ -200,7 +200,7 @@ from {runtime_package}.descriptor import (
     method_with_aio,
     staticmethod_with_aio,
 )
-from {runtime_package}.synchronizer import get_synchronizer, _wrapped_from_impl
+from {runtime_package}.synchronizer import _wrapped_from_impl
 """
 
 
@@ -1815,15 +1815,12 @@ def emit_class_from_ir(
     else:
         class_declaration = f"""class {wshort}:"""
 
-    if not wrapped_base_strings:
-        class_attrs = (
-            f"""    \"\"\"Wrapper class for {impl_dot} """
-            f"""with sync/async method support\"\"\"
+    class_attrs = (
+        f"""    \"\"\"Wrapper class for {impl_dot} """
+        f"""with sync/async method support\"\"\"
 
     _instance_cache: weakref.WeakValueDictionary = weakref.WeakValueDictionary()"""
-        )
-    else:
-        class_attrs = f"""    \"\"\"Wrapper class for {impl_dot} with sync/async method support\"\"\""""
+    )
 
     init_sig, init_call, init_unwrap = format_parameters_for_emit(
         init_mir.parameters if init_mir else (),
@@ -1905,25 +1902,23 @@ class SyncAsyncWrapperEmitter:
         cross_module_import_strs = [
             f"import {m}" for m in sorted(set(ir.cross_module_imports.keys()) - set(module_imports))
         ]
-        cross_module_imports_str = "\n".join(cross_module_import_strs) if cross_module_import_strs else ""
+        if ir.has_wrapped_classes:
+            cross_module_import_strs.append("import weakref")
+        additional_imports = "\n".join(cross_module_import_strs)
+        if additional_imports:
+            additional_imports += "\n"
 
         header = f"""{_GENERATED_MODULE_BANNER}
 import typing
 
 {imports}
 
-{_runtime_import_header(runtime_package)}_synchronizer = get_synchronizer({repr(ir.synchronizer_name)})
+{additional_imports}
+{_runtime_import_header(runtime_package)}_synchronizer = {ir.synchronizer_module}.synchronizer
 
 """
 
-        if cross_module_imports_str:
-            header += f"{cross_module_imports_str}\n"
-
         compiled_code = [header]
-
-        if ir.has_wrapped_classes:
-            compiled_code.append("import weakref")
-            compiled_code.append("")
 
         if ir.typevar_specs:
             for definition in typevar_definition_lines(ir.typevar_specs):

@@ -52,6 +52,14 @@ class ModuleImportRefIR:
 
 
 @dataclasses.dataclass(frozen=True)
+class QualifiedObjectRefIR:
+    """Importable object represented as an unambiguous module plus attribute path."""
+
+    module: str
+    qualname: str
+
+
+@dataclasses.dataclass(frozen=True)
 class ParameterIR:
     """One formal parameter: kind + optional type as :class:`TypeTransformerIR` (emit unwraps from this)."""
 
@@ -86,7 +94,7 @@ class ModuleCompilationIR:
     """Planned contents of one generated wrapper module (before any text emission)."""
 
     target_module: str
-    synchronizer_name: str
+    synchronizer_module: str
     impl_modules: frozenset[str]
     cross_module_imports: dict[str, frozenset[str]]
     typevar_specs: tuple[TypeVarSpecIR, ...]
@@ -107,7 +115,7 @@ class ModuleCompilationIR:
         return tuple(f.impl_ref for f in self.module_functions_ir)
 
     def required_import_modules(self) -> frozenset[str]:
-        modules: set[str] = set()
+        modules = {self.synchronizer_module}
         for spec in self.typevar_specs:
             modules.update(spec.required_import_modules())
         for class_wrapper in self.class_wrappers:
@@ -245,7 +253,7 @@ class ClassWrapperIR:
     manual_attributes: tuple[ManualClassAttributeIR, ...] = ()
 
     def required_import_modules(self) -> frozenset[str]:
-        modules: set[str] = set()
+        modules = {wrapper.wrapper_module for _impl, wrapper in self.wrapped_bases}
         for _attribute_name, annotation_ir in self.attributes:
             if annotation_ir is not None:
                 modules.update(annotation_ir.required_import_modules())

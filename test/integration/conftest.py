@@ -43,20 +43,17 @@ if pytest_asyncio_plugin is not None:
 
 def _iter_loaded_synchronizers():
     seen_ids: set[int] = set()
-    for module in tuple(sys.modules.values()):
+    for module_name, module in tuple(sys.modules.items()):
         if module is None:
             continue
-
-        registry = getattr(module, "_synchronizer_registry", None)
-        if not isinstance(registry, dict):
+        synchronizer = getattr(module, "synchronizer", None)
+        if synchronizer is None or not hasattr(synchronizer, "_wrapper_classes"):
             continue
-
-        for name, synchronizer in tuple(registry.items()):
-            synchronizer_id = id(synchronizer)
-            if synchronizer_id in seen_ids:
-                continue
-            seen_ids.add(synchronizer_id)
-            yield (name, synchronizer)
+        synchronizer_id = id(synchronizer)
+        if synchronizer_id in seen_ids:
+            continue
+        seen_ids.add(synchronizer_id)
+        yield (module_name, synchronizer)
 
 
 def _collect_active_synchronizers() -> list[tuple[str, object]]:
@@ -83,13 +80,11 @@ def _collect_unclosed_event_loops(ignored_loop_ids: set[int]) -> list[asyncio.Ba
 
 
 @pytest.fixture(autouse=True)
-def close_default_synchronizer():
-    """Close the default synchronizer after each test if it was started."""
+def close_generated_synchronizers():
+    """Close generated synchronizers after each test if they were started."""
     yield
 
-    for name, synchronizer in _iter_loaded_synchronizers():
-        if name != "default_synchronizer":
-            continue
+    for _module_name, synchronizer in _iter_loaded_synchronizers():
         close_loop = getattr(synchronizer, "_close_loop", None)
         if callable(close_loop):
             close_loop()
@@ -147,9 +142,9 @@ def generated_wrappers():
     """Generate all wrapper modules once using the CLI and make them available to all tests.
 
     This fixture:
-    1. Vendors ``mylib.synchronicity`` under ``generated/`` and copies ``mylib/_weather_impl.py`` there
+    1. Vendors ``mylib.synchronicity2`` under ``generated/`` and copies ``mylib/_weather_impl.py`` there
     2. Uses the synchronicity2 CLI to generate wrapper code for all support modules
-    3. Runs a second CLI pass for ``mylib.weather`` (synchronizer name from ``Module``)
+    3. Runs separate CLI passes for wrappers that use distinct synchronizer modules
     4. Adds ``generated/`` and ``support_files`` to ``sys.path``
     5. Keeps files after tests complete for manual inspection
 
@@ -170,7 +165,7 @@ def generated_wrappers():
 
     from synchronicity2.codegen.runtime_vendor import vendor_runtime
 
-    vendor_runtime(target_package="mylib.synchronicity", output_base=generated_dir)
+    vendor_runtime(target_package="mylib.synchronicity2", output_base=generated_dir)
 
     shutil.copy2(
         support_files_path / "mylib" / "_weather_impl.py",
@@ -190,9 +185,30 @@ def generated_wrappers():
         pythonpath_parts.append(env["PYTHONPATH"])
     env["PYTHONPATH"] = os.pathsep.join(pythonpath_parts)
 
-    # Use CLI to generate all wrapper modules
-    # List all modules we want to compile
-    module_args = []
+    def run_codegen(module_specs: list[str], synchronizer_module: str, *extra_args: str) -> None:
+        module_args = [arg for module_name in module_specs for arg in ("-m", module_name)]
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "synchronicity2.codegen",
+                "wrappers",
+                "--synchronizer-module",
+                synchronizer_module,
+                *extra_args,
+                *module_args,
+                "-o",
+                str(generated_dir),
+            ],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        if result.returncode != 0:
+            print(f"CLI failed: {result.stderr}")
+            print(f"CLI stdout: {result.stdout}")
+            raise RuntimeError(f"Failed to generate wrapper code: {result.stderr}")
+
     module_specs = [
         "simple_function_impl",
         "simple_class_impl",
@@ -214,7 +230,6 @@ def generated_wrappers():
         "multifile_impl._b",
         "classmethod_staticmethod_impl",
         "custom_iterators_impl",
-        "multi_synchronizer_impl",
         "manual_nowrap_impl",
         "async_context_manager_impl",
         "property_class_impl",
@@ -229,30 +244,17 @@ def generated_wrappers():
         "include_underscored_methods_impl",
         "sandboxlib._sandbox",
     ]
-
-    for module_name in module_specs:
-        module_args.extend(["-m", module_name])
-
-    # Run CLI to generate files
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "synchronicity2.codegen",
-            "wrappers",
-            *module_args,
-            "-o",
-            str(generated_dir),
-        ],
-        capture_output=True,
-        text=True,
-        env=env,
+    run_codegen(module_specs, "integration_synchronizer")
+    run_codegen(
+        ["synchronicity1_interop_impl"],
+        "synchronicity1_interop_synchronizer",
+        "--preload-module",
+        "synchronicity1_interop_preload",
+        "--synchronicity1-synchronizer",
+        "synchronicity1_interop_runtime:synchronicity1_synchronizer",
     )
-
-    if result.returncode != 0:
-        print(f"CLI failed: {result.stderr}")
-        print(f"CLI stdout: {result.stdout}")
-        raise RuntimeError(f"Failed to generate wrapper code: {result.stderr}")
+    run_codegen(["multi_synchronizer_a_impl"], "multi_sync._synchronizer_a")
+    run_codegen(["multi_synchronizer_b_impl"], "multi_sync._synchronizer_b")
 
     # README-style mylib package (vendored runtime + mylib.weather wrappers)
     env_weather = os.environ.copy()
@@ -272,8 +274,10 @@ def generated_wrappers():
             "wrappers",
             "-m",
             "mylib._weather_impl",
+            "--synchronizer-module",
+            "mylib._synchronizer",
             "--runtime-package",
-            "mylib.synchronicity",
+            "mylib.synchronicity2",
             "-o",
             str(generated_dir),
         ],

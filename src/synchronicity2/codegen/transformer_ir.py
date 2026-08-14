@@ -55,6 +55,17 @@ class WrappedClassTypeIR(ImportAwareTypeIR):
 
 
 @dataclasses.dataclass(frozen=True)
+class Synchronicity1WrappedClassTypeIR(ImportAwareTypeIR):
+    """Class wrapped by the optional Synchronicity 1 compatibility synchronizer."""
+
+    impl: ImplQualifiedRef
+    wrapper: WrapperRef
+
+    def required_import_modules(self) -> frozenset[str]:
+        return frozenset((self.impl.module, self.wrapper.wrapper_module))
+
+
+@dataclasses.dataclass(frozen=True)
 class TypeVarIR(ImportAwareTypeIR):
     """Reference to a module-level ``typing.TypeVar`` by name (bound / translation from :class:`~ir.TypeVarSpecIR`)."""
 
@@ -209,17 +220,17 @@ class CallableTypeIR(ImportAwareTypeIR):
 class SubscriptedWrappedClassTypeIR(ImportAwareTypeIR):
     """Wrapped class subscripted with type arguments, e.g. ``SomeContainer[WrappedType]``."""
 
-    impl: ImplQualifiedRef
-    wrapper: WrapperRef
+    inner: WrappedClassTypeIR | Synchronicity1WrappedClassTypeIR
     type_args: tuple[TypeTransformerIR, ...]
 
     def required_import_modules(self) -> frozenset[str]:
-        return frozenset((self.wrapper.wrapper_module,)) | _merge_required_import_modules(*self.type_args)
+        return self.inner.required_import_modules() | _merge_required_import_modules(*self.type_args)
 
 
 TypeTransformerIR = typing.Union[
     IdentityTypeIR,
     WrappedClassTypeIR,
+    Synchronicity1WrappedClassTypeIR,
     TypeVarIR,
     SelfTypeIR,
     ListTypeIR,

@@ -442,9 +442,7 @@ def test_emit_async_function_docstring_skips_with_aio_class_level_copy():
     ir = dataclasses.replace(IR_FN_CREATE_AWAITABLE, docstring="Awaitable docstring.")
     code = emit_module_level_function(ir, TARGET)
     assert code.count('"""Awaitable docstring."""') == 3
-    assert (
-        "class _fn_create_awaitable_FunctionWithAio(FunctionWithAio):\n" '    """Awaitable docstring."""'
-    ) not in code
+    assert ('class _fn_create_awaitable_FunctionWithAio(FunctionWithAio):\n    """Awaitable docstring."""') not in code
 
 
 def test_emit_async_function_generic_types():

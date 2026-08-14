@@ -1,4 +1,4 @@
-"""Root pytest configuration: vendored ``mylib.synchronicity`` and README weather wrappers."""
+"""Root pytest configuration: vendored ``mylib.synchronicity2`` and README weather wrappers."""
 
 from __future__ import annotations
 
@@ -9,19 +9,19 @@ import subprocess
 import sys
 from pathlib import Path
 
-MYLIB_SYNCHRONICITY = "mylib.synchronicity"
+MYLIB_SYNCHRONICITY2 = "mylib.synchronicity2"
 
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parent
 
 
-def _ensure_mylib_synchronicity_under_generated(generated: Path) -> None:
-    """Populate ``generated/mylib/synchronicity/``."""
+def _ensure_mylib_synchronicity2_under_generated(generated: Path) -> None:
+    """Populate ``generated/mylib/synchronicity2/``."""
     generated.mkdir(parents=True, exist_ok=True)
     from synchronicity2.codegen.runtime_vendor import vendor_runtime
 
-    vendor_runtime(target_package=MYLIB_SYNCHRONICITY, output_base=generated)
+    vendor_runtime(target_package=MYLIB_SYNCHRONICITY2, output_base=generated)
 
 
 def _sync_weather_impl_into_generated(generated: Path) -> None:
@@ -37,7 +37,7 @@ def _generate_mylib_weather_wrappers(generated: Path) -> None:
     """Compile ``mylib.weather`` from the support-file impl copied under ``generated/mylib/``."""
     root = _repo_root()
     support = root / "test" / "support_files"
-    _ensure_mylib_synchronicity_under_generated(generated)
+    _ensure_mylib_synchronicity2_under_generated(generated)
     _sync_weather_impl_into_generated(generated)
     env = os.environ.copy()
     # generated first so ``mylib`` resolves to vendored runtime + impl + generated wrappers
@@ -54,7 +54,7 @@ def _generate_mylib_weather_wrappers(generated: Path) -> None:
             "-m",
             "mylib._weather_impl",
             "--runtime-package",
-            MYLIB_SYNCHRONICITY,
+            MYLIB_SYNCHRONICITY2,
             "-o",
             str(generated),
         ],
@@ -86,9 +86,9 @@ def pytest_markdown_docs_globals():
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _vendor_mylib_synchronicity_for_generated_dir():
-    """Autouse: keep ``generated/mylib/synchronicity/`` present (integration may wipe and rebuild)."""
+def _vendor_mylib_synchronicity2_for_generated_dir():
+    """Autouse: keep ``generated/mylib/synchronicity2/`` present (integration may wipe and rebuild)."""
     generated = _repo_root() / "generated"
-    _ensure_mylib_synchronicity_under_generated(generated)
+    _ensure_mylib_synchronicity2_under_generated(generated)
     _ensure_generated_on_sys_path(generated)
     yield

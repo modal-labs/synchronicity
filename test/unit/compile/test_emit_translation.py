@@ -315,13 +315,13 @@ def test_emit_wrapper_helpers():
     assert "_wrapped_from_impl(cls, impl_instance, cls._instance_cache, _synchronizer)" in compiled_code
 
 
-def test_emit_subclass_wrapper_helpers_reuse_root_cache():
+def test_emit_subclass_wrapper_helpers_define_own_cache():
     compiled_code = emit_class_from_ir(IR_CLASS_HELPER_SUBCLASS, TARGET)
     assert "class HelperTestSubclass(HelperTestClass):" in compiled_code
     assert "def _from_impl(cls, impl_instance: typing.Any)" in compiled_code
     assert '-> "HelperTestSubclass":' in compiled_code or "-> 'HelperTestSubclass':" in compiled_code
     assert "_wrapped_from_impl(cls, impl_instance, cls._instance_cache, _synchronizer)" in compiled_code
-    assert "WeakValueDictionary = weakref.WeakValueDictionary()" not in compiled_code
+    assert "WeakValueDictionary = weakref.WeakValueDictionary()" in compiled_code
 
 
 def test_emit_unwrap_in_function_bodies():

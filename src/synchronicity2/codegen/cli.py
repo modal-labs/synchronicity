@@ -3,14 +3,13 @@
 Command line interface for synchronicity2 compilation and runtime vendoring.
 
 Usage:
-    synchronicity2 wrappers -m <module> [<module> ...] [-o DIR] ...
+    synchronicity2 wrappers --synchronizer-module <module> -m <module> [<module> ...] [-o DIR] ...
     synchronicity2 vendor <dotted.package.path> -o <output_dir>
 
-    python -m synchronicity2.codegen wrappers -m <module> ...
+    python -m synchronicity2.codegen wrappers --synchronizer-module <module> -m <module> ...
 
 The ``wrappers`` command imports the specified modules, which causes them to register
-wrapped items with ``Module`` (including each module's synchronizer name), then
-generates wrapper code.
+wrapped items with ``Module``, then generates wrapper code and one shared synchronizer module.
 """
 
 from __future__ import annotations
@@ -116,16 +115,16 @@ def _build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Example:
-  synchronicity2 vendor my_lib.synchronicity -o src/
+  synchronicity2 vendor my_lib.synchronicity2 -o src/
 
-Creates src/my_lib/synchronicity/{__init__.py,module.py,types.py,descriptor.py,synchronizer.py}.
-Then pass --runtime-package my_lib.synchronicity to ``synchronicity2 wrappers`` so generated
+Creates src/my_lib/synchronicity2/{__init__.py,module.py,types.py,descriptor.py,synchronizer.py}.
+Then pass --runtime-package my_lib.synchronicity2 to ``synchronicity2 wrappers`` so generated
 code imports that package instead of top-level synchronicity2.
         """,
     )
     vendor_parser.add_argument(
         "target_package",
-        help="Dotted package path to create under the output directory (e.g. my_lib.synchronicity)",
+        help="Dotted package path to create under the output directory (e.g. my_lib.synchronicity2)",
     )
     vendor_parser.add_argument(
         "-o",
@@ -141,15 +140,16 @@ code imports that package instead of top-level synchronicity2.
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  synchronicity2 wrappers -m my.package._module
-  synchronicity2 wrappers -m my.package._module -o output/
-  synchronicity2 wrappers -m my.package._module --ruff
-  synchronicity2 wrappers -m my.package._module --stdout
-  synchronicity2 wrappers -m package._a -m package._b
-  synchronicity2 vendor mylib.synchronicity -o src/
-  synchronicity2 wrappers -m mylib._impl --runtime-package mylib.synchronicity -o src/
+  synchronicity2 wrappers --synchronizer-module my.package._synchronizer -m my.package._module
+  synchronicity2 wrappers --synchronizer-module my.package._synchronizer -m my.package._module -o output/
+  synchronicity2 wrappers --synchronizer-module my.package._synchronizer -m my.package._module --ruff
+  synchronicity2 wrappers --synchronizer-module my.package._synchronizer -m my.package._module --stdout
+  synchronicity2 wrappers --synchronizer-module package._synchronizer -m package._a -m package._b
+  synchronicity2 vendor mylib.synchronicity2 -o src/
+  synchronicity2 wrappers --synchronizer-module mylib._synchronizer -m mylib._impl
+    --runtime-package mylib.synchronicity2 -o src/
 
-  python -m synchronicity2.codegen wrappers -m my.package._module
+  python -m synchronicity2.codegen wrappers --synchronizer-module my.package._synchronizer -m my.package._module
         """,
     )
     wrappers_parser.add_argument(
@@ -159,6 +159,29 @@ Examples:
         dest="modules",
         required=True,
         help="Qualified module name to import (can be specified multiple times)",
+    )
+    wrappers_parser.add_argument(
+        "--preload-module",
+        action="append",
+        dest="preload_modules",
+        default=[],
+        help=(
+            "Qualified module to import before implementation modules (repeatable). "
+            "This is intended for Synchronicity 1 compatibility, where imports register legacy wrappers."
+        ),
+    )
+    wrappers_parser.add_argument(
+        "--synchronizer-module",
+        required=True,
+        help="Qualified path of the generated module that owns the shared runtime Synchronizer",
+    )
+    wrappers_parser.add_argument(
+        "--synchronicity1-synchronizer",
+        metavar="MODULE:ATTRIBUTE",
+        help=(
+            "Use the referenced Synchronicity 1 Synchronizer for compatibility. "
+            "Legacy wrapper modules must be loaded with --preload-module."
+        ),
     )
     wrappers_parser.add_argument(
         "-o",
@@ -211,6 +234,12 @@ def _run_wrappers(args: argparse.Namespace) -> None:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(2)
 
+    if args.preload_modules:
+        print("Preloading compatibility modules...", file=sys.stderr)
+        for module_name in args.preload_modules:
+            print(f"  Importing preload module: {module_name}", file=sys.stderr)
+            importlib.import_module(module_name)
+
     # Use the same ``Module`` class as implementation code: vendored copies are a
     # distinct type from ``synchronicity2.module.Module``, so ``isinstance`` must use
     # the class from ``--runtime-package`` (default ``synchronicity2``).
@@ -243,11 +272,7 @@ def _run_wrappers(args: argparse.Namespace) -> None:
             attr = getattr(imported_module, attr_name)
             if isinstance(attr, Module):
                 module_objects.append(attr)
-                print(
-                    f"  Found Module: {attr.target_module} (synchronizer={attr.synchronizer_name!r}) "
-                    f"with {len(attr._module_items())} items",
-                    file=sys.stderr,
-                )
+                print(f"  Found Module: {attr.target_module} with {len(attr._module_items())} items", file=sys.stderr)
 
     if not module_objects:
         print(
@@ -271,7 +296,9 @@ def _run_wrappers(args: argparse.Namespace) -> None:
         _fail_if_wrapper_modules_loaded(module_objects)
         modules = compile_modules(
             module_objects,
+            synchronizer_module=args.synchronizer_module,
             runtime_package=args.runtime_package,
+            synchronicity1_synchronizer_path=args.synchronicity1_synchronizer,
         )
     except (TypeError, ValueError) as e:
         print(f"Error: {e}", file=sys.stderr)

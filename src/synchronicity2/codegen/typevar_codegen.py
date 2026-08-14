@@ -12,8 +12,15 @@ from synchronicity2.module import (
 
 from . import type_transformer as tt
 from .ir import TypeVarSpecIR
-from .transformer_ir import TypeTransformerIR, WrappedClassTypeIR, WrapperRef
-from .transformer_materialize import annotation_import_modules, resolve_typevar_bound_to_wrapped_impl
+from .transformer_ir import Synchronicity1WrappedClassTypeIR, TypeTransformerIR, WrappedClassTypeIR, WrapperRef
+from .transformer_materialize import (
+    _synchronicity1_wrapper_ref,
+    annotation_import_modules,
+    resolve_typevar_bound_to_wrapped_impl,
+)
+
+if typing.TYPE_CHECKING:
+    from synchronicity import Synchronizer as Synchronicity1Synchronizer
 
 
 def _get_wrapper_location(t: type) -> tuple[str, str] | None:
@@ -93,6 +100,7 @@ def typevar_specs_from_collected(
     target_module: str,
     *,
     impl_modules: frozenset[str] | None = None,
+    synchronicity1_synchronizer: Synchronicity1Synchronizer | None = None,
 ) -> tuple[TypeVarSpecIR, ...]:
     specs: list[TypeVarSpecIR] = []
     for name in sorted(module_typevars.keys()):
@@ -143,11 +151,19 @@ def typevar_specs_from_collected(
             )
 
         bound_translation_ir: TypeTransformerIR | None = None
-        impl_ref = resolve_typevar_bound_to_wrapped_impl(tv, known_impl_types, impl_modules)
+        impl_ref = resolve_typevar_bound_to_wrapped_impl(
+            tv, known_impl_types, impl_modules, synchronicity1_synchronizer
+        )
         if impl_ref is not None:
-            loc = _get_wrapper_location_from_ref(impl_ref, known_impl_types)
-            if loc is not None:
-                bound_translation_ir = WrappedClassTypeIR(impl_ref, WrapperRef(*loc))
+            impl_type = _get_type_from_ref(impl_ref, known_impl_types)
+            if impl_type is not None:
+                loc = _get_wrapper_location(impl_type)
+                if loc is not None:
+                    bound_translation_ir = WrappedClassTypeIR(impl_ref, WrapperRef(*loc))
+                else:
+                    synchronicity1_wrapper_ref = _synchronicity1_wrapper_ref(impl_type, synchronicity1_synchronizer)
+                    if synchronicity1_wrapper_ref is not None:
+                        bound_translation_ir = Synchronicity1WrappedClassTypeIR(impl_ref, synchronicity1_wrapper_ref)
 
         specs.append(
             TypeVarSpecIR(
@@ -164,14 +180,13 @@ def typevar_specs_from_collected(
     return tuple(specs)
 
 
-def _get_wrapper_location_from_ref(
+def _get_type_from_ref(
     impl_ref,
     known_impl_types: frozenset[type],
-) -> tuple[str, str] | None:
-    """Look up wrapper location for an ImplQualifiedRef by finding the matching type."""
+) -> type | None:
     for t in known_impl_types:
         if t.__module__ == impl_ref.module and t.__qualname__ == impl_ref.qualname:
-            return _get_wrapper_location(t)
+            return t
     return None
 
 

@@ -44,12 +44,28 @@ from .transformer_ir import (
     TypeTransformerIR,
     WrapperRef,
 )
-from .transformer_materialize import annotation_to_transformer_ir
+from .transformer_materialize import _synchronicity1_wrapper_ref, annotation_to_transformer_ir
 from .typevar_codegen import typevar_specs_from_collected
+
+if typing.TYPE_CHECKING:
+    from synchronicity import Synchronizer as Synchronicity1Synchronizer
 
 
 def _get_wrapper_location(t: type) -> tuple[str, str] | None:
     return _direct_wrapper_location(t)
+
+
+def _wrapper_ref_for_impl_type(
+    impl_type: type,
+    synchronicity1_synchronizer: Synchronicity1Synchronizer | None,
+) -> WrapperRef | None:
+    loc = _get_wrapper_location(impl_type)
+    if loc is not None:
+        return WrapperRef(*loc)
+    synchronicity1_ref = _synchronicity1_wrapper_ref(impl_type, synchronicity1_synchronizer)
+    if synchronicity1_ref is not None:
+        return synchronicity1_ref
+    return None
 
 
 def _is_manual_wrapper(obj: object, *, manual_wrapper_ids: frozenset[int]) -> bool:
@@ -100,9 +116,9 @@ def _check_annotation_for_cross_refs(
     cross_module_refs: dict,
 ) -> None:
     if isinstance(annotation, type):
-        loc = _get_wrapper_location(annotation)
-        if loc is not None:
-            target_module, wrapper_name = loc
+        wrapper_location = _get_wrapper_location(annotation)
+        if wrapper_location is not None:
+            target_module, wrapper_name = wrapper_location
             if target_module != current_module:
                 if target_module not in cross_module_refs:
                     cross_module_refs[target_module] = set()
@@ -119,10 +135,10 @@ def _check_impl_type_for_cross_ref(
     current_module: str,
     cross_module_refs: dict[str, set[str]],
 ) -> None:
-    loc = _get_wrapper_location(impl_type)
-    if loc is None:
+    wrapper_location = _get_wrapper_location(impl_type)
+    if wrapper_location is None:
         return
-    target_module, wrapper_name = loc
+    target_module, wrapper_name = wrapper_location
     if target_module != current_module:
         if target_module not in cross_module_refs:
             cross_module_refs[target_module] = set()
@@ -226,7 +242,9 @@ def cross_module_imports_for_module(
 def build_module_compilation_ir(
     module: Module,
     *,
+    synchronizer_module: str,
     forbidden_wrapper_modules: frozenset[str] | None = None,
+    synchronicity1_synchronizer: Synchronicity1Synchronizer | None = None,
 ) -> ModuleCompilationIR:
     """Step 1–2 for a single output module: layout, cross-refs, and collected type variables."""
     module_items = module._module_items()
@@ -315,6 +333,7 @@ def build_module_compilation_ir(
         known_impl_types,
         module.target_module,
         impl_modules=frozenset(impl_modules),
+        synchronicity1_synchronizer=synchronicity1_synchronizer,
     )
     cross_frozen = {k: frozenset(v) for k, v in cross.items()}
 
@@ -327,6 +346,7 @@ def build_module_compilation_ir(
             manual_wrapper_ids=manual_wrapper_ids,
             include_underscored_methods=class_registrations[c].include_underscored_methods,
             forbidden_wrapper_modules=forbidden_wrapper_modules,
+            synchronicity1_synchronizer=synchronicity1_synchronizer,
         )
         for c in classes
     )
@@ -341,13 +361,14 @@ def build_module_compilation_ir(
                 globals_dict=g,
                 impl_modules=impl_mods,
                 forbidden_wrapper_modules=forbidden_wrapper_modules,
+                synchronicity1_synchronizer=synchronicity1_synchronizer,
             )
         )
     module_functions_ir = tuple(module_functions_ir_list)
 
     return ModuleCompilationIR(
         target_module=module.target_module,
-        synchronizer_name=module.synchronizer_name,
+        synchronizer_module=synchronizer_module,
         impl_modules=frozenset(impl_modules),
         cross_module_imports=cross_frozen,
         typevar_specs=typevar_specs,
@@ -414,6 +435,7 @@ def _parse_signature_ir(
     owner_impl_type: type | None,
     owner_has_type_parameters: bool,
     impl_modules: frozenset[str],
+    synchronicity1_synchronizer: Synchronicity1Synchronizer | None = None,
 ) -> tuple[SignatureIR, bool]:
     source_label_prefix = f"{f.__module__}.{f.__qualname__}"
     return_annotation = annotations.get("return", sig.return_annotation)
@@ -426,6 +448,7 @@ def _parse_signature_ir(
             owner_has_type_parameters=owner_has_type_parameters,
             impl_modules=impl_modules,
             source_label=f"{source_label_prefix} return",
+            synchronicity1_synchronizer=synchronicity1_synchronizer,
         )
         return_ir = AsyncContextManagerTypeIR(value=value_ir)
         parameters = parse_parameters_to_ir(
@@ -438,6 +461,7 @@ def _parse_signature_ir(
             owner_has_type_parameters=owner_has_type_parameters,
             impl_modules=impl_modules,
             source_label_prefix=source_label_prefix,
+            synchronicity1_synchronizer=synchronicity1_synchronizer,
         )
         return SignatureIR(parameters=parameters, return_transformer_ir=return_ir), False
 
@@ -451,6 +475,7 @@ def _parse_signature_ir(
         owner_has_type_parameters=owner_has_type_parameters,
         impl_modules=impl_modules,
         source_label=f"{source_label_prefix} return",
+        synchronicity1_synchronizer=synchronicity1_synchronizer,
     )
     parameters = parse_parameters_to_ir(
         f,
@@ -462,6 +487,7 @@ def _parse_signature_ir(
         owner_has_type_parameters=owner_has_type_parameters,
         impl_modules=impl_modules,
         source_label_prefix=source_label_prefix,
+        synchronicity1_synchronizer=synchronicity1_synchronizer,
     )
 
     is_async_gen = is_async_generator(f, return_annotation)
@@ -478,6 +504,7 @@ def _parse_overload_signature_irs(
     owner_has_type_parameters: bool,
     impl_modules: frozenset[str],
     forbidden_wrapper_modules: frozenset[str] | None = None,
+    synchronicity1_synchronizer: Synchronicity1Synchronizer | None = None,
 ) -> tuple[SignatureIR, ...]:
     overload_irs: list[SignatureIR] = []
     for overload_func in _iter_overload_functions(f):
@@ -496,6 +523,7 @@ def _parse_overload_signature_irs(
             owner_impl_type=owner_impl_type,
             owner_has_type_parameters=owner_has_type_parameters,
             impl_modules=impl_modules,
+            synchronicity1_synchronizer=synchronicity1_synchronizer,
         )
         overload_irs.append(overload_ir)
     return tuple(overload_irs)
@@ -510,6 +538,7 @@ def parse_module_level_function_ir(
     runtime_package: str = "synchronicity2",
     impl_modules: frozenset[str] | None = None,
     forbidden_wrapper_modules: frozenset[str] | None = None,
+    synchronicity1_synchronizer: Synchronicity1Synchronizer | None = None,
 ) -> ModuleLevelFunctionIR:
     _ = runtime_package  # reserved for parity with API; IR does not embed runtime package on nodes
     if impl_modules is None:
@@ -526,6 +555,7 @@ def parse_module_level_function_ir(
         owner_impl_type=None,
         owner_has_type_parameters=False,
         impl_modules=impl_modules,
+        synchronicity1_synchronizer=synchronicity1_synchronizer,
     )
     overloads = _parse_overload_signature_irs(
         f,
@@ -535,6 +565,7 @@ def parse_module_level_function_ir(
         owner_has_type_parameters=False,
         impl_modules=impl_modules,
         forbidden_wrapper_modules=forbidden_wrapper_modules,
+        synchronicity1_synchronizer=synchronicity1_synchronizer,
     )
 
     needs_async_wrapper = is_async_gen or isinstance(
@@ -564,6 +595,7 @@ def parse_method_wrapper_ir(
     generic_typevars: dict[str, typing.TypeVar | typing.ParamSpec] | None = None,
     impl_modules: frozenset[str] | None = None,
     forbidden_wrapper_modules: frozenset[str] | None = None,
+    synchronicity1_synchronizer: Synchronicity1Synchronizer | None = None,
 ) -> MethodWrapperIR:
     if impl_modules is None:
         impl_modules = frozenset({impl_class.__module__})
@@ -594,6 +626,7 @@ def parse_method_wrapper_ir(
         owner_impl_type=impl_class,
         owner_has_type_parameters=owner_has_type_parameters,
         impl_modules=impl_modules,
+        synchronicity1_synchronizer=synchronicity1_synchronizer,
     )
     overloads = _parse_overload_signature_irs(
         method,
@@ -603,6 +636,7 @@ def parse_method_wrapper_ir(
         owner_has_type_parameters=owner_has_type_parameters,
         impl_modules=impl_modules,
         forbidden_wrapper_modules=forbidden_wrapper_modules,
+        synchronicity1_synchronizer=synchronicity1_synchronizer,
     )
 
     is_async = is_async_gen or isinstance(signature_ir.return_transformer_ir, (AwaitableTypeIR, CoroutineTypeIR))
@@ -629,6 +663,7 @@ def parse_class_wrapper_ir(
     manual_wrapper_ids: frozenset[int] = frozenset(),
     include_underscored_methods: bool = False,
     forbidden_wrapper_modules: frozenset[str] | None = None,
+    synchronicity1_synchronizer: Synchronicity1Synchronizer | None = None,
 ) -> ClassWrapperIR:
     """Collect :class:`ClassWrapperIR` from a live implementation class (parse-time only)."""
     if impl_modules is None:
@@ -655,9 +690,9 @@ def parse_class_wrapper_ir(
                 if typevar_names:
                     generic_type_parameters = tuple(typevar_names)
         elif base is not object and isinstance(base, type):
-            loc = _get_wrapper_location(base)
-            if loc is not None:
-                wrapped_bases.append((ImplQualifiedRef(base.__module__, base.__qualname__), WrapperRef(*loc)))
+            wrapper_ref = _wrapper_ref_for_impl_type(base, synchronicity1_synchronizer)
+            if wrapper_ref is not None:
+                wrapped_bases.append((ImplQualifiedRef(base.__module__, base.__qualname__), wrapper_ref))
 
     # Collect all source methods: __init__, public methods, and async iterator dunders.
     source_methods: list[tuple[str, types.FunctionType, MethodBindingKind]] = []
@@ -731,6 +766,7 @@ def parse_class_wrapper_ir(
                         owner_has_type_parameters=bool(generic_typevars),
                         impl_modules=impl_modules,
                         source_label=f"{cls.__module__}.{cls.__qualname__}.{name} return",
+                        synchronicity1_synchronizer=synchronicity1_synchronizer,
                     )
             # Parse setter value type
             has_setter = attr.fset is not None
@@ -751,6 +787,7 @@ def parse_class_wrapper_ir(
                             owner_has_type_parameters=bool(generic_typevars),
                             impl_modules=impl_modules,
                             source_label=f"{cls.__module__}.{cls.__qualname__}.{name} parameter {value_param.name!r}",
+                            synchronicity1_synchronizer=synchronicity1_synchronizer,
                         )
             property_irs.append(
                 PropertyWrapperIR(
@@ -782,6 +819,7 @@ def parse_class_wrapper_ir(
                     owner_has_type_parameters=bool(generic_typevars),
                     impl_modules=impl_modules,
                     source_label=f"{cls.__module__}.{cls.__qualname__}.{name} return",
+                    synchronicity1_synchronizer=synchronicity1_synchronizer,
                 )
             classproperty_irs.append(
                 ClassPropertyWrapperIR(
@@ -831,6 +869,7 @@ def parse_class_wrapper_ir(
                 owner_has_type_parameters=bool(generic_typevars),
                 impl_modules=impl_modules,
                 source_label=f"{cls.__module__}.{cls.__qualname__} attribute {name!r}",
+                synchronicity1_synchronizer=synchronicity1_synchronizer,
             )
             attributes.append((name, annotation_ir))
 
@@ -846,6 +885,7 @@ def parse_class_wrapper_ir(
             generic_typevars=generic_typevars if generic_typevars else None,
             impl_modules=impl_modules,
             forbidden_wrapper_modules=forbidden_wrapper_modules,
+            synchronicity1_synchronizer=synchronicity1_synchronizer,
         )
         for method_name, method, method_type in source_methods
     )

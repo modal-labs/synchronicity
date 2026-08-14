@@ -13,6 +13,7 @@ import typing
 from inspect import Signature
 from typing import Generic, TypeVar
 
+from synchronicity import Synchronizer as Synchronicity1Synchronizer
 from synchronicity2 import Module
 from synchronicity2.codegen.default_expressions import resolve_parameter_default_expressions
 from synchronicity2.codegen.ir import (
@@ -189,8 +190,7 @@ def test_wrapped_type_ir_requires_wrapper_import_modules():
         wrapper=WrapperRef("generated.sequence_callable_parse", "SequenceCallableParseNode"),
     )
     subscripted_ir = SubscriptedWrappedClassTypeIR(
-        impl=ImplQualifiedRef(__name__, "_SequenceCallableParseNode"),
-        wrapper=WrapperRef("generated.sequence_callable_parse", "SequenceCallableParseNode"),
+        inner=wrapped_ir,
         type_args=(IdentityTypeIR(signature_text="str"),),
     )
 
@@ -330,7 +330,7 @@ def test_build_module_compilation_ir_uses_qualified_refs():
     async def top_level() -> None:
         pass
 
-    ir = build_module_compilation_ir(m)
+    ir = build_module_compilation_ir(m, synchronizer_module="generated._synchronizer")
 
     assert isinstance(ir, ModuleCompilationIR)
     assert ir.target_module == "generated.example"
@@ -344,7 +344,7 @@ def test_build_module_compilation_ir_uses_qualified_refs():
 
 
 def test_build_module_compilation_ir_preserves_registered_export_names():
-    ir = build_module_compilation_ir(_RENAMED_EXPORTS_MODULE)
+    ir = build_module_compilation_ir(_RENAMED_EXPORTS_MODULE, synchronizer_module="generated._synchronizer")
 
     class_wrappers = {wrapper.impl_ref.qualname.rpartition(".")[2]: wrapper for wrapper in ir.class_wrappers}
     function_irs = {function.impl_ref.qualname.rpartition(".")[2]: function for function in ir.module_functions_ir}
@@ -353,7 +353,7 @@ def test_build_module_compilation_ir_preserves_registered_export_names():
     assert function_irs["_renamed_make_service"].export_name == "make_service"
     assert isinstance(function_irs["_renamed_make_service"].return_transformer_ir, AwaitableTypeIR)
     assert isinstance(function_irs["_renamed_make_service"].return_transformer_ir.inner, SubscriptedWrappedClassTypeIR)
-    assert function_irs["_renamed_make_service"].return_transformer_ir.inner.wrapper == WrapperRef(
+    assert function_irs["_renamed_make_service"].return_transformer_ir.inner.inner.wrapper == WrapperRef(
         "generated.renamed",
         "PublicService",
     )
@@ -384,7 +384,6 @@ def test_module_public_members_are_minimal() -> None:
     }
     assert public_names == {
         "target_module",
-        "synchronizer_name",
         "manual_export",
         "manual_wrapper",
         "wrap_function",
@@ -410,6 +409,37 @@ def test_parse_class_wrapper_ir_inheritance_stores_impl_refs_not_wrapper_names()
         (ImplQualifiedRef(Base.__module__, Base.__qualname__), WrapperRef("generated.inherit_parse", "Base")),
     )
     assert ir.generic_type_parameters is None
+
+
+def test_build_module_ir_resolves_synchronicity1_wrapped_base_from_registry():
+    class LegacyBase:
+        pass
+
+    m = Module("generated.child")
+
+    @m.wrap_class()
+    class Child(LegacyBase):
+        pass
+
+    synchronizer = Synchronicity1Synchronizer()
+    synchronizer.wrap(LegacyBase, name="LegacyBaseWrapper", target_module="legacy.api")
+    try:
+        ir = build_module_compilation_ir(
+            m,
+            synchronizer_module="generated._synchronizer",
+            synchronicity1_synchronizer=synchronizer,
+        )
+    finally:
+        synchronizer._close_loop()
+
+    assert ir.class_wrappers[0].wrapped_bases == (
+        (
+            ImplQualifiedRef(LegacyBase.__module__, LegacyBase.__qualname__),
+            WrapperRef("legacy.api", "LegacyBaseWrapper"),
+        ),
+    )
+    assert ir.cross_module_imports == {}
+    assert "legacy.api" in ir.required_import_modules()
 
 
 def test_parse_class_wrapper_ir_generic_stores_type_parameter_names():
@@ -633,7 +663,7 @@ def test_build_module_compilation_ir_collects_typevars_from_call_dunder():
         def __call__(self, func: typing.Callable[call_p, call_t]) -> RemoteFunction[call_p, call_t]:
             raise NotImplementedError
 
-    ir = build_module_compilation_ir(m)
+    ir = build_module_compilation_ir(m, synchronizer_module="generated._synchronizer")
 
     assert {spec.name for spec in ir.typevar_specs} == {"call_p", "call_t"}
 
@@ -870,7 +900,7 @@ def test_build_module_compilation_ir_collects_manual_reexports_separately():
 
     m.manual_export("PUBLIC_VALUE", source_module="example.impl")
 
-    ir = build_module_compilation_ir(m)
+    ir = build_module_compilation_ir(m, synchronizer_module="generated._synchronizer")
 
     assert ir.module_functions_ir == ()
     assert ir.class_wrappers == ()

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import collections.abc
 
-from mylib.synchronicity import Module
+from mylib.synchronicity2 import Module
 
 wrapper_module = Module("mylib.weather")
 

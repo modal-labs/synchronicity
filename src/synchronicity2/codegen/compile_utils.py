@@ -23,6 +23,7 @@ from .transformer_ir import (
     SelfTypeIR,
     SequenceTypeIR,
     SubscriptedWrappedClassTypeIR,
+    Synchronicity1WrappedClassTypeIR,
     TupleTypeIR,
     TypeTransformerIR,
     UnionTypeIR,
@@ -31,6 +32,8 @@ from .transformer_ir import (
 from .type_transformer import CallableTransformer, WrappedClassTransformer
 
 if typing.TYPE_CHECKING:
+    from synchronicity import Synchronizer as Synchronicity1Synchronizer
+
     from .transformer_materialize import MaterializeContext
 
 
@@ -207,6 +210,7 @@ def parse_parameters_to_ir(
     owner_has_type_parameters: bool = False,
     impl_modules: frozenset[str] | None = None,
     source_label_prefix: str | None = None,
+    synchronicity1_synchronizer: Synchronicity1Synchronizer | None = None,
 ) -> tuple[ParameterIR, ...]:
     """Collect :class:`ParameterIR` from a signature (no emission strings)."""
     from .transformer_materialize import annotation_to_transformer_ir
@@ -233,6 +237,7 @@ def parse_parameters_to_ir(
                 owner_has_type_parameters=owner_has_type_parameters,
                 impl_modules=impl_modules,
                 source_label=(f"{source_label_prefix} parameter {name!r}" if source_label_prefix is not None else None),
+                synchronicity1_synchronizer=synchronicity1_synchronizer,
             )
             if isinstance(annotation_ir, CallableTypeIR) and _callable_ir_contains_wrapped_refs(annotation_ir):
                 warnings.warn(
@@ -272,7 +277,15 @@ def _callable_ir_contains_wrapped_refs(ir: CallableTypeIR) -> bool:
 
 
 def _transformer_ir_contains_wrapped_refs(ir: TypeTransformerIR) -> bool:
-    if isinstance(ir, (WrappedClassTypeIR, SubscriptedWrappedClassTypeIR, SelfTypeIR)):
+    if isinstance(
+        ir,
+        (
+            WrappedClassTypeIR,
+            Synchronicity1WrappedClassTypeIR,
+            SubscriptedWrappedClassTypeIR,
+            SelfTypeIR,
+        ),
+    ):
         return True
     if isinstance(ir, ListTypeIR):
         return _transformer_ir_contains_wrapped_refs(ir.item)
@@ -285,7 +298,7 @@ def _transformer_ir_contains_wrapped_refs(ir: TypeTransformerIR) -> bool:
     if isinstance(ir, DictTypeIR):
         return _transformer_ir_contains_wrapped_refs(ir.key) or _transformer_ir_contains_wrapped_refs(ir.value)
     if isinstance(ir, TupleTypeIR):
-        return any(_transformer_ir_contains_wrapped_refs(item) for item in ir.items)
+        return any(_transformer_ir_contains_wrapped_refs(item) for item in ir.elements)
     if isinstance(ir, UnionTypeIR):
         return any(_transformer_ir_contains_wrapped_refs(item) for item in ir.items)
     if isinstance(ir, CallableTypeIR):

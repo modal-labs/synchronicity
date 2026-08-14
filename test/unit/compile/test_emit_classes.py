@@ -833,8 +833,10 @@ IR_CLASS_TRANSLATED_STATICMETHOD_SUBSCRIPTED_VARARGS = ClassWrapperIR(
                     name="args",
                     kind=2,
                     annotation_ir=SubscriptedWrappedClassTypeIR(
-                        impl=ImplQualifiedRef(IMPL, "Node"),
-                        wrapper=WrapperRef(TARGET, "Node"),
+                        inner=WrappedClassTypeIR(
+                            impl=ImplQualifiedRef(IMPL, "Node"),
+                            wrapper=WrapperRef(TARGET, "Node"),
+                        ),
                         type_args=(IdentityTypeIR(signature_text="T"),),
                     ),
                     default_expr=None,
@@ -884,7 +886,7 @@ def test_emit_class_method_docstring_skips_with_aio_class_level_copy():
     code = emit_class_from_ir(ir, TARGET)
     assert code.count('"""Method docstring."""') == 3
     assert (
-        "class _EmitAwaitableMethodClass_create_awaitable_MethodWithAio(MethodWithAio):\n" '    """Method docstring."""'
+        'class _EmitAwaitableMethodClass_create_awaitable_MethodWithAio(MethodWithAio):\n    """Method docstring."""'
     ) not in code
 
 
@@ -1332,7 +1334,7 @@ def test_emit_sequence_and_callable_ellipsis_annotations():
 
     code = emit_class_from_ir(ir, TARGET)
 
-    assert 'def deps(self) -> "typing.Callable[..., ' 'typing.Sequence[Node]]":' in code
+    assert 'def deps(self) -> "typing.Callable[..., typing.Sequence[Node]]":' in code
     assert 'def clone_all(self, nodes: "typing.Sequence[Node]") -> "typing.Sequence[Node]":' in code
     assert 'def clone_collection(self, nodes: "typing.Collection[Node]") -> "typing.Collection[Node]":' in code
     assert "nodes_impl = [x._impl_instance for x in nodes]" in code

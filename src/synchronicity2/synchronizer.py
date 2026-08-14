@@ -9,8 +9,8 @@ from typing import Optional
 
 from .module import _direct_wrapper_location
 
-# Global registry for synchronizer instances
-_synchronizer_registry = {}
+if typing.TYPE_CHECKING:
+    from synchronicity import Synchronizer as Synchronicity1Synchronizer  # pyright: ignore[reportAttributeAccessIssue]
 
 T = typing.TypeVar("T")
 R = typing.TypeVar("R")
@@ -26,13 +26,6 @@ class WrapperClassProtocol(typing.Protocol):
 WRAPPER_CLASS_T = typing.TypeVar("WRAPPER_CLASS_T", bound=WrapperClassProtocol)
 
 
-def get_synchronizer(name: str) -> "Synchronizer":
-    """Get or create a synchronizer instance by name from the global registry."""
-    if name not in _synchronizer_registry:
-        _synchronizer_registry[name] = Synchronizer(name)
-    return _synchronizer_registry[name]
-
-
 def _wrapped_from_impl(
     wrapper_cls: type[WRAPPER_CLASS_T],
     impl_instance: typing.Any,
@@ -46,7 +39,7 @@ def _wrapped_from_impl(
     caching and wrapper creation uniformly.
 
     Args:
-        wrapper_cls: The wrapper class to create an instance of
+        wrapper_cls: The wrapper class to create an instance of (only used for static typing)
         impl_instance: The implementation instance to wrap
         cache: A WeakValueDictionary cache for storing wrapper instances
         synchronizer: The synchronizer that owns runtime wrapper registrations
@@ -67,7 +60,6 @@ def _wrapped_from_impl(
     # Create new wrapper using __new__ to bypass __init__
     wrapper = resolved_wrapper_cls.__new__(resolved_wrapper_cls)
     wrapper._impl_instance = impl_instance
-
     # Cache it
     resolved_cache[cache_key] = wrapper
 
@@ -75,8 +67,12 @@ def _wrapped_from_impl(
 
 
 class Synchronizer:
-    def __init__(self, name: Optional[str] = None):
-        self._name = name
+    def __init__(
+        self,
+        *,
+        synchronicity1_synchronizer: Optional["Synchronicity1Synchronizer"] = None,
+    ):
+        self._synchronicity1_synchronizer = synchronicity1_synchronizer
         self._future_poll_interval = 0.1
         self._blocking_in_async_callback = None
         self._loop = None
@@ -95,7 +91,14 @@ class Synchronizer:
         self._output_translation_attr = "_sync_output_translation_%d" % id(self)
         self._wrapper_classes: dict[type, type[WrapperClassProtocol]] = {}
 
-        atexit.register(self._close_loop)
+        if synchronicity1_synchronizer is None:
+            atexit.register(self._close_loop)
+
+    @property
+    def _synchronicity1(self) -> "Synchronicity1Synchronizer":
+        if self._synchronicity1_synchronizer is None:
+            raise RuntimeError("This generated wrapper requires a Synchronicity 1 synchronizer")
+        return self._synchronicity1_synchronizer
 
     def register_wrapper_class(self, impl_type: type, wrapper_cls: type[WrapperClassProtocol]) -> None:
         existing = self._wrapper_classes.get(impl_type)
@@ -105,6 +108,13 @@ class Synchronizer:
                 f"cannot replace it with {wrapper_cls!r}"
             )
         self._wrapper_classes[impl_type] = wrapper_cls
+        if self._synchronicity1_synchronizer is not None:
+            self._synchronicity1_synchronizer.register_external_wrapper_class(
+                impl_type,
+                wrapper_cls,
+                translate_in=lambda wrapper: wrapper._impl_instance,
+                translate_out=wrapper_cls._from_impl,
+            )
 
     def _resolve_wrapper_class(
         self,
@@ -163,6 +173,8 @@ class Synchronizer:
             return self._loop
 
     def _close_loop(self):
+        if self._synchronicity1_synchronizer is not None:
+            return
         # Use getattr to protect against weird gc races when we get here via __del__
         if getattr(self, "_thread", None) is not None:
             if self._loop and not self._loop.is_closed() and self._stopping:
@@ -183,6 +195,8 @@ class Synchronizer:
     def _get_loop(self, start: bool = False) -> Optional[asyncio.AbstractEventLoop]: ...
 
     def _get_loop(self, start: bool = False) -> Optional[asyncio.AbstractEventLoop]:
+        if self._synchronicity1_synchronizer is not None:
+            return self._synchronicity1_synchronizer._get_loop(start=start)
         if self._thread and not self._thread.is_alive():
             if self._owner_pid == os.getpid():
                 # warn - thread died without us forking
@@ -204,6 +218,8 @@ class Synchronizer:
             return
 
     def _is_inside_loop(self):
+        if self._synchronicity1_synchronizer is not None:
+            return self._synchronicity1_synchronizer._is_inside_loop()
         loop = self._get_loop()
         if loop is None:
             return False

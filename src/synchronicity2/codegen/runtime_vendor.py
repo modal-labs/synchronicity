@@ -18,16 +18,14 @@ Includes the runtime used by generated wrappers plus `Module` for implementation
 The `synchronicity2` CLI / codegen package is still installed separately at build time.
 """
 
-from .module import DEFAULT_SYNCHRONIZER_NAME, Module
+from .module import Module
 from .descriptor import classproperty
-from .synchronizer import Synchronizer, get_synchronizer
+from .synchronizer import Synchronizer
 
 __all__ = [
-    "DEFAULT_SYNCHRONIZER_NAME",
     "Module",
     "Synchronizer",
     "classproperty",
-    "get_synchronizer",
 ]
 '''
 
@@ -55,7 +53,7 @@ def vendor_runtime(*, target_package: str, output_base: Path) -> Path:
     dest_dir = output_base.joinpath(*parts)
     dest_dir.mkdir(parents=True, exist_ok=True)
 
-    # Parent packages (e.g. mylib/ for mylib.synchronicity) must be importable.
+    # Parent packages (e.g. mylib/ for mylib.synchronicity2) must be importable.
     for i in range(1, len(parts)):
         parent_dir = output_base.joinpath(*parts[:i])
         parent_dir.mkdir(parents=True, exist_ok=True)
@@ -79,16 +77,16 @@ def run_vendor_cli(argv: list[str] | None = None) -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Example:
-  synchronicity2 vendor my_lib.synchronicity -o src/
+  synchronicity2 vendor my_lib.synchronicity2 -o src/
 
-Creates src/my_lib/synchronicity/{{__init__.py,module.py,types.py,descriptor.py,synchronizer.py}}.
-Then pass --runtime-package my_lib.synchronicity to ``synchronicity2 wrappers`` so generated
+Creates src/my_lib/synchronicity2/{{__init__.py,module.py,types.py,descriptor.py,synchronizer.py}}.
+Then pass --runtime-package my_lib.synchronicity2 to ``synchronicity2 wrappers`` so generated
 wrappers import that package instead of top-level synchronicity2.
         """,
     )
     parser.add_argument(
         "target_package",
-        help="Dotted package path to create under the output directory (e.g. my_lib.synchronicity)",
+        help="Dotted package path to create under the output directory (e.g. my_lib.synchronicity2)",
     )
     parser.add_argument(
         "-o",

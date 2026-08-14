@@ -117,19 +117,18 @@ def check_pyright_with_xfail(script_module: str):
             pytest.fail(f"expected error {error_string!r}, found {actual_error!r}")
 
 
-def close_synchronizers(*names: str) -> None:
-    """Close the named synchronizers after a runtime integration test."""
-    from synchronicity2.synchronizer import get_synchronizer
+def close_synchronizers(*module_names: str) -> None:
+    """Close synchronizers exported by generated instance modules."""
+    import importlib
 
-    target_names = names or ("default_synchronizer",)
-    for name in target_names:
-        get_synchronizer(name)._close_loop()
+    for module_name in module_names:
+        importlib.import_module(module_name).synchronizer._close_loop()
 
 
 @contextlib.contextmanager
-def closing_synchronizers(*names: str):
+def closing_synchronizers(*module_names: str):
     """Wrap a runtime test body and close the synchronizers it starts."""
     try:
         yield
     finally:
-        close_synchronizers(*names)
+        close_synchronizers(*module_names)

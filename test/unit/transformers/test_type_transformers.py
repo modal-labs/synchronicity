@@ -11,11 +11,9 @@ import pytest
 import sys
 import types
 
-from synchronicity2.codegen.transformer_ir import ImplQualifiedRef, WrapperRef
-from synchronicity2.codegen.transformer_materialize import (
-    annotation_to_transformer_ir,
-    materialize_transformer_ir,
-)
+from synchronicity import Synchronizer as Synchronicity1Synchronizer
+from synchronicity2.codegen.transformer_ir import ImplQualifiedRef, Synchronicity1WrappedClassTypeIR, WrapperRef
+from synchronicity2.codegen.transformer_materialize import annotation_to_transformer_ir, materialize_transformer_ir
 from synchronicity2.codegen.type_transformer import (
     AsyncGeneratorTransformer,
     AwaitableTransformer,
@@ -26,6 +24,7 @@ from synchronicity2.codegen.type_transformer import (
     ListTransformer,
     OptionalTransformer,
     SubscriptedWrappedClassTransformer,
+    Synchronicity1WrappedClassTransformer,
     TupleTransformer,
     UnionTransformer,
     WrappedClassTransformer,
@@ -128,6 +127,29 @@ class TestWrappedClassTransformer:
     def test_needs_translation_true(self, wrapped_class):
         transformer = _make_wrapped_transformer(wrapped_class)
         assert transformer.needs_translation() is True
+
+
+class TestSynchronicity1WrappedClassTransformer:
+    def test_annotation_creates_distinct_ir_and_transformer(self):
+        class LegacyImpl:
+            pass
+
+        synchronizer = Synchronicity1Synchronizer()
+        synchronizer.wrap(LegacyImpl, name="Legacy", target_module="legacy_api")
+        try:
+            ir = annotation_to_transformer_ir(
+                LegacyImpl,
+                synchronicity1_synchronizer=synchronizer,
+            )
+            transformer = materialize_transformer_ir(ir, "synchronicity2")
+
+            assert isinstance(ir, Synchronicity1WrappedClassTypeIR)
+            assert isinstance(transformer, Synchronicity1WrappedClassTransformer)
+            assert transformer.wrapped_type("generated_api") == "legacy_api.Legacy"
+            assert "_synchronicity1._translate_in(value)" in transformer.unwrap_expr("value")
+            assert "_synchronicity1._translate_out(result)" in transformer.wrap_expr("generated_api", "result")
+        finally:
+            synchronizer._close_loop()
 
 
 class TestListTransformer:
@@ -411,10 +433,10 @@ class TestUnionTransformer:
     def test_allows_same_wrapped_generic_base(self, wrapped_class):
         impl_ref = ImplQualifiedRef(module=wrapped_class.__module__, qualname=wrapped_class.__qualname__)
         wrapper_ref = WrapperRef("test_module", "TestClass")
-        generic_str = SubscriptedWrappedClassTransformer(impl_ref, wrapper_ref, [IdentityTransformer(str)])
+        inner = WrappedClassTransformer(impl_ref, wrapper_ref)
+        generic_str = SubscriptedWrappedClassTransformer(inner, [IdentityTransformer(str)])
         generic_list_int = SubscriptedWrappedClassTransformer(
-            impl_ref,
-            wrapper_ref,
+            inner,
             [ListTransformer(IdentityTransformer(int))],
         )
 
