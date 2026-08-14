@@ -174,8 +174,9 @@ class Synchronizer:
         self._input_translation_attr = "_sync_input_translation_%d" % id(self)
         self._output_translation_attr = "_sync_output_translation_%d" % id(self)
 
-        # Wrapper systems with different object layouts register explicit type
-        # mappings rather than sharing Synchronicity's internal wrapper metadata.
+        # These mappings allow for custom type wrapper + translation registration that
+        # is not facilitated by synchronicity itself. Intended for gradual migrations
+        # to the experimental "synchronicity2" package that's in development
         self._external_wrapper_classes_by_impl: dict[type[typing.Any], type[typing.Any]] = {}
         self._external_impl_classes_by_wrapper: dict[type[typing.Any], type[typing.Any]] = {}
         self._external_input_translators_by_wrapper: dict[type[typing.Any], Callable[[typing.Any], typing.Any]] = {}
@@ -376,7 +377,7 @@ Traceback:{self._thread_traceback}"""
         translate_in: Callable[[ExternalWrapperT], ExternalImplT],
         translate_out: Callable[[ExternalImplT], ExternalWrapperT],
     ) -> None:
-        """Register another wrapper system's types and instance translators."""
+        """Register a custom type wrapper/unwrapper"""
         if (
             existing_wrapper := self._external_wrapper_classes_by_impl.get(impl_cls)
         ) is not None and existing_wrapper is not wrapper_cls:

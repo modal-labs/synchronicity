@@ -13,7 +13,7 @@ pip install synchronicity
 External wrapper interoperability
 ==================================
 
-`Synchronizer` exposes a small compatibility protocol for wrapper systems with different object layouts:
+`Synchronizer` exposes a small custom wrapper/unwrapper registration method:
 
 ```python notest
 synchronizer.register_external_wrapper_class(
@@ -24,9 +24,9 @@ synchronizer.register_external_wrapper_class(
 )
 ```
 
-The implementation and wrapper types are registered together with explicit instance in/out translators. Synchronicity
-input/output translation then recognizes both classes and instances that need translation to/from the external types.
-Synchronicity does not write its internal wrapper attributes onto external objects. Registrations use exact types, so subclasses must be registered
+Implementation and wrapper types are registered together with explicit instance in/out translators. Based on the impl/wrapper types
+these are then respected by synchronicity boundaries.
+Synchronicity does *not* write its internal wrapper attributes onto these objects. Registrations use exact types, so subclasses must be registered
 separately. The main intention is to provide a smoother migration path to a future version of Synchronicity with different
 internals.
 
