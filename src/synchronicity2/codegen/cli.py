@@ -19,8 +19,11 @@ import importlib
 import subprocess
 import sys
 import tempfile
+import types
 import typing
 from pathlib import Path
+
+from synchronicity2.module import Module
 
 from .writer import write_modules
 
@@ -52,7 +55,7 @@ def import_module(module_name: str) -> None:
         raise ImportError(f"Could not import module '{module_name}': {e}")
 
 
-def _fail_if_wrapper_modules_loaded(module_objects: list[object]) -> None:
+def _fail_if_wrapper_modules_loaded(module_objects: list[Module]) -> None:
     loaded_wrapper_modules = sorted(
         {module.target_module for module in module_objects if module.target_module in sys.modules}
     )
@@ -65,7 +68,7 @@ def _fail_if_wrapper_modules_loaded(module_objects: list[object]) -> None:
     )
 
 
-def import_modules_two_pass(module_names: list[str]) -> list:
+def import_modules_two_pass(module_names: list[str]) -> list[types.ModuleType]:
     """
     Import modules in two passes to handle TYPE_CHECKING imports.
 
@@ -80,7 +83,7 @@ def import_modules_two_pass(module_names: list[str]) -> list:
     """
 
     # First pass: Normal imports to register wrapped items
-    imported_modules = []
+    imported_modules: list[types.ModuleType] = []
     for module_name in module_names:
         print(f"  Importing module: {module_name}", file=sys.stderr)
         import_module(module_name)
@@ -92,11 +95,11 @@ def import_modules_two_pass(module_names: list[str]) -> list:
     # since they map to the same target modules/names
     original_type_checking = typing.TYPE_CHECKING
     try:
-        typing.TYPE_CHECKING = True
+        setattr(typing, "TYPE_CHECKING", True)
         for module in imported_modules:
             importlib.reload(module)
     finally:
-        typing.TYPE_CHECKING = original_type_checking
+        setattr(typing, "TYPE_CHECKING", original_type_checking)
 
     return imported_modules
 
@@ -225,7 +228,7 @@ def _run_vendor(args: argparse.Namespace) -> None:
 
 
 def _run_wrappers(args: argparse.Namespace) -> None:
-    from .compile import compile_modules
+    from .pipeline import compile_modules
     from .runtime_vendor import validate_runtime_package
 
     try:
@@ -253,8 +256,8 @@ def _run_wrappers(args: argparse.Namespace) -> None:
             file=sys.stderr,
         )
         sys.exit(2)
-    Module = getattr(registration_pkg, "Module", None)
-    if Module is None:
+    module_type = getattr(registration_pkg, "Module", None)
+    if not isinstance(module_type, type):
         print(
             f"Error: {module_registration_path!r} has no attribute 'Module'.",
             file=sys.stderr,
@@ -263,16 +266,20 @@ def _run_wrappers(args: argparse.Namespace) -> None:
 
     print("Importing modules for codegen...", file=sys.stderr)
 
-    module_objects = []
+    module_objects: list[Module] = []
     for module_name in args.modules:
         print(f"  Importing module: {module_name}", file=sys.stderr)
         imported_module = importlib.import_module(module_name)
 
         for attr_name in dir(imported_module):
             attr = getattr(imported_module, attr_name)
-            if isinstance(attr, Module):
-                module_objects.append(attr)
-                print(f"  Found Module: {attr.target_module} with {len(attr._module_items())} items", file=sys.stderr)
+            if isinstance(attr, module_type):
+                module_object = typing.cast(Module, attr)
+                module_objects.append(module_object)
+                print(
+                    f"  Found Module: {module_object.target_module} with {len(module_object._module_items())} items",
+                    file=sys.stderr,
+                )
 
     if not module_objects:
         print(

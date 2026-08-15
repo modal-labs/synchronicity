@@ -10,7 +10,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from synchronicity2.codegen.compile import compile_modules
+from synchronicity2.codegen.pipeline import compile_modules
 from synchronicity2.codegen.runtime_vendor import vendor_runtime
 from synchronicity2.module import Module
 

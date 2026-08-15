@@ -526,4 +526,5 @@ Migration considerations:
 
 ## Development / Contribution
 
-See AGENTS.md
+See [AGENTS.md](AGENTS.md) for development practices and [ARCHITECTURE.md](ARCHITECTURE.md) for the
+runtime and code-generation design.
