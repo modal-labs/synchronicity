@@ -7,7 +7,7 @@ import re
 import typing
 
 from ..ir.declarations import MethodBindingKind, ParameterIR
-from ..ir.references import ImplementationRef
+from ..ir.references import ObjectReferenceIR
 from .type_codegen import (
     CallableTypeCodegen,
     TypeCodegenContext,
@@ -201,7 +201,7 @@ def _build_call_with_wrap(
     *,
     is_function: bool = False,
     method_type: MethodBindingKind | None = None,
-    method_owner_impl_ref: ImplementationRef | None = None,
+    method_owner_impl_ref: ObjectReferenceIR | None = None,
 ) -> str:
     """Build a function call with optional return value wrapping."""
     from .type_codegen import (

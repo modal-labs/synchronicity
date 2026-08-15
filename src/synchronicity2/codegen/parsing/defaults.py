@@ -11,13 +11,11 @@ import textwrap
 import types
 from dataclasses import dataclass
 
-from ..ir.references import ModuleImportRefIR
-
 
 @dataclass(frozen=True)
 class ResolvedDefaultExpression:
     expression: str
-    import_refs: tuple[ModuleImportRefIR, ...] = ()
+    import_modules: tuple[str, ...] = ()
 
 
 def _source_label_for_parameter(source_label_prefix: str | None, parameter_name: str) -> str:
@@ -115,7 +113,7 @@ def _resolve_default_expression(
             if resolved_with_import is not None:
                 return ResolvedDefaultExpression(
                     expression=resolved_with_import,
-                    import_refs=(ModuleImportRefIR(module=importable_name, name=importable_name),),
+                    import_modules=(importable_name,),
                 )
             failure_messages.append(
                 f"expression {expression!r} did not match runtime default after importing {importable_name!r}"

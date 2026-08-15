@@ -39,7 +39,7 @@ from ..ir.annotations import (
     UnionAnnotationIR,
     WrappedClassRefIR,
 )
-from ..ir.references import ImplementationRef, WrapperClassRef
+from ..ir.references import ObjectReferenceIR
 
 if typing.TYPE_CHECKING:
     from synchronicity import Synchronizer as Synchronicity1Synchronizer
@@ -108,8 +108,8 @@ def _format_annotation(annotation: object) -> str:
     return repr(annotation)
 
 
-def impl_qualified(t: type) -> ImplementationRef:
-    return ImplementationRef(module=t.__module__, qualname=t.__qualname__)
+def impl_qualified(t: type) -> ObjectReferenceIR:
+    return ObjectReferenceIR(module=t.__module__, qualname=t.__qualname__)
 
 
 def _get_wrapper_location(impl_type: type) -> tuple[str, str] | None:
@@ -124,7 +124,7 @@ def _is_synchronicity2_wrapped_impl(t: type) -> bool:
 def _synchronicity1_wrapper_ref(
     impl_type: type,
     synchronicity1_synchronizer: Synchronicity1Synchronizer | None,
-) -> WrapperClassRef | None:
+) -> ObjectReferenceIR | None:
     if synchronicity1_synchronizer is None:
         return None
     wrapper_cls = synchronicity1_synchronizer._translate_out(impl_type)
@@ -132,7 +132,7 @@ def _synchronicity1_wrapper_ref(
         return None
     if not isinstance(wrapper_cls, type):
         raise TypeError(f"Synchronicity 1 translated implementation class {impl_type!r} to non-class {wrapper_cls!r}")
-    return WrapperClassRef(wrapper_cls.__module__, wrapper_cls.__name__)
+    return ObjectReferenceIR(wrapper_cls.__module__, wrapper_cls.__name__)
 
 
 def _warn_if_inherited_wrapper_reference(annotation: object, source_label: str | None) -> None:
@@ -154,10 +154,10 @@ def _warn_if_inherited_wrapper_reference(annotation: object, source_label: str |
     )
 
 
-def _wrapper_ref_from_type(impl_type: type) -> WrapperClassRef:
+def _wrapper_ref_from_type(impl_type: type) -> ObjectReferenceIR:
     loc = _get_wrapper_location(impl_type)
     assert loc is not None
-    return WrapperClassRef(*loc)
+    return ObjectReferenceIR(*loc)
 
 
 def resolve_typevar_bound_to_wrapped_impl(
@@ -165,7 +165,7 @@ def resolve_typevar_bound_to_wrapped_impl(
     known_impl_types: frozenset[type],
     impl_modules: frozenset[str] | None,
     synchronicity1_synchronizer: Synchronicity1Synchronizer | None = None,
-) -> ImplementationRef | None:
+) -> ObjectReferenceIR | None:
     """Return the impl ref when *tv*'s bound is a synchronized class or forward-refers to one by name."""
     bound = getattr(tv, "__bound__", None)
     if bound is None:

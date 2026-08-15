@@ -10,7 +10,6 @@ import subprocess
 import sys
 import time
 
-from synchronicity2.codegen.ir.references import ModuleImportRefIR
 from synchronicity2.codegen.parsing.defaults import resolve_parameter_default_expressions
 
 DEFAULT_GREETING = "hello"
@@ -67,7 +66,7 @@ def test_resolve_literal_default_verbatim():
     resolved = _resolve(literal_default)
 
     assert resolved["value"].expression == '"hello"'
-    assert resolved["value"].import_refs == ()
+    assert resolved["value"].import_modules == ()
 
 
 def test_resolve_multiline_default_preserves_exact_source():
@@ -99,21 +98,21 @@ def test_resolve_impl_module_prefixed_default():
     resolved = _resolve(impl_module_default)
 
     assert resolved["value"].expression == f"{__name__}.DEFAULT_GREETING"
-    assert resolved["value"].import_refs == ()
+    assert resolved["value"].import_modules == ()
 
 
 def test_resolve_qualified_module_default_with_plain_import_ref():
     resolved = _resolve(subprocess_default)
 
     assert resolved["pipe"].expression == "subprocess.PIPE"
-    assert resolved["pipe"].import_refs == (ModuleImportRefIR(module="subprocess", name="subprocess"),)
+    assert resolved["pipe"].import_modules == ("subprocess",)
 
 
 def test_resolve_qualified_callable_default_with_plain_import_ref():
     resolved = _resolve(pathlib_default)
 
     assert resolved["path"].expression == 'pathlib.Path("demo")'
-    assert resolved["path"].import_refs == (ModuleImportRefIR(module="pathlib", name="pathlib"),)
+    assert resolved["path"].import_modules == ("pathlib",)
 
 
 def test_resolve_rejects_missing_source(monkeypatch):

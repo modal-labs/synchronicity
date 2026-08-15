@@ -35,7 +35,7 @@ from ..ir.declarations import (
     WrappedMethodIR,
     WrappedPropertyIR,
 )
-from ..ir.references import ImplementationRef, WrapperClassRef
+from ..ir.references import ObjectReferenceIR
 from .annotations import _synchronicity1_wrapper_ref, parse_annotation
 from .signatures import (
     _extract_typevars_from_function,
@@ -57,10 +57,10 @@ def _get_wrapper_location(t: type) -> tuple[str, str] | None:
 def _wrapper_ref_for_impl_type(
     impl_type: type,
     synchronicity1_synchronizer: Synchronicity1Synchronizer | None,
-) -> WrapperClassRef | None:
+) -> ObjectReferenceIR | None:
     loc = _get_wrapper_location(impl_type)
     if loc is not None:
-        return WrapperClassRef(*loc)
+        return ObjectReferenceIR(*loc)
     synchronicity1_ref = _synchronicity1_wrapper_ref(impl_type, synchronicity1_synchronizer)
     if synchronicity1_ref is not None:
         return synchronicity1_ref
@@ -102,11 +102,11 @@ def _should_include_private_staticmethod(name: str, *, is_manual: bool) -> bool:
     return is_manual or not name.startswith("_")
 
 
-def _manual_wrapper_impl_ref(module: Module, obj: object) -> ImplementationRef:
+def _manual_wrapper_impl_ref(module: Module, obj: object) -> ObjectReferenceIR:
     ref = module._manual_wrapper_ref(obj)
     if ref is None:
         raise TypeError(f"Manual wrapper object {obj!r} is missing manual wrapper reference metadata")
-    return ImplementationRef(module=ref.module, qualname=ref.qualname)
+    return ObjectReferenceIR(module=ref.module, qualname=ref.qualname)
 
 
 def _check_annotation_for_cross_refs(
@@ -278,7 +278,7 @@ def build_module_ir(
     for export_name, ref in module._manual_export_refs.items():
         manual_reexports.append(
             ManualReexportIR(
-                impl_ref=ImplementationRef(ref.module, ref.qualname),
+                impl_ref=ObjectReferenceIR(ref.module, ref.qualname),
                 export_name=export_name,
             )
         )
@@ -576,7 +576,7 @@ def parse_wrapped_function(
     )
 
     return WrappedFunctionIR(
-        impl_ref=ImplementationRef(f.__module__, f.__qualname__),
+        impl_ref=ObjectReferenceIR(f.__module__, f.__qualname__),
         needs_async_wrapper=needs_async_wrapper,
         is_async_gen=is_async_gen,
         parameters=signature_ir.parameters,
@@ -676,7 +676,7 @@ def parse_wrapped_class(
     if globals_dict is None and cls.__module__ in sys.modules:
         globals_dict = sys.modules[cls.__module__].__dict__
 
-    wrapped_bases: list[tuple[ImplementationRef, WrapperClassRef]] = []
+    wrapped_bases: list[tuple[ObjectReferenceIR, ObjectReferenceIR]] = []
     generic_type_parameters: tuple[str, ...] | None = None
     generic_typevars: dict[str, typing.TypeVar | typing.ParamSpec] = {}
 
@@ -697,7 +697,7 @@ def parse_wrapped_class(
         elif base is not object and isinstance(base, type):
             wrapper_ref = _wrapper_ref_for_impl_type(base, synchronicity1_synchronizer)
             if wrapper_ref is not None:
-                wrapped_bases.append((ImplementationRef(base.__module__, base.__qualname__), wrapper_ref))
+                wrapped_bases.append((ObjectReferenceIR(base.__module__, base.__qualname__), wrapper_ref))
 
     # Collect all source methods: __init__, public methods, and async iterator dunders.
     source_methods: list[tuple[str, types.FunctionType, MethodBindingKind]] = []
@@ -904,10 +904,10 @@ def parse_wrapped_class(
     # Read wrapper location from marker attribute
     wrapper_loc = _get_wrapper_location(cls)
     assert wrapper_loc is not None, f"{cls!r} missing {_IMPL_WRAPPER_LOCATION_ATTR}"
-    wrapper_ref = WrapperClassRef(*wrapper_loc)
+    wrapper_ref = ObjectReferenceIR(*wrapper_loc)
 
     return WrappedClassIR(
-        impl_ref=ImplementationRef(cls.__module__, cls.__qualname__),
+        impl_ref=ObjectReferenceIR(cls.__module__, cls.__qualname__),
         wrapper_ref=wrapper_ref,
         wrapped_bases=tuple(wrapped_bases),
         generic_type_parameters=generic_type_parameters,

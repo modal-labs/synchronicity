@@ -40,7 +40,7 @@ from ..ir.annotations import (
     WrappedClassRefIR,
 )
 from ..ir.declarations import MethodBindingKind, TypeParameterIR
-from ..ir.references import ImplementationRef, WrapperClassRef
+from ..ir.references import ObjectReferenceIR
 
 
 @dataclasses.dataclass
@@ -50,13 +50,13 @@ class TypeCodegenContext:
     type_parameters_by_name: dict[str, TypeParameterIR] | None = None
 
 
-def _wrapper_ref_dotted(wrapper: WrapperClassRef) -> str:
-    return f"{wrapper.wrapper_module}.{wrapper.wrapper_name}"
+def _wrapper_ref_dotted(wrapper: ObjectReferenceIR) -> str:
+    return f"{wrapper.module}.{wrapper.qualname}"
 
 
-def _wrapper_ref_runtime_expr(wrapper: WrapperClassRef, target_module: str) -> str:
-    if wrapper.wrapper_module == target_module:
-        return wrapper.wrapper_name
+def _wrapper_ref_runtime_expr(wrapper: ObjectReferenceIR, target_module: str) -> str:
+    if wrapper.module == target_module:
+        return wrapper.qualname
     return _wrapper_ref_dotted(wrapper)
 
 
@@ -176,16 +176,16 @@ class PlainTypeCodegen(TypeCodegen):
 class WrappedClassTypeCodegen(TypeCodegen):
     """Codegen for wrapped class types."""
 
-    def __init__(self, impl: ImplementationRef, wrapper: WrapperClassRef):
+    def __init__(self, impl: ObjectReferenceIR, wrapper: ObjectReferenceIR):
         self.impl_ref = impl
         self._wrapper = wrapper
 
     def public_annotation(self, target_module: str, is_async: bool = True) -> str:
         """Return the wrapper class name (local or fully qualified)."""
-        if self._wrapper.wrapper_module == target_module:
-            return self._wrapper.wrapper_name
+        if self._wrapper.module == target_module:
+            return self._wrapper.qualname
         else:
-            return f"{self._wrapper.wrapper_module}.{self._wrapper.wrapper_name}"
+            return f"{self._wrapper.module}.{self._wrapper.qualname}"
 
     def wrapper_to_impl_expr(self, var_name: str, target_module: str | None = None) -> str:
         """Unwrap a native generated wrapper."""
@@ -193,10 +193,10 @@ class WrappedClassTypeCodegen(TypeCodegen):
 
     def impl_to_wrapper_expr(self, target_module: str, var_name: str, is_async: bool = True) -> str:
         """Wrap by calling WrapperClass._from_impl()."""
-        if self._wrapper.wrapper_module == target_module:
-            return f"{self._wrapper.wrapper_name}._from_impl({var_name})"
+        if self._wrapper.module == target_module:
+            return f"{self._wrapper.qualname}._from_impl({var_name})"
         else:
-            return f"{self._wrapper.wrapper_module}.{self._wrapper.wrapper_name}._from_impl({var_name})"
+            return f"{self._wrapper.module}.{self._wrapper.qualname}._from_impl({var_name})"
 
     def requires_boundary_translation(self) -> bool:
         return True
@@ -211,7 +211,7 @@ class WrappedClassTypeCodegen(TypeCodegen):
 class Synchronicity1WrappedClassTypeCodegen(TypeCodegen):
     """Codegen for implementation classes wrapped by Synchronicity 1."""
 
-    def __init__(self, impl: ImplementationRef, wrapper: WrapperClassRef):
+    def __init__(self, impl: ObjectReferenceIR, wrapper: ObjectReferenceIR):
         self.impl_ref = impl
         self._wrapper = wrapper
 
@@ -314,7 +314,7 @@ class SelfTypeCodegen(TypeCodegen):
     Emitting the concrete wrapper name would break ``Self`` binding on subclasses and on generic classes.
     """
 
-    def __init__(self, impl: ImplementationRef, wrapper: WrapperClassRef):
+    def __init__(self, impl: ObjectReferenceIR, wrapper: ObjectReferenceIR):
         self._impl = WrappedClassTypeCodegen(impl, wrapper)
 
     def public_annotation(self, target_module: str, is_async: bool = True) -> str:
@@ -682,7 +682,7 @@ class _UnionArmRuntimeSpec:
     wrap_value_expr: str
 
 
-def _impl_ref_dotted(impl_ref: ImplementationRef) -> str:
+def _impl_ref_dotted(impl_ref: ObjectReferenceIR) -> str:
     q = impl_ref.qualname
     if ".<locals>." in q or q.startswith("<locals>."):
         return f"{impl_ref.module}.{q.rpartition('.')[2]}"

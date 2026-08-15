@@ -12,7 +12,7 @@ from synchronicity2.module import (
 
 from ..ir.annotations import AnnotationIR, Synchronicity1WrappedClassRefIR, WrappedClassRefIR
 from ..ir.declarations import TypeParameterIR
-from ..ir.references import WrapperClassRef
+from ..ir.references import ObjectReferenceIR
 from .annotations import (
     _canonical_type_ref,
     _synchronicity1_wrapper_ref,
@@ -160,7 +160,7 @@ def type_parameter_irs_from_collected(
             if impl_type is not None:
                 loc = _get_wrapper_location(impl_type)
                 if loc is not None:
-                    bound_annotation_ir = WrappedClassRefIR(impl_ref, WrapperClassRef(*loc))
+                    bound_annotation_ir = WrappedClassRefIR(impl_ref, ObjectReferenceIR(*loc))
                 else:
                     synchronicity1_wrapper_ref = _synchronicity1_wrapper_ref(impl_type, synchronicity1_synchronizer)
                     if synchronicity1_wrapper_ref is not None:

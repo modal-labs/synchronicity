@@ -17,7 +17,7 @@ from synchronicity2.module import Module
 
 from .emission.module_codegen import SyncAsyncModuleEmitter
 from .emission.protocol import ModuleEmitter
-from .ir.references import QualifiedObjectRefIR
+from .ir.references import ObjectReferenceIR
 from .parsing.declarations import build_module_ir
 
 if typing.TYPE_CHECKING:
@@ -153,7 +153,7 @@ def compile_modules(
 def _emit_synchronizer_module(
     *,
     runtime_package: str,
-    synchronicity1_synchronizer_ref: QualifiedObjectRefIR | None,
+    synchronicity1_synchronizer_ref: ObjectReferenceIR | None,
 ) -> str:
     compatibility_import = ""
     constructor_argument = ""
@@ -177,7 +177,7 @@ def _validate_module_path(path: str, *, label: str) -> None:
 
 def _resolve_synchronicity1_synchronizer(
     path: str | None,
-) -> tuple[Synchronicity1Synchronizer | None, QualifiedObjectRefIR | None]:
+) -> tuple[Synchronicity1Synchronizer | None, ObjectReferenceIR | None]:
     if path is None:
         return None, None
 
@@ -199,4 +199,4 @@ def _resolve_synchronicity1_synchronizer(
 
     if not isinstance(synchronizer, Synchronicity1Synchronizer):
         raise TypeError(f"{path!r} does not refer to a Synchronicity 1 Synchronizer")
-    return synchronizer, QualifiedObjectRefIR(module_name, qualname)
+    return synchronizer, ObjectReferenceIR(module_name, qualname)

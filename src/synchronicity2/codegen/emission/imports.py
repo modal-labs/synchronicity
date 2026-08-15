@@ -43,11 +43,11 @@ def annotation_import_modules(annotation_ir: AnnotationIR) -> frozenset[str]:
     if isinstance(annotation_ir, PlainAnnotationIR):
         return frozenset(annotation_ir.import_modules)
     if isinstance(annotation_ir, WrappedClassRefIR):
-        return frozenset((annotation_ir.wrapper.wrapper_module,))
+        return frozenset((annotation_ir.wrapper.module,))
     if isinstance(annotation_ir, Synchronicity1WrappedClassRefIR):
-        return frozenset((annotation_ir.impl.module, annotation_ir.wrapper.wrapper_module))
+        return frozenset((annotation_ir.impl.module, annotation_ir.wrapper.module))
     if isinstance(annotation_ir, SelfAnnotationIR):
-        return frozenset((annotation_ir.wrapper.wrapper_module,))
+        return frozenset((annotation_ir.wrapper.module,))
     if isinstance(
         annotation_ir,
         (
@@ -133,7 +133,7 @@ def _wrapped_class_property_import_modules(property_ir: WrappedClassPropertyIR) 
 
 
 def _wrapped_class_import_modules(class_ir: WrappedClassIR) -> frozenset[str]:
-    modules = {wrapper_ref.wrapper_module for _impl_ref, wrapper_ref in class_ir.wrapped_bases}
+    modules = {wrapper_ref.module for _impl_ref, wrapper_ref in class_ir.wrapped_bases}
     for _attribute_name, annotation_ir in class_ir.attributes:
         if annotation_ir is not None:
             modules.update(annotation_import_modules(annotation_ir))

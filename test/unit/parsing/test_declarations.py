@@ -33,7 +33,7 @@ from synchronicity2.codegen.ir.declarations import (
     WrappedClassPropertyIR,
     WrappedPropertyIR,
 )
-from synchronicity2.codegen.ir.references import ImplementationRef, ModuleImportRefIR, WrapperClassRef
+from synchronicity2.codegen.ir.references import ObjectReferenceIR
 from synchronicity2.codegen.parsing.declarations import (
     build_module_ir,
     parse_wrapped_class,
@@ -164,7 +164,7 @@ def test_parse_wrapped_function_async_is_awaitable_ir():
     assert isinstance(ir.return_annotation_ir, AwaitableAnnotationIR)
     assert isinstance(ir.return_annotation_ir.inner_ir, PlainAnnotationIR)
     assert ir.return_annotation_ir.inner_ir.signature_text == "int"
-    assert ir.impl_ref == ImplementationRef(impl.__module__, impl.__qualname__)
+    assert ir.impl_ref == ObjectReferenceIR(impl.__module__, impl.__qualname__)
 
 
 def test_parse_wrapped_function_preserves_union_with_any_for_runtime_fallback():
@@ -176,8 +176,8 @@ def test_parse_wrapped_function_preserves_union_with_any_for_runtime_fallback():
     assert isinstance(ir.return_annotation_ir, UnionAnnotationIR)
     assert ir.return_annotation_ir.arm_irs == (
         WrappedClassRefIR(
-            impl=ImplementationRef(__name__, "_SequenceCallableParseNode"),
-            wrapper=WrapperClassRef("generated.sequence_callable_parse", "SequenceCallableParseNode"),
+            impl=ObjectReferenceIR(__name__, "_SequenceCallableParseNode"),
+            wrapper=ObjectReferenceIR("generated.sequence_callable_parse", "SequenceCallableParseNode"),
         ),
         PlainAnnotationIR(signature_text="typing.Any"),
     )
@@ -185,8 +185,8 @@ def test_parse_wrapped_function_preserves_union_with_any_for_runtime_fallback():
 
 def test_public_annotation_ir_requires_wrapper_import_modules():
     wrapped_ir = WrappedClassRefIR(
-        impl=ImplementationRef(__name__, "_SequenceCallableParseNode"),
-        wrapper=WrapperClassRef("generated.sequence_callable_parse", "SequenceCallableParseNode"),
+        impl=ObjectReferenceIR(__name__, "_SequenceCallableParseNode"),
+        wrapper=ObjectReferenceIR("generated.sequence_callable_parse", "SequenceCallableParseNode"),
     )
     subscripted_ir = ParameterizedWrappedClassRefIR(
         wrapped_class_ir=wrapped_ir,
@@ -206,14 +206,14 @@ def test_resolve_parameter_default_expressions_preserves_exact_source_slices():
     )
 
     assert resolved["value"].expression == "(\n        1,\n        2,\n    )"
-    assert resolved["value"].import_refs == ()
+    assert resolved["value"].import_modules == ()
 
 
 def test_parse_wrapped_function_preserves_positional_and_keyword_only_defaults():
     ir = parse_wrapped_function(parse_positional_keyword_defaults, "out_mod", globals_dict=globals())
 
     assert tuple(param.default_expr for param in ir.parameters) == (None, "10", '"hello"', "False")
-    assert tuple(param.default_import_refs for param in ir.parameters) == ((), (), (), ())
+    assert tuple(param.default_import_modules for param in ir.parameters) == ((), (), (), ())
 
 
 def test_parse_wrapped_method_preserves_default_values():
@@ -225,28 +225,28 @@ def test_parse_wrapped_method_preserves_default_values():
     )
 
     assert tuple(param.default_expr for param in ir.parameters) == ('"hello"', "3")
-    assert tuple(param.default_import_refs for param in ir.parameters) == ((), ())
+    assert tuple(param.default_import_modules for param in ir.parameters) == ((), ())
 
 
 def test_parse_wrapped_function_preserves_builtin_source_default():
     ir = parse_wrapped_function(parse_builtin_default, "out_mod", globals_dict=globals())
 
     assert ir.parameters[0].default_expr == '"hello"'
-    assert ir.parameters[0].default_import_refs == ()
+    assert ir.parameters[0].default_import_modules == ()
 
 
 def test_parse_wrapped_function_prefixes_impl_module_for_module_constants():
     ir = parse_wrapped_function(parse_impl_module_default, "out_mod", globals_dict=globals())
 
     assert ir.parameters[0].default_expr == f"{__name__}.PARSE_DEFAULT_GREETING"
-    assert ir.parameters[0].default_import_refs == ()
+    assert ir.parameters[0].default_import_modules == ()
 
 
 def test_parse_wrapped_function_keeps_qualified_module_defaults_with_import_refs():
     ir = parse_wrapped_function(parse_qualified_import_default, "out_mod", globals_dict=globals())
 
     assert ir.parameters[0].default_expr == "subprocess.PIPE"
-    assert ir.parameters[0].default_import_refs == (ModuleImportRefIR(module="subprocess", name="subprocess"),)
+    assert ir.parameters[0].default_import_modules == ("subprocess",)
 
 
 def test_parse_wrapped_function_keeps_annotation_import_modules():
@@ -333,8 +333,8 @@ def test_build_module_ir_uses_qualified_refs():
 
     assert isinstance(ir, ModuleIR)
     assert ir.target_module == "generated.example"
-    assert ir.class_refs == (ImplementationRef(Service.__module__, Service.__qualname__),)
-    assert ir.function_refs == (ImplementationRef(top_level.__module__, top_level.__qualname__),)
+    assert ir.class_refs == (ObjectReferenceIR(Service.__module__, Service.__qualname__),)
+    assert ir.function_refs == (ObjectReferenceIR(top_level.__module__, top_level.__qualname__),)
     assert len(ir.wrapped_classes) == 1
     assert ir.wrapped_classes[0].impl_ref.qualname.rpartition(".")[2] == "Service"
     assert len(ir.wrapped_functions) == 1
@@ -348,7 +348,7 @@ def test_build_module_ir_preserves_registered_export_names():
     wrapped_classes = {wrapper.impl_ref.qualname.rpartition(".")[2]: wrapper for wrapper in ir.wrapped_classes}
     function_irs = {function.impl_ref.qualname.rpartition(".")[2]: function for function in ir.wrapped_functions}
 
-    assert wrapped_classes["_RenamedImplService"].wrapper_ref == WrapperClassRef("generated.renamed", "PublicService")
+    assert wrapped_classes["_RenamedImplService"].wrapper_ref == ObjectReferenceIR("generated.renamed", "PublicService")
     assert function_irs["_renamed_make_service"].export_name == "make_service"
     assert isinstance(function_irs["_renamed_make_service"].return_annotation_ir, AwaitableAnnotationIR)
     assert isinstance(
@@ -356,15 +356,15 @@ def test_build_module_ir_preserves_registered_export_names():
     )
     assert function_irs[
         "_renamed_make_service"
-    ].return_annotation_ir.inner_ir.wrapped_class_ir.wrapper == WrapperClassRef(
+    ].return_annotation_ir.inner_ir.wrapped_class_ir.wrapper == ObjectReferenceIR(
         "generated.renamed",
         "PublicService",
     )
-    assert wrapped_classes["_DefaultNamedService"].wrapper_ref == WrapperClassRef(
+    assert wrapped_classes["_DefaultNamedService"].wrapper_ref == ObjectReferenceIR(
         "generated.renamed", "DefaultNamedService"
     )
     assert function_irs["_default_named_factory"].export_name == "default_named_factory"
-    assert wrapped_classes["_ExplicitlyPrivateServiceImpl"].wrapper_ref == WrapperClassRef(
+    assert wrapped_classes["_ExplicitlyPrivateServiceImpl"].wrapper_ref == ObjectReferenceIR(
         "generated.renamed",
         "_ExplicitlyPrivateService",
     )
@@ -411,7 +411,7 @@ def test_parse_wrapped_class_inheritance_stores_impl_refs_not_wrapper_names():
 
     ir = parse_wrapped_class(Sub, "generated.inherit_parse", globals_dict=globals())
     assert ir.wrapped_bases == (
-        (ImplementationRef(Base.__module__, Base.__qualname__), WrapperClassRef("generated.inherit_parse", "Base")),
+        (ObjectReferenceIR(Base.__module__, Base.__qualname__), ObjectReferenceIR("generated.inherit_parse", "Base")),
     )
     assert ir.generic_type_parameters is None
 
@@ -439,8 +439,8 @@ def test_build_module_ir_resolves_synchronicity1_wrapped_base_from_registry():
 
     assert ir.wrapped_classes[0].wrapped_bases == (
         (
-            ImplementationRef(LegacyBase.__module__, LegacyBase.__qualname__),
-            WrapperClassRef("legacy.api", "LegacyBaseWrapper"),
+            ObjectReferenceIR(LegacyBase.__module__, LegacyBase.__qualname__),
+            ObjectReferenceIR("legacy.api", "LegacyBaseWrapper"),
         ),
     )
     assert ir.cross_module_imports == {}
@@ -564,8 +564,8 @@ class Service:
     assert isinstance(prop, WrappedClassPropertyIR)
     assert prop.name == "manager"
     assert isinstance(prop.return_annotation_ir, WrappedClassRefIR)
-    assert prop.return_annotation_ir.impl == ImplementationRef(Manager.__module__, Manager.__qualname__)
-    assert prop.return_annotation_ir.wrapper == WrapperClassRef("generated.classprop_parse", "Manager")
+    assert prop.return_annotation_ir.impl == ObjectReferenceIR(Manager.__module__, Manager.__qualname__)
+    assert prop.return_annotation_ir.wrapper == ObjectReferenceIR("generated.classprop_parse", "Manager")
 
 
 def test_parse_class_async_classproperty_raises():
@@ -622,7 +622,7 @@ class Service:
 
     assert len(ir.class_properties) == 1
     assert isinstance(ir.class_properties[0].return_annotation_ir, WrappedClassRefIR)
-    assert ir.class_properties[0].return_annotation_ir.impl == ImplementationRef(Item.__module__, Item.__qualname__)
+    assert ir.class_properties[0].return_annotation_ir.impl == ObjectReferenceIR(Item.__module__, Item.__qualname__)
 
 
 def test_parse_class_forwarded_dunder_methods():
@@ -798,8 +798,8 @@ class Holder:
     assert len(ir.attributes) == 1
     _name, ann_ir = ir.attributes[0]
     assert isinstance(ann_ir, WrappedClassRefIR)
-    assert ann_ir.impl == ImplementationRef(Inner.__module__, Inner.__qualname__)
-    assert ann_ir.wrapper == WrapperClassRef("generated.attr_parse", "Inner")
+    assert ann_ir.impl == ObjectReferenceIR(Inner.__module__, Inner.__qualname__)
+    assert ann_ir.wrapper == ObjectReferenceIR("generated.attr_parse", "Inner")
 
 
 def test_parse_module_function_overloads_are_captured_in_ir():
@@ -827,7 +827,9 @@ def test_parse_module_function_overloads_are_captured_in_ir():
     assert isinstance(wrapped_overload.parameters[0].annotation_ir, WrappedClassRefIR)
     assert isinstance(wrapped_overload.return_annotation_ir, AwaitableAnnotationIR)
     assert isinstance(wrapped_overload.return_annotation_ir.inner_ir, WrappedClassRefIR)
-    assert wrapped_overload.return_annotation_ir.inner_ir.wrapper == WrapperClassRef("generated.overload_parse", "Item")
+    assert wrapped_overload.return_annotation_ir.inner_ir.wrapper == ObjectReferenceIR(
+        "generated.overload_parse", "Item"
+    )
 
 
 def test_parse_method_overloads_are_captured_in_ir():
@@ -857,7 +859,7 @@ def test_parse_method_overloads_are_captured_in_ir():
     assert isinstance(wrapped_overload.parameters[0].annotation_ir, WrappedClassRefIR)
     assert isinstance(wrapped_overload.return_annotation_ir, AwaitableAnnotationIR)
     assert isinstance(wrapped_overload.return_annotation_ir.inner_ir, WrappedClassRefIR)
-    assert wrapped_overload.return_annotation_ir.inner_ir.wrapper == WrapperClassRef(
+    assert wrapped_overload.return_annotation_ir.inner_ir.wrapper == ObjectReferenceIR(
         "generated.method_overload_parse", "Item"
     )
 
@@ -913,15 +915,15 @@ def test_build_module_ir_collects_manual_reexports_separately():
     assert ir.wrapped_classes == ()
     assert set(ir.manual_reexports) == {
         ManualReexportIR(
-            impl_ref=ImplementationRef(forwarded._sync_impl.__module__, forwarded._sync_impl.__qualname__),
+            impl_ref=ObjectReferenceIR(forwarded._sync_impl.__module__, forwarded._sync_impl.__qualname__),
             export_name="forwarded",
         ),
         ManualReexportIR(
-            impl_ref=ImplementationRef(ForwardedType.__module__, ForwardedType.__qualname__),
+            impl_ref=ObjectReferenceIR(ForwardedType.__module__, ForwardedType.__qualname__),
             export_name="ForwardedType",
         ),
         ManualReexportIR(
-            impl_ref=ImplementationRef("example.impl", "PUBLIC_VALUE"),
+            impl_ref=ObjectReferenceIR("example.impl", "PUBLIC_VALUE"),
             export_name="PUBLIC_VALUE",
         ),
     }

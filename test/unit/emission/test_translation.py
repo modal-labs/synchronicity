@@ -22,14 +22,14 @@ from synchronicity2.codegen.ir.declarations import (
     WrappedFunctionIR,
     WrappedMethodIR,
 )
-from synchronicity2.codegen.ir.references import ImplementationRef, WrapperClassRef
+from synchronicity2.codegen.ir.references import ObjectReferenceIR
 
 IMPL = __name__
 TARGET = "test_module"
 
 IR_CLASS_HELPER = WrappedClassIR(
-    impl_ref=ImplementationRef(IMPL, "HelperTestClass"),
-    wrapper_ref=WrapperClassRef(TARGET, "HelperTestClass"),
+    impl_ref=ObjectReferenceIR(IMPL, "HelperTestClass"),
+    wrapper_ref=ObjectReferenceIR(TARGET, "HelperTestClass"),
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
@@ -50,9 +50,9 @@ IR_CLASS_HELPER = WrappedClassIR(
     ),
 )
 IR_CLASS_HELPER_SUBCLASS = WrappedClassIR(
-    impl_ref=ImplementationRef(IMPL, "HelperTestSubclass"),
-    wrapper_ref=WrapperClassRef(TARGET, "HelperTestSubclass"),
-    wrapped_bases=((ImplementationRef(IMPL, "HelperTestClass"), WrapperClassRef(TARGET, "HelperTestClass")),),
+    impl_ref=ObjectReferenceIR(IMPL, "HelperTestSubclass"),
+    wrapper_ref=ObjectReferenceIR(TARGET, "HelperTestSubclass"),
+    wrapped_bases=((ObjectReferenceIR(IMPL, "HelperTestClass"), ObjectReferenceIR(TARGET, "HelperTestClass")),),
     generic_type_parameters=None,
     attributes=(),
     properties=(),
@@ -72,26 +72,26 @@ IR_CLASS_HELPER_SUBCLASS = WrappedClassIR(
     ),
 )
 IR_FN_NODE_GENERATOR = WrappedFunctionIR(
-    impl_ref=ImplementationRef(IMPL, "fn_node_generator"),
+    impl_ref=ObjectReferenceIR(IMPL, "fn_node_generator"),
     needs_async_wrapper=True,
     is_async_gen=True,
     parameters=(),
     return_annotation_ir=AsyncGeneratorAnnotationIR(
         yield_annotation_ir=WrappedClassRefIR(
-            impl=ImplementationRef(IMPL, "GenNode"), wrapper=WrapperClassRef(TARGET, "GenNode")
+            impl=ObjectReferenceIR(IMPL, "GenNode"), wrapper=ObjectReferenceIR(TARGET, "GenNode")
         ),
         send_type_str="None",
     ),
 )
 IR_FN_RETURNS_STRING = WrappedFunctionIR(
-    impl_ref=ImplementationRef(IMPL, "fn_returns_string"),
+    impl_ref=ObjectReferenceIR(IMPL, "fn_returns_string"),
     needs_async_wrapper=False,
     is_async_gen=False,
     parameters=(),
     return_annotation_ir=PlainAnnotationIR(signature_text="str"),
 )
 IR_FN_SIMPLE_GEN = WrappedFunctionIR(
-    impl_ref=ImplementationRef(IMPL, "fn_simple_gen"),
+    impl_ref=ObjectReferenceIR(IMPL, "fn_simple_gen"),
     needs_async_wrapper=True,
     is_async_gen=True,
     parameters=(),
@@ -100,7 +100,7 @@ IR_FN_SIMPLE_GEN = WrappedFunctionIR(
     ),
 )
 IR_FN_TUPLE_GENERATORS = WrappedFunctionIR(
-    impl_ref=ImplementationRef(IMPL, "fn_tuple_generators"),
+    impl_ref=ObjectReferenceIR(IMPL, "fn_tuple_generators"),
     needs_async_wrapper=True,
     is_async_gen=False,
     parameters=(),
@@ -119,7 +119,7 @@ IR_FN_TUPLE_GENERATORS = WrappedFunctionIR(
     ),
 )
 IR_TR_CONNECT_NODES = WrappedFunctionIR(
-    impl_ref=ImplementationRef(IMPL, "tr_connect_nodes"),
+    impl_ref=ObjectReferenceIR(IMPL, "tr_connect_nodes"),
     needs_async_wrapper=True,
     is_async_gen=False,
     parameters=(
@@ -127,7 +127,7 @@ IR_TR_CONNECT_NODES = WrappedFunctionIR(
             name="parent",
             kind=1,
             annotation_ir=WrappedClassRefIR(
-                impl=ImplementationRef(IMPL, "TestNode"), wrapper=WrapperClassRef(TARGET, "TestNode")
+                impl=ObjectReferenceIR(IMPL, "TestNode"), wrapper=ObjectReferenceIR(TARGET, "TestNode")
             ),
             default_expr=None,
         ),
@@ -135,7 +135,7 @@ IR_TR_CONNECT_NODES = WrappedFunctionIR(
             name="child",
             kind=1,
             annotation_ir=WrappedClassRefIR(
-                impl=ImplementationRef(IMPL, "TestNode"), wrapper=WrapperClassRef(TARGET, "TestNode")
+                impl=ObjectReferenceIR(IMPL, "TestNode"), wrapper=ObjectReferenceIR(TARGET, "TestNode")
             ),
             default_expr=None,
         ),
@@ -144,10 +144,10 @@ IR_TR_CONNECT_NODES = WrappedFunctionIR(
         inner_ir=TupleAnnotationIR(
             element_irs=(
                 WrappedClassRefIR(
-                    impl=ImplementationRef(IMPL, "TestNode"), wrapper=WrapperClassRef(TARGET, "TestNode")
+                    impl=ObjectReferenceIR(IMPL, "TestNode"), wrapper=ObjectReferenceIR(TARGET, "TestNode")
                 ),
                 WrappedClassRefIR(
-                    impl=ImplementationRef(IMPL, "TestNode"), wrapper=WrapperClassRef(TARGET, "TestNode")
+                    impl=ObjectReferenceIR(IMPL, "TestNode"), wrapper=ObjectReferenceIR(TARGET, "TestNode")
                 ),
             ),
             variadic=False,
@@ -155,7 +155,7 @@ IR_TR_CONNECT_NODES = WrappedFunctionIR(
     ),
 )
 IR_TR_CREATE_NODE = WrappedFunctionIR(
-    impl_ref=ImplementationRef(IMPL, "tr_create_node"),
+    impl_ref=ObjectReferenceIR(IMPL, "tr_create_node"),
     needs_async_wrapper=True,
     is_async_gen=False,
     parameters=(
@@ -163,12 +163,12 @@ IR_TR_CREATE_NODE = WrappedFunctionIR(
     ),
     return_annotation_ir=AwaitableAnnotationIR(
         inner_ir=WrappedClassRefIR(
-            impl=ImplementationRef(IMPL, "TestNode"), wrapper=WrapperClassRef(TARGET, "TestNode")
+            impl=ObjectReferenceIR(IMPL, "TestNode"), wrapper=ObjectReferenceIR(TARGET, "TestNode")
         )
     ),
 )
 IR_TR_GET_NODE_LIST = WrappedFunctionIR(
-    impl_ref=ImplementationRef(IMPL, "tr_get_node_list"),
+    impl_ref=ObjectReferenceIR(IMPL, "tr_get_node_list"),
     needs_async_wrapper=True,
     is_async_gen=False,
     parameters=(
@@ -177,7 +177,7 @@ IR_TR_GET_NODE_LIST = WrappedFunctionIR(
             kind=1,
             annotation_ir=ListAnnotationIR(
                 item_ir=WrappedClassRefIR(
-                    impl=ImplementationRef(IMPL, "TestNode"), wrapper=WrapperClassRef(TARGET, "TestNode")
+                    impl=ObjectReferenceIR(IMPL, "TestNode"), wrapper=ObjectReferenceIR(TARGET, "TestNode")
                 )
             ),
             default_expr=None,
@@ -186,13 +186,13 @@ IR_TR_GET_NODE_LIST = WrappedFunctionIR(
     return_annotation_ir=AwaitableAnnotationIR(
         inner_ir=ListAnnotationIR(
             item_ir=WrappedClassRefIR(
-                impl=ImplementationRef(IMPL, "TestNode"), wrapper=WrapperClassRef(TARGET, "TestNode")
+                impl=ObjectReferenceIR(IMPL, "TestNode"), wrapper=ObjectReferenceIR(TARGET, "TestNode")
             )
         )
     ),
 )
 IR_TR_GET_OPTIONAL_NODE = WrappedFunctionIR(
-    impl_ref=ImplementationRef(IMPL, "tr_get_optional_node"),
+    impl_ref=ObjectReferenceIR(IMPL, "tr_get_optional_node"),
     needs_async_wrapper=True,
     is_async_gen=False,
     parameters=(
@@ -201,7 +201,7 @@ IR_TR_GET_OPTIONAL_NODE = WrappedFunctionIR(
             kind=1,
             annotation_ir=OptionalAnnotationIR(
                 inner_ir=WrappedClassRefIR(
-                    impl=ImplementationRef(IMPL, "TestNode"), wrapper=WrapperClassRef(TARGET, "TestNode")
+                    impl=ObjectReferenceIR(IMPL, "TestNode"), wrapper=ObjectReferenceIR(TARGET, "TestNode")
                 )
             ),
             default_expr=None,
@@ -210,13 +210,13 @@ IR_TR_GET_OPTIONAL_NODE = WrappedFunctionIR(
     return_annotation_ir=AwaitableAnnotationIR(
         inner_ir=OptionalAnnotationIR(
             inner_ir=WrappedClassRefIR(
-                impl=ImplementationRef(IMPL, "TestNode"), wrapper=WrapperClassRef(TARGET, "TestNode")
+                impl=ObjectReferenceIR(IMPL, "TestNode"), wrapper=ObjectReferenceIR(TARGET, "TestNode")
             )
         )
     ),
 )
 IR_TR_PROCESS_LIST = WrappedFunctionIR(
-    impl_ref=ImplementationRef(IMPL, "tr_process_list"),
+    impl_ref=ObjectReferenceIR(IMPL, "tr_process_list"),
     needs_async_wrapper=True,
     is_async_gen=False,
     parameters=(
@@ -225,8 +225,8 @@ IR_TR_PROCESS_LIST = WrappedFunctionIR(
             kind=1,
             annotation_ir=ListAnnotationIR(
                 item_ir=WrappedClassRefIR(
-                    impl=ImplementationRef(IMPL, "CollectionTestNode"),
-                    wrapper=WrapperClassRef(TARGET, "CollectionTestNode"),
+                    impl=ObjectReferenceIR(IMPL, "CollectionTestNode"),
+                    wrapper=ObjectReferenceIR(TARGET, "CollectionTestNode"),
                 )
             ),
             default_expr=None,
@@ -235,14 +235,14 @@ IR_TR_PROCESS_LIST = WrappedFunctionIR(
     return_annotation_ir=AwaitableAnnotationIR(
         inner_ir=ListAnnotationIR(
             item_ir=WrappedClassRefIR(
-                impl=ImplementationRef(IMPL, "CollectionTestNode"),
-                wrapper=WrapperClassRef(TARGET, "CollectionTestNode"),
+                impl=ObjectReferenceIR(IMPL, "CollectionTestNode"),
+                wrapper=ObjectReferenceIR(TARGET, "CollectionTestNode"),
             )
         )
     ),
 )
 IR_TR_PROCESS_NODE = WrappedFunctionIR(
-    impl_ref=ImplementationRef(IMPL, "tr_process_node"),
+    impl_ref=ObjectReferenceIR(IMPL, "tr_process_node"),
     needs_async_wrapper=True,
     is_async_gen=False,
     parameters=(
@@ -250,20 +250,20 @@ IR_TR_PROCESS_NODE = WrappedFunctionIR(
             name="node",
             kind=1,
             annotation_ir=WrappedClassRefIR(
-                impl=ImplementationRef(IMPL, "UnwrapTestNode"), wrapper=WrapperClassRef(TARGET, "UnwrapTestNode")
+                impl=ObjectReferenceIR(IMPL, "UnwrapTestNode"), wrapper=ObjectReferenceIR(TARGET, "UnwrapTestNode")
             ),
             default_expr=None,
         ),
     ),
     return_annotation_ir=AwaitableAnnotationIR(
         inner_ir=WrappedClassRefIR(
-            impl=ImplementationRef(IMPL, "UnwrapTestNode"), wrapper=WrapperClassRef(TARGET, "UnwrapTestNode")
+            impl=ObjectReferenceIR(IMPL, "UnwrapTestNode"), wrapper=ObjectReferenceIR(TARGET, "UnwrapTestNode")
         )
     ),
 )
 IR_TR_TESTNODE_CLASS = WrappedClassIR(
-    impl_ref=ImplementationRef(IMPL, "TestNode"),
-    wrapper_ref=WrapperClassRef(TARGET, "TestNode"),
+    impl_ref=ObjectReferenceIR(IMPL, "TestNode"),
+    wrapper_ref=ObjectReferenceIR(TARGET, "TestNode"),
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),

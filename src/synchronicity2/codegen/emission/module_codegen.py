@@ -17,7 +17,7 @@ from ..ir.declarations import (
     WrappedFunctionIR,
     WrappedMethodIR,
 )
-from ..ir.references import ImplementationRef, WrapperClassRef
+from ..ir.references import ObjectReferenceIR
 from .imports import module_import_modules
 from .signatures import (
     _build_call_with_wrap,
@@ -39,7 +39,7 @@ from .type_parameters import type_parameter_definition_lines
 class MethodEmitOwner:
     """Class-wrapper context needed when emitting method wrappers (emitter-only)."""
 
-    impl_ref: ImplementationRef
+    impl_ref: ObjectReferenceIR
     wrapper_name: str
     target_module: str
     generic_type_parameters: tuple[str, ...] | None
@@ -52,17 +52,17 @@ def _module_function_name(ir: WrappedFunctionIR) -> str:
 
 
 def _wrapper_class_reference(
-    wrapper: WrapperClassRef,
+    wrapper: ObjectReferenceIR,
     target_module: str,
 ) -> str:
     """Resolve a wrapper ref to the identifier used on a generated class line."""
 
-    if wrapper.wrapper_module == target_module:
-        return wrapper.wrapper_name
-    return f"{wrapper.wrapper_module}.{wrapper.wrapper_name}"
+    if wrapper.module == target_module:
+        return wrapper.qualname
+    return f"{wrapper.module}.{wrapper.qualname}"
 
 
-def _impl_type_dotted(impl_ref: ImplementationRef) -> str:
+def _impl_type_dotted(impl_ref: ObjectReferenceIR) -> str:
     """Dotted path to the implementation type for emitted source.
 
     Uses ``module`` + ``.__qualname__`` when qualname is a normal attribute path. If
@@ -77,14 +77,14 @@ def _impl_type_dotted(impl_ref: ImplementationRef) -> str:
     return f"{impl_ref.module}.{q}"
 
 
-def _impl_value_dotted(impl_ref: ImplementationRef) -> str:
+def _impl_value_dotted(impl_ref: ObjectReferenceIR) -> str:
     return _impl_type_dotted(impl_ref)
 
 
 def method_emit_owner(class_ir: WrappedClassIR, target_module: str) -> MethodEmitOwner:
     return MethodEmitOwner(
         impl_ref=class_ir.impl_ref,
-        wrapper_name=class_ir.wrapper_ref.wrapper_name,
+        wrapper_name=class_ir.wrapper_ref.qualname,
         target_module=target_module,
         generic_type_parameters=class_ir.generic_type_parameters,
     )
@@ -219,7 +219,7 @@ def _wrapper_registration_lines(wrapped_classes: tuple[WrappedClassIR, ...]) -> 
     lines: list[str] = []
     for ir in wrapped_classes:
         impl_dot = _impl_type_dotted(ir.impl_ref)
-        wshort = ir.wrapper_ref.wrapper_name
+        wshort = ir.wrapper_ref.qualname
         lines.append(f"_synchronizer.register_wrapper_class({impl_dot}, {wshort})")
     return lines
 
@@ -228,8 +228,7 @@ def _default_import_modules_for_signatures(signatures: tuple[SignatureIR, ...]) 
     modules: set[str] = set()
     for signature in signatures:
         for parameter in signature.parameters:
-            for import_ref in parameter.default_import_refs:
-                modules.add(import_ref.module)
+            modules.update(parameter.default_import_modules)
     return modules
 
 
@@ -1478,7 +1477,7 @@ def emit_wrapped_class(
     type_codegen_context: TypeCodegenContext | None = None,
 ) -> str:
     """Emit wrapper class source from :class:`WrappedClassIR` (no live implementation objects)."""
-    wshort = ir.wrapper_ref.wrapper_name
+    wshort = ir.wrapper_ref.qualname
     impl_dot = _impl_type_dotted(ir.impl_ref)
     proxy_type_comment = f"# Proxy type for the underlying implementation type {impl_dot}."
     owner = method_emit_owner(ir, target_module)

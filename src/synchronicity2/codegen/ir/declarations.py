@@ -11,7 +11,7 @@ import dataclasses
 import enum
 
 from .annotations import AnnotationIR
-from .references import ImplementationRef, ModuleImportRefIR, WrapperClassRef
+from .references import ObjectReferenceIR
 
 
 class MethodBindingKind(str, enum.Enum):
@@ -48,7 +48,7 @@ class ParameterIR:
     kind: int
     annotation_ir: AnnotationIR | None
     default_expr: str | None
-    default_import_refs: tuple[ModuleImportRefIR, ...] = ()
+    default_import_modules: tuple[str, ...] = ()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -77,11 +77,11 @@ class ModuleIR:
         return bool(self.wrapped_classes)
 
     @property
-    def class_refs(self) -> tuple[ImplementationRef, ...]:
+    def class_refs(self) -> tuple[ObjectReferenceIR, ...]:
         return tuple(c.impl_ref for c in self.wrapped_classes)
 
     @property
-    def function_refs(self) -> tuple[ImplementationRef, ...]:
+    def function_refs(self) -> tuple[ObjectReferenceIR, ...]:
         return tuple(f.impl_ref for f in self.wrapped_functions)
 
 
@@ -89,7 +89,7 @@ class ModuleIR:
 class WrappedFunctionIR:
     """Parsed module-level function and its wrapper-generation intent."""
 
-    impl_ref: ImplementationRef
+    impl_ref: ObjectReferenceIR
     needs_async_wrapper: bool
     is_async_gen: bool
     parameters: tuple[ParameterIR, ...]
@@ -103,7 +103,7 @@ class WrappedFunctionIR:
 class ManualReexportIR:
     """A module-level name that should be re-exported directly from the impl module."""
 
-    impl_ref: ImplementationRef
+    impl_ref: ObjectReferenceIR
     export_name: str
 
 
@@ -175,9 +175,9 @@ class WrappedClassIR:
     ``typing.Generic[...]`` base; the emitter formats that base string.
     """
 
-    impl_ref: ImplementationRef
-    wrapper_ref: WrapperClassRef
-    wrapped_bases: tuple[tuple[ImplementationRef, WrapperClassRef], ...]
+    impl_ref: ObjectReferenceIR
+    wrapper_ref: ObjectReferenceIR
+    wrapped_bases: tuple[tuple[ObjectReferenceIR, ObjectReferenceIR], ...]
     generic_type_parameters: tuple[str, ...] | None
     attributes: tuple[tuple[str, AnnotationIR | None], ...]
     properties: tuple[WrappedPropertyIR, ...]

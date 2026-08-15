@@ -25,7 +25,6 @@ from ..ir.annotations import (
     WrappedClassRefIR,
 )
 from ..ir.declarations import ParameterIR
-from ..ir.references import ModuleImportRefIR
 from .annotations import parse_annotation
 from .defaults import resolve_parameter_default_expressions
 
@@ -264,11 +263,11 @@ def parse_parameters_to_ir(
                 )
 
         default_expr: str | None = None
-        default_import_refs: tuple[ModuleImportRefIR, ...] = ()
+        default_import_modules: tuple[str, ...] = ()
         if param.default is not inspect.Parameter.empty:
             resolved_default = resolved_defaults[name]
             default_expr = resolved_default.expression
-            default_import_refs = resolved_default.import_refs
+            default_import_modules = resolved_default.import_modules
 
         result.append(
             ParameterIR(
@@ -276,7 +275,7 @@ def parse_parameters_to_ir(
                 kind=int(param.kind),
                 annotation_ir=annotation_ir,
                 default_expr=default_expr,
-                default_import_refs=default_import_refs,
+                default_import_modules=default_import_modules,
             )
         )
     return tuple(result)

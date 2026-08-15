@@ -28,7 +28,7 @@ from synchronicity2.codegen.emission.type_codegen import (
     codegen_for_annotation,
 )
 from synchronicity2.codegen.ir.annotations import Synchronicity1WrappedClassRefIR
-from synchronicity2.codegen.ir.references import ImplementationRef, WrapperClassRef
+from synchronicity2.codegen.ir.references import ObjectReferenceIR
 from synchronicity2.codegen.parsing.annotations import parse_annotation
 
 _WRAPPER_LOCATION_ATTR = "__synchronicity_wrapper_location__"
@@ -36,8 +36,8 @@ _WRAPPER_LOCATION_ATTR = "__synchronicity_wrapper_location__"
 
 def _make_wrapped_codegen(wrapped_class):
     """Helper to create a WrappedClassTypeCodegen from a class with wrapper location set."""
-    impl_ref = ImplementationRef(module=wrapped_class.__module__, qualname=wrapped_class.__qualname__)
-    wrapper_ref = WrapperClassRef("test_module", "TestClass")
+    impl_ref = ObjectReferenceIR(module=wrapped_class.__module__, qualname=wrapped_class.__qualname__)
+    wrapper_ref = ObjectReferenceIR("test_module", "TestClass")
     return WrappedClassTypeCodegen(impl_ref, wrapper_ref)
 
 
@@ -432,8 +432,8 @@ class TestUnionTypeCodegen:
             codegen.impl_to_wrapper_expr("test_module", "value")
 
     def test_allows_same_wrapped_generic_base(self, wrapped_class):
-        impl_ref = ImplementationRef(module=wrapped_class.__module__, qualname=wrapped_class.__qualname__)
-        wrapper_ref = WrapperClassRef("test_module", "TestClass")
+        impl_ref = ObjectReferenceIR(module=wrapped_class.__module__, qualname=wrapped_class.__qualname__)
+        wrapper_ref = ObjectReferenceIR("test_module", "TestClass")
         inner = WrappedClassTypeCodegen(impl_ref, wrapper_ref)
         generic_str = ParameterizedWrappedClassTypeCodegen(inner, [PlainTypeCodegen("str")])
         generic_list_int = ParameterizedWrappedClassTypeCodegen(

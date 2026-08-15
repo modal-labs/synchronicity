@@ -30,8 +30,8 @@ and `test/unit/emission`.
   They do not represent runtime wrapper objects.
 - Fields that contain IR use an `_ir` or `_irs` suffix, such as `annotation_ir`, `item_ir`, and
   `arm_irs`.
-- `ImplementationRef` identifies an implementation object by module and qualified name.
-- `WrapperClassRef` identifies the intended generated wrapper location.
+- `ObjectReferenceIR` identifies any implementation or wrapper object by module and qualified
+  name. The containing field, such as `impl_ref` or `wrapper_ref`, communicates its role.
 - `TypeCodegen` names emission behavior. The older `transformer` and `materialize` terminology is
   intentionally avoided because it obscured the parsing, representation, and emission boundaries.
 

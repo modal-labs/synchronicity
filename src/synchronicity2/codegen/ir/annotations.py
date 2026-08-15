@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import dataclasses
 
-from .references import ImplementationRef, WrapperClassRef
+from .references import ObjectReferenceIR
 
 
 class AnnotationIR:
@@ -28,16 +28,16 @@ class PlainAnnotationIR(AnnotationIR):
 class WrappedClassRefIR(AnnotationIR):
     """Registered wrapped class with resolved wrapper location."""
 
-    impl: ImplementationRef
-    wrapper: WrapperClassRef
+    impl: ObjectReferenceIR
+    wrapper: ObjectReferenceIR
 
 
 @dataclasses.dataclass(frozen=True)
 class Synchronicity1WrappedClassRefIR(AnnotationIR):
     """Class wrapped by the optional Synchronicity 1 compatibility synchronizer."""
 
-    impl: ImplementationRef
-    wrapper: WrapperClassRef
+    impl: ObjectReferenceIR
+    wrapper: ObjectReferenceIR
 
 
 @dataclasses.dataclass(frozen=True)
@@ -54,8 +54,8 @@ class TypeVarRefIR(AnnotationIR):
 class SelfAnnotationIR(AnnotationIR):
     """``typing.Self`` tied to a wrapped owner class."""
 
-    owner_impl: ImplementationRef
-    wrapper: WrapperClassRef
+    owner_impl: ObjectReferenceIR
+    wrapper: ObjectReferenceIR
 
 
 @dataclasses.dataclass(frozen=True)

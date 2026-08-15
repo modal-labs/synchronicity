@@ -37,14 +37,14 @@ from synchronicity2.codegen.ir.declarations import (
     WrappedClassPropertyIR,
     WrappedMethodIR,
 )
-from synchronicity2.codegen.ir.references import ImplementationRef, WrapperClassRef
+from synchronicity2.codegen.ir.references import ObjectReferenceIR
 
 IMPL = __name__
 TARGET = "test_module"
 
 IR_CLASS_AITER_ASYNC_GEN = WrappedClassIR(
-    impl_ref=ImplementationRef(IMPL, "EmitAsyncWithGenerator"),
-    wrapper_ref=WrapperClassRef(TARGET, "EmitAsyncWithGenerator"),
+    impl_ref=ObjectReferenceIR(IMPL, "EmitAsyncWithGenerator"),
+    wrapper_ref=ObjectReferenceIR(TARGET, "EmitAsyncWithGenerator"),
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
@@ -64,8 +64,8 @@ IR_CLASS_AITER_ASYNC_GEN = WrappedClassIR(
 )
 
 IR_CLASS_AITER_ASYNC_ITER_TYPE = WrappedClassIR(
-    impl_ref=ImplementationRef(IMPL, "EmitAsyncIterType"),
-    wrapper_ref=WrapperClassRef(TARGET, "EmitAsyncIterType"),
+    impl_ref=ObjectReferenceIR(IMPL, "EmitAsyncIterType"),
+    wrapper_ref=ObjectReferenceIR(TARGET, "EmitAsyncIterType"),
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
@@ -83,8 +83,8 @@ IR_CLASS_AITER_ASYNC_ITER_TYPE = WrappedClassIR(
 )
 
 IR_CLASS_AITER_ASYNC_NO_ANN = WrappedClassIR(
-    impl_ref=ImplementationRef(IMPL, "EmitAsyncWithoutAnnotation"),
-    wrapper_ref=WrapperClassRef(TARGET, "EmitAsyncWithoutAnnotation"),
+    impl_ref=ObjectReferenceIR(IMPL, "EmitAsyncWithoutAnnotation"),
+    wrapper_ref=ObjectReferenceIR(TARGET, "EmitAsyncWithoutAnnotation"),
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
@@ -102,8 +102,8 @@ IR_CLASS_AITER_ASYNC_NO_ANN = WrappedClassIR(
 )
 
 IR_CLASS_AITER_ASYNC_WITH_ANN = WrappedClassIR(
-    impl_ref=ImplementationRef(IMPL, "EmitAsyncWithAnnotation"),
-    wrapper_ref=WrapperClassRef(TARGET, "EmitAsyncWithAnnotation"),
+    impl_ref=ObjectReferenceIR(IMPL, "EmitAsyncWithAnnotation"),
+    wrapper_ref=ObjectReferenceIR(TARGET, "EmitAsyncWithAnnotation"),
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
@@ -123,8 +123,8 @@ IR_CLASS_AITER_ASYNC_WITH_ANN = WrappedClassIR(
 )
 
 IR_CLASS_AITER_SYNC_NO_ANN = WrappedClassIR(
-    impl_ref=ImplementationRef(IMPL, "EmitSyncWithoutAnnotation"),
-    wrapper_ref=WrapperClassRef(TARGET, "EmitSyncWithoutAnnotation"),
+    impl_ref=ObjectReferenceIR(IMPL, "EmitSyncWithoutAnnotation"),
+    wrapper_ref=ObjectReferenceIR(TARGET, "EmitSyncWithoutAnnotation"),
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
@@ -142,8 +142,8 @@ IR_CLASS_AITER_SYNC_NO_ANN = WrappedClassIR(
 )
 
 IR_CLASS_AITER_SYNC_WITH_ANN = WrappedClassIR(
-    impl_ref=ImplementationRef(IMPL, "EmitSyncWithAnnotation"),
-    wrapper_ref=WrapperClassRef(TARGET, "EmitSyncWithAnnotation"),
+    impl_ref=ObjectReferenceIR(IMPL, "EmitSyncWithAnnotation"),
+    wrapper_ref=ObjectReferenceIR(TARGET, "EmitSyncWithAnnotation"),
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
@@ -161,8 +161,8 @@ IR_CLASS_AITER_SYNC_WITH_ANN = WrappedClassIR(
 )
 
 IR_CLASS_ASYNC_GEN = WrappedClassIR(
-    impl_ref=ImplementationRef(IMPL, "EmitAsyncGeneratorClass"),
-    wrapper_ref=WrapperClassRef(TARGET, "EmitAsyncGeneratorClass"),
+    impl_ref=ObjectReferenceIR(IMPL, "EmitAsyncGeneratorClass"),
+    wrapper_ref=ObjectReferenceIR(TARGET, "EmitAsyncGeneratorClass"),
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
@@ -211,8 +211,8 @@ IR_CLASS_ASYNC_GEN = WrappedClassIR(
 )
 
 IR_CLASS_ASYNC_ITERABLE = WrappedClassIR(
-    impl_ref=ImplementationRef(IMPL, "EmitAsyncIterableClass"),
-    wrapper_ref=WrapperClassRef(TARGET, "EmitAsyncIterableClass"),
+    impl_ref=ObjectReferenceIR(IMPL, "EmitAsyncIterableClass"),
+    wrapper_ref=ObjectReferenceIR(TARGET, "EmitAsyncIterableClass"),
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
@@ -230,8 +230,8 @@ IR_CLASS_ASYNC_ITERABLE = WrappedClassIR(
 )
 
 IR_CLASS_ASYNC_ITERATOR = WrappedClassIR(
-    impl_ref=ImplementationRef(IMPL, "EmitAsyncIteratorClass"),
-    wrapper_ref=WrapperClassRef(TARGET, "EmitAsyncIteratorClass"),
+    impl_ref=ObjectReferenceIR(IMPL, "EmitAsyncIteratorClass"),
+    wrapper_ref=ObjectReferenceIR(TARGET, "EmitAsyncIteratorClass"),
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
@@ -244,8 +244,8 @@ IR_CLASS_ASYNC_ITERATOR = WrappedClassIR(
             is_async_gen=False,
             is_async=False,
             return_annotation_ir=SelfAnnotationIR(
-                owner_impl=ImplementationRef(IMPL, "EmitAsyncIteratorClass"),
-                wrapper=WrapperClassRef(TARGET, "EmitAsyncIteratorClass"),
+                owner_impl=ObjectReferenceIR(IMPL, "EmitAsyncIteratorClass"),
+                wrapper=ObjectReferenceIR(TARGET, "EmitAsyncIteratorClass"),
             ),
         ),
         WrappedMethodIR(
@@ -259,8 +259,8 @@ IR_CLASS_ASYNC_ITERATOR = WrappedClassIR(
     ),
 )
 IR_CLASS_METHOD_WITH_DEFAULTS = WrappedClassIR(
-    impl_ref=ImplementationRef(IMPL, "EmitMethodDefaults"),
-    wrapper_ref=WrapperClassRef(TARGET, "EmitMethodDefaults"),
+    impl_ref=ObjectReferenceIR(IMPL, "EmitMethodDefaults"),
+    wrapper_ref=ObjectReferenceIR(TARGET, "EmitMethodDefaults"),
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
@@ -297,8 +297,8 @@ IR_CLASS_METHOD_WITH_DEFAULTS = WrappedClassIR(
 )
 
 IR_CLASS_AWAITABLE_METHOD = WrappedClassIR(
-    impl_ref=ImplementationRef(IMPL, "EmitAwaitableMethodClass"),
-    wrapper_ref=WrapperClassRef(TARGET, "EmitAwaitableMethodClass"),
+    impl_ref=ObjectReferenceIR(IMPL, "EmitAwaitableMethodClass"),
+    wrapper_ref=ObjectReferenceIR(TARGET, "EmitAwaitableMethodClass"),
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
@@ -317,8 +317,8 @@ IR_CLASS_AWAITABLE_METHOD = WrappedClassIR(
     ),
 )
 IR_CLASS_OVERLOADED_METHOD = WrappedClassIR(
-    impl_ref=ImplementationRef(IMPL, "EmitOverloadedMethodClass"),
-    wrapper_ref=WrapperClassRef(TARGET, "EmitOverloadedMethodClass"),
+    impl_ref=ObjectReferenceIR(IMPL, "EmitOverloadedMethodClass"),
+    wrapper_ref=ObjectReferenceIR(TARGET, "EmitOverloadedMethodClass"),
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
@@ -349,16 +349,16 @@ IR_CLASS_OVERLOADED_METHOD = WrappedClassIR(
                             name="value",
                             kind=1,
                             annotation_ir=WrappedClassRefIR(
-                                impl=ImplementationRef(IMPL, "Node"),
-                                wrapper=WrapperClassRef(TARGET, "Node"),
+                                impl=ObjectReferenceIR(IMPL, "Node"),
+                                wrapper=ObjectReferenceIR(TARGET, "Node"),
                             ),
                             default_expr=None,
                         ),
                     ),
                     return_annotation_ir=AwaitableAnnotationIR(
                         inner_ir=WrappedClassRefIR(
-                            impl=ImplementationRef(IMPL, "Node"),
-                            wrapper=WrapperClassRef(TARGET, "Node"),
+                            impl=ObjectReferenceIR(IMPL, "Node"),
+                            wrapper=ObjectReferenceIR(TARGET, "Node"),
                         )
                     ),
                 ),
@@ -368,8 +368,8 @@ IR_CLASS_OVERLOADED_METHOD = WrappedClassIR(
 )
 
 IR_CLASS_SYNC_OVERLOADED_METHOD = WrappedClassIR(
-    impl_ref=ImplementationRef(IMPL, "EmitSyncOverloadedMethodClass"),
-    wrapper_ref=WrapperClassRef(TARGET, "EmitSyncOverloadedMethodClass"),
+    impl_ref=ObjectReferenceIR(IMPL, "EmitSyncOverloadedMethodClass"),
+    wrapper_ref=ObjectReferenceIR(TARGET, "EmitSyncOverloadedMethodClass"),
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
@@ -400,15 +400,15 @@ IR_CLASS_SYNC_OVERLOADED_METHOD = WrappedClassIR(
                             name="value",
                             kind=1,
                             annotation_ir=WrappedClassRefIR(
-                                impl=ImplementationRef(IMPL, "Node"),
-                                wrapper=WrapperClassRef(TARGET, "Node"),
+                                impl=ObjectReferenceIR(IMPL, "Node"),
+                                wrapper=ObjectReferenceIR(TARGET, "Node"),
                             ),
                             default_expr=None,
                         ),
                     ),
                     return_annotation_ir=WrappedClassRefIR(
-                        impl=ImplementationRef(IMPL, "Node"),
-                        wrapper=WrapperClassRef(TARGET, "Node"),
+                        impl=ObjectReferenceIR(IMPL, "Node"),
+                        wrapper=ObjectReferenceIR(TARGET, "Node"),
                     ),
                 ),
             ),
@@ -417,8 +417,8 @@ IR_CLASS_SYNC_OVERLOADED_METHOD = WrappedClassIR(
 )
 
 IR_CLASS_COMPLEX = WrappedClassIR(
-    impl_ref=ImplementationRef(IMPL, "EmitComplexClass"),
-    wrapper_ref=WrapperClassRef(TARGET, "EmitComplexClass"),
+    impl_ref=ObjectReferenceIR(IMPL, "EmitComplexClass"),
+    wrapper_ref=ObjectReferenceIR(TARGET, "EmitComplexClass"),
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
@@ -476,8 +476,8 @@ IR_CLASS_COMPLEX = WrappedClassIR(
 )
 
 IR_CLASS_CONTAINER = WrappedClassIR(
-    impl_ref=ImplementationRef(IMPL, "EmitContainer"),
-    wrapper_ref=WrapperClassRef(TARGET, "EmitContainer"),
+    impl_ref=ObjectReferenceIR(IMPL, "EmitContainer"),
+    wrapper_ref=ObjectReferenceIR(TARGET, "EmitContainer"),
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
@@ -491,7 +491,7 @@ IR_CLASS_CONTAINER = WrappedClassIR(
                     name="node",
                     kind=1,
                     annotation_ir=WrappedClassRefIR(
-                        impl=ImplementationRef(IMPL, "EmitNode"), wrapper=WrapperClassRef(TARGET, "Node")
+                        impl=ObjectReferenceIR(IMPL, "EmitNode"), wrapper=ObjectReferenceIR(TARGET, "Node")
                     ),
                     default_expr=None,
                 ),
@@ -510,8 +510,8 @@ IR_CLASS_CONTAINER = WrappedClassIR(
 )
 
 IR_CLASS_COROUTINE_METHOD = WrappedClassIR(
-    impl_ref=ImplementationRef(IMPL, "EmitCoroutineMethodClass"),
-    wrapper_ref=WrapperClassRef(TARGET, "EmitCoroutineMethodClass"),
+    impl_ref=ObjectReferenceIR(IMPL, "EmitCoroutineMethodClass"),
+    wrapper_ref=ObjectReferenceIR(TARGET, "EmitCoroutineMethodClass"),
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
@@ -531,8 +531,8 @@ IR_CLASS_COROUTINE_METHOD = WrappedClassIR(
 )
 
 IR_CLASS_EMPTY = WrappedClassIR(
-    impl_ref=ImplementationRef(IMPL, "EmitEmptyClass"),
-    wrapper_ref=WrapperClassRef(TARGET, "EmitEmptyClass"),
+    impl_ref=ObjectReferenceIR(IMPL, "EmitEmptyClass"),
+    wrapper_ref=ObjectReferenceIR(TARGET, "EmitEmptyClass"),
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
@@ -562,8 +562,8 @@ IR_CLASS_EMPTY = WrappedClassIR(
 )
 
 IR_CLASS_MIXED = WrappedClassIR(
-    impl_ref=ImplementationRef(IMPL, "EmitMixedClass"),
-    wrapper_ref=WrapperClassRef(TARGET, "EmitMixedClass"),
+    impl_ref=ObjectReferenceIR(IMPL, "EmitMixedClass"),
+    wrapper_ref=ObjectReferenceIR(TARGET, "EmitMixedClass"),
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
@@ -622,8 +622,8 @@ IR_CLASS_MIXED = WrappedClassIR(
 )
 
 IR_CLASS_NO_INIT = WrappedClassIR(
-    impl_ref=ImplementationRef(IMPL, "EmitNoInit"),
-    wrapper_ref=WrapperClassRef(TARGET, "EmitNoInit"),
+    impl_ref=ObjectReferenceIR(IMPL, "EmitNoInit"),
+    wrapper_ref=ObjectReferenceIR(TARGET, "EmitNoInit"),
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
@@ -641,8 +641,8 @@ IR_CLASS_NO_INIT = WrappedClassIR(
 )
 
 IR_CLASS_SELF = WrappedClassIR(
-    impl_ref=ImplementationRef(IMPL, "EmitSelfMethodClass"),
-    wrapper_ref=WrapperClassRef(TARGET, "EmitSelfMethodClass"),
+    impl_ref=ObjectReferenceIR(IMPL, "EmitSelfMethodClass"),
+    wrapper_ref=ObjectReferenceIR(TARGET, "EmitSelfMethodClass"),
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
@@ -656,8 +656,8 @@ IR_CLASS_SELF = WrappedClassIR(
                     name="s",
                     kind=1,
                     annotation_ir=SelfAnnotationIR(
-                        owner_impl=ImplementationRef(IMPL, "EmitSelfMethodClass"),
-                        wrapper=WrapperClassRef(TARGET, "EmitSelfMethodClass"),
+                        owner_impl=ObjectReferenceIR(IMPL, "EmitSelfMethodClass"),
+                        wrapper=ObjectReferenceIR(TARGET, "EmitSelfMethodClass"),
                     ),
                     default_expr=None,
                 ),
@@ -665,16 +665,16 @@ IR_CLASS_SELF = WrappedClassIR(
             is_async_gen=False,
             is_async=False,
             return_annotation_ir=SelfAnnotationIR(
-                owner_impl=ImplementationRef(IMPL, "EmitSelfMethodClass"),
-                wrapper=WrapperClassRef(TARGET, "EmitSelfMethodClass"),
+                owner_impl=ObjectReferenceIR(IMPL, "EmitSelfMethodClass"),
+                wrapper=ObjectReferenceIR(TARGET, "EmitSelfMethodClass"),
             ),
         ),
     ),
 )
 
 IR_CLASS_CLASSMETHOD_SELF = WrappedClassIR(
-    impl_ref=ImplementationRef(IMPL, "EmitSelfClassmethodClass"),
-    wrapper_ref=WrapperClassRef(TARGET, "EmitSelfClassmethodClass"),
+    impl_ref=ObjectReferenceIR(IMPL, "EmitSelfClassmethodClass"),
+    wrapper_ref=ObjectReferenceIR(TARGET, "EmitSelfClassmethodClass"),
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
@@ -688,8 +688,8 @@ IR_CLASS_CLASSMETHOD_SELF = WrappedClassIR(
             is_async=True,
             return_annotation_ir=AwaitableAnnotationIR(
                 inner_ir=SelfAnnotationIR(
-                    owner_impl=ImplementationRef(IMPL, "EmitSelfClassmethodClass"),
-                    wrapper=WrapperClassRef(TARGET, "EmitSelfClassmethodClass"),
+                    owner_impl=ObjectReferenceIR(IMPL, "EmitSelfClassmethodClass"),
+                    wrapper=ObjectReferenceIR(TARGET, "EmitSelfClassmethodClass"),
                 )
             ),
         ),
@@ -697,8 +697,8 @@ IR_CLASS_CLASSMETHOD_SELF = WrappedClassIR(
 )
 
 IR_CLASS_SIMPLE = WrappedClassIR(
-    impl_ref=ImplementationRef(IMPL, "EmitSimpleClass"),
-    wrapper_ref=WrapperClassRef(TARGET, "EmitSimpleClass"),
+    impl_ref=ObjectReferenceIR(IMPL, "EmitSimpleClass"),
+    wrapper_ref=ObjectReferenceIR(TARGET, "EmitSimpleClass"),
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
@@ -752,8 +752,8 @@ IR_CLASS_SIMPLE = WrappedClassIR(
 )
 
 IR_CLASS_VARARGS = WrappedClassIR(
-    impl_ref=ImplementationRef(IMPL, "EmitVarArgsClass"),
-    wrapper_ref=WrapperClassRef(TARGET, "EmitVarArgsClass"),
+    impl_ref=ObjectReferenceIR(IMPL, "EmitVarArgsClass"),
+    wrapper_ref=ObjectReferenceIR(TARGET, "EmitVarArgsClass"),
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
@@ -793,8 +793,8 @@ IR_CLASS_VARARGS = WrappedClassIR(
 )
 
 IR_CLASS_TRANSLATED_STATICMETHOD_VARARGS = WrappedClassIR(
-    impl_ref=ImplementationRef(IMPL, "EmitTranslatedStaticVarArgsClass"),
-    wrapper_ref=WrapperClassRef(TARGET, "EmitTranslatedStaticVarArgsClass"),
+    impl_ref=ObjectReferenceIR(IMPL, "EmitTranslatedStaticVarArgsClass"),
+    wrapper_ref=ObjectReferenceIR(TARGET, "EmitTranslatedStaticVarArgsClass"),
     wrapped_bases=(),
     generic_type_parameters=None,
     attributes=(),
@@ -808,8 +808,8 @@ IR_CLASS_TRANSLATED_STATICMETHOD_VARARGS = WrappedClassIR(
                     name="args",
                     kind=2,
                     annotation_ir=WrappedClassRefIR(
-                        impl=ImplementationRef(IMPL, "Node"),
-                        wrapper=WrapperClassRef(TARGET, "Node"),
+                        impl=ObjectReferenceIR(IMPL, "Node"),
+                        wrapper=ObjectReferenceIR(TARGET, "Node"),
                     ),
                     default_expr=None,
                 ),
@@ -817,8 +817,8 @@ IR_CLASS_TRANSLATED_STATICMETHOD_VARARGS = WrappedClassIR(
                     name="kwargs",
                     kind=4,
                     annotation_ir=WrappedClassRefIR(
-                        impl=ImplementationRef(IMPL, "Node"),
-                        wrapper=WrapperClassRef(TARGET, "Node"),
+                        impl=ObjectReferenceIR(IMPL, "Node"),
+                        wrapper=ObjectReferenceIR(TARGET, "Node"),
                     ),
                     default_expr=None,
                 ),
@@ -831,8 +831,8 @@ IR_CLASS_TRANSLATED_STATICMETHOD_VARARGS = WrappedClassIR(
 )
 
 IR_CLASS_TRANSLATED_STATICMETHOD_SUBSCRIPTED_VARARGS = WrappedClassIR(
-    impl_ref=ImplementationRef(IMPL, "EmitTranslatedSubscriptedStaticVarArgsClass"),
-    wrapper_ref=WrapperClassRef(TARGET, "EmitTranslatedSubscriptedStaticVarArgsClass"),
+    impl_ref=ObjectReferenceIR(IMPL, "EmitTranslatedSubscriptedStaticVarArgsClass"),
+    wrapper_ref=ObjectReferenceIR(TARGET, "EmitTranslatedSubscriptedStaticVarArgsClass"),
     wrapped_bases=(),
     generic_type_parameters=("T",),
     attributes=(),
@@ -847,8 +847,8 @@ IR_CLASS_TRANSLATED_STATICMETHOD_SUBSCRIPTED_VARARGS = WrappedClassIR(
                     kind=2,
                     annotation_ir=ParameterizedWrappedClassRefIR(
                         wrapped_class_ir=WrappedClassRefIR(
-                            impl=ImplementationRef(IMPL, "Node"),
-                            wrapper=WrapperClassRef(TARGET, "Node"),
+                            impl=ObjectReferenceIR(IMPL, "Node"),
+                            wrapper=ObjectReferenceIR(TARGET, "Node"),
                         ),
                         type_argument_irs=(PlainAnnotationIR(signature_text="T"),),
                     ),
@@ -917,8 +917,8 @@ def test_emit_class_complex_types():
 
 def test_emit_class_quotes_annotations_shadowed_by_class_namespace():
     ir = WrappedClassIR(
-        impl_ref=ImplementationRef(IMPL, "EmitShadowedBuiltinAnnotation"),
-        wrapper_ref=WrapperClassRef(TARGET, "EmitShadowedBuiltinAnnotation"),
+        impl_ref=ObjectReferenceIR(IMPL, "EmitShadowedBuiltinAnnotation"),
+        wrapper_ref=ObjectReferenceIR(TARGET, "EmitShadowedBuiltinAnnotation"),
         wrapped_bases=(),
         generic_type_parameters=None,
         attributes=(),
@@ -1035,8 +1035,8 @@ def test_emit_staticmethod_translated_subscripted_varargs_quotes_forward_ref():
 
 def test_emit_staticmethod_with_method_local_typevar_without_type_checking_stub():
     ir = WrappedClassIR(
-        impl_ref=ImplementationRef(IMPL, "EmitMethodLocalTypeVarClass"),
-        wrapper_ref=WrapperClassRef(TARGET, "EmitMethodLocalTypeVarClass"),
+        impl_ref=ObjectReferenceIR(IMPL, "EmitMethodLocalTypeVarClass"),
+        wrapper_ref=ObjectReferenceIR(TARGET, "EmitMethodLocalTypeVarClass"),
         wrapped_bases=(),
         generic_type_parameters=None,
         attributes=(),
@@ -1197,8 +1197,8 @@ def test_emit_class_aiter_signature_variations():
 
 def test_emit_classproperty_translation():
     ir = WrappedClassIR(
-        impl_ref=ImplementationRef(IMPL, "EmitClassPropertyService"),
-        wrapper_ref=WrapperClassRef(TARGET, "EmitClassPropertyService"),
+        impl_ref=ObjectReferenceIR(IMPL, "EmitClassPropertyService"),
+        wrapper_ref=ObjectReferenceIR(TARGET, "EmitClassPropertyService"),
         wrapped_bases=(),
         generic_type_parameters=None,
         attributes=(),
@@ -1208,8 +1208,8 @@ def test_emit_classproperty_translation():
             WrappedClassPropertyIR(
                 name="manager",
                 return_annotation_ir=WrappedClassRefIR(
-                    impl=ImplementationRef(IMPL, "EmitClassPropertyManager"),
-                    wrapper=WrapperClassRef(TARGET, "EmitClassPropertyManager"),
+                    impl=ObjectReferenceIR(IMPL, "EmitClassPropertyManager"),
+                    wrapper=ObjectReferenceIR(TARGET, "EmitClassPropertyManager"),
                 ),
             ),
         ),
@@ -1224,8 +1224,8 @@ def test_emit_classproperty_translation():
 
 def test_emit_classmethod_and_staticmethod_async_context_manager_helper_binding():
     ir = WrappedClassIR(
-        impl_ref=ImplementationRef(IMPL, "EmitContextFactories"),
-        wrapper_ref=WrapperClassRef(TARGET, "EmitContextFactories"),
+        impl_ref=ObjectReferenceIR(IMPL, "EmitContextFactories"),
+        wrapper_ref=ObjectReferenceIR(TARGET, "EmitContextFactories"),
         wrapped_bases=(),
         generic_type_parameters=None,
         attributes=(),
@@ -1239,8 +1239,8 @@ def test_emit_classmethod_and_staticmethod_async_context_manager_helper_binding(
                 is_async=False,
                 return_annotation_ir=AsyncContextManagerAnnotationIR(
                     value_ir=WrappedClassRefIR(
-                        impl=ImplementationRef(IMPL, "EmitConnection"),
-                        wrapper=WrapperClassRef(TARGET, "EmitConnection"),
+                        impl=ObjectReferenceIR(IMPL, "EmitConnection"),
+                        wrapper=ObjectReferenceIR(TARGET, "EmitConnection"),
                     )
                 ),
             ),
@@ -1252,8 +1252,8 @@ def test_emit_classmethod_and_staticmethod_async_context_manager_helper_binding(
                 is_async=False,
                 return_annotation_ir=AsyncContextManagerAnnotationIR(
                     value_ir=WrappedClassRefIR(
-                        impl=ImplementationRef(IMPL, "EmitConnection"),
-                        wrapper=WrapperClassRef(TARGET, "EmitConnection"),
+                        impl=ObjectReferenceIR(IMPL, "EmitConnection"),
+                        wrapper=ObjectReferenceIR(TARGET, "EmitConnection"),
                     )
                 ),
             ),
@@ -1268,8 +1268,8 @@ def test_emit_classmethod_and_staticmethod_async_context_manager_helper_binding(
 
 def test_emit_sequence_and_callable_ellipsis_annotations():
     ir = WrappedClassIR(
-        impl_ref=ImplementationRef(IMPL, "EmitSequenceCallableService"),
-        wrapper_ref=WrapperClassRef(TARGET, "EmitSequenceCallableService"),
+        impl_ref=ObjectReferenceIR(IMPL, "EmitSequenceCallableService"),
+        wrapper_ref=ObjectReferenceIR(TARGET, "EmitSequenceCallableService"),
         wrapped_bases=(),
         generic_type_parameters=None,
         attributes=(
@@ -1279,8 +1279,8 @@ def test_emit_sequence_and_callable_ellipsis_annotations():
                     parameter_irs=None,
                     return_annotation_ir=SequenceAnnotationIR(
                         item_ir=WrappedClassRefIR(
-                            impl=ImplementationRef(IMPL, "Node"),
-                            wrapper=WrapperClassRef(TARGET, "Node"),
+                            impl=ObjectReferenceIR(IMPL, "Node"),
+                            wrapper=ObjectReferenceIR(TARGET, "Node"),
                         )
                     ),
                 ),
@@ -1297,8 +1297,8 @@ def test_emit_sequence_and_callable_ellipsis_annotations():
                         kind=1,
                         annotation_ir=SequenceAnnotationIR(
                             item_ir=WrappedClassRefIR(
-                                impl=ImplementationRef(IMPL, "Node"),
-                                wrapper=WrapperClassRef(TARGET, "Node"),
+                                impl=ObjectReferenceIR(IMPL, "Node"),
+                                wrapper=ObjectReferenceIR(TARGET, "Node"),
                             )
                         ),
                         default_expr=None,
@@ -1309,8 +1309,8 @@ def test_emit_sequence_and_callable_ellipsis_annotations():
                 return_annotation_ir=AwaitableAnnotationIR(
                     inner_ir=SequenceAnnotationIR(
                         item_ir=WrappedClassRefIR(
-                            impl=ImplementationRef(IMPL, "Node"),
-                            wrapper=WrapperClassRef(TARGET, "Node"),
+                            impl=ObjectReferenceIR(IMPL, "Node"),
+                            wrapper=ObjectReferenceIR(TARGET, "Node"),
                         )
                     )
                 ),
@@ -1324,8 +1324,8 @@ def test_emit_sequence_and_callable_ellipsis_annotations():
                         kind=1,
                         annotation_ir=CollectionAnnotationIR(
                             item_ir=WrappedClassRefIR(
-                                impl=ImplementationRef(IMPL, "Node"),
-                                wrapper=WrapperClassRef(TARGET, "Node"),
+                                impl=ObjectReferenceIR(IMPL, "Node"),
+                                wrapper=ObjectReferenceIR(TARGET, "Node"),
                             )
                         ),
                         default_expr=None,
@@ -1336,8 +1336,8 @@ def test_emit_sequence_and_callable_ellipsis_annotations():
                 return_annotation_ir=AwaitableAnnotationIR(
                     inner_ir=CollectionAnnotationIR(
                         item_ir=WrappedClassRefIR(
-                            impl=ImplementationRef(IMPL, "Node"),
-                            wrapper=WrapperClassRef(TARGET, "Node"),
+                            impl=ObjectReferenceIR(IMPL, "Node"),
+                            wrapper=ObjectReferenceIR(TARGET, "Node"),
                         )
                     )
                 ),
@@ -1363,8 +1363,8 @@ def test_emit_class_without_explicit_init():
 
 def test_emit_getattr_without_union_fallback_uses_plain_return():
     ir = WrappedClassIR(
-        impl_ref=ImplementationRef(IMPL, "EmitDynamicOwner"),
-        wrapper_ref=WrapperClassRef(TARGET, "EmitDynamicOwner"),
+        impl_ref=ObjectReferenceIR(IMPL, "EmitDynamicOwner"),
+        wrapper_ref=ObjectReferenceIR(TARGET, "EmitDynamicOwner"),
         wrapped_bases=(),
         generic_type_parameters=None,
         attributes=(),
@@ -1396,8 +1396,8 @@ def test_emit_getattr_without_union_fallback_uses_plain_return():
 
 def test_emit_getattr_with_union_any_fallback_uses_runtime_fallback_wrap():
     ir = WrappedClassIR(
-        impl_ref=ImplementationRef(IMPL, "EmitExplicitDynamicOwner"),
-        wrapper_ref=WrapperClassRef(TARGET, "EmitExplicitDynamicOwner"),
+        impl_ref=ObjectReferenceIR(IMPL, "EmitExplicitDynamicOwner"),
+        wrapper_ref=ObjectReferenceIR(TARGET, "EmitExplicitDynamicOwner"),
         wrapped_bases=(),
         generic_type_parameters=None,
         attributes=(),
@@ -1419,8 +1419,8 @@ def test_emit_getattr_with_union_any_fallback_uses_runtime_fallback_wrap():
                 return_annotation_ir=UnionAnnotationIR(
                     arm_irs=(
                         WrappedClassRefIR(
-                            impl=ImplementationRef(IMPL, "EmitPayload"),
-                            wrapper=WrapperClassRef(TARGET, "EmitPayload"),
+                            impl=ObjectReferenceIR(IMPL, "EmitPayload"),
+                            wrapper=ObjectReferenceIR(TARGET, "EmitPayload"),
                         ),
                         PlainAnnotationIR(signature_text="typing.Any"),
                     )

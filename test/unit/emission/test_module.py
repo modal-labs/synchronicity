@@ -24,7 +24,7 @@ from synchronicity2.codegen.ir.declarations import (
     WrappedFunctionIR,
     WrappedMethodIR,
 )
-from synchronicity2.codegen.ir.references import ImplementationRef, ModuleImportRefIR, WrapperClassRef
+from synchronicity2.codegen.ir.references import ObjectReferenceIR
 
 IMPL = __name__
 TARGET = "test_module"
@@ -37,8 +37,8 @@ IR_MODULE_TWO_CLASSES = ModuleIR(
     typevar_specs=(),
     wrapped_classes=(
         WrappedClassIR(
-            impl_ref=ImplementationRef(IMPL, "EmitModuleClassA"),
-            wrapper_ref=WrapperClassRef(TARGET, "EmitModuleClassA"),
+            impl_ref=ObjectReferenceIR(IMPL, "EmitModuleClassA"),
+            wrapper_ref=ObjectReferenceIR(TARGET, "EmitModuleClassA"),
             wrapped_bases=(),
             generic_type_parameters=None,
             attributes=(),
@@ -70,8 +70,8 @@ IR_MODULE_TWO_CLASSES = ModuleIR(
             ),
         ),
         WrappedClassIR(
-            impl_ref=ImplementationRef(IMPL, "EmitModuleClassB"),
-            wrapper_ref=WrapperClassRef(TARGET, "EmitModuleClassB"),
+            impl_ref=ObjectReferenceIR(IMPL, "EmitModuleClassB"),
+            wrapper_ref=ObjectReferenceIR(TARGET, "EmitModuleClassB"),
             wrapped_bases=(),
             generic_type_parameters=None,
             attributes=(),
@@ -173,8 +173,8 @@ def test_emit_module_manual_reexports_and_class_attributes():
         typevar_specs=(),
         wrapped_classes=(
             WrappedClassIR(
-                impl_ref=ImplementationRef(IMPL, "EmitModuleClassA"),
-                wrapper_ref=WrapperClassRef(TARGET, "EmitModuleClassA"),
+                impl_ref=ObjectReferenceIR(IMPL, "EmitModuleClassA"),
+                wrapper_ref=ObjectReferenceIR(TARGET, "EmitModuleClassA"),
                 wrapped_bases=(),
                 generic_type_parameters=None,
                 attributes=(),
@@ -204,7 +204,7 @@ def test_emit_module_manual_reexports_and_class_attributes():
         wrapped_functions=(),
         manual_reexports=(
             ManualReexportIR(
-                impl_ref=ImplementationRef(IMPL, "forwarded"),
+                impl_ref=ObjectReferenceIR(IMPL, "forwarded"),
                 export_name="forwarded",
             ),
         ),
@@ -230,7 +230,7 @@ def test_emit_module_imports_default_expression_module_refs():
         wrapped_classes=(),
         wrapped_functions=(
             WrappedFunctionIR(
-                impl_ref=ImplementationRef(IMPL, "read_pipe"),
+                impl_ref=ObjectReferenceIR(IMPL, "read_pipe"),
                 needs_async_wrapper=False,
                 is_async_gen=False,
                 parameters=(
@@ -239,7 +239,7 @@ def test_emit_module_imports_default_expression_module_refs():
                         kind=1,
                         annotation_ir=PlainAnnotationIR(signature_text="int"),
                         default_expr="subprocess.PIPE",
-                        default_import_refs=(ModuleImportRefIR(module="subprocess", name="subprocess"),),
+                        default_import_modules=("subprocess",),
                     ),
                 ),
                 return_annotation_ir=PlainAnnotationIR(signature_text="int"),
@@ -264,7 +264,7 @@ def test_emit_module_imports_annotation_module_refs():
         wrapped_classes=(),
         wrapped_functions=(
             WrappedFunctionIR(
-                impl_ref=ImplementationRef(IMPL, "round_trip_timestamp"),
+                impl_ref=ObjectReferenceIR(IMPL, "round_trip_timestamp"),
                 needs_async_wrapper=False,
                 is_async_gen=False,
                 parameters=(
@@ -301,8 +301,8 @@ def test_emit_module_imports_cross_module_wrapper_refs_but_not_self_imports():
         typevar_specs=(),
         wrapped_classes=(
             WrappedClassIR(
-                impl_ref=ImplementationRef(IMPL, "_CloudBucketMount"),
-                wrapper_ref=WrapperClassRef("generated.cloud_bucket_mount", "CloudBucketMount"),
+                impl_ref=ObjectReferenceIR(IMPL, "_CloudBucketMount"),
+                wrapper_ref=ObjectReferenceIR("generated.cloud_bucket_mount", "CloudBucketMount"),
                 wrapped_bases=(),
                 generic_type_parameters=None,
                 attributes=(),
@@ -317,8 +317,8 @@ def test_emit_module_imports_cross_module_wrapper_refs_but_not_self_imports():
                                 kind=1,
                                 annotation_ir=OptionalAnnotationIR(
                                     inner_ir=WrappedClassRefIR(
-                                        impl=ImplementationRef(IMPL, "_Secret"),
-                                        wrapper=WrapperClassRef("generated.secret", "Secret"),
+                                        impl=ObjectReferenceIR(IMPL, "_Secret"),
+                                        wrapper=ObjectReferenceIR("generated.secret", "Secret"),
                                     )
                                 ),
                                 default_expr="None",

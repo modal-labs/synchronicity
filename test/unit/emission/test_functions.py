@@ -20,7 +20,7 @@ from synchronicity2.codegen.ir.annotations import (
     WrappedClassRefIR,
 )
 from synchronicity2.codegen.ir.declarations import ParameterIR, SignatureIR, WrappedFunctionIR
-from synchronicity2.codegen.ir.references import ImplementationRef, WrapperClassRef
+from synchronicity2.codegen.ir.references import ObjectReferenceIR
 
 IMPL = __name__
 TARGET = "test_module"
@@ -28,7 +28,7 @@ TARGET = "test_module"
 # --- Module-level function IR (qualnames are synthetic; shapes match parse output.) ---
 
 IR_FN_ASYNC_GEN = WrappedFunctionIR(
-    impl_ref=ImplementationRef(IMPL, "fn_async_gen"),
+    impl_ref=ObjectReferenceIR(IMPL, "fn_async_gen"),
     needs_async_wrapper=True,
     is_async_gen=True,
     parameters=(
@@ -44,7 +44,7 @@ IR_FN_ASYNC_GEN = WrappedFunctionIR(
     ),
 )
 IR_FN_BARE_ITERATOR = WrappedFunctionIR(
-    impl_ref=ImplementationRef(IMPL, "fn_declared_bare_iterator"),
+    impl_ref=ObjectReferenceIR(IMPL, "fn_declared_bare_iterator"),
     needs_async_wrapper=True,
     is_async_gen=True,
     parameters=(),
@@ -53,7 +53,7 @@ IR_FN_BARE_ITERATOR = WrappedFunctionIR(
     ),
 )
 IR_FN_COMPLEX_TYPES = WrappedFunctionIR(
-    impl_ref=ImplementationRef(IMPL, "fn_complex_types"),
+    impl_ref=ObjectReferenceIR(IMPL, "fn_complex_types"),
     needs_async_wrapper=True,
     is_async_gen=False,
     parameters=(
@@ -86,7 +86,7 @@ IR_FN_COMPLEX_TYPES = WrappedFunctionIR(
     ),
 )
 IR_FN_CREATE_AWAITABLE = WrappedFunctionIR(
-    impl_ref=ImplementationRef(IMPL, "fn_create_awaitable"),
+    impl_ref=ObjectReferenceIR(IMPL, "fn_create_awaitable"),
     needs_async_wrapper=True,
     is_async_gen=False,
     parameters=(
@@ -95,7 +95,7 @@ IR_FN_CREATE_AWAITABLE = WrappedFunctionIR(
     return_annotation_ir=AwaitableAnnotationIR(inner_ir=PlainAnnotationIR(signature_text="str")),
 )
 IR_FN_CREATE_AWAITABLE_BARE = WrappedFunctionIR(
-    impl_ref=ImplementationRef(IMPL, "fn_create_awaitable_bare"),
+    impl_ref=ObjectReferenceIR(IMPL, "fn_create_awaitable_bare"),
     needs_async_wrapper=True,
     is_async_gen=False,
     parameters=(
@@ -104,7 +104,7 @@ IR_FN_CREATE_AWAITABLE_BARE = WrappedFunctionIR(
     return_annotation_ir=AwaitableAnnotationIR(inner_ir=PlainAnnotationIR(signature_text="typing.Any")),
 )
 IR_FN_CREATE_COROUTINE = WrappedFunctionIR(
-    impl_ref=ImplementationRef(IMPL, "fn_create_coroutine"),
+    impl_ref=ObjectReferenceIR(IMPL, "fn_create_coroutine"),
     needs_async_wrapper=True,
     is_async_gen=False,
     parameters=(
@@ -113,7 +113,7 @@ IR_FN_CREATE_COROUTINE = WrappedFunctionIR(
     return_annotation_ir=CoroutineAnnotationIR(return_annotation_ir=PlainAnnotationIR(signature_text="str")),
 )
 IR_FN_CREATE_PEOPLE = WrappedFunctionIR(
-    impl_ref=ImplementationRef(IMPL, "fn_create_people"),
+    impl_ref=ObjectReferenceIR(IMPL, "fn_create_people"),
     needs_async_wrapper=False,
     is_async_gen=False,
     parameters=(
@@ -125,22 +125,22 @@ IR_FN_CREATE_PEOPLE = WrappedFunctionIR(
         ),
     ),
     return_annotation_ir=ListAnnotationIR(
-        item_ir=WrappedClassRefIR(impl=ImplementationRef(IMPL, "Person"), wrapper=WrapperClassRef(TARGET, "Person"))
+        item_ir=WrappedClassRefIR(impl=ObjectReferenceIR(IMPL, "Person"), wrapper=ObjectReferenceIR(TARGET, "Person"))
     ),
 )
 IR_FN_CREATE_PERSON = WrappedFunctionIR(
-    impl_ref=ImplementationRef(IMPL, "fn_create_person"),
+    impl_ref=ObjectReferenceIR(IMPL, "fn_create_person"),
     needs_async_wrapper=False,
     is_async_gen=False,
     parameters=(
         ParameterIR(name="name", kind=1, annotation_ir=PlainAnnotationIR(signature_text="str"), default_expr=None),
     ),
     return_annotation_ir=WrappedClassRefIR(
-        impl=ImplementationRef(IMPL, "Person"), wrapper=WrapperClassRef(TARGET, "Person")
+        impl=ObjectReferenceIR(IMPL, "Person"), wrapper=ObjectReferenceIR(TARGET, "Person")
     ),
 )
 IR_FN_KEYWORD_ONLY = WrappedFunctionIR(
-    impl_ref=ImplementationRef(IMPL, "fn_keyword_only"),
+    impl_ref=ObjectReferenceIR(IMPL, "fn_keyword_only"),
     needs_async_wrapper=False,
     is_async_gen=False,
     parameters=(
@@ -161,7 +161,7 @@ IR_FN_KEYWORD_ONLY = WrappedFunctionIR(
     return_annotation_ir=PlainAnnotationIR(signature_text="None"),
 )
 IR_FN_GENERIC_TYPES = WrappedFunctionIR(
-    impl_ref=ImplementationRef(IMPL, "fn_generic_types"),
+    impl_ref=ObjectReferenceIR(IMPL, "fn_generic_types"),
     needs_async_wrapper=True,
     is_async_gen=False,
     parameters=(
@@ -195,7 +195,7 @@ IR_FN_GENERIC_TYPES = WrappedFunctionIR(
     ),
 )
 IR_FN_GREET = WrappedFunctionIR(
-    impl_ref=ImplementationRef(IMPL, "fn_greet"),
+    impl_ref=ObjectReferenceIR(IMPL, "fn_greet"),
     needs_async_wrapper=False,
     is_async_gen=False,
     parameters=(
@@ -203,7 +203,7 @@ IR_FN_GREET = WrappedFunctionIR(
             name="person",
             kind=1,
             annotation_ir=WrappedClassRefIR(
-                impl=ImplementationRef(IMPL, "Person"), wrapper=WrapperClassRef(TARGET, "Person")
+                impl=ObjectReferenceIR(IMPL, "Person"), wrapper=ObjectReferenceIR(TARGET, "Person")
             ),
             default_expr=None,
         ),
@@ -211,7 +211,7 @@ IR_FN_GREET = WrappedFunctionIR(
     return_annotation_ir=PlainAnnotationIR(signature_text="str"),
 )
 IR_FN_NO_ANNOTATION = WrappedFunctionIR(
-    impl_ref=ImplementationRef(IMPL, "fn_no_annotation"),
+    impl_ref=ObjectReferenceIR(IMPL, "fn_no_annotation"),
     needs_async_wrapper=True,
     is_async_gen=False,
     parameters=(
@@ -221,7 +221,7 @@ IR_FN_NO_ANNOTATION = WrappedFunctionIR(
     return_annotation_ir=AwaitableAnnotationIR(inner_ir=PlainAnnotationIR(signature_text="typing.Any")),
 )
 IR_FN_NO_TYPES = WrappedFunctionIR(
-    impl_ref=ImplementationRef(IMPL, "fn_no_types"),
+    impl_ref=ObjectReferenceIR(IMPL, "fn_no_types"),
     needs_async_wrapper=False,
     is_async_gen=False,
     parameters=(
@@ -231,7 +231,7 @@ IR_FN_NO_TYPES = WrappedFunctionIR(
     return_annotation_ir=PlainAnnotationIR(signature_text=""),
 )
 IR_FN_POSONLY = WrappedFunctionIR(
-    impl_ref=ImplementationRef(IMPL, "fn_with_posonly"),
+    impl_ref=ObjectReferenceIR(IMPL, "fn_with_posonly"),
     needs_async_wrapper=False,
     is_async_gen=False,
     parameters=(
@@ -243,7 +243,7 @@ IR_FN_POSONLY = WrappedFunctionIR(
     return_annotation_ir=PlainAnnotationIR(signature_text="int"),
 )
 IR_FN_SIMPLE_TYPES = WrappedFunctionIR(
-    impl_ref=ImplementationRef(IMPL, "fn_simple_types"),
+    impl_ref=ObjectReferenceIR(IMPL, "fn_simple_types"),
     needs_async_wrapper=True,
     is_async_gen=False,
     parameters=(
@@ -252,7 +252,7 @@ IR_FN_SIMPLE_TYPES = WrappedFunctionIR(
     return_annotation_ir=AwaitableAnnotationIR(inner_ir=PlainAnnotationIR(signature_text="str")),
 )
 IR_FN_STREAM_BATCHES = WrappedFunctionIR(
-    impl_ref=ImplementationRef(IMPL, "fn_stream_person_batches"),
+    impl_ref=ObjectReferenceIR(IMPL, "fn_stream_person_batches"),
     needs_async_wrapper=True,
     is_async_gen=True,
     parameters=(
@@ -262,13 +262,15 @@ IR_FN_STREAM_BATCHES = WrappedFunctionIR(
     ),
     return_annotation_ir=AsyncGeneratorAnnotationIR(
         yield_annotation_ir=ListAnnotationIR(
-            item_ir=WrappedClassRefIR(impl=ImplementationRef(IMPL, "Person"), wrapper=WrapperClassRef(TARGET, "Person"))
+            item_ir=WrappedClassRefIR(
+                impl=ObjectReferenceIR(IMPL, "Person"), wrapper=ObjectReferenceIR(TARGET, "Person")
+            )
         ),
         send_type_str=None,
     ),
 )
 IR_FN_STREAM_PEOPLE = WrappedFunctionIR(
-    impl_ref=ImplementationRef(IMPL, "fn_stream_people"),
+    impl_ref=ObjectReferenceIR(IMPL, "fn_stream_people"),
     needs_async_wrapper=True,
     is_async_gen=True,
     parameters=(
@@ -276,13 +278,13 @@ IR_FN_STREAM_PEOPLE = WrappedFunctionIR(
     ),
     return_annotation_ir=AsyncGeneratorAnnotationIR(
         yield_annotation_ir=WrappedClassRefIR(
-            impl=ImplementationRef(IMPL, "Person"), wrapper=WrapperClassRef(TARGET, "Person")
+            impl=ObjectReferenceIR(IMPL, "Person"), wrapper=ObjectReferenceIR(TARGET, "Person")
         ),
         send_type_str=None,
     ),
 )
 IR_FN_SYNC_ADD = WrappedFunctionIR(
-    impl_ref=ImplementationRef(IMPL, "fn_sync_add"),
+    impl_ref=ObjectReferenceIR(IMPL, "fn_sync_add"),
     needs_async_wrapper=False,
     is_async_gen=False,
     parameters=(
@@ -292,7 +294,7 @@ IR_FN_SYNC_ADD = WrappedFunctionIR(
     return_annotation_ir=PlainAnnotationIR(signature_text="int"),
 )
 IR_FN_VARARGS = WrappedFunctionIR(
-    impl_ref=ImplementationRef(IMPL, "fn_with_varargs"),
+    impl_ref=ObjectReferenceIR(IMPL, "fn_with_varargs"),
     needs_async_wrapper=False,
     is_async_gen=False,
     parameters=(
@@ -306,7 +308,7 @@ IR_FN_VARARGS = WrappedFunctionIR(
     return_annotation_ir=PlainAnnotationIR(signature_text="str"),
 )
 IR_FN_WITH_DEFAULTS = WrappedFunctionIR(
-    impl_ref=ImplementationRef(IMPL, "fn_with_defaults"),
+    impl_ref=ObjectReferenceIR(IMPL, "fn_with_defaults"),
     needs_async_wrapper=False,
     is_async_gen=False,
     parameters=(
@@ -317,7 +319,7 @@ IR_FN_WITH_DEFAULTS = WrappedFunctionIR(
     return_annotation_ir=PlainAnnotationIR(signature_text="str"),
 )
 IR_FN_WITH_MANY_DEFAULTS = WrappedFunctionIR(
-    impl_ref=ImplementationRef(IMPL, "fn_with_many_defaults"),
+    impl_ref=ObjectReferenceIR(IMPL, "fn_with_many_defaults"),
     needs_async_wrapper=False,
     is_async_gen=False,
     parameters=(
@@ -375,7 +377,7 @@ IR_FN_WITH_MANY_DEFAULTS = WrappedFunctionIR(
     return_annotation_ir=PlainAnnotationIR(signature_text="str"),
 )
 IR_FN_OVERLOADS_WITH_TRANSLATION = WrappedFunctionIR(
-    impl_ref=ImplementationRef(IMPL, "fn_overloaded"),
+    impl_ref=ObjectReferenceIR(IMPL, "fn_overloaded"),
     needs_async_wrapper=True,
     is_async_gen=False,
     parameters=(ParameterIR(name="value", kind=1, annotation_ir=None, default_expr=None),),
@@ -398,16 +400,16 @@ IR_FN_OVERLOADS_WITH_TRANSLATION = WrappedFunctionIR(
                     name="value",
                     kind=1,
                     annotation_ir=WrappedClassRefIR(
-                        impl=ImplementationRef(IMPL, "Person"),
-                        wrapper=WrapperClassRef(TARGET, "Person"),
+                        impl=ObjectReferenceIR(IMPL, "Person"),
+                        wrapper=ObjectReferenceIR(TARGET, "Person"),
                     ),
                     default_expr=None,
                 ),
             ),
             return_annotation_ir=AwaitableAnnotationIR(
                 inner_ir=WrappedClassRefIR(
-                    impl=ImplementationRef(IMPL, "Person"),
-                    wrapper=WrapperClassRef(TARGET, "Person"),
+                    impl=ObjectReferenceIR(IMPL, "Person"),
+                    wrapper=ObjectReferenceIR(TARGET, "Person"),
                 )
             ),
         ),
