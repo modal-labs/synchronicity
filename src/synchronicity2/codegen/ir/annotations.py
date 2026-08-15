@@ -8,17 +8,16 @@ these nodes into source-generation behavior with ``codegen_for_annotation``.
 from __future__ import annotations
 
 import dataclasses
-import typing
 
 from .references import ImplementationRef, WrapperClassRef
 
 
-class AnnotationIRNode:
-    """Marker base for parsed annotation nodes."""
+class AnnotationIR:
+    """Base class for parsed annotation IR nodes."""
 
 
 @dataclasses.dataclass(frozen=True)
-class PlainAnnotationIR(AnnotationIRNode):
+class PlainAnnotationIR(AnnotationIR):
     """Non-wrapped annotation; ``signature_text`` is the type as it should appear in source."""
 
     signature_text: str
@@ -26,7 +25,7 @@ class PlainAnnotationIR(AnnotationIRNode):
 
 
 @dataclasses.dataclass(frozen=True)
-class WrappedClassRefIR(AnnotationIRNode):
+class WrappedClassRefIR(AnnotationIR):
     """Registered wrapped class with resolved wrapper location."""
 
     impl: ImplementationRef
@@ -34,7 +33,7 @@ class WrappedClassRefIR(AnnotationIRNode):
 
 
 @dataclasses.dataclass(frozen=True)
-class Synchronicity1WrappedClassRefIR(AnnotationIRNode):
+class Synchronicity1WrappedClassRefIR(AnnotationIR):
     """Class wrapped by the optional Synchronicity 1 compatibility synchronizer."""
 
     impl: ImplementationRef
@@ -42,7 +41,7 @@ class Synchronicity1WrappedClassRefIR(AnnotationIRNode):
 
 
 @dataclasses.dataclass(frozen=True)
-class TypeVarRefIR(AnnotationIRNode):
+class TypeVarRefIR(AnnotationIR):
     """Reference to a module-level ``typing.TypeVar`` by name.
 
     Bound translation behavior comes from :class:`~ir.TypeParameterIR`.
@@ -52,7 +51,7 @@ class TypeVarRefIR(AnnotationIRNode):
 
 
 @dataclasses.dataclass(frozen=True)
-class SelfAnnotationIR(AnnotationIRNode):
+class SelfAnnotationIR(AnnotationIR):
     """``typing.Self`` tied to a wrapped owner class."""
 
     owner_impl: ImplementationRef
@@ -60,28 +59,28 @@ class SelfAnnotationIR(AnnotationIRNode):
 
 
 @dataclasses.dataclass(frozen=True)
-class ListAnnotationIR(AnnotationIRNode):
+class ListAnnotationIR(AnnotationIR):
     item_ir: AnnotationIR
 
 
 @dataclasses.dataclass(frozen=True)
-class DictAnnotationIR(AnnotationIRNode):
+class DictAnnotationIR(AnnotationIR):
     key_ir: AnnotationIR
     value_ir: AnnotationIR
 
 
 @dataclasses.dataclass(frozen=True)
-class SequenceAnnotationIR(AnnotationIRNode):
+class SequenceAnnotationIR(AnnotationIR):
     item_ir: AnnotationIR
 
 
 @dataclasses.dataclass(frozen=True)
-class CollectionAnnotationIR(AnnotationIRNode):
+class CollectionAnnotationIR(AnnotationIR):
     item_ir: AnnotationIR
 
 
 @dataclasses.dataclass(frozen=True)
-class TupleAnnotationIR(AnnotationIRNode):
+class TupleAnnotationIR(AnnotationIR):
     """Fixed ``tuple[T1, T2]`` or variadic ``tuple[T, ...]`` (``variadic=True``, single element)."""
 
     element_irs: tuple[AnnotationIR, ...]
@@ -89,55 +88,55 @@ class TupleAnnotationIR(AnnotationIRNode):
 
 
 @dataclasses.dataclass(frozen=True)
-class OptionalAnnotationIR(AnnotationIRNode):
+class OptionalAnnotationIR(AnnotationIR):
     inner_ir: AnnotationIR
 
 
 @dataclasses.dataclass(frozen=True)
-class UnionAnnotationIR(AnnotationIRNode):
+class UnionAnnotationIR(AnnotationIR):
     arm_irs: tuple[AnnotationIR, ...]
     source_label: str | None = None
 
 
 @dataclasses.dataclass(frozen=True)
-class AsyncGeneratorAnnotationIR(AnnotationIRNode):
+class AsyncGeneratorAnnotationIR(AnnotationIR):
     yield_annotation_ir: AnnotationIR
     send_type_str: str | None
     send_type_import_modules: tuple[str, ...] = ()
 
 
 @dataclasses.dataclass(frozen=True)
-class SyncGeneratorAnnotationIR(AnnotationIRNode):
+class SyncGeneratorAnnotationIR(AnnotationIR):
     yield_annotation_ir: AnnotationIR
 
 
 @dataclasses.dataclass(frozen=True)
-class AsyncIteratorAnnotationIR(AnnotationIRNode):
+class AsyncIteratorAnnotationIR(AnnotationIR):
     item_ir: AnnotationIR
 
 
 @dataclasses.dataclass(frozen=True)
-class AsyncIterableAnnotationIR(AnnotationIRNode):
+class AsyncIterableAnnotationIR(AnnotationIR):
     item_ir: AnnotationIR
 
 
 @dataclasses.dataclass(frozen=True)
-class CoroutineAnnotationIR(AnnotationIRNode):
+class CoroutineAnnotationIR(AnnotationIR):
     return_annotation_ir: AnnotationIR
 
 
 @dataclasses.dataclass(frozen=True)
-class AwaitableAnnotationIR(AnnotationIRNode):
+class AwaitableAnnotationIR(AnnotationIR):
     inner_ir: AnnotationIR
 
 
 @dataclasses.dataclass(frozen=True)
-class AsyncContextManagerAnnotationIR(AnnotationIRNode):
+class AsyncContextManagerAnnotationIR(AnnotationIR):
     value_ir: AnnotationIR
 
 
 @dataclasses.dataclass(frozen=True)
-class CallableAnnotationIR(AnnotationIRNode):
+class CallableAnnotationIR(AnnotationIR):
     parameter_irs: tuple[AnnotationIR, ...] | None
     return_annotation_ir: AnnotationIR
     params_signature_text: str | None = None
@@ -145,33 +144,8 @@ class CallableAnnotationIR(AnnotationIRNode):
 
 
 @dataclasses.dataclass(frozen=True)
-class ParameterizedWrappedClassRefIR(AnnotationIRNode):
+class ParameterizedWrappedClassRefIR(AnnotationIR):
     """Wrapped class subscripted with type arguments, e.g. ``SomeContainer[WrappedType]``."""
 
     wrapped_class_ir: WrappedClassRefIR | Synchronicity1WrappedClassRefIR
     type_argument_irs: tuple[AnnotationIR, ...]
-
-
-AnnotationIR = typing.Union[
-    PlainAnnotationIR,
-    WrappedClassRefIR,
-    Synchronicity1WrappedClassRefIR,
-    TypeVarRefIR,
-    SelfAnnotationIR,
-    ListAnnotationIR,
-    DictAnnotationIR,
-    SequenceAnnotationIR,
-    CollectionAnnotationIR,
-    TupleAnnotationIR,
-    OptionalAnnotationIR,
-    UnionAnnotationIR,
-    AsyncGeneratorAnnotationIR,
-    SyncGeneratorAnnotationIR,
-    AsyncIteratorAnnotationIR,
-    AsyncIterableAnnotationIR,
-    CoroutineAnnotationIR,
-    AwaitableAnnotationIR,
-    AsyncContextManagerAnnotationIR,
-    CallableAnnotationIR,
-    ParameterizedWrappedClassRefIR,
-]
