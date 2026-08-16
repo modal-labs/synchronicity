@@ -309,7 +309,9 @@ async def main() -> None:
         print(item)
 ```
 
-**Two-way** async generators annotated as `AsyncGenerator[YieldType, SendType]` also get first-class wrappers: the sync side supports `.send(...)` and `.close()`, the async side from `.aio(...)` supports `.asend(...)` and `.aclose()`, and cleanup is forwarded so closing the wrapper waits for async generator finalization.
+**Two-way** async generators annotated as `AsyncGenerator[YieldType, SendType]` also get first-class wrappers: the sync side supports `.send(...)` and `.close()`, the async side from `.aio(...)` supports `.asend(...)` and `.aclose()`, and cleanup is forwarded so closing the wrapper waits for async generator finalization. Wrapped classes in yield positions are translated to public wrappers, while wrapped values sent back into the generator are translated to implementation instances.
+
+Synchronous `Generator[YieldType, SendType, ReturnType]` annotations preserve and translate all three type positions. `Iterator[ItemType]` remains a distinct one-way iterator rather than being widened to `Generator[ItemType, None, None]`.
 
 ### Detailed support details
 
@@ -318,6 +320,7 @@ The current codebase and tests cover:
 - async functions and functions returning typed `Awaitable[...]`, exposed with `.aio(...)`
 - wrapper-side translation of wrapped classes in annotated arguments and return values, including common container shapes like `list[...]`, `tuple[...]`, and `Optional[...]`
 - async generators, including two-way generators with `send`/`asend` and cleanup via `close`/`aclose`
+- synchronous generators with translated yield, send, and terminal return values
 - sync and async iteration over wrapped async iterables and iterators
 - async context managers, including direct `__aenter__`/`__aexit__` wrappers and functions or methods returning async context manager values
 - wrapped classes with public instance methods

@@ -34,6 +34,7 @@ from ..ir.annotations import (
     SequenceAnnotationIR,
     SyncGeneratorAnnotationIR,
     Synchronicity1WrappedClassRefIR,
+    SyncIteratorAnnotationIR,
     TupleAnnotationIR,
     TypeVarRefIR,
     UnionAnnotationIR,
@@ -451,9 +452,39 @@ def parse_annotation(
             source_label=source_label,
         )
 
-    if origin is collections.abc.Generator or origin is collections.abc.Iterator:
+    if origin is collections.abc.Generator:
         if args:
             return SyncGeneratorAnnotationIR(
+                yield_annotation_ir=parse_annotation(
+                    args[0],
+                    owner_impl_type=owner_impl_type,
+                    owner_has_type_parameters=owner_has_type_parameters,
+                    impl_modules=impl_modules,
+                    source_label=source_label,
+                    synchronicity1_synchronizer=synchronicity1_synchronizer,
+                ),
+                send_annotation_ir=parse_annotation(
+                    args[1] if len(args) > 1 else type(None),
+                    owner_impl_type=owner_impl_type,
+                    owner_has_type_parameters=owner_has_type_parameters,
+                    impl_modules=impl_modules,
+                    source_label=source_label,
+                    synchronicity1_synchronizer=synchronicity1_synchronizer,
+                ),
+                return_annotation_ir=parse_annotation(
+                    args[2] if len(args) > 2 else type(None),
+                    owner_impl_type=owner_impl_type,
+                    owner_has_type_parameters=owner_has_type_parameters,
+                    impl_modules=impl_modules,
+                    source_label=source_label,
+                    synchronicity1_synchronizer=synchronicity1_synchronizer,
+                ),
+            )
+        return _identity_ir_from_annotation(annotation)
+
+    if origin is collections.abc.Iterator:
+        if args:
+            return SyncIteratorAnnotationIR(
                 parse_annotation(
                     args[0],
                     owner_impl_type=owner_impl_type,
@@ -495,23 +526,27 @@ def parse_annotation(
 
     if origin is collections.abc.AsyncGenerator:
         if len(args) >= 1:
-            send_type_str = "None"
-            send_type_import_modules: tuple[str, ...] = ()
-            if len(args) > 1:
-                send_type_str = _format_annotation(args[1])
-                send_type_import_modules = tuple(sorted(annotation_import_modules(args[1])))
-            yield_arg = args[0]
             return AsyncGeneratorAnnotationIR(
-                parse_annotation(
-                    yield_arg,
+                yield_annotation_ir=parse_annotation(
+                    args[0],
                     owner_impl_type=owner_impl_type,
                     owner_has_type_parameters=owner_has_type_parameters,
                     impl_modules=impl_modules,
                     source_label=source_label,
                     synchronicity1_synchronizer=synchronicity1_synchronizer,
                 ),
-                send_type_str=send_type_str,
-                send_type_import_modules=send_type_import_modules,
+                send_annotation_ir=(
+                    parse_annotation(
+                        args[1],
+                        owner_impl_type=owner_impl_type,
+                        owner_has_type_parameters=owner_has_type_parameters,
+                        impl_modules=impl_modules,
+                        source_label=source_label,
+                        synchronicity1_synchronizer=synchronicity1_synchronizer,
+                    )
+                    if len(args) > 1
+                    else None
+                ),
             )
         return _identity_ir_from_annotation(annotation)
 

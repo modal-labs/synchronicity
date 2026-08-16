@@ -37,6 +37,37 @@ def test_runtime():
     gen.close()
 
 
+def test_wrapped_generator_send_and_return_values():
+    import two_way_generator
+
+    sent = two_way_generator.Payload("sent")
+    gen = two_way_generator.async_payload_generator()
+    assert next(gen).value == "ready"
+    assert gen.send(sent) is sent
+    gen.close()
+
+    async def test_async_generator():
+        async_sent = two_way_generator.Payload("async sent")
+        async_gen = two_way_generator.async_payload_generator.aio()
+        assert (await anext(async_gen)).value == "ready"
+        assert await async_gen.asend(async_sent) is async_sent
+        await async_gen.aclose()
+
+    asyncio.run(test_async_generator())
+
+    sync_sent = two_way_generator.Payload("sync sent")
+    sync_gen = two_way_generator.sync_payload_generator()
+    assert next(sync_gen).value == "ready"
+    try:
+        sync_gen.send(sync_sent)
+    except StopIteration as stop:
+        assert stop.value is sync_sent
+    else:
+        raise AssertionError("sync generator did not return")
+
+    assert [payload.value for payload in two_way_generator.iter_payloads()] == ["first", "second"]
+
+
 def test_runtime_aclose_forwarding():
     import two_way_generator
     import two_way_generator_impl

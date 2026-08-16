@@ -40,7 +40,8 @@ IR_FN_ASYNC_GEN = WrappedFunctionIR(
         ),
     ),
     return_annotation_ir=AsyncGeneratorAnnotationIR(
-        yield_annotation_ir=PlainAnnotationIR(signature_text="str"), send_type_str="None"
+        yield_annotation_ir=PlainAnnotationIR(signature_text="str"),
+        send_annotation_ir=PlainAnnotationIR(signature_text="None"),
     ),
 )
 IR_FN_BARE_ITERATOR = WrappedFunctionIR(
@@ -49,7 +50,8 @@ IR_FN_BARE_ITERATOR = WrappedFunctionIR(
     is_async_gen=True,
     parameters=(),
     return_annotation_ir=AsyncGeneratorAnnotationIR(
-        yield_annotation_ir=PlainAnnotationIR(signature_text="typing.Any"), send_type_str="None"
+        yield_annotation_ir=PlainAnnotationIR(signature_text="typing.Any"),
+        send_annotation_ir=PlainAnnotationIR(signature_text="None"),
     ),
 )
 IR_FN_COMPLEX_TYPES = WrappedFunctionIR(
@@ -266,7 +268,7 @@ IR_FN_STREAM_BATCHES = WrappedFunctionIR(
                 impl=ObjectReferenceIR(IMPL, "Person"), wrapper=ObjectReferenceIR(TARGET, "Person")
             )
         ),
-        send_type_str=None,
+        send_annotation_ir=None,
     ),
 )
 IR_FN_STREAM_PEOPLE = WrappedFunctionIR(
@@ -280,7 +282,7 @@ IR_FN_STREAM_PEOPLE = WrappedFunctionIR(
         yield_annotation_ir=WrappedClassRefIR(
             impl=ObjectReferenceIR(IMPL, "Person"), wrapper=ObjectReferenceIR(TARGET, "Person")
         ),
-        send_type_str=None,
+        send_annotation_ir=None,
     ),
 )
 IR_FN_SYNC_ADD = WrappedFunctionIR(

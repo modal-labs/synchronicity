@@ -1,11 +1,19 @@
-"""Test module for two-way async generators (generators that use send())."""
+"""Test module for two-way generators (generators that use send())."""
 
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Generator, Iterator
 
 from synchronicity2 import Module
 
 # Create the wrapper module
 wrapper_module = Module("two_way_generator")
+
+
+@wrapper_module.wrap_class()
+class Payload:
+    value: str
+
+    def __init__(self, value: str):
+        self.value = value
 
 
 @wrapper_module.wrap_function()
@@ -53,6 +61,25 @@ async def multiplier_generator(factor: int) -> AsyncGenerator[int, int]:
 
     while True:
         sent_value = yield sent_value * factor
+
+
+@wrapper_module.wrap_function()
+async def async_payload_generator() -> AsyncGenerator[Payload, Payload]:
+    sent_value = yield Payload("ready")
+    while True:
+        sent_value = yield sent_value
+
+
+@wrapper_module.wrap_function()
+def sync_payload_generator() -> Generator[Payload, Payload, Payload]:
+    sent_value = yield Payload("ready")
+    return sent_value
+
+
+@wrapper_module.wrap_function()
+def iter_payloads() -> Iterator[Payload]:
+    yield Payload("first")
+    yield Payload("second")
 
 
 # Global list to track cleanup calls for testing

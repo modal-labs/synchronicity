@@ -10,8 +10,10 @@ Tests each codegen type for:
 import pytest
 import sys
 import types
+import typing
 
 from synchronicity import Synchronizer as Synchronicity1Synchronizer
+
 from synchronicity2.codegen.emission.type_codegen import (
     AsyncGeneratorTypeCodegen,
     AwaitableTypeCodegen,
@@ -21,7 +23,9 @@ from synchronicity2.codegen.emission.type_codegen import (
     OptionalTypeCodegen,
     ParameterizedWrappedClassTypeCodegen,
     PlainTypeCodegen,
+    SyncGeneratorTypeCodegen,
     Synchronicity1WrappedClassTypeCodegen,
+    SyncIteratorTypeCodegen,
     TupleTypeCodegen,
     UnionTypeCodegen,
     WrappedClassTypeCodegen,
@@ -459,7 +463,7 @@ class TestGeneratorCodegen:
         from synchronicity2.codegen.emission.type_codegen import AsyncGeneratorTypeCodegen
 
         yield_codegen = _make_wrapped_codegen(wrapped_class)
-        codegen = AsyncGeneratorTypeCodegen(yield_codegen, send_type_str="None")
+        codegen = AsyncGeneratorTypeCodegen(yield_codegen, PlainTypeCodegen("None"))
         assert codegen.public_annotation("test_module", is_async=True) == "typing.AsyncGenerator[TestClass, None]"
         # Sync context should preserve send type (even if it's just None)
         assert codegen.public_annotation("test_module", is_async=False) == "typing.Generator[TestClass, None, None]"
@@ -469,7 +473,7 @@ class TestGeneratorCodegen:
         from synchronicity2.codegen.emission.type_codegen import AsyncGeneratorTypeCodegen
 
         yield_codegen = PlainTypeCodegen("int")
-        codegen = AsyncGeneratorTypeCodegen(yield_codegen, send_type_str=None)
+        codegen = AsyncGeneratorTypeCodegen(yield_codegen, None)
         assert codegen.public_annotation("test_module", is_async=True) == "typing.AsyncGenerator[int]"
         assert codegen.public_annotation("test_module", is_async=False) == "typing.Generator[int, None, None]"
 
@@ -477,7 +481,7 @@ class TestGeneratorCodegen:
         from synchronicity2.codegen.emission.type_codegen import SyncGeneratorTypeCodegen
 
         yield_codegen = PlainTypeCodegen("str")
-        codegen = SyncGeneratorTypeCodegen(yield_codegen)
+        codegen = SyncGeneratorTypeCodegen(yield_codegen, PlainTypeCodegen("None"), PlainTypeCodegen("None"))
         assert codegen.public_annotation("test_module") == "typing.Generator[str, None, None]"
 
     def test_two_way_generator_with_send_type(self):
@@ -486,7 +490,7 @@ class TestGeneratorCodegen:
 
         yield_codegen = PlainTypeCodegen("str")
         # Two-way generator: yields str, accepts str via send
-        codegen = AsyncGeneratorTypeCodegen(yield_codegen, send_type_str="str")
+        codegen = AsyncGeneratorTypeCodegen(yield_codegen, PlainTypeCodegen("str"))
 
         # Async context: AsyncGenerator[str, str]
         assert codegen.public_annotation("test_module", is_async=True) == "typing.AsyncGenerator[str, str]"
@@ -500,7 +504,7 @@ class TestGeneratorCodegen:
         from synchronicity2.codegen.emission.type_codegen import AsyncGeneratorTypeCodegen
 
         yield_codegen = PlainTypeCodegen("int")
-        codegen = AsyncGeneratorTypeCodegen(yield_codegen, send_type_str="int")
+        codegen = AsyncGeneratorTypeCodegen(yield_codegen, PlainTypeCodegen("int"))
 
         # Both contexts should preserve send type
         assert codegen.public_annotation("test_module", is_async=True) == "typing.AsyncGenerator[int, int]"
@@ -512,7 +516,7 @@ class TestGeneratorCodegen:
 
         yield_codegen = PlainTypeCodegen("str")
         # One-way generator: yields str, doesn't use send
-        codegen = AsyncGeneratorTypeCodegen(yield_codegen, send_type_str="None")
+        codegen = AsyncGeneratorTypeCodegen(yield_codegen, PlainTypeCodegen("None"))
 
         # Both should have None as send type
         assert codegen.public_annotation("test_module", is_async=True) == "typing.AsyncGenerator[str, None]"
@@ -522,18 +526,20 @@ class TestGeneratorCodegen:
         from synchronicity2.codegen.emission.type_codegen import AsyncGeneratorTypeCodegen, SyncGeneratorTypeCodegen
 
         # Async generators ALWAYS need translation (for synchronizer integration)
-        codegen1 = AsyncGeneratorTypeCodegen(PlainTypeCodegen("int"))
+        codegen1 = AsyncGeneratorTypeCodegen(PlainTypeCodegen("int"), PlainTypeCodegen("None"))
         assert codegen1.requires_boundary_translation() is True
 
         # Generator of wrapped classes also needs translation
-        codegen2 = AsyncGeneratorTypeCodegen(_make_wrapped_codegen(wrapped_class))
+        codegen2 = AsyncGeneratorTypeCodegen(_make_wrapped_codegen(wrapped_class), PlainTypeCodegen("None"))
         assert codegen2.requires_boundary_translation() is True
 
         # Sync generators only need translation if yield type needs translation
-        codegen3 = SyncGeneratorTypeCodegen(PlainTypeCodegen("int"))
+        codegen3 = SyncGeneratorTypeCodegen(PlainTypeCodegen("int"), PlainTypeCodegen("None"), PlainTypeCodegen("None"))
         assert codegen3.requires_boundary_translation() is False
 
-        codegen4 = SyncGeneratorTypeCodegen(_make_wrapped_codegen(wrapped_class))
+        codegen4 = SyncGeneratorTypeCodegen(
+            _make_wrapped_codegen(wrapped_class), PlainTypeCodegen("None"), PlainTypeCodegen("None")
+        )
         assert codegen4.requires_boundary_translation() is True
 
 
@@ -585,6 +591,31 @@ class TestCodegenFromAnnotation:
 
         codegen = _codegen_from_annotation(AsyncGenerator[str, None])
         assert isinstance(codegen, AsyncGeneratorTypeCodegen)
+
+    def test_create_async_generator_parses_wrapped_send_type(self, wrapped_class):
+        codegen = _codegen_from_annotation(typing.AsyncGenerator[str, wrapped_class])
+
+        assert isinstance(codegen, AsyncGeneratorTypeCodegen)
+        assert isinstance(codegen.send_codegen, WrappedClassTypeCodegen)
+        assert codegen.public_annotation("test_module") == "typing.AsyncGenerator[str, TestClass]"
+        assert codegen.implementation_annotation("test_module") == (
+            f"typing.AsyncGenerator[str, {wrapped_class.__module__}.{wrapped_class.__name__}]"
+        )
+
+    def test_create_sync_generator_preserves_all_type_arguments(self, wrapped_class):
+        codegen = _codegen_from_annotation(typing.Generator[str, wrapped_class, wrapped_class])
+
+        assert isinstance(codegen, SyncGeneratorTypeCodegen)
+        assert isinstance(codegen.send_codegen, WrappedClassTypeCodegen)
+        assert isinstance(codegen.return_codegen, WrappedClassTypeCodegen)
+        assert codegen.public_annotation("test_module") == "typing.Generator[str, TestClass, TestClass]"
+
+    def test_create_sync_iterator_is_distinct_from_generator(self, wrapped_class):
+        codegen = _codegen_from_annotation(typing.Iterator[wrapped_class])
+
+        assert isinstance(codegen, SyncIteratorTypeCodegen)
+        assert isinstance(codegen.item_codegen, WrappedClassTypeCodegen)
+        assert codegen.public_annotation("test_module") == "typing.Iterator[TestClass]"
 
     def test_nested_list_of_optional_wrapped(self, wrapped_class):
         """Test nested type: list[Optional[WrappedClass]]."""

@@ -12,17 +12,11 @@ import warnings
 from ..ir.annotations import (
     AnnotationIR,
     CallableAnnotationIR,
-    CollectionAnnotationIR,
-    DictAnnotationIR,
-    ListAnnotationIR,
-    OptionalAnnotationIR,
     ParameterizedWrappedClassRefIR,
     SelfAnnotationIR,
-    SequenceAnnotationIR,
     Synchronicity1WrappedClassRefIR,
-    TupleAnnotationIR,
-    UnionAnnotationIR,
     WrappedClassRefIR,
+    walk_annotation_irs,
 )
 from ..ir.declarations import ParameterIR
 from .annotations import parse_annotation
@@ -251,7 +245,7 @@ def parse_parameters_to_ir(
                 source_label=(f"{source_label_prefix} parameter {name!r}" if source_label_prefix is not None else None),
                 synchronicity1_synchronizer=synchronicity1_synchronizer,
             )
-            if isinstance(annotation_ir, CallableAnnotationIR) and _callable_ir_contains_wrapped_refs(annotation_ir):
+            if isinstance(annotation_ir, CallableAnnotationIR) and _annotation_ir_contains_wrapped_refs(annotation_ir):
                 warnings.warn(
                     (
                         f"{source_label_prefix or func.__qualname__} parameter {name!r} is a callable containing "
@@ -281,38 +275,11 @@ def parse_parameters_to_ir(
     return tuple(result)
 
 
-def _callable_ir_contains_wrapped_refs(ir: CallableAnnotationIR) -> bool:
-    annotation_irs: list[AnnotationIR] = [ir.return_annotation_ir]
-    if ir.parameter_irs is not None:
-        annotation_irs.extend(ir.parameter_irs)
-    return any(_annotation_ir_contains_wrapped_refs(annotation_ir) for annotation_ir in annotation_irs)
-
-
 def _annotation_ir_contains_wrapped_refs(ir: AnnotationIR) -> bool:
-    if isinstance(
-        ir,
-        (
-            WrappedClassRefIR,
-            Synchronicity1WrappedClassRefIR,
-            ParameterizedWrappedClassRefIR,
-            SelfAnnotationIR,
-        ),
-    ):
-        return True
-    if isinstance(ir, ListAnnotationIR):
-        return _annotation_ir_contains_wrapped_refs(ir.item_ir)
-    if isinstance(ir, SequenceAnnotationIR):
-        return _annotation_ir_contains_wrapped_refs(ir.item_ir)
-    if isinstance(ir, CollectionAnnotationIR):
-        return _annotation_ir_contains_wrapped_refs(ir.item_ir)
-    if isinstance(ir, OptionalAnnotationIR):
-        return _annotation_ir_contains_wrapped_refs(ir.inner_ir)
-    if isinstance(ir, DictAnnotationIR):
-        return _annotation_ir_contains_wrapped_refs(ir.key_ir) or _annotation_ir_contains_wrapped_refs(ir.value_ir)
-    if isinstance(ir, TupleAnnotationIR):
-        return any(_annotation_ir_contains_wrapped_refs(element_ir) for element_ir in ir.element_irs)
-    if isinstance(ir, UnionAnnotationIR):
-        return any(_annotation_ir_contains_wrapped_refs(arm_ir) for arm_ir in ir.arm_irs)
-    if isinstance(ir, CallableAnnotationIR):
-        return _callable_ir_contains_wrapped_refs(ir)
-    return False
+    wrapped_ref_types = (
+        WrappedClassRefIR,
+        Synchronicity1WrappedClassRefIR,
+        ParameterizedWrappedClassRefIR,
+        SelfAnnotationIR,
+    )
+    return any(isinstance(referenced_ir, wrapped_ref_types) for referenced_ir in walk_annotation_irs(ir))

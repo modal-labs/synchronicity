@@ -2,29 +2,7 @@
 
 from __future__ import annotations
 
-from ..ir.annotations import (
-    AnnotationIR,
-    AsyncContextManagerAnnotationIR,
-    AsyncGeneratorAnnotationIR,
-    AsyncIterableAnnotationIR,
-    AsyncIteratorAnnotationIR,
-    AwaitableAnnotationIR,
-    CallableAnnotationIR,
-    CollectionAnnotationIR,
-    CoroutineAnnotationIR,
-    DictAnnotationIR,
-    ListAnnotationIR,
-    OptionalAnnotationIR,
-    ParameterizedWrappedClassRefIR,
-    PlainAnnotationIR,
-    SelfAnnotationIR,
-    SequenceAnnotationIR,
-    SyncGeneratorAnnotationIR,
-    Synchronicity1WrappedClassRefIR,
-    TupleAnnotationIR,
-    UnionAnnotationIR,
-    WrappedClassRefIR,
-)
+from ..ir.annotations import AnnotationIR
 from ..ir.declarations import (
     ModuleIR,
     ParameterIR,
@@ -40,52 +18,7 @@ from ..ir.declarations import (
 def annotation_import_modules(annotation_ir: AnnotationIR) -> frozenset[str]:
     """Return modules referenced by one annotation tree."""
 
-    if isinstance(annotation_ir, PlainAnnotationIR):
-        return frozenset(annotation_ir.import_modules)
-    if isinstance(annotation_ir, WrappedClassRefIR):
-        return frozenset((annotation_ir.wrapper.module,))
-    if isinstance(annotation_ir, Synchronicity1WrappedClassRefIR):
-        return frozenset((annotation_ir.impl.module, annotation_ir.wrapper.module))
-    if isinstance(annotation_ir, SelfAnnotationIR):
-        return frozenset((annotation_ir.wrapper.module,))
-    if isinstance(
-        annotation_ir,
-        (
-            ListAnnotationIR,
-            SequenceAnnotationIR,
-            CollectionAnnotationIR,
-            AsyncIteratorAnnotationIR,
-            AsyncIterableAnnotationIR,
-        ),
-    ):
-        return annotation_import_modules(annotation_ir.item_ir)
-    if isinstance(annotation_ir, DictAnnotationIR):
-        return _merge_annotation_import_modules(annotation_ir.key_ir, annotation_ir.value_ir)
-    if isinstance(annotation_ir, TupleAnnotationIR):
-        return _merge_annotation_import_modules(*annotation_ir.element_irs)
-    if isinstance(annotation_ir, (OptionalAnnotationIR, AwaitableAnnotationIR)):
-        return annotation_import_modules(annotation_ir.inner_ir)
-    if isinstance(annotation_ir, UnionAnnotationIR):
-        return _merge_annotation_import_modules(*annotation_ir.arm_irs)
-    if isinstance(annotation_ir, (AsyncGeneratorAnnotationIR, SyncGeneratorAnnotationIR)):
-        modules = annotation_import_modules(annotation_ir.yield_annotation_ir)
-        if isinstance(annotation_ir, AsyncGeneratorAnnotationIR):
-            modules |= frozenset(annotation_ir.send_type_import_modules)
-        return modules
-    if isinstance(annotation_ir, CoroutineAnnotationIR):
-        return annotation_import_modules(annotation_ir.return_annotation_ir)
-    if isinstance(annotation_ir, AsyncContextManagerAnnotationIR):
-        return annotation_import_modules(annotation_ir.value_ir)
-    if isinstance(annotation_ir, CallableAnnotationIR):
-        modules = annotation_import_modules(annotation_ir.return_annotation_ir)
-        if annotation_ir.parameter_irs is not None:
-            modules |= _merge_annotation_import_modules(*annotation_ir.parameter_irs)
-        return modules | frozenset(annotation_ir.params_signature_import_modules)
-    if isinstance(annotation_ir, ParameterizedWrappedClassRefIR):
-        return annotation_import_modules(annotation_ir.wrapped_class_ir) | _merge_annotation_import_modules(
-            *annotation_ir.type_argument_irs
-        )
-    return frozenset()
+    return annotation_ir.required_import_modules()
 
 
 def module_import_modules(module_ir: ModuleIR) -> frozenset[str]:

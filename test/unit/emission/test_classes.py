@@ -57,7 +57,8 @@ IR_CLASS_AITER_ASYNC_GEN = WrappedClassIR(
             is_async_gen=True,
             is_async=True,
             return_annotation_ir=AsyncGeneratorAnnotationIR(
-                yield_annotation_ir=PlainAnnotationIR(signature_text="float"), send_type_str="None"
+                yield_annotation_ir=PlainAnnotationIR(signature_text="float"),
+                send_annotation_ir=PlainAnnotationIR(signature_text="None"),
             ),
         ),
     ),
@@ -190,7 +191,8 @@ IR_CLASS_ASYNC_GEN = WrappedClassIR(
             is_async_gen=True,
             is_async=True,
             return_annotation_ir=AsyncGeneratorAnnotationIR(
-                yield_annotation_ir=PlainAnnotationIR(signature_text="str"), send_type_str="None"
+                yield_annotation_ir=PlainAnnotationIR(signature_text="str"),
+                send_annotation_ir=PlainAnnotationIR(signature_text="None"),
             ),
         ),
         WrappedMethodIR(
@@ -204,7 +206,8 @@ IR_CLASS_ASYNC_GEN = WrappedClassIR(
             is_async_gen=True,
             is_async=True,
             return_annotation_ir=AsyncGeneratorAnnotationIR(
-                yield_annotation_ir=PlainAnnotationIR(signature_text="str"), send_type_str="None"
+                yield_annotation_ir=PlainAnnotationIR(signature_text="str"),
+                send_annotation_ir=PlainAnnotationIR(signature_text="None"),
             ),
         ),
     ),
@@ -591,7 +594,8 @@ IR_CLASS_MIXED = WrappedClassIR(
             is_async_gen=True,
             is_async=True,
             return_annotation_ir=AsyncGeneratorAnnotationIR(
-                yield_annotation_ir=PlainAnnotationIR(signature_text="str"), send_type_str="None"
+                yield_annotation_ir=PlainAnnotationIR(signature_text="str"),
+                send_annotation_ir=PlainAnnotationIR(signature_text="None"),
             ),
         ),
         WrappedMethodIR(

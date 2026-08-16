@@ -80,7 +80,7 @@ IR_FN_NODE_GENERATOR = WrappedFunctionIR(
         yield_annotation_ir=WrappedClassRefIR(
             impl=ObjectReferenceIR(IMPL, "GenNode"), wrapper=ObjectReferenceIR(TARGET, "GenNode")
         ),
-        send_type_str="None",
+        send_annotation_ir=PlainAnnotationIR(signature_text="None"),
     ),
 )
 IR_FN_RETURNS_STRING = WrappedFunctionIR(
@@ -96,7 +96,8 @@ IR_FN_SIMPLE_GEN = WrappedFunctionIR(
     is_async_gen=True,
     parameters=(),
     return_annotation_ir=AsyncGeneratorAnnotationIR(
-        yield_annotation_ir=PlainAnnotationIR(signature_text="str"), send_type_str="None"
+        yield_annotation_ir=PlainAnnotationIR(signature_text="str"),
+        send_annotation_ir=PlainAnnotationIR(signature_text="None"),
     ),
 )
 IR_FN_TUPLE_GENERATORS = WrappedFunctionIR(
@@ -108,10 +109,12 @@ IR_FN_TUPLE_GENERATORS = WrappedFunctionIR(
         inner_ir=TupleAnnotationIR(
             element_irs=(
                 AsyncGeneratorAnnotationIR(
-                    yield_annotation_ir=PlainAnnotationIR(signature_text="str"), send_type_str="None"
+                    yield_annotation_ir=PlainAnnotationIR(signature_text="str"),
+                    send_annotation_ir=PlainAnnotationIR(signature_text="None"),
                 ),
                 AsyncGeneratorAnnotationIR(
-                    yield_annotation_ir=PlainAnnotationIR(signature_text="int"), send_type_str="None"
+                    yield_annotation_ir=PlainAnnotationIR(signature_text="int"),
+                    send_annotation_ir=PlainAnnotationIR(signature_text="None"),
                 ),
             ),
             variadic=False,

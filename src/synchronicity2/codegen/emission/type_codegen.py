@@ -34,6 +34,7 @@ from ..ir.annotations import (
     SequenceAnnotationIR,
     SyncGeneratorAnnotationIR,
     Synchronicity1WrappedClassRefIR,
+    SyncIteratorAnnotationIR,
     TupleAnnotationIR,
     TypeVarRefIR,
     UnionAnnotationIR,
@@ -1034,41 +1035,49 @@ class UnionTypeCodegen(TypeCodegen):
 
 
 class AsyncGeneratorTypeCodegen(TypeCodegen):
-    """Codegen for AsyncGenerator/AsyncIterator types."""
+    """Codegen for async generators, including yield and send translation."""
 
-    def __init__(self, yield_codegen: TypeCodegen, send_type_str: str | None = "None"):
+    def __init__(self, yield_codegen: TypeCodegen, send_codegen: TypeCodegen | None):
         self.yield_codegen = yield_codegen
-        self.send_type_str = send_type_str
+        self.send_codegen = send_codegen
         self._uid = uuid.uuid4().hex[:8]
 
     def public_annotation(self, target_module: str, is_async: bool = True) -> str:
         """Return AsyncGenerator[T, S] for async context, Generator[T, S, None] for sync context."""
         yield_type_str = self.yield_codegen.public_annotation(target_module, is_async)
 
-        if is_async:
-            if self.send_type_str is None:
-                return f"typing.AsyncGenerator[{yield_type_str}]"
-            else:
-                return f"typing.AsyncGenerator[{yield_type_str}, {self.send_type_str}]"
+        if self.send_codegen is None:
+            send_type_str = None
         else:
-            send_type_for_sync = self.send_type_str if self.send_type_str is not None else "None"
-            return f"typing.Generator[{yield_type_str}, {send_type_for_sync}, None]"
+            send_type_str = self.send_codegen.public_annotation(target_module, is_async)
+        if is_async:
+            if send_type_str is None:
+                return f"typing.AsyncGenerator[{yield_type_str}]"
+            return f"typing.AsyncGenerator[{yield_type_str}, {send_type_str}]"
+        return f"typing.Generator[{yield_type_str}, {send_type_str or 'None'}, None]"
 
     def wrapper_to_impl_expr(self, var_name: str, target_module: str | None = None) -> str:
         """Generators don't unwrap at the parameter level."""
         return var_name
 
-    def _needs_yield_wrapping(self) -> bool:
-        """Whether yield items need translation (requiring helper generators)."""
-        return self.yield_codegen.requires_boundary_translation()
+    def _needs_value_translation(self) -> bool:
+        return self.yield_codegen.requires_boundary_translation() or (
+            self.send_codegen is not None and self.send_codegen.requires_boundary_translation()
+        )
+
+    def _send_to_impl_expr(self, target_module: str) -> str:
+        if self.send_codegen is None or not self.send_codegen.requires_boundary_translation():
+            return "_sent"
+        translated = self.send_codegen.wrapper_to_impl_expr("_sent", target_module)
+        return f"(None if _sent is None else {translated})"
 
     def impl_to_wrapper_expr(self, target_module: str, var_name: str, is_async: bool = True) -> str:
         """Return expression that wraps an async generator.
 
-        When yield items don't need translation, delegates directly to the synchronizer.
-        When they do, calls a generated helper function.
+        When neither yielded nor sent values need translation, delegates directly to the synchronizer.
+        Otherwise, calls a generated helper function.
         """
-        if not self._needs_yield_wrapping():
+        if not self._needs_value_translation():
             if is_async:
                 return f"_synchronizer._run_generator_async({var_name})"
             else:
@@ -1092,20 +1101,23 @@ class AsyncGeneratorTypeCodegen(TypeCodegen):
         return f"_wrap_async_gen_{sanitized}_{self._uid}"
 
     def helper_definitions(self, target_module: str, indent: str = "    ") -> dict[str, str]:
-        """Generate helper functions for wrapping async generators with yield translation.
+        """Generate helper functions for translating async generator values.
 
-        Returns empty dict when yield items don't need translation (impl_to_wrapper_expr
+        Returns empty dict when values don't need translation (impl_to_wrapper_expr
         delegates directly to the synchronizer in that case).
         """
-        if not self._needs_yield_wrapping():
+        if not self._needs_value_translation():
             return {}
 
-        helpers = {}
+        helpers: dict[str, str] = {}
 
         helpers.update(self.yield_codegen.helper_definitions(target_module, indent))
+        if self.send_codegen is not None:
+            helpers.update(self.send_codegen.helper_definitions(target_module, indent))
 
         helper_name = self._get_helper_name(target_module)
         impl_to_wrapper_expr = self.yield_codegen.impl_to_wrapper_expr(target_module, "_item")
+        wrapper_to_impl_expr = self._send_to_impl_expr(target_module)
 
         async_helper = f"""{indent}@staticmethod
 {indent}async def {helper_name}(_gen):
@@ -1114,7 +1126,7 @@ class AsyncGeneratorTypeCodegen(TypeCodegen):
 {indent}    try:
 {indent}        while True:
 {indent}            try:
-{indent}                _item = await _wrapped.asend(_sent)
+{indent}                _item = await _wrapped.asend({wrapper_to_impl_expr})
 {indent}                _sent = yield {impl_to_wrapper_expr}
 {indent}            except StopAsyncIteration:
 {indent}                break
@@ -1128,7 +1140,7 @@ class AsyncGeneratorTypeCodegen(TypeCodegen):
 {indent}    try:
 {indent}        while True:
 {indent}            try:
-{indent}                _item = _wrapped.send(_sent)
+{indent}                _item = _wrapped.send({wrapper_to_impl_expr})
 {indent}                _sent = yield {impl_to_wrapper_expr}
 {indent}            except StopIteration:
 {indent}                break
@@ -1141,28 +1153,37 @@ class AsyncGeneratorTypeCodegen(TypeCodegen):
         return helpers
 
     def references_wrapper_class(self) -> bool:
-        return self.yield_codegen.references_wrapper_class()
+        return self.yield_codegen.references_wrapper_class() or (
+            self.send_codegen is not None and self.send_codegen.references_wrapper_class()
+        )
 
     def implementation_annotation(self, target_module: str, is_async: bool = True) -> str:
         yield_type_str = self.yield_codegen.implementation_annotation(target_module, is_async)
+        send_type_str = (
+            None if self.send_codegen is None else self.send_codegen.implementation_annotation(target_module, is_async)
+        )
         if is_async:
-            if self.send_type_str is None:
+            if send_type_str is None:
                 return f"typing.AsyncGenerator[{yield_type_str}]"
-            return f"typing.AsyncGenerator[{yield_type_str}, {self.send_type_str}]"
-        send_type_for_sync = self.send_type_str if self.send_type_str is not None else "None"
-        return f"typing.Generator[{yield_type_str}, {send_type_for_sync}, None]"
+            return f"typing.AsyncGenerator[{yield_type_str}, {send_type_str}]"
+        return f"typing.Generator[{yield_type_str}, {send_type_str or 'None'}, None]"
 
 
 class SyncGeneratorTypeCodegen(TypeCodegen):
     """Codegen for sync Generator types."""
 
-    def __init__(self, yield_codegen: TypeCodegen):
+    def __init__(self, yield_codegen: TypeCodegen, send_codegen: TypeCodegen, return_codegen: TypeCodegen):
         self.yield_codegen = yield_codegen
+        self.send_codegen = send_codegen
+        self.return_codegen = return_codegen
+        self._uid = uuid.uuid4().hex[:8]
 
     def public_annotation(self, target_module: str, is_async: bool = True) -> str:
-        """Always returns Generator[T, None, None] (ignores is_async)."""
+        """Return the public three-parameter generator annotation."""
         yield_type_str = self.yield_codegen.public_annotation(target_module, is_async)
-        return f"typing.Generator[{yield_type_str}, None, None]"
+        send_type_str = self.send_codegen.public_annotation(target_module, is_async)
+        return_type_str = self.return_codegen.public_annotation(target_module, is_async)
+        return f"typing.Generator[{yield_type_str}, {send_type_str}, {return_type_str}]"
 
     def wrapper_to_impl_expr(self, var_name: str, target_module: str | None = None) -> str:
         """Generators don't unwrap at the parameter level."""
@@ -1177,46 +1198,48 @@ class SyncGeneratorTypeCodegen(TypeCodegen):
         return f"self.{helper_name}({var_name})"
 
     def requires_boundary_translation(self) -> bool:
-        """Sync generators only need translation if yields need wrapping."""
-        return self.yield_codegen.requires_boundary_translation()
+        """Whether any value crossing the generator boundary needs translation."""
+        return any(
+            codegen.requires_boundary_translation()
+            for codegen in (self.yield_codegen, self.send_codegen, self.return_codegen)
+        )
 
     def _get_helper_name(self, target_module: str) -> str:
         """Generate a unique helper function name for this sync generator wrapper."""
         yield_type_str = self.yield_codegen.public_annotation(target_module)
         sanitized = yield_type_str.replace("[", "_").replace("]", "").replace(".", "_").replace(", ", "_")
-        return f"_wrap_gen_{sanitized}"
+        return f"_wrap_gen_{sanitized}_{self._uid}"
+
+    def _send_to_impl_expr(self, target_module: str) -> str:
+        if not self.send_codegen.requires_boundary_translation():
+            return "_sent"
+        translated = self.send_codegen.wrapper_to_impl_expr("_sent", target_module)
+        return f"(None if _sent is None else {translated})"
 
     def helper_definitions(self, target_module: str, indent: str = "    ") -> dict[str, str]:
         """Generate helper function for wrapping sync generators."""
-        helpers = {}
-
-        helpers.update(self.yield_codegen.helper_definitions(target_module, indent))
+        helpers: dict[str, str] = {}
+        for codegen in (self.yield_codegen, self.send_codegen, self.return_codegen):
+            helpers.update(codegen.helper_definitions(target_module, indent))
 
         if not self.requires_boundary_translation():
             return helpers
 
         helper_name = self._get_helper_name(target_module)
 
-        if self.yield_codegen.requires_boundary_translation():
-            impl_to_wrapper_expr = self.yield_codegen.impl_to_wrapper_expr(target_module, "_item")
-        else:
-            impl_to_wrapper_expr = "_item"
-
-        if impl_to_wrapper_expr == "_item":
-            helper_code = f"""{indent}@staticmethod
-{indent}def {helper_name}(_gen):
-{indent}    yield from _gen"""
-        else:
-            helper_code = f"""{indent}@staticmethod
+        yield_expr = self.yield_codegen.impl_to_wrapper_expr(target_module, "_item")
+        send_expr = self._send_to_impl_expr(target_module)
+        return_expr = self.return_codegen.impl_to_wrapper_expr(target_module, "_stop.value")
+        helper_code = f"""{indent}@staticmethod
 {indent}def {helper_name}(_gen):
 {indent}    _sent = None
 {indent}    try:
 {indent}        while True:
 {indent}            try:
-{indent}                _item = _gen.send(_sent)
-{indent}                _sent = yield {impl_to_wrapper_expr}
-{indent}            except StopIteration:
-{indent}                break
+{indent}                _item = _gen.send({send_expr})
+{indent}                _sent = yield {yield_expr}
+{indent}            except StopIteration as _stop:
+{indent}                return {return_expr}
 {indent}    finally:
 {indent}        _gen.close()"""
         helpers[helper_name] = helper_code
@@ -1224,15 +1247,64 @@ class SyncGeneratorTypeCodegen(TypeCodegen):
         return helpers
 
     def references_wrapper_class(self) -> bool:
-        return self.yield_codegen.references_wrapper_class()
+        return any(
+            codegen.references_wrapper_class()
+            for codegen in (self.yield_codegen, self.send_codegen, self.return_codegen)
+        )
 
     def implementation_annotation(self, target_module: str, is_async: bool = True) -> str:
         yield_type_str = self.yield_codegen.implementation_annotation(target_module, is_async)
-        return f"typing.Generator[{yield_type_str}, None, None]"
+        send_type_str = self.send_codegen.implementation_annotation(target_module, is_async)
+        return_type_str = self.return_codegen.implementation_annotation(target_module, is_async)
+        return f"typing.Generator[{yield_type_str}, {send_type_str}, {return_type_str}]"
 
 
-# Keep GeneratorCodegen as an alias for backward compatibility during transition
-GeneratorCodegen = AsyncGeneratorTypeCodegen
+class SyncIteratorTypeCodegen(TypeCodegen):
+    """Codegen for synchronous iterators with translated item values."""
+
+    def __init__(self, item_codegen: TypeCodegen):
+        self.item_codegen = item_codegen
+        self._uid = uuid.uuid4().hex[:8]
+
+    def public_annotation(self, target_module: str, is_async: bool = True) -> str:
+        item_type_str = self.item_codegen.public_annotation(target_module, is_async)
+        return f"typing.Iterator[{item_type_str}]"
+
+    def wrapper_to_impl_expr(self, var_name: str, target_module: str | None = None) -> str:
+        return var_name
+
+    def impl_to_wrapper_expr(self, target_module: str, var_name: str, is_async: bool = True) -> str:
+        if not self.requires_boundary_translation():
+            return var_name
+        return f"self.{self._get_helper_name(target_module)}({var_name})"
+
+    def requires_boundary_translation(self) -> bool:
+        return self.item_codegen.requires_boundary_translation()
+
+    def _get_helper_name(self, target_module: str) -> str:
+        item_type_str = self.item_codegen.public_annotation(target_module)
+        sanitized = item_type_str.replace("[", "_").replace("]", "").replace(".", "_").replace(", ", "_")
+        return f"_wrap_iter_{sanitized}_{self._uid}"
+
+    def helper_definitions(self, target_module: str, indent: str = "    ") -> dict[str, str]:
+        helpers = self.item_codegen.helper_definitions(target_module, indent)
+        if not self.requires_boundary_translation():
+            return helpers
+
+        helper_name = self._get_helper_name(target_module)
+        item_expr = self.item_codegen.impl_to_wrapper_expr(target_module, "_item")
+        helpers[helper_name] = f"""{indent}@staticmethod
+{indent}def {helper_name}(_iter):
+{indent}    for _item in _iter:
+{indent}        yield {item_expr}"""
+        return helpers
+
+    def references_wrapper_class(self) -> bool:
+        return self.item_codegen.references_wrapper_class()
+
+    def implementation_annotation(self, target_module: str, is_async: bool = True) -> str:
+        item_type_str = self.item_codegen.implementation_annotation(target_module, is_async)
+        return f"typing.Iterator[{item_type_str}]"
 
 
 class AsyncIteratorTypeCodegen(TypeCodegen):
@@ -1666,12 +1738,20 @@ def codegen_for_annotation(
     if isinstance(annotation_ir, AsyncGeneratorAnnotationIR):
         return AsyncGeneratorTypeCodegen(
             codegen_for_annotation(annotation_ir.yield_annotation_ir, runtime_package, context=context),
-            send_type_str=annotation_ir.send_type_str,
+            (
+                None
+                if annotation_ir.send_annotation_ir is None
+                else codegen_for_annotation(annotation_ir.send_annotation_ir, runtime_package, context=context)
+            ),
         )
     if isinstance(annotation_ir, SyncGeneratorAnnotationIR):
         return SyncGeneratorTypeCodegen(
-            codegen_for_annotation(annotation_ir.yield_annotation_ir, runtime_package, context=context)
+            codegen_for_annotation(annotation_ir.yield_annotation_ir, runtime_package, context=context),
+            codegen_for_annotation(annotation_ir.send_annotation_ir, runtime_package, context=context),
+            codegen_for_annotation(annotation_ir.return_annotation_ir, runtime_package, context=context),
         )
+    if isinstance(annotation_ir, SyncIteratorAnnotationIR):
+        return SyncIteratorTypeCodegen(codegen_for_annotation(annotation_ir.item_ir, runtime_package, context=context))
     if isinstance(annotation_ir, AsyncIteratorAnnotationIR):
         return AsyncIteratorTypeCodegen(
             codegen_for_annotation(annotation_ir.item_ir, runtime_package, context=context),
