@@ -410,9 +410,8 @@ For async usage, we still use the synchronizer event loop instead of just runnin
 The big disadvantage is that it introduces additional call stack height and thread synchronization primitives which gives worse performance and traceback readability.
 
 ### Iterator syntax
-Syntax for async iteration is currently `async for x in async_generator_func(): ...` rather than `async for x in async_generator_func.aio(): ...` which might feel more consistent with the function calling syntax.
-The reason for choosing this path is:
-* Generalized iterator objects implementing `__aiter__` can exist without being accessed through a callable
+
+Use `.aio()` to select the async side of a callable async generator: `async for x in async_generator_func.aio(): ...`. Once you have an iterable or iterator object, iterate it directly with `async for x in iterable: ...`.
 
 ## Practical gotchas
 
@@ -531,3 +530,7 @@ Migration considerations:
 
 See [AGENTS.md](AGENTS.md) for development practices and [ARCHITECTURE.md](ARCHITECTURE.md) for the
 runtime and code-generation design.
+
+## TODO
+
+- Revisit the seeming inconsistency between callable async generators requiring `.aio()` and iterable or iterator objects supporting direct async iteration. A more uniform API would be easier to explain and use.
