@@ -503,7 +503,15 @@ Traceback:{self._thread_traceback}"""
                         pass
             else:
                 value = fut.result()
-        except KeyboardInterrupt as exc:
+        except BaseException as exc:
+            # This lets KeyboardInterrupt and modal.InputCancellation through, since they both base
+            # BaseException
+            # This also works because any exceptions raised by user code will be transformed into
+            # `UserCodeException`s, which are `Exception`s (regardless of the type of the underlying
+            # exception)
+            if isinstance(exc, Exception):
+                raise
+
             # in case there is a keyboard interrupt while we are waiting
             # we cancel the *underlying* coro_task (unlike what fut.cancel() would do)
             # and then wait for the *wrapper* coroutine to get a result back, which
@@ -526,7 +534,7 @@ Traceback:{self._thread_traceback}"""
                 # we *expect* this cancellation, but defer to the passed coro to potentially
                 # intercept and treat the cancellation some other way
                 expected_cancellation.__suppress_context__ = True
-                raise exc  # if cancel - re-raise the original KeyboardInterrupt again
+                raise exc  # if cancel - re-raise the original BaseException again
 
         if getattr(original_func, self._output_translation_attr, True):
             return self._translate_out(value)
