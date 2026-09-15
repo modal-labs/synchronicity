@@ -27,28 +27,42 @@ class PopenWithCtrlC(subprocess.Popen):
             self.send_signal(signal.SIGINT)
 
 
-def test_shutdown():
+@pytest.mark.parametrize(
+    ("filename", "message", "wait_for_cancel"),
+    [
+        ("_shutdown.py", "keyboard interrupt\n", True),
+        ("_shutdown_arbitrary_exc.py", "arbitrary base exception\n", True),
+        ("_shutdown_spin_on_cancel.py", "system exit\n", False),
+    ],
+)
+def test_interrupt(filename: str, message: str, wait_for_cancel: bool):
     # We run it in a separate process so we can simulate interrupting it
-    fn = Path(__file__).parent / "support" / "_shutdown.py"
+    fn = Path(__file__).parent / "support" / filename
     with PopenWithCtrlC(
         [sys.executable, "-u", fn], stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf8"
     ) as p:
-        for i in range(2):  # this number doesn't matter, it's a while loop
+        assert p.stdout
+        assert p.stderr
+
+        for _ in range(2):  # this number doesn't matter, it's a while loop
             assert p.stdout.readline() == "running\n"
+
         p.send_ctrl_c()
-        for i in range(2):
-            # in some extreme cases there is a risk of a race where the "running" still appears here
-            if p.stdout.readline() == "cancelled\n":
-                break
-        else:
-            assert False
 
-        assert p.stdout.readline() == "handled cancellation\n"
-        assert p.stdout.readline() == "exit async\n"
-        assert (
-            p.stdout.readline() == "keyboard interrupt\n"
-        )  # we want the keyboard interrupt to come *after* the running function has been cancelled!
+        if wait_for_cancel:
+            for _ in range(2):
+                # in some extreme cases there is a risk of a race where the "running" still appears here
+                if p.stdout.readline() == "cancelled\n":
+                    break
+            else:
+                assert False
 
+            # For non-SystemExit exceptions raised in the main thread, we want the exception to come
+            # *after* the running function has been fully cancelled!
+            assert p.stdout.readline() == "handled cancellation\n"
+            assert p.stdout.readline() == "exit async\n"
+
+        assert p.stdout.readline() == message
         assert p.stderr.read().strip() == ""
 
 

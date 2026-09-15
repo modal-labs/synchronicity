@@ -504,15 +504,12 @@ Traceback:{self._thread_traceback}"""
             else:
                 value = fut.result()
         except BaseException as exc:
-            # This lets KeyboardInterrupt and modal.InputCancellation through, since they both base
-            # BaseException
-            # This also works because any exceptions raised by user code will be transformed into
-            # `UserCodeException`s, which are `Exception`s (regardless of the type of the underlying
-            # exception)
-            if isinstance(exc, Exception):
-                raise
+            # If `fut.done()` is True, then (1) the exception was raised from user code, and (2) we
+            # don't need to do any cleanup as the future has already completed.
+            if fut.done():
+                raise exc
 
-            # in case there is a keyboard interrupt while we are waiting
+            # in case there is a different exception while we are waiting,
             # we cancel the *underlying* coro_task (unlike what fut.cancel() would do)
             # and then wait for the *wrapper* coroutine to get a result back, which
             # happens after the cancellation resolves
@@ -528,6 +525,13 @@ Traceback:{self._thread_traceback}"""
                     pass
                 else:
                     loop.call_soon_threadsafe(inner_task.cancel)
+
+            # We always want to cancel the background task on an exception that doesn't come from
+            # userspace, but we also don't want to hang up interpreter shutdown by waiting for this
+            # cancellation to propagate
+            if isinstance(exc, SystemExit):
+                raise exc
+
             try:
                 value = fut.result()
             except concurrent.futures.CancelledError as expected_cancellation:
