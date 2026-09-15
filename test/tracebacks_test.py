@@ -51,7 +51,7 @@ def test_full_traceback_flag(synchronizer, monkeypatch):
     with pytest.raises(CustomException) as exc_info:
         raise_something_blocking(CustomException("boom!"))
 
-    check_traceback(exc_info.tb, outside_frames=8, outside_frames_old_python=8)
+    check_traceback(exc_info.tb, outside_frames=9, outside_frames_old_python=9)
     traceback_string = "\n".join(traceback.format_tb(exc_info.tb))
 
     assert 'raise_something_blocking(CustomException("boom!"))' in traceback_string

@@ -503,8 +503,13 @@ Traceback:{self._thread_traceback}"""
                         pass
             else:
                 value = fut.result()
-        except KeyboardInterrupt as exc:
-            # in case there is a keyboard interrupt while we are waiting
+        except BaseException as exc:
+            # If `fut.done()` is True, then (1) the exception was raised from user code, and (2) we
+            # don't need to do any cleanup as the future has already completed.
+            if fut.done():
+                raise exc
+
+            # in case there is a different exception while we are waiting,
             # we cancel the *underlying* coro_task (unlike what fut.cancel() would do)
             # and then wait for the *wrapper* coroutine to get a result back, which
             # happens after the cancellation resolves
@@ -520,13 +525,20 @@ Traceback:{self._thread_traceback}"""
                     pass
                 else:
                     loop.call_soon_threadsafe(inner_task.cancel)
+
+            # We always want to cancel the background task on an exception that doesn't come from
+            # userspace, but we also don't want to hang up interpreter shutdown by waiting for this
+            # cancellation to propagate
+            if isinstance(exc, SystemExit):
+                raise exc
+
             try:
                 value = fut.result()
             except concurrent.futures.CancelledError as expected_cancellation:
                 # we *expect* this cancellation, but defer to the passed coro to potentially
                 # intercept and treat the cancellation some other way
                 expected_cancellation.__suppress_context__ = True
-                raise exc  # if cancel - re-raise the original KeyboardInterrupt again
+                raise exc  # if cancel - re-raise the original BaseException again
 
         if getattr(original_func, self._output_translation_attr, True):
             return self._translate_out(value)
