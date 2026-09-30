@@ -526,12 +526,6 @@ Traceback:{self._thread_traceback}"""
                 else:
                     loop.call_soon_threadsafe(inner_task.cancel)
 
-            # We always want to cancel the background task on an exception that doesn't come from
-            # userspace, but we also don't want to hang up interpreter shutdown by waiting for this
-            # cancellation to propagate
-            if isinstance(exc, SystemExit):
-                raise exc
-
             try:
                 value = fut.result()
             except concurrent.futures.CancelledError as expected_cancellation:

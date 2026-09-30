@@ -28,14 +28,13 @@ class PopenWithCtrlC(subprocess.Popen):
 
 
 @pytest.mark.parametrize(
-    ("filename", "message", "wait_for_cancel"),
+    ("filename", "message"),
     [
-        ("_shutdown.py", "keyboard interrupt\n", True),
-        ("_shutdown_arbitrary_exc.py", "arbitrary base exception\n", True),
-        ("_shutdown_spin_on_cancel.py", "system exit\n", False),
+        ("_shutdown.py", "keyboard interrupt\n"),
+        ("_shutdown_arbitrary_exc.py", "arbitrary base exception\n"),
     ],
 )
-def test_interrupt(filename: str, message: str, wait_for_cancel: bool):
+def test_interrupt(filename: str, message: str):
     # We run it in a separate process so we can simulate interrupting it
     fn = Path(__file__).parent / "support" / filename
     with PopenWithCtrlC(
@@ -49,18 +48,17 @@ def test_interrupt(filename: str, message: str, wait_for_cancel: bool):
 
         p.send_ctrl_c()
 
-        if wait_for_cancel:
-            for _ in range(2):
-                # in some extreme cases there is a risk of a race where the "running" still appears here
-                if p.stdout.readline() == "cancelled\n":
-                    break
-            else:
-                assert False
+        for _ in range(2):
+            # in some extreme cases there is a risk of a race where the "running" still appears here
+            if p.stdout.readline() == "cancelled\n":
+                break
+        else:
+            assert False
 
-            # For non-SystemExit exceptions raised in the main thread, we want the exception to come
-            # *after* the running function has been fully cancelled!
-            assert p.stdout.readline() == "handled cancellation\n"
-            assert p.stdout.readline() == "exit async\n"
+        # For non-SystemExit exceptions raised in the main thread, we want the exception to come
+        # *after* the running function has been fully cancelled!
+        assert p.stdout.readline() == "handled cancellation\n"
+        assert p.stdout.readline() == "exit async\n"
 
         assert p.stdout.readline() == message
         assert p.stderr.read().strip() == ""
