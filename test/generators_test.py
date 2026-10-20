@@ -1,4 +1,6 @@
 import asyncio
+import concurrent.futures
+import contextlib
 import pytest
 
 events = []
@@ -139,3 +141,35 @@ def test_custom_generator(synchronizer):
     for x in blocking_my_generator:
         events.append("consumer")
     assert events == ["producer", "consumer"] * 10
+
+
+async def keep_running_through_cancellation(seconds):
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + seconds
+    while (remaining := deadline - loop.time()) > 0:
+        with contextlib.suppress(asyncio.CancelledError):
+            await asyncio.sleep(remaining)
+
+
+@pytest.mark.asyncio
+async def test_close_waits_for_cancelled_asend(synchronizer):
+    closed_on_loop = concurrent.futures.Future()
+
+    async def gen():
+        try:
+            yield 1
+            await keep_running_through_cancellation(0.05)
+            yield 2
+        finally:
+            closed_on_loop.set_result(asyncio.get_running_loop())
+
+    iterator = synchronizer.create_blocking(gen).aio()
+    await iterator.__anext__()
+    asend = asyncio.create_task(iterator.__anext__())
+    await asyncio.sleep(0.01)
+    asend.cancel()  # cancel #1: the generator starts cancelling
+    await asyncio.sleep(0.01)
+    asend.cancel()  # cancel #2: the caller stops waiting and closes the generator while it is still cancelling
+
+    closed_on = await asyncio.wait_for(asyncio.wrap_future(closed_on_loop), timeout=1)
+    assert closed_on is synchronizer._get_loop()

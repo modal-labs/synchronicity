@@ -108,6 +108,21 @@ class classproperty(typing.Generic[T, R]):
         return self.fget.__get__(None, owner)()
 
 
+async def _asend(gen, lock, value):
+    async with lock:
+        return await gen.asend(value)
+
+
+async def _athrow(gen, lock, exc):
+    async with lock:
+        return await gen.athrow(exc)
+
+
+async def _aclose(gen, lock):
+    async with lock:
+        await gen.aclose()
+
+
 def _type_requires_aio_usage(annotation, declaration_module):
     if isinstance(annotation, ForwardRef):
         annotation = annotation.__forward_arg__
@@ -632,15 +647,16 @@ Traceback:{self._thread_traceback}"""
         return value
 
     def _run_generator_sync(self, gen, original_func):
+        lock = asyncio.Lock()
         value, is_exc = None, False
         try:
             with suppress_synchronicity_tb_frames():
                 while True:
                     try:
                         if is_exc:
-                            value = self._run_function_sync(gen.athrow(value), original_func)
+                            value = self._run_function_sync(_athrow(gen, lock, value), original_func)
                         else:
-                            value = self._run_function_sync(gen.asend(value), original_func)
+                            value = self._run_function_sync(_asend(gen, lock, value), original_func)
                     except UserCodeException as uc_exc:
                         uc_exc.exc.__suppress_context__ = True
                         raise uc_exc.exc
@@ -663,22 +679,24 @@ Traceback:{self._thread_traceback}"""
                 try:
                     # Best-effort close. We use a future so we don't block indefinitely in case
                     # the event loop closing races with this code and the aclose never returns
-                    aclose = gen.aclose()
-                    finalization_fut: concurrent.futures.Future = self._run_function_sync_future(aclose, original_func)
+                    finalization_fut: concurrent.futures.Future = self._run_function_sync_future(
+                        _aclose(gen, lock), original_func
+                    )
                     finalization_fut.result(timeout=self._asyncgen_finalizer_timeout_seconds)
                 except Exception:
                     pass
 
     async def _run_generator_async(self, gen, original_func):
+        lock = asyncio.Lock()
         value, is_exc = None, False
         try:
             with suppress_synchronicity_tb_frames():
                 while True:
                     try:
                         if is_exc:
-                            value = await self._run_function_async(gen.athrow(value), original_func)
+                            value = await self._run_function_async(_athrow(gen, lock, value), original_func)
                         else:
-                            value = await self._run_function_async(gen.asend(value), original_func)
+                            value = await self._run_function_async(_asend(gen, lock, value), original_func)
                     except UserCodeException as uc_exc:
                         uc_exc.exc.__suppress_context__ = True
                         raise uc_exc.exc
@@ -701,7 +719,7 @@ Traceback:{self._thread_traceback}"""
                 try:
                     # Best-effort close. We use a future so we don't block indefinitely in case
                     # the event loop closing races with this code and the aclose never returns
-                    close_task = asyncio.create_task(self._run_function_async(gen.aclose(), original_func))
+                    close_task = asyncio.create_task(self._run_function_async(_aclose(gen, lock), original_func))
                     await asyncio.wait_for(asyncio.shield(close_task), timeout=self._asyncgen_finalizer_timeout_seconds)
                 except Exception:
                     pass
