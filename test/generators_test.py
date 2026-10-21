@@ -1,4 +1,7 @@
 import asyncio
+import concurrent.futures
+import contextlib
+import gc
 import pytest
 
 events = []
@@ -139,3 +142,68 @@ def test_custom_generator(synchronizer):
     for x in blocking_my_generator:
         events.append("consumer")
     assert events == ["producer", "consumer"] * 10
+
+
+def _registered_asyncgens(loop, code):
+    return [agen for agen in loop._asyncgens if agen.ag_code is code]
+
+
+async def two_items():
+    yield 1
+    yield 2
+
+
+@pytest.mark.asyncio
+async def test_asyncgen_hooks_bound_to_synchronizer_loop_async(synchronizer):
+    iterator = synchronizer.create_blocking(two_items).aio()
+    assert await iterator.__anext__() == 1
+    assert _registered_asyncgens(asyncio.get_running_loop(), two_items.__code__) == []
+    assert len(_registered_asyncgens(synchronizer._get_loop(), two_items.__code__)) == 1
+    await iterator.aclose()
+
+
+def test_asyncgen_hooks_bound_to_synchronizer_loop_blocking(synchronizer):
+    iterator = synchronizer.create_blocking(two_items)()
+    assert next(iterator) == 1
+    assert len(_registered_asyncgens(synchronizer._get_loop(), two_items.__code__)) == 1
+    iterator.close()
+
+
+async def keep_running_through_cancellation(seconds):
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + seconds
+    while (remaining := deadline - loop.time()) > 0:
+        with contextlib.suppress(asyncio.CancelledError):
+            await asyncio.sleep(remaining)
+
+
+@pytest.mark.asyncio
+async def test_abandoned_generator_finalized_on_synchronizer_loop(synchronizer):
+    # A double cancellation makes the caller stop waiting for an in-flight asend and issue
+    # aclose while the generator is still running. That aclose fails, leaving the generator
+    # to be finalized by the GC - which must happen on the synchronizer loop.
+    finalized_on_loop = concurrent.futures.Future()
+
+    async def gen():
+        try:
+            yield 1
+            await keep_running_through_cancellation(0.05)
+            yield 2
+        finally:
+            finalized_on_loop.set_result(asyncio.get_running_loop())
+
+    iterator = synchronizer.create_blocking(gen).aio()
+    await iterator.__anext__()
+    asend = asyncio.create_task(iterator.__anext__())
+    await asyncio.sleep(0.01)
+    asend.cancel()
+    await asyncio.sleep(0.01)
+    asend.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await asend
+    del asend  # the cancelled task's traceback keeps a reference cycle to the generator alive
+
+    await asyncio.sleep(0.1)  # let the in-flight asend finish on the synchronizer loop
+    gc.collect()
+    finalized_on = await asyncio.wait_for(asyncio.wrap_future(finalized_on_loop), timeout=1)
+    assert finalized_on is synchronizer._get_loop()
