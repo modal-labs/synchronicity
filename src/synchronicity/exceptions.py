@@ -48,7 +48,9 @@ def wrap_coro_exception(coro):
             raise UserCodeException(exc)
         except Exception as exc:
             if sys.version_info < (3, 11) and not SYNCHRONICITY_TRACEBACK:
-                exc.with_traceback(exc.__traceback__.tb_next)  # skip the `await coro` frame from above
+                # skip the `await coro` frame from above and any other synchronicity-internal frames
+                # (e.g. the coroutine wrappers around asend/athrow/aclose) leading up to user code
+                exc.with_traceback(_skip_internal_frames(exc.__traceback__) or exc.__traceback__)
                 raise UserCodeException(exc)
             raise  # raise as is on Python 3.11 - we hide things later
         except BaseException as exc:
@@ -77,6 +79,16 @@ _skip_modules = [synchronicity, concurrent.futures, asyncio]
 _skip_module_roots = [Path(mod.__file__).parent for mod in _skip_modules if mod.__file__]
 
 
+def _should_hide_file(fn: str) -> bool:
+    return any(Path(fn).is_relative_to(modroot) for modroot in _skip_module_roots)
+
+
+def _skip_internal_frames(tb: Optional[TracebackType]) -> Optional[TracebackType]:
+    while tb is not None and _should_hide_file(tb.tb_frame.f_code.co_filename or ""):
+        tb = tb.tb_next
+    return tb
+
+
 class suppress_synchronicity_tb_frames:
     def __enter__(self):
         pass
@@ -88,16 +100,7 @@ class suppress_synchronicity_tb_frames:
             # no exception, or enabled full tracebacks - don't do anything
             return False
 
-        def should_hide_file(fn: str):
-            return any(Path(fn).is_relative_to(modroot) for modroot in _skip_module_roots)
-
-        def get_next_valid(tb: TracebackType) -> Optional[TracebackType]:
-            next_valid: Optional[TracebackType] = tb
-            while next_valid is not None and should_hide_file(next_valid.tb_frame.f_code.co_filename or ""):
-                next_valid = next_valid.tb_next
-            return next_valid
-
-        cleaned_root = get_next_valid(tb)
+        cleaned_root = _skip_internal_frames(tb)
         if cleaned_root is None:
             # no frames outside of skip_modules - return original error
             return False
