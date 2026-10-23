@@ -921,6 +921,7 @@ class StubEmitter:
         maybe_decorators = ""
         if hasattr(func, "__dataclass_transform__"):
             dt_spec = func.__dataclass_transform__
+            args = ""
             if dt_spec["field_specifiers"]:
                 refs = ""
                 for field_spec_entity in dt_spec["field_specifiers"]:
