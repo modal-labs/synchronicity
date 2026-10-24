@@ -708,6 +708,22 @@ def test_dataclass_transform():
     assert "field_specifiers=(test.type_stub_test.custom_field, )" in src
 
 
+def test_dataclass_transform_without_field_specifiers():
+    @typing_extensions.dataclass_transform(kw_only_default=True)
+    def decorator():
+        pass
+
+    src = _function_source(decorator)
+    assert "@typing_extensions.dataclass_transform(kw_only_default=True, )\n" in src
+
+    @typing_extensions.dataclass_transform()
+    def default_decorator():
+        pass
+
+    src = _function_source(default_decorator)
+    assert "@typing_extensions.dataclass_transform()\n" in src
+
+
 def test_contextvar():
     import contextvars
 
