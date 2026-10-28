@@ -221,3 +221,33 @@ def test_raising_various_exceptions(exc, synchronizer):
     if sys.version_info >= (3, 11):
         # basic traceback improvement tests - there are more tests in traceback_test.py
         assert str(Path(synchronicity.__file__).parent) not in full_tb
+
+
+def f_returns_coro(exc):
+    # not async and not annotated, so the blocking wrapper gets no .aio interface
+    return f_raises(exc)
+
+
+class ClassWithStaticMethod:
+    @staticmethod
+    def returns_coro(exc):
+        return f_raises(exc)
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        Exception("foo"),
+        KeyboardInterrupt(),
+        TimeoutError(),
+    ],
+)
+def test_raising_from_coroutine_returning_function_without_aio(exc, synchronizer):
+    f_returns_coro_s = synchronizer.wrap(f_returns_coro)
+    assert not hasattr(f_returns_coro_s, "aio")
+    with pytest.raises(type(exc)):
+        f_returns_coro_s(exc)
+
+    WrappedClass = synchronizer.wrap(ClassWithStaticMethod)
+    with pytest.raises(type(exc)):
+        WrappedClass.returns_coro(exc)

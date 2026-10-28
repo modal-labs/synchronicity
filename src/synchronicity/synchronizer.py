@@ -804,7 +804,7 @@ Traceback:{self._thread_traceback}"""
                         raise StopIteration().with_traceback(exc.__traceback__)
                     except UserCodeException as uc_exc:
                         # Used to skip a frame when called from `proxy_method`.
-                        if unwrap_user_excs and not (Interface.BLOCKING and include_aio_interface):
+                        if unwrap_user_excs and not (include_aio_interface and should_have_aio_interface(f)):
                             uc_exc.exc.__suppress_context__ = True
                             raise uc_exc.exc
                         else:
