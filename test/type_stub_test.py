@@ -1,4 +1,5 @@
 import collections
+import enum
 import functools
 import importlib
 import pathlib
@@ -563,6 +564,29 @@ def test_typing_literal():
 
     src = _function_source(foo)
     assert "-> typing.Literal['three', 'str']" in src  # "str" should not be eval:ed in a Literal!
+
+
+class _Mode(enum.Enum):
+    FAST = 1
+    SLOW = 2
+
+
+def test_typing_literal_enum_member():
+    def foo(mode: typing.Literal[_Mode.FAST, "auto"]) -> typing.Literal[_Mode.SLOW]: ...
+
+    src = _function_source(foo)
+    assert "def foo(mode: typing.Literal[_Mode.FAST, 'auto']) -> typing.Literal[_Mode.SLOW]:" in src
+
+
+def test_typing_literal_enum_member_other_module():
+    def foo(color: typing.Literal[some_mod.Color.RED, some_mod.Color.BLUE]): ...
+
+    src = _function_source(foo)
+    assert "import test.type_stub_helpers.some_mod" in src
+    assert (
+        "def foo(color: typing.Literal[test.type_stub_helpers.some_mod.Color.RED, "
+        "test.type_stub_helpers.some_mod.Color.BLUE]):"
+    ) in src
 
 
 LiteralAlias = typing.Literal["literal_value_1", "literal_value_2"]
