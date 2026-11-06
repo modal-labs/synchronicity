@@ -1,0 +1,30 @@
+# Fails when .github/workflows/actions.lock is out of sync with the workflows
+# and local actions, or a locked pin no longer verifies upstream. Regenerate it
+# with `gh actions-lock` after changing any `uses:`.
+name: Verify actions lockfile
+
+on:
+  pull_request:
+    paths:
+      - ".github/**"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/**"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - run: gh extension install github/gh-actions-lock --pin v0.4.0
+      - run: gh actions-lock --verify
