@@ -572,6 +572,14 @@ class StubEmitter:
             return
 
         self._ensure_import(type_annotation)  # import the generic itself's module
+        if origin is typing.Literal:
+            # Literal args are values, not types. Enum members are the only ones that
+            # are emitted by reference, so their enum class needs to be importable
+            for arg in args:
+                if isinstance(arg, enum.Enum):
+                    self._register_imports(type(arg))
+            return
+
         for arg in args:
             self._register_imports(arg)
 
@@ -798,6 +806,10 @@ class StubEmitter:
 
         if isinstance(annotation, typing_extensions.ParamSpecKwargs):
             return self._formatannotation(typing_extensions.get_origin(annotation)) + "." + "kwargs"
+
+        if isinstance(annotation, enum.Enum):
+            # e.g. an argument to typing.Literal - emit a reference to the member, not its repr
+            return f"{self._formatannotation(type(annotation))}.{annotation.name}"
 
         if origin is None or not args:
             if annotation == Ellipsis:
